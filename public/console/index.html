@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WorkTool Bot Console</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <h1>WorkTool Bot Console</h1>
+        <p>配置 botId 与 DClaw Agent 的连接关系</p>
+      </div>
+      <button id="refreshButton" type="button">刷新</button>
+    </header>
+
+    <main class="layout">
+      <section class="panel auth-panel">
+        <h2>管理密钥</h2>
+        <div class="inline-form">
+          <input id="apiKeyInput" type="password" placeholder="ADMIN_API_KEY" autocomplete="off" />
+          <button id="saveKeyButton" type="button">保存</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Bot 绑定</h2>
+        <form id="botForm" class="form-grid">
+          <label>
+            Bot ID
+            <input name="botId" required placeholder="WorkTool botId" />
+          </label>
+          <label>
+            Bot 名称
+            <input name="botName" placeholder="A部门机器人" />
+          </label>
+          <label>
+            Agent ID
+            <input name="agentId" required placeholder="DClaw agent id" />
+          </label>
+          <label>
+            Agent 名称
+            <input name="agentName" placeholder="A部门客服" />
+          </label>
+          <label class="wide">
+            Agent API URL
+            <input name="agentApiUrl" required placeholder="https://dclaw.example.com/api/agents/xxx/invoke" />
+          </label>
+          <label class="wide">
+            Agent API Key
+            <input name="agentApiKey" type="password" placeholder="可选" autocomplete="off" />
+          </label>
+          <label class="toggle">
+            <input name="enabled" type="checkbox" checked />
+            启用
+          </label>
+          <div class="actions">
+            <button type="submit">保存绑定</button>
+            <button id="resetFormButton" type="button">清空</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>已配置 Bot</h2>
+          <span id="botCount" class="muted"></span>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Bot</th>
+                <th>Agent</th>
+                <th>状态</th>
+                <th>更新</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="botsTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
+          <h2>运行数据</h2>
+          <div class="inline-form compact">
+            <select id="logType">
+              <option value="incoming-messages">收到消息</option>
+              <option value="outgoing-messages">发出消息</option>
+              <option value="agent-invocations">Agent 调用</option>
+              <option value="command-callbacks">指令回调</option>
+              <option value="conversations">会话</option>
+            </select>
+            <button id="loadLogsButton" type="button">查看</button>
+          </div>
+        </div>
+        <pre id="logsOutput" class="logs"></pre>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="./app.js"></script>
+  </body>
+</html>

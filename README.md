@@ -273,7 +273,24 @@ Nginx 应代理到：
 http://127.0.0.1:18765
 ```
 
-## 9. 当前接口说明
+## 9. 管理后台
+
+后台页面和回调服务共用同一个容器和端口：
+
+```text
+https://worktool.deepmega.cn/console/
+```
+
+首次打开后填入 `.env` 里的 `ADMIN_API_KEY`。页面支持：
+
+```text
+查看 bot 绑定
+新增/编辑 botId -> DClaw Agent
+一键绑定 WorkTool 消息回调和指令回调
+查看最近消息、会话、Agent 调用、指令回调
+```
+
+## 10. 当前接口说明
 
 本服务提供：
 

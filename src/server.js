@@ -1,5 +1,7 @@
 import "dotenv/config";
 import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
 import { buildDclawRequest, invokeDclawAgent } from "./dclaw.js";
 import {
@@ -27,8 +29,11 @@ import {
 const app = express();
 const port = Number(process.env.PORT || 8765);
 const host = process.env.HOST || "0.0.0.0";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const publicDir = path.resolve(__dirname, "../public");
 
 app.use(express.json({ limit: "2mb" }));
+app.use("/console", express.static(path.join(publicDir, "console")));
 
 await loadBotBindingsFromConfig();
 
@@ -326,6 +331,7 @@ app.put(
 app.post(
   "/api/config/:botId/message-callback",
   asyncHandler(async (req, res) => {
+    assertAdmin(req);
     const body = req.body || {};
     const callbackUrl =
       body.callbackUrl || buildPublicCallbackUrl(req.params.botId, "/message-callback");
@@ -342,6 +348,7 @@ app.post(
 app.post(
   "/api/config/:botId/command-callback",
   asyncHandler(async (req, res) => {
+    assertAdmin(req);
     const body = req.body || {};
     const callBackUrl =
       body.callBackUrl || buildPublicCallbackUrl(req.params.botId, "/command-callback");
@@ -415,6 +422,7 @@ app.get(
 app.get(
   "/api/logs/:name",
   asyncHandler(async (req, res) => {
+    assertAdmin(req);
     const logs = listRecords(req.params.name, Number(req.query.limit || 50));
     if (!logs) {
       res.status(404).json({ ok: false, message: "unknown log name" });
