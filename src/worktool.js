@@ -4,17 +4,17 @@ function getBaseUrl() {
   return (process.env.WORKTOOL_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, "");
 }
 
-function getRobotId() {
-  const robotId = process.env.ROBOT_ID;
+function getRobotId(robotId) {
+  robotId = robotId || process.env.ROBOT_ID;
   if (!robotId) {
     throw new Error("ROBOT_ID is required");
   }
   return robotId;
 }
 
-async function requestWorkTool(path, options = {}) {
+async function requestWorkTool(path, { robotId, ...options } = {}) {
   const url = new URL(`${getBaseUrl()}${path}`);
-  url.searchParams.set("robotId", getRobotId());
+  url.searchParams.set("robotId", getRobotId(robotId));
 
   const response = await fetch(url, {
     ...options,
@@ -40,16 +40,17 @@ async function requestWorkTool(path, options = {}) {
   return data;
 }
 
-export async function getRobotInfo() {
-  return requestWorkTool("/robot/robotInfo/get");
+export async function getRobotInfo(robotId) {
+  return requestWorkTool("/robot/robotInfo/get", { robotId });
 }
 
-export async function getCallbackConfig() {
-  return requestWorkTool("/robot/robotInfo/callBack/get");
+export async function getCallbackConfig(robotId) {
+  return requestWorkTool("/robot/robotInfo/callBack/get", { robotId });
 }
 
-export async function bindMessageCallback(callbackUrl, replyAll = 1) {
+export async function bindMessageCallback({ robotId, callbackUrl, replyAll = 1 }) {
   return requestWorkTool("/robot/robotInfo/update", {
+    robotId,
     method: "POST",
     body: JSON.stringify({
       openCallback: 1,
@@ -59,8 +60,9 @@ export async function bindMessageCallback(callbackUrl, replyAll = 1) {
   });
 }
 
-export async function bindCommandCallback(callBackUrl) {
+export async function bindCommandCallback({ robotId, callBackUrl }) {
   return requestWorkTool("/robot/robotInfo/callBack/bind", {
+    robotId,
     method: "POST",
     body: JSON.stringify({
       type: 1,
@@ -69,7 +71,7 @@ export async function bindCommandCallback(callBackUrl) {
   });
 }
 
-export async function sendTextMessage({ targets, content, socketType = 2 }) {
+export async function sendTextMessage({ robotId, targets, content, socketType = 2 }) {
   if (!Array.isArray(targets) || targets.length === 0) {
     throw new Error("targets must be a non-empty array");
   }
@@ -78,6 +80,7 @@ export async function sendTextMessage({ targets, content, socketType = 2 }) {
   }
 
   return requestWorkTool("/wework/sendRawMessage", {
+    robotId,
     method: "POST",
     body: JSON.stringify({
       socketType,
