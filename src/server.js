@@ -48,6 +48,45 @@ function asyncHandler(handler) {
   };
 }
 
+function getReplyTarget(message) {
+  if (message.roomType === 1 && message.groupName) {
+    return message.groupName;
+  }
+  return message.receivedName;
+}
+
+async function handleAutoReply(message) {
+  const spoken = String(message.spoken || "").trim().toLowerCase();
+  if (spoken !== "ping") {
+    return;
+  }
+
+  const target = getReplyTarget(message);
+  if (!target) {
+    await appendJsonLine("auto-replies.jsonl", {
+      type: "auto-reply-skipped",
+      reason: "missing reply target",
+      payload: message
+    });
+    return;
+  }
+
+  const content = "pong";
+  const result = await sendTextMessage({
+    targets: [target],
+    content
+  });
+
+  await appendJsonLine("auto-replies.jsonl", {
+    type: "auto-reply",
+    trigger: "ping",
+    target,
+    content,
+    worktoolResponse: result,
+    payload: message
+  });
+}
+
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
@@ -69,9 +108,11 @@ app.post("/worktool/message-callback", (req, res) => {
   void appendJsonLine("incoming-messages.jsonl", {
     type: "message-callback",
     payload: req.body
-  }).catch((error) => {
-    console.error("failed to save incoming message:", error);
-  });
+  })
+    .then(() => handleAutoReply(req.body || {}))
+    .catch((error) => {
+      console.error("failed to handle incoming message:", error);
+    });
 });
 
 app.post("/worktool/command-callback", (req, res) => {
@@ -162,7 +203,8 @@ app.get(
     const allowed = new Set([
       "incoming-messages",
       "command-callbacks",
-      "outgoing-commands"
+      "outgoing-commands",
+      "auto-replies"
     ]);
     if (!allowed.has(req.params.name)) {
       res.status(404).json({ ok: false, message: "unknown log name" });
