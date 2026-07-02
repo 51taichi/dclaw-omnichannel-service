@@ -63,6 +63,27 @@
       </section>
 
       <section class="panel">
+        <h2>调试自动回复</h2>
+        <form id="debugReplyForm" class="form-grid compact-form">
+          <label class="toggle">
+            <input name="enabled" type="checkbox" />
+            开启调试自动回复
+          </label>
+          <label>
+            触发词
+            <input name="trigger" placeholder="ping" />
+          </label>
+          <label>
+            回复内容
+            <input name="reply" placeholder="pong" />
+          </label>
+          <div class="actions">
+            <button type="submit">保存调试配置</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
         <div class="section-head">
           <h2>已配置 Bot</h2>
           <span id="botCount" class="muted"></span>

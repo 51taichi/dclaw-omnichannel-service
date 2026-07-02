@@ -8,12 +8,14 @@ import {
   finishAgentInvocation,
   getBotBinding,
   getConversationKey,
+  getSetting,
   insertAgentInvocationStart,
   insertCommandCallback,
   insertIncomingMessage,
   insertOutgoingMessage,
   listBotBindings,
   listRecords,
+  setSetting,
   updateConversationSession,
   upsertBotBinding,
   upsertConversation
@@ -92,28 +94,41 @@ function getReplyTarget(message) {
   return message.receivedName;
 }
 
-function shouldRunDebugPing() {
-  return String(process.env.ENABLE_PING_AUTOREPLY || "").toLowerCase() === "true";
+const defaultDebugReplyConfig = {
+  enabled: false,
+  trigger: "ping",
+  reply: "pong"
+};
+
+function getDebugReplyConfig() {
+  const config = getSetting("debug_reply", defaultDebugReplyConfig);
+  return {
+    ...defaultDebugReplyConfig,
+    ...(config || {})
+  };
 }
 
 async function handleDebugPing({ botId, message, conversationKey }) {
-  if (!shouldRunDebugPing()) return false;
+  const config = getDebugReplyConfig();
+  if (!config.enabled) return false;
   const spoken = String(message.spoken || "").trim().toLowerCase();
-  if (spoken !== "ping") return false;
+  const trigger = String(config.trigger || "ping").trim().toLowerCase();
+  if (!trigger || spoken !== trigger) return false;
 
   const target = getReplyTarget(message);
   if (!target) return true;
 
+  const content = String(config.reply || "pong");
   const result = await sendTextMessage({
     robotId: botId,
     targets: [target],
-    content: "pong"
+    content
   });
   insertOutgoingMessage({
     botId,
     conversationKey,
     targetName: target,
-    content: "pong",
+    content,
     messageId: result.data,
     worktoolResponse: result
   });
@@ -325,6 +340,28 @@ app.put(
       enabled: body.enabled !== false
     });
     res.json({ ok: true, binding });
+  })
+);
+
+app.get(
+  "/api/settings/debug-reply",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    res.json({ ok: true, config: getDebugReplyConfig() });
+  })
+);
+
+app.put(
+  "/api/settings/debug-reply",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const body = req.body || {};
+    const config = setSetting("debug_reply", {
+      enabled: Boolean(body.enabled),
+      trigger: String(body.trigger || "ping").trim(),
+      reply: String(body.reply || "pong")
+    });
+    res.json({ ok: true, config });
   })
 );
 

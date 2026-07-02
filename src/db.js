@@ -86,6 +86,12 @@ db.exec(`
     started_at TEXT NOT NULL,
     finished_at TEXT
   );
+
+  CREATE TABLE IF NOT EXISTS app_settings (
+    key TEXT PRIMARY KEY,
+    value_json TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
 
 function now() {
@@ -156,6 +162,22 @@ export function listBotBindings() {
     .prepare("SELECT * FROM bot_agent_bindings ORDER BY updated_at DESC")
     .all()
     .map(rowToBinding);
+}
+
+export function getSetting(key, defaultValue = null) {
+  const row = db.prepare("SELECT value_json FROM app_settings WHERE key = ?").get(key);
+  return row ? parseJson(row.value_json) : defaultValue;
+}
+
+export function setSetting(key, value) {
+  db.prepare(`
+    INSERT INTO app_settings (key, value_json, updated_at)
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET
+      value_json = excluded.value_json,
+      updated_at = excluded.updated_at
+  `).run(key, json(value), now());
+  return getSetting(key);
 }
 
 export function getConversationKey(botId, message) {

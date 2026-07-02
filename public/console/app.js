@@ -7,6 +7,7 @@ const els = {
   saveKeyButton: document.querySelector("#saveKeyButton"),
   refreshButton: document.querySelector("#refreshButton"),
   botForm: document.querySelector("#botForm"),
+  debugReplyForm: document.querySelector("#debugReplyForm"),
   resetFormButton: document.querySelector("#resetFormButton"),
   botsTable: document.querySelector("#botsTable"),
   botCount: document.querySelector("#botCount"),
@@ -133,6 +134,14 @@ async function loadBots() {
   renderBots(currentBots);
 }
 
+async function loadDebugReply() {
+  const data = await request("/api/settings/debug-reply");
+  const config = data.config || {};
+  els.debugReplyForm.enabled.checked = Boolean(config.enabled);
+  els.debugReplyForm.trigger.value = config.trigger || "ping";
+  els.debugReplyForm.reply.value = config.reply || "pong";
+}
+
 async function saveBot(event) {
   event.preventDefault();
   const bot = formData();
@@ -162,6 +171,19 @@ async function loadLogs() {
   els.logsOutput.textContent = JSON.stringify(data.logs || [], null, 2);
 }
 
+async function saveDebugReply(event) {
+  event.preventDefault();
+  await request("/api/settings/debug-reply", {
+    method: "PUT",
+    body: JSON.stringify({
+      enabled: els.debugReplyForm.enabled.checked,
+      trigger: els.debugReplyForm.trigger.value,
+      reply: els.debugReplyForm.reply.value
+    })
+  });
+  toast("调试自动回复已保存");
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -179,9 +201,12 @@ els.saveKeyButton.addEventListener("click", () => {
 
 els.refreshButton.addEventListener("click", () => loadBots().catch((error) => toast(error.message)));
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch((error) => toast(error.message)));
+els.debugReplyForm.addEventListener("submit", (event) =>
+  saveDebugReply(event).catch((error) => toast(error.message))
+);
 els.resetFormButton.addEventListener("click", () => els.botForm.reset());
 els.loadLogsButton.addEventListener("click", () => loadLogs().catch((error) => toast(error.message)));
 
-loadBots().catch((error) => {
+Promise.all([loadBots(), loadDebugReply()]).catch((error) => {
   els.logsOutput.textContent = `无法加载配置：${error.message}`;
 });

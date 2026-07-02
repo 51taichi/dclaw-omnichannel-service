@@ -287,6 +287,7 @@ https://worktool.deepmega.cn/console/
 查看 bot 绑定
 新增/编辑 botId -> DClaw Agent
 一键绑定 WorkTool 消息回调和指令回调
+配置调试自动回复的开关、触发词和回复内容
 查看最近消息、会话、Agent 调用、指令回调
 ```
 

@@ -92,6 +92,11 @@ h2 {
   margin-top: 14px;
 }
 
+.compact-form {
+  grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr);
+  align-items: end;
+}
+
 label {
   display: grid;
   gap: 7px;
@@ -255,7 +260,8 @@ th {
   .topbar,
   .auth-panel,
   .section-head,
-  .form-grid {
+  .form-grid,
+  .compact-form {
     grid-template-columns: 1fr;
   }
 
