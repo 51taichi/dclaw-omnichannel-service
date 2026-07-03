@@ -88,10 +88,12 @@ cp config/bots.example.json config/bots.json
     {
       "botId": "你的WorkTool botId",
       "botName": "A部门机器人",
-      "agentId": "dclaw_agent_a",
+      "agentId": "xzj_business_manager",
       "agentName": "A部门客服",
-      "agentApiUrl": "https://你的dclaw域名/api/agents/dclaw_agent_a/invoke",
-      "agentApiKey": "",
+      "dclawBaseUrl": "https://你的dclaw域名",
+      "dclawPublicId": "openapi_public_id",
+      "agentApiUrl": "https://你的dclaw域名/api/open/v1/targets/openapi_public_id/messages",
+      "agentApiKey": "qp_live_xxx",
       "enabled": true
     }
   ]
@@ -106,10 +108,11 @@ curl -X PUT http://127.0.0.1:8765/api/bots/你的botId \
   -H 'x-api-key: 你的ADMIN_API_KEY' \
   -d '{
     "botName": "A部门机器人",
-    "agentId": "dclaw_agent_a",
+    "agentId": "xzj_business_manager",
     "agentName": "A部门客服",
-    "agentApiUrl": "https://你的dclaw域名/api/agents/dclaw_agent_a/invoke",
-    "agentApiKey": "",
+    "dclawBaseUrl": "https://你的dclaw域名",
+    "dclawPublicId": "openapi_public_id",
+    "agentApiKey": "qp_live_xxx",
     "enabled": true
   }'
 ```

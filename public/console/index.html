@@ -37,18 +37,26 @@
           </label>
           <label>
             Agent ID
-            <input name="agentId" required placeholder="DClaw agent id" />
+            <input name="agentId" required placeholder="例如 xzj_business_manager" />
           </label>
           <label>
             Agent 名称
             <input name="agentName" placeholder="A部门客服" />
           </label>
-          <label class="wide">
-            Agent API URL
-            <input name="agentApiUrl" required placeholder="https://dclaw.example.com/api/agents/xxx/invoke" />
+          <label>
+            DClaw Base URL
+            <input name="dclawBaseUrl" required placeholder="https://dclaw.deepmega.cn" />
+          </label>
+          <label>
+            OpenAPI Public ID
+            <input name="dclawPublicId" required placeholder="例如 xzj_zsjl" />
           </label>
           <label class="wide">
-            Agent API Key
+            Agent API URL
+            <input name="agentApiUrl" placeholder="自动生成，可手动覆盖完整 /api/open/v1/targets/.../messages 地址" />
+          </label>
+          <label class="wide">
+            OpenAPI API Key
             <input name="agentApiKey" type="password" placeholder="可选" autocomplete="off" />
           </label>
           <label class="toggle">

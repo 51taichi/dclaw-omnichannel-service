@@ -8,6 +8,8 @@ function normalizeBinding(binding) {
     botName: binding.botName || binding.name || "",
     agentId: binding.agentId,
     agentName: binding.agentName || "",
+    dclawBaseUrl: binding.dclawBaseUrl || "",
+    dclawPublicId: binding.dclawPublicId || binding.agentId,
     agentApiUrl: binding.agentApiUrl,
     agentApiKey: binding.agentApiKey || "",
     enabled: binding.enabled !== false
@@ -34,6 +36,8 @@ export async function loadBotBindingsFromConfig() {
           botName: process.env.BOT_NAME || "",
           agentId: process.env.DCLAW_AGENT_ID || "default",
           agentName: process.env.DCLAW_AGENT_NAME || "",
+          dclawBaseUrl: process.env.DCLAW_BASE_URL || "",
+          dclawPublicId: process.env.DCLAW_PUBLIC_ID || process.env.DCLAW_AGENT_ID || "default",
           agentApiUrl: process.env.DCLAW_AGENT_API_URL,
           agentApiKey: process.env.DCLAW_AGENT_API_KEY || "",
           enabled: true

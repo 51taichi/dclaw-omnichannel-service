@@ -61,6 +61,8 @@ function formData() {
     botName: String(data.get("botName") || "").trim(),
     agentId: String(data.get("agentId") || "").trim(),
     agentName: String(data.get("agentName") || "").trim(),
+    dclawBaseUrl: String(data.get("dclawBaseUrl") || "").trim(),
+    dclawPublicId: String(data.get("dclawPublicId") || "").trim(),
     agentApiUrl: String(data.get("agentApiUrl") || "").trim(),
     agentApiKey: String(data.get("agentApiKey") || "").trim(),
     enabled: data.get("enabled") === "on"
@@ -72,6 +74,8 @@ function fillForm(bot) {
   els.botForm.botName.value = bot.botName || "";
   els.botForm.agentId.value = bot.agentId || "";
   els.botForm.agentName.value = bot.agentName || "";
+  els.botForm.dclawBaseUrl.value = bot.dclawBaseUrl || "";
+  els.botForm.dclawPublicId.value = bot.dclawPublicId || bot.agentId || "";
   els.botForm.agentApiUrl.value = bot.agentApiUrl || "";
   els.botForm.agentApiKey.value = bot.agentApiKey || "";
   els.botForm.enabled.checked = Boolean(bot.enabled);
@@ -92,6 +96,8 @@ function renderBots(bots) {
           <td>
             <strong>${escapeHtml(bot.agentName || bot.agentId)}</strong>
             <div class="muted">${escapeHtml(bot.agentId)}</div>
+            <div class="muted">Public ID: ${escapeHtml(bot.dclawPublicId || "")}</div>
+            <div class="muted">Base URL: ${escapeHtml(bot.dclawBaseUrl || "")}</div>
             <div class="muted">${escapeHtml(bot.agentApiUrl)}</div>
           </td>
           <td><span class="pill ${bot.enabled ? "ok" : "off"}">${bot.enabled ? "启用" : "停用"}</span></td>
@@ -145,9 +151,12 @@ async function loadDebugReply() {
 async function saveBot(event) {
   event.preventDefault();
   const bot = formData();
-  if (!bot.botId || !bot.agentId || !bot.agentApiUrl) {
-    toast("请填写 Bot ID、Agent ID 和 Agent API URL");
+  if (!bot.botId || !bot.agentId || !bot.dclawBaseUrl || !bot.dclawPublicId) {
+    toast("请填写 Bot ID、Agent ID、DClaw Base URL 和 Public ID");
     return;
+  }
+  if (!bot.agentApiUrl) {
+    bot.agentApiUrl = `${bot.dclawBaseUrl.replace(/\/$/, "")}/api/open/v1/targets/${encodeURIComponent(bot.dclawPublicId)}/messages`;
   }
   await request(`/api/bots/${encodeURIComponent(bot.botId)}`, {
     method: "PUT",

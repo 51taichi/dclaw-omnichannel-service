@@ -335,6 +335,8 @@ app.put(
       botName: body.botName || body.name || "",
       agentId: body.agentId,
       agentName: body.agentName || "",
+      dclawBaseUrl: body.dclawBaseUrl || "",
+      dclawPublicId: body.dclawPublicId || body.agentId,
       agentApiUrl: body.agentApiUrl,
       agentApiKey: body.agentApiKey || "",
       enabled: body.enabled !== false

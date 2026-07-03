@@ -94,6 +94,16 @@ db.exec(`
   );
 `);
 
+function ensureColumn(table, column, definition) {
+  const columns = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!columns.some((item) => item.name === column)) {
+    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+ensureColumn("bot_agent_bindings", "dclaw_base_url", "TEXT");
+ensureColumn("bot_agent_bindings", "dclaw_public_id", "TEXT");
+
 function now() {
   return new Date().toISOString();
 }
@@ -113,6 +123,8 @@ function rowToBinding(row) {
     botName: row.bot_name,
     agentId: row.agent_id,
     agentName: row.agent_name,
+    dclawBaseUrl: row.dclaw_base_url,
+    dclawPublicId: row.dclaw_public_id,
     agentApiUrl: row.agent_api_url,
     agentApiKey: row.agent_api_key,
     enabled: Boolean(row.enabled),
@@ -123,16 +135,26 @@ function rowToBinding(row) {
 
 export function upsertBotBinding(binding) {
   const timestamp = now();
+  const dclawBaseUrl = (binding.dclawBaseUrl || "").replace(/\/$/, "");
+  const dclawPublicId = binding.dclawPublicId || binding.agentId;
+  const agentApiUrl =
+    binding.agentApiUrl ||
+    (dclawBaseUrl && dclawPublicId
+      ? `${dclawBaseUrl}/api/open/v1/targets/${encodeURIComponent(dclawPublicId)}/messages`
+      : "");
+
   db.prepare(`
     INSERT INTO bot_agent_bindings (
-      bot_id, bot_name, agent_id, agent_name, agent_api_url, agent_api_key,
+      bot_id, bot_name, agent_id, agent_name, dclaw_base_url, dclaw_public_id, agent_api_url, agent_api_key,
       enabled, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(bot_id) DO UPDATE SET
       bot_name = excluded.bot_name,
       agent_id = excluded.agent_id,
       agent_name = excluded.agent_name,
+      dclaw_base_url = excluded.dclaw_base_url,
+      dclaw_public_id = excluded.dclaw_public_id,
       agent_api_url = excluded.agent_api_url,
       agent_api_key = excluded.agent_api_key,
       enabled = excluded.enabled,
@@ -142,7 +164,9 @@ export function upsertBotBinding(binding) {
     binding.botName || "",
     binding.agentId,
     binding.agentName || "",
-    binding.agentApiUrl,
+    dclawBaseUrl,
+    dclawPublicId,
+    agentApiUrl,
     binding.agentApiKey || "",
     binding.enabled === false ? 0 : 1,
     timestamp,
