@@ -63,7 +63,6 @@ function formData() {
     agentName: String(data.get("agentName") || "").trim(),
     dclawBaseUrl: String(data.get("dclawBaseUrl") || "").trim(),
     dclawPublicId: String(data.get("dclawPublicId") || "").trim(),
-    agentApiUrl: String(data.get("agentApiUrl") || "").trim(),
     agentApiKey: String(data.get("agentApiKey") || "").trim(),
     enabled: data.get("enabled") === "on"
   };
@@ -76,7 +75,6 @@ function fillForm(bot) {
   els.botForm.agentName.value = bot.agentName || "";
   els.botForm.dclawBaseUrl.value = bot.dclawBaseUrl || "";
   els.botForm.dclawPublicId.value = bot.dclawPublicId || bot.agentId || "";
-  els.botForm.agentApiUrl.value = bot.agentApiUrl || "";
   els.botForm.agentApiKey.value = bot.agentApiKey || "";
   els.botForm.enabled.checked = Boolean(bot.enabled);
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -98,7 +96,6 @@ function renderBots(bots) {
             <div class="muted">${escapeHtml(bot.agentId)}</div>
             <div class="muted">Public ID: ${escapeHtml(bot.dclawPublicId || "")}</div>
             <div class="muted">Base URL: ${escapeHtml(bot.dclawBaseUrl || "")}</div>
-            <div class="muted">${escapeHtml(bot.agentApiUrl)}</div>
           </td>
           <td><span class="pill ${bot.enabled ? "ok" : "off"}">${bot.enabled ? "启用" : "停用"}</span></td>
           <td class="muted">${escapeHtml(bot.updatedAt || "")}</td>
@@ -154,9 +151,6 @@ async function saveBot(event) {
   if (!bot.botId || !bot.agentId || !bot.dclawBaseUrl || !bot.dclawPublicId) {
     toast("请填写 Bot ID、Agent ID、DClaw Base URL 和 Public ID");
     return;
-  }
-  if (!bot.agentApiUrl) {
-    bot.agentApiUrl = `${bot.dclawBaseUrl.replace(/\/$/, "")}/api/open/v1/targets/${encodeURIComponent(bot.dclawPublicId)}/messages`;
   }
   await request(`/api/bots/${encodeURIComponent(bot.botId)}`, {
     method: "PUT",

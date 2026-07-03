@@ -7,7 +7,6 @@
       "agentName": "A department customer service agent",
       "dclawBaseUrl": "https://dclaw.example.com",
       "dclawPublicId": "replace_with_openapi_public_id",
-      "agentApiUrl": "https://dclaw.example.com/api/open/v1/targets/replace_with_openapi_public_id/messages",
       "agentApiKey": "",
       "enabled": true
     }

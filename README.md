@@ -92,7 +92,6 @@ cp config/bots.example.json config/bots.json
       "agentName": "A部门客服",
       "dclawBaseUrl": "https://你的dclaw域名",
       "dclawPublicId": "openapi_public_id",
-      "agentApiUrl": "https://你的dclaw域名/api/open/v1/targets/openapi_public_id/messages",
       "agentApiKey": "qp_live_xxx",
       "enabled": true
     }

@@ -138,10 +138,9 @@ export function upsertBotBinding(binding) {
   const dclawBaseUrl = (binding.dclawBaseUrl || "").replace(/\/$/, "");
   const dclawPublicId = binding.dclawPublicId || binding.agentId;
   const agentApiUrl =
-    binding.agentApiUrl ||
-    (dclawBaseUrl && dclawPublicId
+    dclawBaseUrl && dclawPublicId
       ? `${dclawBaseUrl}/api/open/v1/targets/${encodeURIComponent(dclawPublicId)}/messages`
-      : "");
+      : "";
 
   db.prepare(`
     INSERT INTO bot_agent_bindings (

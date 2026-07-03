@@ -337,7 +337,6 @@ app.put(
       agentName: body.agentName || "",
       dclawBaseUrl: body.dclawBaseUrl || "",
       dclawPublicId: body.dclawPublicId || body.agentId,
-      agentApiUrl: body.agentApiUrl,
       agentApiKey: body.agentApiKey || "",
       enabled: body.enabled !== false
     });

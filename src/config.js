@@ -10,7 +10,6 @@ function normalizeBinding(binding) {
     agentName: binding.agentName || "",
     dclawBaseUrl: binding.dclawBaseUrl || "",
     dclawPublicId: binding.dclawPublicId || binding.agentId,
-    agentApiUrl: binding.agentApiUrl,
     agentApiKey: binding.agentApiKey || "",
     enabled: binding.enabled !== false
   };
@@ -28,7 +27,12 @@ export async function loadBotBindingsFromConfig() {
     config = JSON.parse(await fs.readFile(filePath, "utf8"));
   }
 
-  if (!config && process.env.ROBOT_ID && process.env.DCLAW_AGENT_API_URL) {
+  if (
+    !config &&
+    process.env.ROBOT_ID &&
+    process.env.DCLAW_BASE_URL &&
+    (process.env.DCLAW_PUBLIC_ID || process.env.DCLAW_AGENT_ID)
+  ) {
     config = {
       bots: [
         {
@@ -38,7 +42,6 @@ export async function loadBotBindingsFromConfig() {
           agentName: process.env.DCLAW_AGENT_NAME || "",
           dclawBaseUrl: process.env.DCLAW_BASE_URL || "",
           dclawPublicId: process.env.DCLAW_PUBLIC_ID || process.env.DCLAW_AGENT_ID || "default",
-          agentApiUrl: process.env.DCLAW_AGENT_API_URL,
           agentApiKey: process.env.DCLAW_AGENT_API_KEY || "",
           enabled: true
         }
