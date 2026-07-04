@@ -87,10 +87,50 @@ function asyncHandler(handler) {
 }
 
 function getReplyTarget(message) {
-  if (Number(message.roomType) === 1 && message.groupName) {
+  if (isGroupMessage(message) && message.groupName) {
     return message.groupName;
   }
   return message.receivedName;
+}
+
+function isGroupMessage(message) {
+  const roomType = Number(message.roomType);
+  return roomType === 1 || roomType === 3;
+}
+
+function isMentioned(message, binding) {
+  const atMe = String(message.atMe ?? message.metadata?.atMe ?? "").toLowerCase();
+  const raw = String(message.rawSpoken || message.rawMessage || message.spoken || "");
+  if (atMe === "true") return true;
+
+  const mentionNames = [binding?.botName, process.env.BOT_NAME]
+    .filter(Boolean)
+    .map((name) => String(name).trim());
+  if (!mentionNames.length) {
+    return raw.includes("@");
+  }
+  return mentionNames.some((name) => raw.includes(`@${name}`));
+}
+
+function shouldInvokeAgent(message, binding) {
+  if (!isGroupMessage(message)) {
+    return true;
+  }
+  return isMentioned(message, binding);
+}
+
+function looksLikeInternalNonReplyAnalysis(reply) {
+  const text = String(reply || "");
+  return (
+    text.includes("输出空字符串") ||
+    text.includes("我不应该回复") ||
+    text.includes("不需要回复")
+  ) && (
+    text.includes("根据规则") ||
+    text.includes("让我分析") ||
+    text.includes("atMe") ||
+    text.includes("群聊")
+  );
 }
 
 const defaultDebugReplyConfig = {
@@ -139,6 +179,10 @@ async function processIncomingMessage({ botId, message }) {
   const conversationKey = getConversationKey(botId, message);
   insertIncomingMessage({ botId, conversationKey, payload: message });
 
+  if (!shouldInvokeAgent(message, binding)) {
+    return;
+  }
+
   if (await handleDebugPing({ botId, message, conversationKey })) {
     return;
   }
@@ -178,6 +222,10 @@ async function processIncomingMessage({ botId, message }) {
 
     const reply = String(invocation.reply || "").trim();
     if (!reply) {
+      return;
+    }
+    if (looksLikeInternalNonReplyAnalysis(reply)) {
+      console.warn("Suppressed internal non-reply analysis from DClaw agent");
       return;
     }
 

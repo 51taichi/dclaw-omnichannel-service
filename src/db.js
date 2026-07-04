@@ -211,7 +211,8 @@ export function setSetting(key, value) {
 }
 
 export function getConversationKey(botId, message) {
-  if (Number(message.roomType) === 1 && message.groupName) {
+  const roomType = Number(message.roomType);
+  if ((roomType === 1 || roomType === 3) && message.groupName) {
     return `${botId}:group:${message.groupName}`;
   }
   return `${botId}:private:${message.receivedName || "unknown"}`;

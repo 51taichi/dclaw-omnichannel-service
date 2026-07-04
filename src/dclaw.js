@@ -1,4 +1,6 @@
 export function buildDclawRequest({ binding, conversation, message }) {
+  const roomType = Number(message.roomType);
+  const isGroup = roomType === 1 || roomType === 3;
   const worktoolMessage = {
     channel: "wecom-worktool",
     eventType: "inbound_message",
@@ -10,7 +12,7 @@ export function buildDclawRequest({ binding, conversation, message }) {
     message: message.spoken || "",
     rawMessage: message.rawSpoken || message.spoken || "",
     roomType: message.roomType,
-    groupName: Number(message.roomType) === 1 ? message.groupName || "" : "",
+    groupName: isGroup ? message.groupName || "" : "",
     userId: message.receivedName || "",
     metadata: {
       receivedName: message.receivedName || "",
@@ -27,7 +29,7 @@ export function buildDclawRequest({ binding, conversation, message }) {
     external_session_id: worktoolMessage.conversationId,
     message: [
       "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
-      "WorkTool 房间类型约定：roomType=2 表示私聊，必须默认回复；roomType=1 表示群聊，只有被 @ 时才回复。",
+      "WorkTool 房间类型约定：roomType=2/4 表示私聊，必须默认回复；roomType=1/3 表示群聊，只有被 @ 时才回复。",
       "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
       "群聊被 @ 后，业务问题必须和私聊一样优先调用 DClaw 企业智库；不要因为是群聊就跳过知识库检索。",
       "最终回复的真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。",
