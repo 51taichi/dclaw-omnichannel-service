@@ -29,9 +29,7 @@ export function buildDclawRequest({ binding, conversation, message }) {
       "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
       "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
       "群聊被 @ 后，业务问题必须和私聊一样优先调用 DClaw 企业智库；不要因为是群聊就跳过知识库检索。",
-      "企业智库命中时，群聊和私聊都可以超过 50 个字，但必须基于命中内容回答。",
-      "企业智库未命中时，群聊和私聊都不要超过 50 个字。",
-      "群聊即使命中企业智库，也要比私聊更简洁，不要输出 Markdown 标题、价格表或完整招商方案。",
+      "最终回复的真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。",
       "请只输出要发回企微客户的最终文本；如果不需要回复，请输出空字符串。",
       "",
       JSON.stringify(worktoolMessage, null, 2)
