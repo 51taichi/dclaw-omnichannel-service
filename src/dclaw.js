@@ -5,7 +5,7 @@ export function buildDclawRequest({ binding, conversation, message }) {
     botId: binding.botId,
     agentId: binding.agentId,
     conversationId: conversation.conversationKey,
-    sessionId: conversation.dclawSessionId || conversation.conversationKey,
+    sessionId: conversation.conversationKey,
     messageId: message.messageId || "",
     message: message.spoken || "",
     rawMessage: message.rawSpoken || message.spoken || "",

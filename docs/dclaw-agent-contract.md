@@ -63,7 +63,7 @@ The response may use any of these text fields:
 ```json
 {
   "reply": "message to send back",
-  "sessionId": "optional-dclaw-session-id",
+  "sessionId": "ignored-by-callback-server",
   "handoff": false,
   "metadata": {}
 }
@@ -92,4 +92,9 @@ Private chat: botId:private:receivedName
 Group chat:   botId:group:groupName
 ```
 
-If DClaw returns a `sessionId`, the callback server stores it and sends it on later turns.
+The callback server owns session isolation. It always sends `conversation_key` as
+both `external_session_id` and the embedded WorkTool `sessionId`.
+
+DClaw may return its own `sessionId` / `session_id`, but the callback server does
+not store or reuse it for later turns. This prevents DClaw publication-level
+sessions from mixing different WorkTool private chats or groups.

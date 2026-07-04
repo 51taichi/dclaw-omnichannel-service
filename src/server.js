@@ -16,7 +16,6 @@ import {
   listBotBindings,
   listRecords,
   setSetting,
-  updateConversationSession,
   upsertBotBinding,
   upsertConversation
 } from "./db.js";
@@ -170,10 +169,6 @@ async function processIncomingMessage({ botId, message }) {
       binding,
       request
     });
-
-    if (invocation.sessionId) {
-      updateConversationSession(conversationKey, invocation.sessionId);
-    }
 
     finishAgentInvocation({
       id: invocationId,
