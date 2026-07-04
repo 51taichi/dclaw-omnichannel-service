@@ -118,14 +118,21 @@ function parseJson(value) {
 
 function rowToBinding(row) {
   if (!row) return null;
+  const dclawBaseUrl = (row.dclaw_base_url || "").replace(/\/$/, "");
+  const dclawPublicId = row.dclaw_public_id || row.agent_id;
+  const agentApiUrl =
+    dclawBaseUrl && dclawPublicId
+      ? `${dclawBaseUrl}/api/open/v1/targets/${encodeURIComponent(dclawPublicId)}/messages`
+      : row.agent_api_url;
+
   return {
     botId: row.bot_id,
     botName: row.bot_name,
     agentId: row.agent_id,
     agentName: row.agent_name,
-    dclawBaseUrl: row.dclaw_base_url,
-    dclawPublicId: row.dclaw_public_id,
-    agentApiUrl: row.agent_api_url,
+    dclawBaseUrl,
+    dclawPublicId,
+    agentApiUrl,
     agentApiKey: row.agent_api_key,
     enabled: Boolean(row.enabled),
     createdAt: row.created_at,

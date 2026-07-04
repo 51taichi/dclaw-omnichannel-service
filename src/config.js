@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { upsertBotBinding } from "./db.js";
+import { getBotBinding, upsertBotBinding } from "./db.js";
 
 function normalizeBinding(binding) {
   return {
@@ -18,6 +18,7 @@ function normalizeBinding(binding) {
 export async function loadBotBindingsFromConfig() {
   const configPath = process.env.BOTS_CONFIG_PATH;
   const inlineConfig = process.env.BOTS_CONFIG_JSON;
+  const forceSync = process.env.FORCE_SYNC_BOTS_CONFIG === "true";
 
   let config = null;
   if (inlineConfig) {
@@ -53,5 +54,12 @@ export async function loadBotBindingsFromConfig() {
     return [];
   }
 
-  return config.bots.map((bot) => upsertBotBinding(normalizeBinding(bot)));
+  return config.bots.map((bot) => {
+    const binding = normalizeBinding(bot);
+    const existing = getBotBinding(binding.botId);
+    if (existing && !forceSync) {
+      return existing;
+    }
+    return upsertBotBinding(binding);
+  });
 }
