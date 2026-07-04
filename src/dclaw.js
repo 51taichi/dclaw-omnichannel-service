@@ -10,7 +10,7 @@ export function buildDclawRequest({ binding, conversation, message }) {
     message: message.spoken || "",
     rawMessage: message.rawSpoken || message.spoken || "",
     roomType: message.roomType,
-    groupName: message.groupName || "",
+    groupName: Number(message.roomType) === 1 ? message.groupName || "" : "",
     userId: message.receivedName || "",
     metadata: {
       receivedName: message.receivedName || "",
@@ -27,10 +27,11 @@ export function buildDclawRequest({ binding, conversation, message }) {
     external_session_id: worktoolMessage.conversationId,
     message: [
       "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
+      "WorkTool 房间类型约定：roomType=2 表示私聊，必须默认回复；roomType=1 表示群聊，只有被 @ 时才回复。",
       "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
       "群聊被 @ 后，业务问题必须和私聊一样优先调用 DClaw 企业智库；不要因为是群聊就跳过知识库检索。",
       "最终回复的真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。",
-      "请只输出要发回企微客户的最终文本；如果不需要回复，请输出空字符串。",
+      "请只输出要发回企微客户的最终文本；不要输出分析过程、规则解释、JSON 或 Markdown；如果不需要回复，请输出空字符串。",
       "",
       JSON.stringify(worktoolMessage, null, 2)
     ].join("\n"),
