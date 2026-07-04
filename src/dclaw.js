@@ -75,10 +75,11 @@ export async function invokeDclawAgent({ binding, request }) {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("text/event-stream")) {
     const result = await readSseText(response);
+    const reply = extractReplyFromText(result.text) || extractReply(result.events);
     return {
       request,
       response: result.events,
-      reply: extractReplyFromText(result.text),
+      reply,
       sessionId: result.sessionId
     };
   }
@@ -171,14 +172,61 @@ function extractReplyFromText(text) {
 
 function extractReply(data) {
   if (typeof data === "string") return data;
-  return (
+  if (Array.isArray(data)) {
+    return data.map(extractReply).find(Boolean) || "";
+  }
+  if (!data || typeof data !== "object") return "";
+
+  const direct =
     data.reply ||
     data.content ||
     data.message ||
     data.text ||
+    data.output_text ||
+    data.delta ||
     data.data?.reply ||
     data.data?.content ||
     data.data?.message ||
+    "";
+  if (typeof direct === "string" && direct.trim()) {
+    return direct;
+  }
+
+  const outputReply = extractReply(data.output);
+  if (outputReply) return outputReply;
+
+  const choicesReply = extractReply(data.choices);
+  if (choicesReply) return choicesReply;
+
+  const dataReply = extractReply(data.data);
+  if (dataReply) return dataReply;
+
+  return (
+    extractReplyFromContentArray(data.content) ||
+    extractReplyFromMessage(data.message) ||
+    ""
+  );
+}
+
+function extractReplyFromContentArray(content) {
+  if (!Array.isArray(content)) return "";
+  return (
+    content
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (!item || typeof item !== "object") return "";
+        return item.text || item.content || item.output_text || "";
+      })
+      .find((text) => String(text || "").trim()) || ""
+  );
+}
+
+function extractReplyFromMessage(message) {
+  if (!message || typeof message !== "object") return "";
+  return (
+    extractReplyFromContentArray(message.content) ||
+    message.content ||
+    message.text ||
     ""
   );
 }
