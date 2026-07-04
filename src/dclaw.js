@@ -28,6 +28,9 @@ export function buildDclawRequest({ binding, conversation, message }) {
     message: [
       "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
       "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
+      "群聊被 @ 后，业务问题必须和私聊一样优先调用 DClaw 企业智库；不要因为是群聊就跳过知识库检索。",
+      "群聊回复必须控制在 50 个汉字以内，不要输出 Markdown 标题、列表、价格表或多段长文。",
+      "私聊普通回复也应控制在 50 个字以内；只有客户明确要求详细资料时才适当展开。",
       "请只输出要发回企微客户的最终文本；如果不需要回复，请输出空字符串。",
       "",
       JSON.stringify(worktoolMessage, null, 2)
