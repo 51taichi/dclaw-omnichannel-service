@@ -151,6 +151,39 @@ h2 {
   background: linear-gradient(90deg, var(--accent), var(--cyan), var(--orange), var(--danger));
 }
 
+.binding-panel.is-bound {
+  border-color: color-mix(in srgb, var(--bot-accent) 45%, var(--line));
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--bot-accent) 14%, transparent);
+}
+
+.binding-panel.is-bound::before {
+  background: var(--bot-accent);
+}
+
+.binding-head {
+  margin-bottom: 14px;
+}
+
+.binding-state {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.binding-panel.is-bound .binding-state {
+  border-color: color-mix(in srgb, var(--bot-accent) 38%, #ffffff);
+  background: color-mix(in srgb, var(--bot-accent) 12%, #ffffff);
+  color: var(--bot-accent);
+}
+
 .auth-panel {
   display: grid;
   grid-template-columns: 150px minmax(0, 1fr);
@@ -181,6 +214,7 @@ h2 {
   gap: 9px;
   padding: 10px;
   border: 1px solid var(--line);
+  border-left-width: 3px;
   border-radius: 8px;
   background: #fbfcff;
   transition:
@@ -196,11 +230,24 @@ h2 {
 }
 
 .bot-card.is-online {
-  border-left: 3px solid var(--cyan);
+  border-left-color: var(--cyan);
 }
 
 .bot-card.is-offline {
-  border-left: 3px solid var(--orange);
+  border-left-color: var(--orange);
+}
+
+.bot-card.is-selected {
+  border-color: color-mix(in srgb, var(--bot-accent) 55%, var(--line));
+  border-left-color: var(--bot-accent);
+  background: color-mix(in srgb, var(--bot-accent) 8%, #ffffff);
+  box-shadow: 0 12px 26px color-mix(in srgb, var(--bot-accent) 18%, transparent);
+}
+
+.bot-card.is-selected .bot-avatar {
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--bot-accent) 18%, #ffffff),
+    0 5px 14px color-mix(in srgb, var(--bot-accent) 18%, transparent);
 }
 
 .bot-main {
@@ -810,6 +857,11 @@ td .muted {
 .pill.ok {
   color: var(--ok);
   background: var(--accent-soft);
+}
+
+.pill.selected {
+  color: var(--bot-accent);
+  background: color-mix(in srgb, var(--bot-accent) 12%, #ffffff);
 }
 
 .pill.off {

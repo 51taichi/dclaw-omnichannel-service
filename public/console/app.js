@@ -1,11 +1,14 @@
 const state = {
-  apiKey: localStorage.getItem("worktool_console_api_key") || ""
+  apiKey: localStorage.getItem("worktool_console_api_key") || "",
+  selectedBotId: ""
 };
 
 const els = {
   apiKeyInput: document.querySelector("#apiKeyInput"),
   saveKeyButton: document.querySelector("#saveKeyButton"),
   refreshButton: document.querySelector("#refreshButton"),
+  botBindingPanel: document.querySelector("#botBindingPanel"),
+  bindingState: document.querySelector("#bindingState"),
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
   proactiveForm: document.querySelector("#proactiveForm"),
@@ -84,6 +87,36 @@ function formData() {
   };
 }
 
+const botAccentPalette = [
+  "#2a30d8",
+  "#18c5cf",
+  "#ff5a12",
+  "#ef2625"
+];
+
+function hashString(value) {
+  return Array.from(String(value || "")).reduce(
+    (hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0,
+    0
+  );
+}
+
+function getBotAccent(bot) {
+  const value = bot?.botId || bot?.dclawPublicId || bot?.botName || "";
+  return botAccentPalette[hashString(value) % botAccentPalette.length];
+}
+
+function setBindingState(bot = null) {
+  state.selectedBotId = bot?.botId || "";
+  const accent = bot ? getBotAccent(bot) : "";
+  els.botBindingPanel.classList.toggle("is-bound", Boolean(bot));
+  els.botBindingPanel.style.setProperty("--bot-accent", accent);
+  els.bindingState.textContent = bot
+    ? `编辑中：${bot.botName || bot.dclawPublicId || "当前 Bot"}`
+    : "新增模式";
+  renderBots(currentBots);
+}
+
 function fillForm(bot) {
   els.botForm.botId.value = bot.botId || "";
   els.botForm.botName.value = bot.botName || "";
@@ -93,6 +126,7 @@ function fillForm(bot) {
   els.botForm.dclawPublicId.value = bot.dclawPublicId || bot.agentId || "";
   els.botForm.agentApiKey.value = bot.agentApiKey || "";
   els.botForm.enabled.checked = Boolean(bot.enabled);
+  setBindingState(bot);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -108,14 +142,16 @@ function renderBots(bots) {
     .map((bot) => {
       const safeBot = encodeURIComponent(bot.botId);
       const title = bot.botName || bot.dclawPublicId || "未命名 Bot";
+      const isSelected = bot.botId === state.selectedBotId;
+      const accent = getBotAccent(bot);
       return `
-        <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"}">
+        <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"} ${isSelected ? "is-selected" : ""}" style="--bot-accent: ${escapeHtml(accent)}">
           <button class="bot-main" data-action="edit" data-bot="${safeBot}" type="button">
             <img class="bot-avatar" src="./assets/bot-avatar.png" alt="" aria-hidden="true" />
             <span class="bot-summary">
               <span class="bot-title-row">
                 <strong>${escapeHtml(title)}</strong>
-                <span class="pill ${bot.enabled ? "ok" : "off"}">${bot.enabled ? "在线" : "停用"}</span>
+                <span class="pill ${isSelected ? "selected" : bot.enabled ? "ok" : "off"}">${isSelected ? "编辑中" : bot.enabled ? "在线" : "停用"}</span>
               </span>
               <span class="bot-agent">${escapeHtml(bot.agentName || bot.agentId || "未绑定 Agent")}</span>
             </span>
@@ -303,6 +339,10 @@ async function seedAddressBookTargets() {
 async function loadBots() {
   const data = await request("/api/bots");
   currentBots = data.bots || [];
+  if (state.selectedBotId && !currentBots.some((bot) => bot.botId === state.selectedBotId)) {
+    setBindingState(null);
+    return;
+  }
   renderBots(currentBots);
 }
 
@@ -327,6 +367,8 @@ async function saveBot(event) {
   });
   toast("绑定已保存");
   await loadBots();
+  const savedBot = currentBots.find((item) => item.botId === bot.botId);
+  if (savedBot) setBindingState(savedBot);
 }
 
 async function bindCallback(botId, type) {
@@ -467,7 +509,11 @@ document.querySelectorAll("[data-target-filter]").forEach((button) => {
 els.refreshProactiveButton.addEventListener("click", () =>
   loadProactiveTasks().catch((error) => toast(error.message))
 );
-els.resetFormButton.addEventListener("click", () => els.botForm.reset());
+els.resetFormButton.addEventListener("click", () => {
+  els.botForm.reset();
+  els.botForm.enabled.checked = true;
+  setBindingState(null);
+});
 els.loadLogsButton.addEventListener("click", () => loadLogs().catch((error) => toast(error.message)));
 
 Promise.all([loadBots(), loadDebugReply(), loadProactiveTasks()])
