@@ -12,6 +12,9 @@ const els = {
   refreshProactiveButton: document.querySelector("#refreshProactiveButton"),
   loadTargetsButton: document.querySelector("#loadTargetsButton"),
   seedTargetsButton: document.querySelector("#seedTargetsButton"),
+  selectPrivateTargetsButton: document.querySelector("#selectPrivateTargetsButton"),
+  selectGroupTargetsButton: document.querySelector("#selectGroupTargetsButton"),
+  clearTargetsButton: document.querySelector("#clearTargetsButton"),
   targetSearchInput: document.querySelector("#targetSearchInput"),
   targetList: document.querySelector("#targetList"),
   selectedTargets: document.querySelector("#selectedTargets"),
@@ -104,7 +107,7 @@ function renderBots(bots) {
   els.botsTable.innerHTML = bots
     .map((bot) => {
       const safeBot = encodeURIComponent(bot.botId);
-      const title = bot.botName || bot.botId;
+      const title = bot.botName || bot.dclawPublicId || "未命名 Bot";
       const avatarText = String(title || "B").trim().slice(0, 1).toUpperCase();
       return `
         <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"}">
@@ -115,7 +118,6 @@ function renderBots(bots) {
                 <strong>${escapeHtml(title)}</strong>
                 <span class="pill ${bot.enabled ? "ok" : "off"}">${bot.enabled ? "在线" : "停用"}</span>
               </span>
-              <span class="bot-id">${escapeHtml(bot.botId)}</span>
               <span class="bot-agent">${escapeHtml(bot.agentName || bot.agentId || "未绑定 Agent")}</span>
             </span>
           </button>
@@ -155,7 +157,7 @@ function renderBotOptions(bots) {
   const current = select.value;
   select.innerHTML = bots
     .map((bot) => {
-      const label = bot.botName ? `${bot.botName} (${bot.botId})` : bot.botId;
+      const label = bot.botName || bot.dclawPublicId || bot.agentName || "未命名 Bot";
       return `<option value="${escapeHtml(bot.botId)}">${escapeHtml(label)}</option>`;
     })
     .join("");
@@ -181,6 +183,25 @@ function targetTypeIcon(type) {
 
 function getSelectedTargets() {
   return Array.from(selectedTargets.values());
+}
+
+function selectTargetsByType(type) {
+  let count = 0;
+  addressBookTargets
+    .filter((target) => target.targetType === type)
+    .forEach((target) => {
+      selectedTargets.set(targetKey(target), target);
+      count += 1;
+    });
+  renderSelectedTargets();
+  renderTargetList();
+  toast(count ? `已选择 ${count} 个${targetTypeLabel(type)}目标` : `暂无${targetTypeLabel(type)}目标`);
+}
+
+function clearSelectedTargets() {
+  selectedTargets.clear();
+  renderSelectedTargets();
+  renderTargetList();
 }
 
 function renderSelectedTargets() {
@@ -336,27 +357,6 @@ async function saveDebugReply(event) {
   toast("调试自动回复已保存");
 }
 
-function parseTargets(value) {
-  return String(value || "")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const match = line.match(/^(private|group)\s*[:：]\s*(.+)$/i);
-      if (match) {
-        return {
-          targetType: match[1].toLowerCase() === "group" ? "group" : "private",
-          targetName: match[2].trim()
-        };
-      }
-      return {
-        targetType: "private",
-        targetName: line
-      };
-    })
-    .filter((target) => target.targetName);
-}
-
 async function createProactiveTask(event) {
   event.preventDefault();
   const data = new FormData(els.proactiveForm);
@@ -364,7 +364,7 @@ async function createProactiveTask(event) {
     botId: String(data.get("botId") || "").trim(),
     title: String(data.get("title") || "").trim(),
     content: String(data.get("content") || "").trim(),
-    targets: [...getSelectedTargets(), ...parseTargets(data.get("targets"))]
+    targets: getSelectedTargets()
   };
 
   if (!payload.botId || !payload.content || !payload.targets.length) {
@@ -382,7 +382,6 @@ async function createProactiveTask(event) {
   renderTargetList();
   els.proactiveForm.title.value = "";
   els.proactiveForm.content.value = "";
-  els.proactiveForm.targets.value = "";
   await loadProactiveTasks();
 }
 
@@ -454,6 +453,9 @@ els.loadTargetsButton.addEventListener("click", () =>
 els.seedTargetsButton.addEventListener("click", () =>
   seedAddressBookTargets().catch((error) => toast(error.message))
 );
+els.selectPrivateTargetsButton.addEventListener("click", () => selectTargetsByType("private"));
+els.selectGroupTargetsButton.addEventListener("click", () => selectTargetsByType("group"));
+els.clearTargetsButton.addEventListener("click", clearSelectedTargets);
 document.querySelectorAll("[data-target-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     targetFilter = button.dataset.targetFilter;

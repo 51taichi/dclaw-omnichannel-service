@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>WorkTool Console</title>
+    <link rel="icon" type="image/png" href="./assets/ddeer.png" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -67,8 +68,7 @@
         <div class="brand">
           <img class="brand-logo" src="./assets/deepmega-dclaw-logo-cropped.png" alt="DeepMega | DClaw" />
           <div class="brand-copy">
-            <h1>WorkTool机器人管理控制台</h1>
-            <p>WorkTool Bot Console</p>
+            <h1>微信机器人管理控制台</h1>
           </div>
         </div>
         <button id="refreshButton" type="button">
@@ -133,12 +133,12 @@
             <span class="field-label">OpenAPI API Key</span>
             <input name="agentApiKey" type="password" placeholder="可选" autocomplete="off" />
           </label>
-          <label class="toggle">
-            <input name="enabled" type="checkbox" checked />
-            启用
-          </label>
           <div class="actions">
-            <button type="submit">
+            <label class="toggle action-toggle">
+              <input name="enabled" type="checkbox" checked />
+              启用
+            </label>
+            <button class="primary" type="submit">
               <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
               保存绑定
             </button>
@@ -197,7 +197,7 @@
                 <strong>目标选择</strong>
                 <span id="selectedTargetCount" class="muted">已选 0 个</span>
               </div>
-              <div class="row-actions">
+              <div class="row-actions target-actions">
                 <button id="loadTargetsButton" class="secondary" type="button">
                   <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
                   加载目标
@@ -211,27 +211,28 @@
             <div class="target-toolbar">
               <div class="segmented" role="tablist" aria-label="目标类型">
                 <button class="active" data-target-filter="all" type="button">全部</button>
-                <button data-target-filter="private" type="button">私聊客户</button>
+                <button data-target-filter="private" type="button">私聊</button>
                 <button data-target-filter="group" type="button">群组</button>
               </div>
               <label class="target-search">
                 <span class="field-label">搜索</span>
                 <input id="targetSearchInput" type="search" placeholder="输入客户或群名" />
               </label>
+              <div class="bulk-actions">
+                <button id="selectPrivateTargetsButton" class="secondary" type="button">全选私聊</button>
+                <button id="selectGroupTargetsButton" class="secondary" type="button">全选群组</button>
+                <button id="clearTargetsButton" class="secondary" type="button">清空</button>
+              </div>
             </div>
             <div id="selectedTargets" class="selected-targets"></div>
             <div id="targetList" class="target-list"></div>
-            <details class="manual-targets">
-              <summary>手工补充目标</summary>
-              <textarea name="targets" rows="3" placeholder="每行一个目标，例如&#10;private:魔兮&#10;group:A招商服务群"></textarea>
-            </details>
           </div>
           <label class="wide">
             <span class="field-label">推送内容</span>
             <textarea name="content" required rows="4" placeholder="请输入要主动推送的固定文案"></textarea>
           </label>
           <div class="actions">
-            <button type="submit">
+            <button class="primary" type="submit">
               <svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>
               创建并发送
             </button>

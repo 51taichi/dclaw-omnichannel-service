@@ -66,17 +66,27 @@ body {
 }
 
 .brand-logo {
-  width: clamp(380px, 40vw, 620px);
+  width: clamp(300px, 32vw, 460px);
   height: auto;
-  max-height: 74px;
+  max-height: 58px;
   object-fit: contain;
   object-position: left center;
-  transform: scale(1.08);
+  transform: scale(1.03);
   transform-origin: left center;
 }
 
 .brand-copy {
   min-width: 0;
+}
+
+.brand-copy h1 {
+  font-size: clamp(28px, 2.45vw, 38px);
+  font-weight: 860;
+  line-height: 1.12;
+  background: linear-gradient(90deg, #2a30d8 0%, #18c5cf 45%, #ff5a12 76%, #ef2625 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 h1,
@@ -206,6 +216,7 @@ h2 {
   background: transparent;
   color: var(--text);
   text-align: left;
+  border-radius: 8px;
   box-shadow: none;
 }
 
@@ -345,6 +356,7 @@ label > :is(input, select, textarea) {
   min-width: 0;
 }
 
+.wide,
 label.wide,
 .actions {
   grid-column: 1 / -1;
@@ -422,16 +434,20 @@ button {
   align-items: center;
   justify-content: center;
   gap: 7px;
-  border: 0;
-  background: var(--accent);
-  color: #ffffff;
+  border: 1px solid rgba(42, 48, 216, 0.22);
+  border-radius: 999px;
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(90deg, var(--accent), var(--cyan), var(--orange)) border-box;
+  color: var(--accent-dark);
   padding: 0 14px;
   font-weight: 700;
   cursor: pointer;
   height: 40px;
-  box-shadow: 0 8px 18px rgba(42, 48, 216, 0.18);
+  box-shadow: none;
   transition:
     background 140ms ease,
+    border-color 140ms ease,
     box-shadow 140ms ease,
     transform 140ms ease;
 }
@@ -455,8 +471,10 @@ button {
 }
 
 button:hover {
-  background: var(--accent-dark);
-  box-shadow: 0 10px 22px rgba(42, 48, 216, 0.22);
+  background:
+    linear-gradient(#f8faff, #f8faff) padding-box,
+    linear-gradient(90deg, var(--accent), var(--cyan), var(--orange)) border-box;
+  border-color: transparent;
 }
 
 button:active {
@@ -464,22 +482,48 @@ button:active {
 }
 
 button.secondary {
-  border: 1px solid #cfd9f4;
-  background: #f1f5ff;
-  color: #252b96;
+  border-color: rgba(42, 48, 216, 0.22);
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(90deg, var(--accent), var(--cyan), var(--orange)) border-box;
+  color: var(--accent-dark);
   box-shadow: none;
 }
 
 button.secondary:hover {
-  background: #e7ecff;
+  background:
+    linear-gradient(#f8faff, #f8faff) padding-box,
+    linear-gradient(90deg, var(--accent), var(--cyan), var(--orange)) border-box;
+}
+
+button.primary {
+  border: 0;
+  background: linear-gradient(90deg, var(--accent), #2847f0 54%, var(--cyan));
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(42, 48, 216, 0.18);
+}
+
+button.primary:hover {
+  background: linear-gradient(90deg, var(--accent-dark), var(--accent), var(--cyan));
+  box-shadow: 0 12px 28px rgba(42, 48, 216, 0.22);
+}
+
+#refreshProactiveButton {
+  height: 36px;
+  padding: 0 12px;
 }
 
 button.danger {
-  background: var(--danger);
+  background:
+    linear-gradient(#ffffff, #ffffff) padding-box,
+    linear-gradient(90deg, var(--danger), var(--orange)) border-box;
+  color: var(--danger-dark);
 }
 
 button.danger:hover {
-  background: var(--danger-dark);
+  background:
+    linear-gradient(#fff7f5, #fff7f5) padding-box,
+    linear-gradient(90deg, var(--danger), var(--orange)) border-box;
 }
 
 .inline-form {
@@ -497,7 +541,12 @@ button.danger:hover {
 .actions {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
   gap: 10px;
+}
+
+.action-toggle {
+  margin-right: auto;
 }
 
 .table-wrap {
@@ -514,28 +563,37 @@ button.danger:hover {
 
 .target-picker {
   display: grid;
-  gap: 12px;
-  padding: 14px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffefa;
 }
 
-.target-picker-head,
-.target-toolbar {
-  display: flex;
+.target-picker-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 10px;
+}
+
+.target-toolbar {
+  display: grid;
+  grid-template-columns: max-content minmax(190px, 1fr);
+  align-items: center;
+  gap: 8px;
 }
 
 .target-picker-head strong {
   display: block;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .segmented {
   display: inline-flex;
+  width: max-content;
+  max-width: 100%;
   padding: 3px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -543,11 +601,16 @@ button.danger:hover {
 }
 
 .segmented button {
-  height: 32px;
+  height: 28px;
+  min-width: 48px;
+  padding: 0 9px;
+  border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
   box-shadow: none;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .segmented button.active {
@@ -556,23 +619,25 @@ button.danger:hover {
 }
 
 .target-search {
-  width: min(360px, 100%);
+  width: 100%;
 }
 
 .selected-targets {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  min-height: 34px;
+  gap: 6px;
+  min-height: 28px;
   align-items: center;
 }
 
 .target-chip {
-  height: 32px;
-  gap: 7px;
+  height: 26px;
+  gap: 5px;
+  padding: 0 9px;
   border: 1px solid var(--line-strong);
   background: var(--accent-soft);
   color: var(--accent-dark);
+  font-size: 12px;
   box-shadow: none;
 }
 
@@ -583,22 +648,23 @@ button.danger:hover {
 
 .target-list {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 10px;
-  max-height: 320px;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  max-height: 360px;
   overflow: auto;
   padding: 2px;
 }
 
 .target-card {
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr) auto;
-  gap: 10px;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  gap: 8px;
   align-items: center;
   height: auto;
-  min-height: 64px;
-  padding: 10px;
+  min-height: 42px;
+  padding: 7px 9px;
   border: 1px solid var(--line);
+  border-radius: 8px;
   background: #fff;
   color: var(--text);
   text-align: left;
@@ -607,7 +673,7 @@ button.danger:hover {
 
 .target-card:hover {
   background: #fbfcff;
-  box-shadow: 0 8px 18px rgba(42, 48, 216, 0.1);
+  box-shadow: 0 5px 12px rgba(42, 48, 216, 0.08);
 }
 
 .target-card.selected {
@@ -619,11 +685,12 @@ button.danger:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 38px;
-  height: 38px;
-  border-radius: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
   background: var(--panel-strong);
   color: var(--accent);
+  font-size: 13px;
   font-weight: 800;
 }
 
@@ -633,8 +700,13 @@ button.danger:hover {
 
 .target-main {
   display: grid;
-  gap: 4px;
+  gap: 2px;
   min-width: 0;
+}
+
+.target-main strong {
+  font-size: 13px;
+  line-height: 1.2;
 }
 
 .target-main strong,
@@ -646,13 +718,36 @@ button.danger:hover {
 
 .target-main small {
   color: var(--muted);
+  font-size: 11px;
   font-weight: 700;
 }
 
 .target-check {
   color: var(--accent);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
+  white-space: nowrap;
+}
+
+.target-actions,
+.bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.target-actions button,
+.bulk-actions button {
+  height: 30px;
+  padding: 0 10px;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.bulk-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-start;
 }
 
 .empty-targets {
@@ -662,23 +757,6 @@ button.danger:hover {
   border-radius: 8px;
   color: var(--muted);
   text-align: center;
-}
-
-.manual-targets {
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.manual-targets summary {
-  cursor: pointer;
-  font-weight: 800;
-}
-
-.manual-targets textarea {
-  margin-top: 10px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fff;
 }
 
 table {
@@ -832,8 +910,18 @@ td .muted {
   }
 
   .inline-form,
-  .inline-form.compact {
+  .inline-form.compact,
+  .target-toolbar {
     grid-template-columns: 1fr;
+  }
+
+  .segmented {
+    width: 100%;
+  }
+
+  .segmented button {
+    flex: 1;
+    min-width: 0;
   }
 
   .actions {
