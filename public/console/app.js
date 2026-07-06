@@ -109,6 +109,11 @@ function getBotAccent(bot) {
   return botAccentPalette[hashString(value) % botAccentPalette.length];
 }
 
+function botDisplayName(botId) {
+  const bot = currentBots.find((item) => item.botId === botId);
+  return bot?.botName || bot?.dclawPublicId || bot?.agentName || botId || "-";
+}
+
 function setBindingState(bot = null) {
   state.selectedBotId = bot?.botId || "";
   const accent = bot ? getBotAccent(bot) : "";
@@ -499,7 +504,7 @@ function renderProactiveTasks(tasks) {
             <strong>#${task.id} ${escapeHtml(task.title || "主动推送")}</strong>
             <div class="muted">${escapeHtml(task.content || "").slice(0, 80)}</div>
           </td>
-          <td class="muted">${escapeHtml(task.botId)}</td>
+          <td class="muted">${escapeHtml(botDisplayName(task.botId))}</td>
           <td><span class="pill ${task.status === "sent" ? "ok" : task.status === "failed" ? "bad" : "off"}">${escapeHtml(task.status)}</span></td>
           <td>${escapeHtml(progress + failed)}</td>
           <td class="muted">${escapeHtml(task.updatedAt || task.createdAt || "")}</td>
