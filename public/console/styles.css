@@ -226,14 +226,12 @@ h2 {
 }
 
 .bot-avatar {
-  display: grid;
-  place-items: center;
   width: 40px;
   height: 40px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), var(--cyan));
-  color: #ffffff;
-  font-weight: 800;
+  border-radius: 9px;
+  object-fit: cover;
+  object-position: center;
+  box-shadow: 0 4px 10px rgba(239, 85, 32, 0.16);
 }
 
 .bot-summary {

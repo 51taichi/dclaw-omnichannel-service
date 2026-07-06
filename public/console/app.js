@@ -108,11 +108,10 @@ function renderBots(bots) {
     .map((bot) => {
       const safeBot = encodeURIComponent(bot.botId);
       const title = bot.botName || bot.dclawPublicId || "未命名 Bot";
-      const avatarText = String(title || "B").trim().slice(0, 1).toUpperCase();
       return `
         <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"}">
           <button class="bot-main" data-action="edit" data-bot="${safeBot}" type="button">
-            <span class="bot-avatar">${escapeHtml(avatarText)}</span>
+            <img class="bot-avatar" src="./assets/bot-avatar.png" alt="" aria-hidden="true" />
             <span class="bot-summary">
               <span class="bot-title-row">
                 <strong>${escapeHtml(title)}</strong>
