@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import crypto from "node:crypto";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -93,6 +94,18 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS message_processing (
+    message_key TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    message_id TEXT,
+    status TEXT NOT NULL,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT
+  );
+
   CREATE TABLE IF NOT EXISTS proactive_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bot_id TEXT NOT NULL,
@@ -166,6 +179,47 @@ function json(value) {
 
 function parseJson(value) {
   return value ? JSON.parse(value) : null;
+}
+
+export function buildMessageKey({ botId, conversationKey, message }) {
+  const messageId = String(message?.messageId || "").trim();
+  if (messageId) {
+    return `${botId}:message:${messageId}`;
+  }
+
+  const roomType = message?.roomType ?? "";
+  const receivedName = message?.receivedName || "";
+  const groupName = message?.groupName || "";
+  const raw = message?.rawSpoken || message?.rawMessage || message?.spoken || "";
+  const bucket = Math.floor(Date.now() / 10000);
+  const digest = crypto
+    .createHash("sha256")
+    .update(JSON.stringify({ botId, conversationKey, roomType, receivedName, groupName, raw, bucket }))
+    .digest("hex")
+    .slice(0, 24);
+  return `${botId}:synthetic:${digest}`;
+}
+
+export function beginMessageProcessing({ messageKey, botId, conversationKey, messageId }) {
+  const timestamp = now();
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO message_processing (
+      message_key, bot_id, conversation_key, message_id, status, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, 'processing', ?, ?)
+  `).run(messageKey, botId, conversationKey, messageId || "", timestamp, timestamp);
+  return Boolean(result.changes);
+}
+
+export function finishMessageProcessing({ messageKey, status, error }) {
+  db.prepare(`
+    UPDATE message_processing
+    SET status = ?,
+        error_message = ?,
+        updated_at = ?,
+        finished_at = ?
+    WHERE message_key = ?
+  `).run(status, error || "", now(), now(), messageKey);
 }
 
 function rowToBinding(row) {
@@ -895,6 +949,11 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
         request: parseJson(row.request_json),
         response: parseJson(row.response_json)
       })
+    },
+    "message-processing": {
+      table: "message_processing",
+      mapper: (row) => row,
+      orderBy: "updated_at"
     },
     conversations: {
       table: "conversations",

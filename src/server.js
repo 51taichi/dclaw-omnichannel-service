@@ -6,9 +6,12 @@ import { loadBotBindingsFromConfig } from "./config.js";
 import { buildDclawRequest, invokeDclawAgent } from "./dclaw.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
+  beginMessageProcessing,
+  buildMessageKey,
   claimNextProactiveTarget,
   createProactiveTask,
   finishAgentInvocation,
+  finishMessageProcessing,
   getBotBinding,
   getConversationKey,
   getSetting,
@@ -160,6 +163,13 @@ const proactiveWorkerConfig = {
 };
 
 let proactiveWorkerBusy = false;
+let agentQueue = Promise.resolve();
+
+function enqueueAgentInvocation(task) {
+  const run = agentQueue.then(task, task);
+  agentQueue = run.catch(() => {});
+  return run;
+}
 
 function getDebugReplyConfig() {
   const config = getSetting("debug_reply", defaultDebugReplyConfig);
@@ -301,28 +311,44 @@ async function processIncomingMessage({ botId, message }) {
   const startedAt = Date.now();
   const binding = getBotBinding(botId);
   const conversationKey = getConversationKey(botId, message);
+  const messageKey = buildMessageKey({ botId, conversationKey, message });
   const baseLog = messageLogFields({ botId, conversationKey, message });
-  logInfo("incoming.received", baseLog);
+  const logContext = { ...baseLog, messageKey };
+  logInfo("incoming.received", logContext);
+
+  if (!beginMessageProcessing({
+    messageKey,
+    botId,
+    conversationKey,
+    messageId: message.messageId
+  })) {
+    logWarn("incoming.duplicate_skipped", logContext);
+    return;
+  }
+
   insertIncomingMessage({ botId, conversationKey, payload: message });
 
   if (!shouldInvokeAgent(message, binding)) {
     logInfo("incoming.skipped", {
-      ...baseLog,
+      ...logContext,
       reason: "group_message_without_mention"
     });
+    finishMessageProcessing({ messageKey, status: "skipped" });
     return;
   }
 
   if (await handleDebugPing({ botId, message, conversationKey })) {
-    logInfo("incoming.debug_reply", baseLog);
+    logInfo("incoming.debug_reply", logContext);
+    finishMessageProcessing({ messageKey, status: "debug_replied" });
     return;
   }
 
   if (!binding || !binding.enabled) {
     logWarn("incoming.skipped", {
-      ...baseLog,
+      ...logContext,
       reason: "no_enabled_dclaw_binding"
     });
+    finishMessageProcessing({ messageKey, status: "skipped" });
     return;
   }
 
@@ -343,16 +369,18 @@ async function processIncomingMessage({ botId, message }) {
   });
   const agentStartedAt = Date.now();
   logInfo("agent.invoke.start", {
-    ...baseLog,
+    ...logContext,
     agentId: binding.agentId,
     invocationId
   });
 
   try {
-    const invocation = await invokeDclawAgent({
-      binding,
-      request
-    });
+    const invocation = await enqueueAgentInvocation(() =>
+      invokeDclawAgent({
+        binding,
+        request
+      })
+    );
 
     finishAgentInvocation({
       id: invocationId,
@@ -362,7 +390,7 @@ async function processIncomingMessage({ botId, message }) {
 
     const reply = String(invocation.reply || "").trim();
     logInfo("agent.invoke.success", {
-      ...baseLog,
+      ...logContext,
       agentId: binding.agentId,
       invocationId,
       durationMs: Date.now() - agentStartedAt,
@@ -371,19 +399,21 @@ async function processIncomingMessage({ botId, message }) {
     });
     if (!reply) {
       logWarn("agent.reply.empty", {
-        ...baseLog,
+        ...logContext,
         agentId: binding.agentId,
         invocationId
       });
+      finishMessageProcessing({ messageKey, status: "empty_reply" });
       return;
     }
     if (looksLikeInternalNonReplyAnalysis(reply)) {
       logWarn("agent.reply.suppressed", {
-        ...baseLog,
+        ...logContext,
         agentId: binding.agentId,
         invocationId,
         reason: "internal_non_reply_analysis"
       });
+      finishMessageProcessing({ messageKey, status: "suppressed" });
       return;
     }
 
@@ -398,7 +428,7 @@ async function processIncomingMessage({ botId, message }) {
       content: reply
     });
     logInfo("worktool.send.success", {
-      ...baseLog,
+      ...logContext,
       agentId: binding.agentId,
       invocationId,
       targetName: target,
@@ -416,6 +446,7 @@ async function processIncomingMessage({ botId, message }) {
       content: reply,
       worktoolResponse: result
     });
+    finishMessageProcessing({ messageKey, status: "replied" });
   } catch (error) {
     finishAgentInvocation({
       id: invocationId,
@@ -423,8 +454,9 @@ async function processIncomingMessage({ botId, message }) {
       status: "failed",
       error: error.message
     });
+    finishMessageProcessing({ messageKey, status: "failed", error: error.message });
     logError("incoming.failed", {
-      ...baseLog,
+      ...logContext,
       agentId: binding?.agentId || "",
       invocationId,
       durationMs: Date.now() - startedAt,
