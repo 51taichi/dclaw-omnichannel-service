@@ -645,6 +645,26 @@ button.danger:hover {
   margin-top: 16px;
 }
 
+.proactive-table th:first-child,
+.proactive-table td:first-child {
+  width: 260px;
+  max-width: 260px;
+}
+
+.task-content-cell {
+  min-width: 0;
+}
+
+.task-content-text {
+  display: block;
+  max-width: 260px;
+  overflow: hidden;
+  color: var(--text);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .target-picker {
   display: grid;
   gap: 10px;

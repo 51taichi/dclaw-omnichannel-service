@@ -498,11 +498,11 @@ function renderProactiveTasks(tasks) {
     .map((task) => {
       const progress = `${task.sentCount || 0}/${task.totalCount || 0}`;
       const failed = task.failedCount ? `，失败 ${task.failedCount}` : "";
+      const content = task.content || "";
       return `
         <tr>
-          <td>
-            <strong>#${task.id} ${escapeHtml(task.title || "主动推送")}</strong>
-            <div class="muted">${escapeHtml(task.content || "").slice(0, 80)}</div>
+          <td class="task-content-cell">
+            <span class="task-content-text" title="${escapeHtml(content)}">${escapeHtml(content)}</span>
           </td>
           <td class="muted">${escapeHtml(botDisplayName(task.botId))}</td>
           <td><span class="pill ${task.status === "sent" ? "ok" : task.status === "failed" ? "bad" : "off"}">${escapeHtml(task.status)}</span></td>
