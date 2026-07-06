@@ -790,6 +790,17 @@ button.danger:hover {
   font-size: 12px;
 }
 
+.bulk-actions button.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.bulk-actions button.selected:hover {
+  background: var(--accent-dark);
+  color: #ffffff;
+}
+
 .bulk-actions {
   grid-column: 1 / -1;
   justify-content: flex-start;

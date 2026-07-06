@@ -220,17 +220,44 @@ function getSelectedTargets() {
   return Array.from(selectedTargets.values());
 }
 
-function selectTargetsByType(type) {
-  let count = 0;
-  addressBookTargets
-    .filter((target) => target.targetType === type)
-    .forEach((target) => {
-      selectedTargets.set(targetKey(target), target);
-      count += 1;
-    });
+function targetsByType(type) {
+  return addressBookTargets.filter((target) => target.targetType === type);
+}
+
+function areTargetsByTypeSelected(type) {
+  const targets = targetsByType(type);
+  return targets.length > 0 && targets.every((target) => selectedTargets.has(targetKey(target)));
+}
+
+function updateBulkActionButtons() {
+  const privateSelected = areTargetsByTypeSelected("private");
+  const groupSelected = areTargetsByTypeSelected("group");
+  els.selectPrivateTargetsButton.classList.toggle("selected", privateSelected);
+  els.selectGroupTargetsButton.classList.toggle("selected", groupSelected);
+  els.selectPrivateTargetsButton.setAttribute("aria-pressed", String(privateSelected));
+  els.selectGroupTargetsButton.setAttribute("aria-pressed", String(groupSelected));
+  els.selectPrivateTargetsButton.textContent = privateSelected ? "取消私聊" : "全选私聊";
+  els.selectGroupTargetsButton.textContent = groupSelected ? "取消群组" : "全选群组";
+}
+
+function toggleTargetsByType(type) {
+  const targets = targetsByType(type);
+  const allSelected = areTargetsByTypeSelected(type);
+  targets.forEach((target) => {
+    const key = targetKey(target);
+    if (allSelected) {
+      selectedTargets.delete(key);
+    } else {
+      selectedTargets.set(key, target);
+    }
+  });
   renderSelectedTargets();
   renderTargetList();
-  toast(count ? `已选择 ${count} 个${targetTypeLabel(type)}目标` : `暂无${targetTypeLabel(type)}目标`);
+  if (!targets.length) {
+    toast(`暂无${targetTypeLabel(type)}目标`);
+    return;
+  }
+  toast(`${allSelected ? "已取消" : "已选择"} ${targets.length} 个${targetTypeLabel(type)}目标`);
 }
 
 function clearSelectedTargets() {
@@ -305,6 +332,7 @@ function renderTargetList() {
       renderTargetList();
     });
   });
+  updateBulkActionButtons();
 }
 
 async function loadAddressBookTargets() {
@@ -320,6 +348,7 @@ async function loadAddressBookTargets() {
   }
   renderSelectedTargets();
   renderTargetList();
+  updateBulkActionButtons();
 }
 
 async function seedAddressBookTargets() {
@@ -494,8 +523,8 @@ els.loadTargetsButton.addEventListener("click", () =>
 els.seedTargetsButton.addEventListener("click", () =>
   seedAddressBookTargets().catch((error) => toast(error.message))
 );
-els.selectPrivateTargetsButton.addEventListener("click", () => selectTargetsByType("private"));
-els.selectGroupTargetsButton.addEventListener("click", () => selectTargetsByType("group"));
+els.selectPrivateTargetsButton.addEventListener("click", () => toggleTargetsByType("private"));
+els.selectGroupTargetsButton.addEventListener("click", () => toggleTargetsByType("group"));
 els.clearTargetsButton.addEventListener("click", clearSelectedTargets);
 document.querySelectorAll("[data-target-filter]").forEach((button) => {
   button.addEventListener("click", () => {
