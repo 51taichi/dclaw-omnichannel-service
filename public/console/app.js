@@ -10,6 +10,12 @@ const els = {
   debugReplyForm: document.querySelector("#debugReplyForm"),
   proactiveForm: document.querySelector("#proactiveForm"),
   refreshProactiveButton: document.querySelector("#refreshProactiveButton"),
+  loadTargetsButton: document.querySelector("#loadTargetsButton"),
+  seedTargetsButton: document.querySelector("#seedTargetsButton"),
+  targetSearchInput: document.querySelector("#targetSearchInput"),
+  targetList: document.querySelector("#targetList"),
+  selectedTargets: document.querySelector("#selectedTargets"),
+  selectedTargetCount: document.querySelector("#selectedTargetCount"),
   resetFormButton: document.querySelector("#resetFormButton"),
   botsTable: document.querySelector("#botsTable"),
   botCount: document.querySelector("#botCount"),
@@ -37,6 +43,10 @@ function toast(message) {
   toast.timer = setTimeout(() => {
     els.toast.hidden = true;
   }, 3200);
+}
+
+function icon(name) {
+  return `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 }
 
 async function request(path, options = {}) {
@@ -86,31 +96,38 @@ function fillForm(bot) {
 function renderBots(bots) {
   els.botCount.textContent = `${bots.length} 个`;
   renderBotOptions(bots);
+  if (!bots.length) {
+    els.botsTable.innerHTML = `<div class="empty-state">暂无 Bot 绑定</div>`;
+    return;
+  }
+
   els.botsTable.innerHTML = bots
     .map((bot) => {
       const safeBot = encodeURIComponent(bot.botId);
+      const title = bot.botName || bot.botId;
+      const avatarText = String(title || "B").trim().slice(0, 1).toUpperCase();
       return `
-        <tr>
-          <td>
-            <strong>${escapeHtml(bot.botName || bot.botId)}</strong>
-            <div class="muted">${escapeHtml(bot.botId)}</div>
-          </td>
-          <td>
-            <strong>${escapeHtml(bot.agentName || bot.agentId)}</strong>
-            <div class="muted">${escapeHtml(bot.agentId)}</div>
-            <div class="muted">Public ID: ${escapeHtml(bot.dclawPublicId || "")}</div>
-            <div class="muted">Base URL: ${escapeHtml(bot.dclawBaseUrl || "")}</div>
-          </td>
-          <td><span class="pill ${bot.enabled ? "ok" : "off"}">${bot.enabled ? "启用" : "停用"}</span></td>
-          <td class="muted">${escapeHtml(bot.updatedAt || "")}</td>
-          <td>
-            <div class="row-actions">
-              <button class="secondary" data-action="edit" data-bot="${safeBot}" type="button">编辑</button>
-              <button class="secondary" data-action="bind-message" data-bot="${safeBot}" type="button">绑定消息</button>
-              <button class="secondary" data-action="bind-command" data-bot="${safeBot}" type="button">绑定回调</button>
-            </div>
-          </td>
-        </tr>
+        <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"}">
+          <button class="bot-main" data-action="edit" data-bot="${safeBot}" type="button">
+            <span class="bot-avatar">${escapeHtml(avatarText)}</span>
+            <span class="bot-summary">
+              <span class="bot-title-row">
+                <strong>${escapeHtml(title)}</strong>
+                <span class="pill ${bot.enabled ? "ok" : "off"}">${bot.enabled ? "在线" : "停用"}</span>
+              </span>
+              <span class="bot-id">${escapeHtml(bot.botId)}</span>
+              <span class="bot-agent">${escapeHtml(bot.agentName || bot.agentId || "未绑定 Agent")}</span>
+            </span>
+          </button>
+          <div class="bot-meta">
+            <span>Public ID: ${escapeHtml(bot.dclawPublicId || "")}</span>
+            <span>更新: ${escapeHtml(bot.updatedAt || "-")}</span>
+          </div>
+          <div class="row-actions bot-actions">
+            <button class="secondary" data-action="bind-message" data-bot="${safeBot}" type="button">${icon("link")}消息</button>
+            <button class="secondary" data-action="bind-command" data-bot="${safeBot}" type="button">${icon("terminal")}回调</button>
+          </div>
+        </article>
       `;
     })
     .join("");
@@ -146,6 +163,122 @@ function renderBotOptions(bots) {
 }
 
 let currentBots = [];
+let targetFilter = "all";
+let addressBookTargets = [];
+const selectedTargets = new Map();
+
+function targetKey(target) {
+  return `${target.targetType}:${target.targetName}`;
+}
+
+function targetTypeLabel(type) {
+  return type === "group" ? "群组" : "私聊";
+}
+
+function targetTypeIcon(type) {
+  return type === "group" ? "群" : "私";
+}
+
+function getSelectedTargets() {
+  return Array.from(selectedTargets.values());
+}
+
+function renderSelectedTargets() {
+  const targets = getSelectedTargets();
+  els.selectedTargetCount.textContent = `已选 ${targets.length} 个`;
+  els.selectedTargets.innerHTML = targets.length
+    ? targets
+        .map((target) => {
+          const key = escapeHtml(targetKey(target));
+          return `
+            <button class="target-chip" data-remove-target="${key}" type="button">
+              <span>${escapeHtml(target.displayName || target.targetName)}</span>
+              <small>${escapeHtml(targetTypeLabel(target.targetType))}</small>
+            </button>
+          `;
+        })
+        .join("")
+    : `<span class="muted">请选择要推送的客户或群组</span>`;
+
+  els.selectedTargets.querySelectorAll("[data-remove-target]").forEach((button) => {
+    button.addEventListener("click", () => {
+      selectedTargets.delete(button.dataset.removeTarget);
+      renderSelectedTargets();
+      renderTargetList();
+    });
+  });
+}
+
+function renderTargetList() {
+  const query = els.targetSearchInput.value.trim().toLowerCase();
+  const targets = addressBookTargets.filter((target) => {
+    if (targetFilter !== "all" && target.targetType !== targetFilter) return false;
+    if (!query) return true;
+    return `${target.targetName} ${target.displayName || ""}`.toLowerCase().includes(query);
+  });
+
+  els.targetList.innerHTML = targets.length
+    ? targets
+        .map((target) => {
+          const key = targetKey(target);
+          const checked = selectedTargets.has(key);
+          return `
+            <button class="target-card ${checked ? "selected" : ""}" data-target-key="${escapeHtml(key)}" type="button">
+              <span class="target-avatar ${target.targetType === "group" ? "group" : "private"}">${escapeHtml(targetTypeIcon(target.targetType))}</span>
+              <span class="target-main">
+                <strong>${escapeHtml(target.displayName || target.targetName)}</strong>
+                <small>${escapeHtml(targetTypeLabel(target.targetType))} · ${escapeHtml(target.source || "unknown")}</small>
+              </span>
+              <span class="target-check">${checked ? "已选" : "选择"}</span>
+            </button>
+          `;
+        })
+        .join("")
+    : `<div class="empty-targets">暂无目标，可以添加示例目标或等待客户/群聊产生回调后自动沉淀。</div>`;
+
+  els.targetList.querySelectorAll("[data-target-key]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const target = addressBookTargets.find((item) => targetKey(item) === button.dataset.targetKey);
+      if (!target) return;
+      if (selectedTargets.has(button.dataset.targetKey)) {
+        selectedTargets.delete(button.dataset.targetKey);
+      } else {
+        selectedTargets.set(button.dataset.targetKey, target);
+      }
+      renderSelectedTargets();
+      renderTargetList();
+    });
+  });
+}
+
+async function loadAddressBookTargets() {
+  const botId = els.proactiveForm.botId.value;
+  if (!botId) return;
+  const params = new URLSearchParams({ botId, limit: "300" });
+  const data = await request(`/api/proactive/targets?${params.toString()}`);
+  addressBookTargets = data.targets || [];
+  for (const key of Array.from(selectedTargets.keys())) {
+    if (!addressBookTargets.some((target) => targetKey(target) === key)) {
+      selectedTargets.delete(key);
+    }
+  }
+  renderSelectedTargets();
+  renderTargetList();
+}
+
+async function seedAddressBookTargets() {
+  const botId = els.proactiveForm.botId.value;
+  if (!botId) {
+    toast("请先选择 Bot");
+    return;
+  }
+  await request("/api/proactive/targets/mock", {
+    method: "POST",
+    body: JSON.stringify({ botId })
+  });
+  toast("示例目标已添加");
+  await loadAddressBookTargets();
+}
 
 async function loadBots() {
   const data = await request("/api/bots");
@@ -231,7 +364,7 @@ async function createProactiveTask(event) {
     botId: String(data.get("botId") || "").trim(),
     title: String(data.get("title") || "").trim(),
     content: String(data.get("content") || "").trim(),
-    targets: parseTargets(data.get("targets"))
+    targets: [...getSelectedTargets(), ...parseTargets(data.get("targets"))]
   };
 
   if (!payload.botId || !payload.content || !payload.targets.length) {
@@ -244,8 +377,12 @@ async function createProactiveTask(event) {
     body: JSON.stringify(payload)
   });
   toast(`主动任务已创建：#${result.task.id}`);
+  selectedTargets.clear();
+  renderSelectedTargets();
+  renderTargetList();
   els.proactiveForm.title.value = "";
   els.proactiveForm.content.value = "";
+  els.proactiveForm.targets.value = "";
   await loadProactiveTasks();
 }
 
@@ -269,7 +406,7 @@ function renderProactiveTasks(tasks) {
           <td><span class="pill ${task.status === "sent" ? "ok" : task.status === "failed" ? "bad" : "off"}">${escapeHtml(task.status)}</span></td>
           <td>${escapeHtml(progress + failed)}</td>
           <td class="muted">${escapeHtml(task.updatedAt || task.createdAt || "")}</td>
-          <td><button class="secondary" data-task="${task.id}" type="button">详情</button></td>
+          <td><button class="secondary" data-task="${task.id}" type="button">${icon("info")}详情</button></td>
         </tr>
       `;
     })
@@ -307,12 +444,33 @@ els.debugReplyForm.addEventListener("submit", (event) =>
 els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))
 );
+els.proactiveForm.botId.addEventListener("change", () =>
+  loadAddressBookTargets().catch((error) => toast(error.message))
+);
+els.targetSearchInput.addEventListener("input", () => renderTargetList());
+els.loadTargetsButton.addEventListener("click", () =>
+  loadAddressBookTargets().catch((error) => toast(error.message))
+);
+els.seedTargetsButton.addEventListener("click", () =>
+  seedAddressBookTargets().catch((error) => toast(error.message))
+);
+document.querySelectorAll("[data-target-filter]").forEach((button) => {
+  button.addEventListener("click", () => {
+    targetFilter = button.dataset.targetFilter;
+    document.querySelectorAll("[data-target-filter]").forEach((item) => {
+      item.classList.toggle("active", item === button);
+    });
+    renderTargetList();
+  });
+});
 els.refreshProactiveButton.addEventListener("click", () =>
   loadProactiveTasks().catch((error) => toast(error.message))
 );
 els.resetFormButton.addEventListener("click", () => els.botForm.reset());
 els.loadLogsButton.addEventListener("click", () => loadLogs().catch((error) => toast(error.message)));
 
-Promise.all([loadBots(), loadDebugReply(), loadProactiveTasks()]).catch((error) => {
-  els.logsOutput.textContent = `无法加载配置：${error.message}`;
-});
+Promise.all([loadBots(), loadDebugReply(), loadProactiveTasks()])
+  .then(() => loadAddressBookTargets())
+  .catch((error) => {
+    els.logsOutput.textContent = `无法加载配置：${error.message}`;
+  });

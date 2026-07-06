@@ -128,6 +128,22 @@ db.exec(`
     finished_at TEXT,
     FOREIGN KEY(task_id) REFERENCES proactive_tasks(id)
   );
+
+  CREATE TABLE IF NOT EXISTS proactive_targets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_name TEXT NOT NULL,
+    display_name TEXT,
+    source TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_seen_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_proactive_targets_unique
+  ON proactive_targets (bot_id, target_type, target_name);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -450,6 +466,158 @@ function rowToProactiveTarget(row) {
   };
 }
 
+function rowToProactiveAddressBookTarget(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    targetType: row.target_type,
+    targetName: row.target_name,
+    displayName: row.display_name || row.target_name,
+    source: row.source,
+    enabled: Boolean(row.enabled),
+    lastSeenAt: row.last_seen_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function upsertProactiveAddressBookTarget({
+  botId,
+  targetType,
+  targetName,
+  displayName,
+  source = "manual",
+  enabled = true,
+  lastSeenAt
+}) {
+  const normalizedType = targetType === "group" ? "group" : "private";
+  const normalizedName = String(targetName || "").trim();
+  if (!botId || !normalizedName) return null;
+
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO proactive_targets (
+      bot_id, target_type, target_name, display_name, source, enabled,
+      last_seen_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(bot_id, target_type, target_name) DO UPDATE SET
+      display_name = COALESCE(NULLIF(excluded.display_name, ''), proactive_targets.display_name),
+      source = CASE
+        WHEN proactive_targets.source = 'manual' THEN proactive_targets.source
+        ELSE excluded.source
+      END,
+      enabled = excluded.enabled,
+      last_seen_at = COALESCE(excluded.last_seen_at, proactive_targets.last_seen_at),
+      updated_at = excluded.updated_at
+  `).run(
+    botId,
+    normalizedType,
+    normalizedName,
+    displayName || normalizedName,
+    source,
+    enabled === false ? 0 : 1,
+    lastSeenAt || timestamp,
+    timestamp,
+    timestamp
+  );
+
+  return db
+    .prepare(
+      "SELECT * FROM proactive_targets WHERE bot_id = ? AND target_type = ? AND target_name = ?"
+    )
+    .get(botId, normalizedType, normalizedName);
+}
+
+export function syncProactiveTargetsFromIncoming(botId) {
+  const params = [];
+  const botFilter = botId ? "WHERE bot_id = ?" : "";
+  if (botId) params.push(botId);
+
+  const rows = db
+    .prepare(`
+      SELECT
+        bot_id,
+        CASE
+          WHEN room_type IN (1, 3) THEN 'group'
+          ELSE 'private'
+        END AS target_type,
+        CASE
+          WHEN room_type IN (1, 3) THEN group_name
+          ELSE received_name
+        END AS target_name,
+        MAX(created_at) AS last_seen_at
+      FROM incoming_messages
+      ${botFilter}
+      GROUP BY bot_id, target_type, target_name
+    `)
+    .all(...params);
+
+  for (const row of rows) {
+    if (!row.target_name) continue;
+    upsertProactiveAddressBookTarget({
+      botId: row.bot_id,
+      targetType: row.target_type,
+      targetName: row.target_name,
+      displayName: row.target_name,
+      source: "incoming",
+      lastSeenAt: row.last_seen_at
+    });
+  }
+}
+
+export function listProactiveAddressBookTargets({ botId, targetType, query, limit = 200 }) {
+  syncProactiveTargetsFromIncoming(botId);
+
+  const where = ["enabled = 1"];
+  const params = [];
+  if (botId) {
+    where.push("bot_id = ?");
+    params.push(botId);
+  }
+  if (targetType === "private" || targetType === "group") {
+    where.push("target_type = ?");
+    params.push(targetType);
+  }
+  if (query) {
+    where.push("(target_name LIKE ? OR display_name LIKE ?)");
+    params.push(`%${query}%`, `%${query}%`);
+  }
+  params.push(Number(limit));
+
+  return db
+    .prepare(`
+      SELECT *
+      FROM proactive_targets
+      WHERE ${where.join(" AND ")}
+      ORDER BY target_type ASC, COALESCE(last_seen_at, updated_at) DESC, target_name ASC
+      LIMIT ?
+    `)
+    .all(...params)
+    .map(rowToProactiveAddressBookTarget);
+}
+
+export function insertMockProactiveTargets(botId) {
+  const targets = [
+    { targetType: "private", targetName: "魔兮", source: "mock" },
+    { targetType: "private", targetName: "张三", source: "mock" },
+    { targetType: "private", targetName: "李四", source: "mock" },
+    { targetType: "group", targetName: "A招商服务群", source: "mock" },
+    { targetType: "group", targetName: "B招商服务群", source: "mock" },
+    { targetType: "group", targetName: "渠道伙伴群", source: "mock" }
+  ];
+  return targets.map((target) =>
+    rowToProactiveAddressBookTarget(
+      upsertProactiveAddressBookTarget({
+        botId,
+        ...target,
+        displayName: target.targetName
+      })
+    )
+  );
+}
+
 export function createProactiveTask({ botId, agentId, title, content, targets, createdBy }) {
   const timestamp = now();
   const normalizedTargets = targets.map((target) => ({
@@ -734,6 +902,10 @@ export function listRecords(name, limit = 50) {
     "proactive-targets": {
       table: "proactive_task_targets",
       mapper: rowToProactiveTarget
+    },
+    "proactive-address-book": {
+      table: "proactive_targets",
+      mapper: rowToProactiveAddressBookTarget
     }
   };
   const config = allowed[name];

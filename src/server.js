@@ -16,6 +16,8 @@ import {
   insertCommandCallback,
   insertIncomingMessage,
   insertOutgoingMessage,
+  insertMockProactiveTargets,
+  listProactiveAddressBookTargets,
   listProactiveTasks,
   listProactiveTaskTargets,
   listBotBindings,
@@ -25,6 +27,7 @@ import {
   resetInterruptedProactiveTargets,
   setSetting,
   updateProactiveTargetFromCommandCallback,
+  upsertProactiveAddressBookTarget,
   upsertBotBinding,
   upsertConversation
 } from "./db.js";
@@ -565,6 +568,55 @@ app.get(
       ok: true,
       task,
       targets: listProactiveTaskTargets(req.params.taskId)
+    });
+  })
+);
+
+app.get(
+  "/api/proactive/targets",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const botId = String(req.query.botId || process.env.ROBOT_ID || "").trim();
+    if (!botId) throw new Error("botId is required");
+    res.json({
+      ok: true,
+      targets: listProactiveAddressBookTargets({
+        botId,
+        targetType: req.query.targetType,
+        query: String(req.query.q || "").trim(),
+        limit: Number(req.query.limit || 200)
+      })
+    });
+  })
+);
+
+app.post(
+  "/api/proactive/targets",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const body = req.body || {};
+    const botId = String(body.botId || process.env.ROBOT_ID || "").trim();
+    if (!botId) throw new Error("botId is required");
+    const target = upsertProactiveAddressBookTarget({
+      botId,
+      targetType: body.targetType,
+      targetName: body.targetName,
+      displayName: body.displayName,
+      source: "manual"
+    });
+    res.json({ ok: true, target });
+  })
+);
+
+app.post(
+  "/api/proactive/targets/mock",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const botId = String(req.body?.botId || process.env.ROBOT_ID || "").trim();
+    if (!botId) throw new Error("botId is required");
+    res.json({
+      ok: true,
+      targets: insertMockProactiveTargets(botId)
     });
   })
 );
