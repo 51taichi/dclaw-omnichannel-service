@@ -8,6 +8,7 @@ const els = {
   saveKeyButton: document.querySelector("#saveKeyButton"),
   refreshButton: document.querySelector("#refreshButton"),
   botBindingPanel: document.querySelector("#botBindingPanel"),
+  proactivePanel: document.querySelector("#proactivePanel"),
   bindingState: document.querySelector("#bindingState"),
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
@@ -29,7 +30,9 @@ const els = {
   logType: document.querySelector("#logType"),
   loadLogsButton: document.querySelector("#loadLogsButton"),
   logsOutput: document.querySelector("#logsOutput"),
-  toast: document.querySelector("#toast")
+  toast: document.querySelector("#toast"),
+  botContextPanels: document.querySelectorAll(".bot-context-panel"),
+  collapseButtons: document.querySelectorAll("[data-collapse-target]")
 };
 
 els.apiKeyInput.value = state.apiKey;
@@ -109,12 +112,37 @@ function getBotAccent(bot) {
 function setBindingState(bot = null) {
   state.selectedBotId = bot?.botId || "";
   const accent = bot ? getBotAccent(bot) : "";
-  els.botBindingPanel.classList.toggle("is-bound", Boolean(bot));
-  els.botBindingPanel.style.setProperty("--bot-accent", accent);
+  els.botContextPanels.forEach((panel) => {
+    panel.classList.toggle("is-bound", Boolean(bot));
+    panel.style.setProperty("--bot-accent", accent);
+  });
   els.bindingState.textContent = bot
     ? `编辑中：${bot.botName || bot.dclawPublicId || "当前 Bot"}`
     : "新增模式";
   renderBots(currentBots);
+}
+
+function expandPanel(panel) {
+  if (!panel) return;
+  panel.classList.remove("is-collapsed");
+  const button = panel.querySelector("[data-collapse-target]");
+  if (button) button.setAttribute("aria-expanded", "true");
+}
+
+async function applyBotContext(bot, { scrollTo = null } = {}) {
+  setBindingState(bot);
+  if (bot?.botId) {
+    els.proactiveForm.botId.value = bot.botId;
+    selectedTargets.clear();
+    await Promise.all([loadAddressBookTargets(), loadProactiveTasks()]);
+    if (els.logsOutput.textContent.trim()) {
+      await loadLogs();
+    }
+  }
+  if (scrollTo) {
+    expandPanel(scrollTo);
+    scrollTo.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 }
 
 function fillForm(bot) {
@@ -126,7 +154,6 @@ function fillForm(bot) {
   els.botForm.dclawPublicId.value = bot.dclawPublicId || bot.agentId || "";
   els.botForm.agentApiKey.value = bot.agentApiKey || "";
   els.botForm.enabled.checked = Boolean(bot.enabled);
-  setBindingState(bot);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -156,13 +183,8 @@ function renderBots(bots) {
               <span class="bot-agent">${escapeHtml(bot.agentName || bot.agentId || "未绑定 Agent")}</span>
             </span>
           </button>
-          <div class="bot-meta">
-            <span>Public ID: ${escapeHtml(bot.dclawPublicId || "")}</span>
-            <span>更新: ${escapeHtml(bot.updatedAt || "-")}</span>
-          </div>
           <div class="row-actions bot-actions">
-            <button class="secondary" data-action="bind-message" data-bot="${safeBot}" type="button">${icon("link")}消息</button>
-            <button class="secondary" data-action="bind-command" data-bot="${safeBot}" type="button">${icon("terminal")}回调</button>
+            <button class="secondary" data-action="push" data-bot="${safeBot}" type="button">${icon("send")}推送消息</button>
           </div>
         </article>
       `;
@@ -175,13 +197,12 @@ function renderBots(bots) {
       const bot = currentBots.find((item) => item.botId === botId);
       if (button.dataset.action === "edit") {
         fillForm(bot);
+        applyBotContext(bot).catch((error) => toast(error.message));
         return;
       }
-      if (button.dataset.action === "bind-message") {
-        await bindCallback(botId, "message-callback");
-      }
-      if (button.dataset.action === "bind-command") {
-        await bindCallback(botId, "command-callback");
+      if (button.dataset.action === "push") {
+        fillForm(bot);
+        await applyBotContext(bot, { scrollTo: els.proactivePanel });
       }
     });
   });
@@ -310,7 +331,6 @@ function renderTargetList() {
               <span class="target-avatar ${target.targetType === "group" ? "group" : "private"}">${escapeHtml(targetTypeIcon(target.targetType))}</span>
               <span class="target-main">
                 <strong>${escapeHtml(target.displayName || target.targetName)}</strong>
-                <small>${escapeHtml(targetTypeLabel(target.targetType))} · ${escapeHtml(target.source || "unknown")}</small>
               </span>
               <span class="target-check">${checked ? "已选" : "选择"}</span>
             </button>
@@ -397,7 +417,7 @@ async function saveBot(event) {
   toast("绑定已保存");
   await loadBots();
   const savedBot = currentBots.find((item) => item.botId === bot.botId);
-  if (savedBot) setBindingState(savedBot);
+  if (savedBot) await applyBotContext(savedBot);
 }
 
 async function bindCallback(botId, type) {
@@ -410,7 +430,9 @@ async function bindCallback(botId, type) {
 
 async function loadLogs() {
   const type = els.logType.value;
-  const data = await request(`/api/logs/${encodeURIComponent(type)}?limit=40`);
+  const params = new URLSearchParams({ limit: "40" });
+  if (state.selectedBotId) params.set("botId", state.selectedBotId);
+  const data = await request(`/api/logs/${encodeURIComponent(type)}?${params.toString()}`);
   els.logsOutput.textContent = JSON.stringify(data.logs || [], null, 2);
 }
 
@@ -456,7 +478,9 @@ async function createProactiveTask(event) {
 }
 
 async function loadProactiveTasks() {
-  const data = await request("/api/proactive/tasks?limit=20");
+  const params = new URLSearchParams({ limit: "20" });
+  if (state.selectedBotId) params.set("botId", state.selectedBotId);
+  const data = await request(`/api/proactive/tasks?${params.toString()}`);
   renderProactiveTasks(data.tasks || []);
 }
 
@@ -541,9 +565,22 @@ els.refreshProactiveButton.addEventListener("click", () =>
 els.resetFormButton.addEventListener("click", () => {
   els.botForm.reset();
   els.botForm.enabled.checked = true;
+  selectedTargets.clear();
+  addressBookTargets = [];
   setBindingState(null);
+  renderSelectedTargets();
+  renderTargetList();
+  loadProactiveTasks().catch((error) => toast(error.message));
 });
 els.loadLogsButton.addEventListener("click", () => loadLogs().catch((error) => toast(error.message)));
+els.collapseButtons.forEach((button) => {
+  const panel = document.querySelector(`#${button.dataset.collapseTarget}`);
+  button.setAttribute("aria-expanded", "true");
+  button.addEventListener("click", () => {
+    panel?.classList.toggle("is-collapsed");
+    button.setAttribute("aria-expanded", String(!panel?.classList.contains("is-collapsed")));
+  });
+});
 
 Promise.all([loadBots(), loadDebugReply(), loadProactiveTasks()])
   .then(() => loadAddressBookTargets())

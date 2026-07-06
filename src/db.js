@@ -673,7 +673,13 @@ export function getProactiveTask(id) {
   );
 }
 
-export function listProactiveTasks(limit = 20) {
+export function listProactiveTasks({ limit = 20, botId = "" } = {}) {
+  if (botId) {
+    return db
+      .prepare("SELECT * FROM proactive_tasks WHERE bot_id = ? ORDER BY id DESC LIMIT ?")
+      .all(botId, Number(limit))
+      .map(rowToProactiveTask);
+  }
   return db
     .prepare("SELECT * FROM proactive_tasks ORDER BY id DESC LIMIT ?")
     .all(Number(limit))
@@ -858,7 +864,7 @@ export function refreshProactiveTaskStatus(taskId) {
   );
 }
 
-export function listRecords(name, limit = 50) {
+export function listRecords(name, { limit = 50, botId = "" } = {}) {
   const allowed = {
     "incoming-messages": {
       table: "incoming_messages",
@@ -910,6 +916,12 @@ export function listRecords(name, limit = 50) {
   };
   const config = allowed[name];
   if (!config) return null;
+  if (botId) {
+    return db
+      .prepare(`SELECT * FROM ${config.table} WHERE bot_id = ? ORDER BY ${config.orderBy || "id"} DESC LIMIT ?`)
+      .all(botId, Number(limit))
+      .map(config.mapper);
+  }
   return db
     .prepare(`SELECT * FROM ${config.table} ORDER BY ${config.orderBy || "id"} DESC LIMIT ?`)
     .all(Number(limit))

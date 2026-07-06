@@ -652,7 +652,10 @@ app.get(
     assertAdmin(req);
     res.json({
       ok: true,
-      tasks: listProactiveTasks(Number(req.query.limit || 20))
+      tasks: listProactiveTasks({
+        limit: Number(req.query.limit || 20),
+        botId: String(req.query.botId || "").trim()
+      })
     });
   })
 );
@@ -818,7 +821,10 @@ app.get(
   "/api/logs/:name",
   asyncHandler(async (req, res) => {
     assertAdmin(req);
-    const logs = listRecords(req.params.name, Number(req.query.limit || 50));
+    const logs = listRecords(req.params.name, {
+      limit: Number(req.query.limit || 50),
+      botId: String(req.query.botId || "").trim()
+    });
     if (!logs) {
       res.status(404).json({ ok: false, message: "unknown log name" });
       return;

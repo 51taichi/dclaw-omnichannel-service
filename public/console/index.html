@@ -62,6 +62,9 @@
         <path d="M12 5v14" />
         <path d="M5 12h14" />
       </symbol>
+      <symbol id="icon-chevron" viewBox="0 0 24 24">
+        <path d="m6 9 6 6 6-6" />
+      </symbol>
     </svg>
     <header class="topbar">
       <div class="topbar-inner">
@@ -81,7 +84,7 @@
     <main class="layout console-shell">
       <aside class="panel bot-sidebar">
         <div class="section-head">
-          <h2>已配置 Bot</h2>
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>已配置 Bot</h2>
           <span id="botCount" class="muted"></span>
         </div>
         <div id="botsTable" class="bot-list"></div>
@@ -89,7 +92,7 @@
 
       <div class="workspace">
       <section class="panel auth-panel">
-        <h2>管理密钥</h2>
+        <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>管理密钥</h2>
         <div class="inline-form">
           <label>
             <span class="field-label">Admin API Key</span>
@@ -102,11 +105,17 @@
         </div>
       </section>
 
-      <section id="botBindingPanel" class="panel binding-panel">
+      <section id="botBindingPanel" class="panel binding-panel bot-context-panel collapsible-panel">
         <div class="section-head binding-head">
-          <h2>Bot 绑定</h2>
-          <span id="bindingState" class="binding-state">新增模式</span>
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>Bot 绑定</h2>
+          <div class="section-actions">
+            <span id="bindingState" class="binding-state">新增模式</span>
+            <button class="collapse-button" data-collapse-target="botBindingPanel" type="button" aria-label="收起 Bot 绑定">
+              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+            </button>
+          </div>
         </div>
+        <div class="collapsible-content">
         <form id="botForm" class="form-grid">
           <label>
             <span class="field-label">Bot ID</span>
@@ -151,10 +160,17 @@
             </button>
           </div>
         </form>
+        </div>
       </section>
 
-      <section class="panel">
-        <h2>调试自动回复</h2>
+      <section id="debugPanel" class="panel bot-context-panel collapsible-panel">
+        <div class="section-head">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-terminal"></use></svg>调试自动回复</h2>
+          <button class="collapse-button" data-collapse-target="debugPanel" type="button" aria-label="收起调试自动回复">
+            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+          </button>
+        </div>
+        <div class="collapsible-content">
         <form id="debugReplyForm" class="form-grid compact-form">
           <label class="toggle">
             <input name="enabled" type="checkbox" />
@@ -175,16 +191,23 @@
             </button>
           </div>
         </form>
+        </div>
       </section>
 
-      <section class="panel">
+      <section id="proactivePanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
-          <h2>主动推送</h2>
-          <button id="refreshProactiveButton" class="secondary" type="button">
-            <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
-            刷新任务
-          </button>
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>主动推送</h2>
+          <div class="section-actions">
+            <button id="refreshProactiveButton" class="secondary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
+              刷新任务
+            </button>
+            <button class="collapse-button" data-collapse-target="proactivePanel" type="button" aria-label="收起主动推送">
+              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+            </button>
+          </div>
         </div>
+        <div class="collapsible-content">
         <form id="proactiveForm" class="form-grid">
           <label>
             <span class="field-label">Bot</span>
@@ -256,11 +279,13 @@
             <tbody id="proactiveTasksTable"></tbody>
           </table>
         </div>
+        </div>
       </section>
 
-      <section class="panel">
+      <section id="logsPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
-          <h2>运行数据</h2>
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-eye"></use></svg>运行数据</h2>
+          <div class="section-actions">
           <div class="inline-form compact">
             <label>
               <span class="field-label">数据类型</span>
@@ -279,8 +304,14 @@
               查看
             </button>
           </div>
+          <button class="collapse-button" data-collapse-target="logsPanel" type="button" aria-label="收起运行数据">
+            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+          </button>
+          </div>
         </div>
+        <div class="collapsible-content">
         <pre id="logsOutput" class="logs"></pre>
+        </div>
       </section>
       </div>
     </main>
