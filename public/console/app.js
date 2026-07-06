@@ -172,8 +172,8 @@ function renderBots(bots) {
       const isSelected = bot.botId === state.selectedBotId;
       const accent = getBotAccent(bot);
       return `
-        <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"} ${isSelected ? "is-selected" : ""}" style="--bot-accent: ${escapeHtml(accent)}">
-          <button class="bot-main" data-action="edit" data-bot="${safeBot}" type="button">
+        <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"} ${isSelected ? "is-selected" : ""}" data-action="edit" data-bot="${safeBot}" style="--bot-accent: ${escapeHtml(accent)}">
+          <div class="bot-main">
             <img class="bot-avatar" src="./assets/bot-avatar.png" alt="" aria-hidden="true" />
             <span class="bot-summary">
               <span class="bot-title-row">
@@ -182,7 +182,7 @@ function renderBots(bots) {
               </span>
               <span class="bot-agent">${escapeHtml(bot.agentName || bot.agentId || "未绑定 Agent")}</span>
             </span>
-          </button>
+          </div>
           <div class="row-actions bot-actions">
             <button class="secondary" data-action="push" data-bot="${safeBot}" type="button">${icon("send")}推送消息</button>
           </div>
@@ -191,16 +191,19 @@ function renderBots(bots) {
     })
     .join("");
 
-  els.botsTable.querySelectorAll("button").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const botId = decodeURIComponent(button.dataset.bot);
+  els.botsTable.querySelectorAll("[data-action]").forEach((item) => {
+    item.addEventListener("click", async (event) => {
+      const actionTarget = event.target.closest("[data-action]");
+      if (!actionTarget) return;
+      const botId = decodeURIComponent(actionTarget.dataset.bot);
       const bot = currentBots.find((item) => item.botId === botId);
-      if (button.dataset.action === "edit") {
+      if (actionTarget.dataset.action === "edit") {
         fillForm(bot);
         applyBotContext(bot).catch((error) => toast(error.message));
         return;
       }
-      if (button.dataset.action === "push") {
+      if (actionTarget.dataset.action === "push") {
+        event.stopPropagation();
         fillForm(bot);
         await applyBotContext(bot, { scrollTo: els.proactivePanel });
       }
@@ -464,6 +467,7 @@ async function createProactiveTask(event) {
     return;
   }
 
+  toast("正在创建并发送...");
   const result = await request("/api/proactive/tasks", {
     method: "POST",
     body: JSON.stringify(payload)
