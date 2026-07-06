@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
 import { buildDclawRequest, invokeDclawAgent } from "./dclaw.js";
+import { logError, logInfo, logWarn } from "./logger.js";
 import {
   claimNextProactiveTarget,
   createProactiveTask,
@@ -168,6 +169,39 @@ function getDebugReplyConfig() {
   };
 }
 
+function messageLogFields({ botId, conversationKey, message }) {
+  return {
+    botId,
+    conversationKey,
+    messageId: message?.messageId || "",
+    roomType: message?.roomType ?? null,
+    textType: message?.textType ?? null,
+    receivedName: message?.receivedName || "",
+    groupName: message?.groupName || "",
+    atMe: message?.atMe ?? message?.metadata?.atMe ?? "",
+    spokenLength: String(message?.spoken || "").length,
+    rawSpokenLength: String(message?.rawSpoken || message?.rawMessage || "").length
+  };
+}
+
+function commandCallbackLogFields({ botId, payload }) {
+  const successList = Array.isArray(payload?.successList) ? payload.successList : [];
+  const failList = Array.isArray(payload?.failList) ? payload.failList : [];
+  return {
+    botId,
+    messageId: payload?.messageId || "",
+    errorCode: payload?.errorCode ?? null,
+    errorReason: payload?.errorReason || payload?.errorMsg || "",
+    type: payload?.type ?? null,
+    successCount: successList.length,
+    failCount: failList.length,
+    successList,
+    failList,
+    timeCost: payload?.timeCost ?? null,
+    runTime: payload?.runTime ?? null
+  };
+}
+
 async function handleDebugPing({ botId, message, conversationKey }) {
   const config = getDebugReplyConfig();
   if (!config.enabled) return false;
@@ -258,26 +292,37 @@ async function processNextProactiveTarget() {
 if (proactiveWorkerConfig.enabled) {
   setInterval(() => {
     void processNextProactiveTarget().catch((error) => {
-      console.error("proactive worker failed:", error);
+      logError("proactive.worker.failed", { error });
     });
   }, proactiveWorkerConfig.intervalMs).unref();
 }
 
 async function processIncomingMessage({ botId, message }) {
+  const startedAt = Date.now();
   const binding = getBotBinding(botId);
   const conversationKey = getConversationKey(botId, message);
+  const baseLog = messageLogFields({ botId, conversationKey, message });
+  logInfo("incoming.received", baseLog);
   insertIncomingMessage({ botId, conversationKey, payload: message });
 
   if (!shouldInvokeAgent(message, binding)) {
+    logInfo("incoming.skipped", {
+      ...baseLog,
+      reason: "group_message_without_mention"
+    });
     return;
   }
 
   if (await handleDebugPing({ botId, message, conversationKey })) {
+    logInfo("incoming.debug_reply", baseLog);
     return;
   }
 
   if (!binding || !binding.enabled) {
-    console.warn(`No enabled DClaw agent binding for botId=${botId}`);
+    logWarn("incoming.skipped", {
+      ...baseLog,
+      reason: "no_enabled_dclaw_binding"
+    });
     return;
   }
 
@@ -296,6 +341,12 @@ async function processIncomingMessage({ botId, message }) {
     incomingMessageId: message.messageId,
     request
   });
+  const agentStartedAt = Date.now();
+  logInfo("agent.invoke.start", {
+    ...baseLog,
+    agentId: binding.agentId,
+    invocationId
+  });
 
   try {
     const invocation = await invokeDclawAgent({
@@ -310,11 +361,29 @@ async function processIncomingMessage({ botId, message }) {
     });
 
     const reply = String(invocation.reply || "").trim();
+    logInfo("agent.invoke.success", {
+      ...baseLog,
+      agentId: binding.agentId,
+      invocationId,
+      durationMs: Date.now() - agentStartedAt,
+      replyLength: reply.length,
+      sessionId: invocation.sessionId || ""
+    });
     if (!reply) {
+      logWarn("agent.reply.empty", {
+        ...baseLog,
+        agentId: binding.agentId,
+        invocationId
+      });
       return;
     }
     if (looksLikeInternalNonReplyAnalysis(reply)) {
-      console.warn("Suppressed internal non-reply analysis from DClaw agent");
+      logWarn("agent.reply.suppressed", {
+        ...baseLog,
+        agentId: binding.agentId,
+        invocationId,
+        reason: "internal_non_reply_analysis"
+      });
       return;
     }
 
@@ -327,6 +396,16 @@ async function processIncomingMessage({ botId, message }) {
       robotId: botId,
       targets: [target],
       content: reply
+    });
+    logInfo("worktool.send.success", {
+      ...baseLog,
+      agentId: binding.agentId,
+      invocationId,
+      targetName: target,
+      worktoolMessageId: result.data || "",
+      worktoolCode: result.code ?? null,
+      worktoolMessage: result.message || "",
+      totalDurationMs: Date.now() - startedAt
     });
     insertOutgoingMessage({
       botId,
@@ -343,6 +422,13 @@ async function processIncomingMessage({ botId, message }) {
       response: null,
       status: "failed",
       error: error.message
+    });
+    logError("incoming.failed", {
+      ...baseLog,
+      agentId: binding?.agentId || "",
+      invocationId,
+      durationMs: Date.now() - startedAt,
+      error
     });
     throw error;
   }
@@ -374,7 +460,11 @@ app.post("/worktool/:botId/message-callback", (req, res) => {
     botId: req.params.botId,
     message: req.body || {}
   }).catch((error) => {
-    console.error("failed to process incoming message:", error);
+    logError("message_callback.process_failed", {
+      botId: req.params.botId,
+      messageId: req.body?.messageId || "",
+      error
+    });
   });
 });
 
@@ -398,7 +488,11 @@ app.post("/worktool/message-callback", (req, res) => {
     botId,
     message: req.body || {}
   }).catch((error) => {
-    console.error("failed to process incoming message:", error);
+    logError("message_callback.process_failed", {
+      botId,
+      messageId: req.body?.messageId || "",
+      error
+    });
   });
 });
 
@@ -414,6 +508,10 @@ app.post("/worktool/:botId/command-callback", (req, res) => {
     botId: req.params.botId,
     payload: req.body || {}
   });
+  logInfo("worktool.command_callback.received", commandCallbackLogFields({
+    botId: req.params.botId,
+    payload: req.body || {}
+  }));
   updateProactiveTargetFromCommandCallback({
     messageId: req.body?.messageId,
     payload: req.body || {}
@@ -428,6 +526,10 @@ app.post("/worktool/command-callback", (req, res) => {
     return;
   }
   insertCommandCallback({ botId, payload: req.body || {} });
+  logInfo("worktool.command_callback.received", commandCallbackLogFields({
+    botId,
+    payload: req.body || {}
+  }));
   updateProactiveTargetFromCommandCallback({
     messageId: req.body?.messageId,
     payload: req.body || {}
@@ -533,7 +635,7 @@ app.post(
     });
 
     void processNextProactiveTarget().catch((error) => {
-      console.error("proactive worker failed:", error);
+      logError("proactive.worker.failed", { error });
     });
 
     res.json({
@@ -726,7 +828,12 @@ app.get(
 );
 
 app.use((error, req, res, next) => {
-  console.error(error);
+  logError("http.request.failed", {
+    method: req.method,
+    path: req.path,
+    status: error.status || 500,
+    error
+  });
   res.status(error.status || 500).json({
     ok: false,
     message: error.message || "internal server error"
@@ -734,5 +841,5 @@ app.use((error, req, res, next) => {
 });
 
 app.listen(port, host, () => {
-  console.log(`WorkTool bot service listening on http://${host}:${port}`);
+  logInfo("service.started", { host, port });
 });
