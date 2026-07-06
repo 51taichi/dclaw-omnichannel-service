@@ -8,9 +8,12 @@ const els = {
   refreshButton: document.querySelector("#refreshButton"),
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
+  proactiveForm: document.querySelector("#proactiveForm"),
+  refreshProactiveButton: document.querySelector("#refreshProactiveButton"),
   resetFormButton: document.querySelector("#resetFormButton"),
   botsTable: document.querySelector("#botsTable"),
   botCount: document.querySelector("#botCount"),
+  proactiveTasksTable: document.querySelector("#proactiveTasksTable"),
   logType: document.querySelector("#logType"),
   loadLogsButton: document.querySelector("#loadLogsButton"),
   logsOutput: document.querySelector("#logsOutput"),
@@ -82,6 +85,7 @@ function fillForm(bot) {
 
 function renderBots(bots) {
   els.botCount.textContent = `${bots.length} 个`;
+  renderBotOptions(bots);
   els.botsTable.innerHTML = bots
     .map((bot) => {
       const safeBot = encodeURIComponent(bot.botId);
@@ -127,6 +131,18 @@ function renderBots(bots) {
       }
     });
   });
+}
+
+function renderBotOptions(bots) {
+  const select = els.proactiveForm.botId;
+  const current = select.value;
+  select.innerHTML = bots
+    .map((bot) => {
+      const label = bot.botName ? `${bot.botName} (${bot.botId})` : bot.botId;
+      return `<option value="${escapeHtml(bot.botId)}">${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  if (current) select.value = current;
 }
 
 let currentBots = [];
@@ -187,6 +203,87 @@ async function saveDebugReply(event) {
   toast("调试自动回复已保存");
 }
 
+function parseTargets(value) {
+  return String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(/^(private|group)\s*[:：]\s*(.+)$/i);
+      if (match) {
+        return {
+          targetType: match[1].toLowerCase() === "group" ? "group" : "private",
+          targetName: match[2].trim()
+        };
+      }
+      return {
+        targetType: "private",
+        targetName: line
+      };
+    })
+    .filter((target) => target.targetName);
+}
+
+async function createProactiveTask(event) {
+  event.preventDefault();
+  const data = new FormData(els.proactiveForm);
+  const payload = {
+    botId: String(data.get("botId") || "").trim(),
+    title: String(data.get("title") || "").trim(),
+    content: String(data.get("content") || "").trim(),
+    targets: parseTargets(data.get("targets"))
+  };
+
+  if (!payload.botId || !payload.content || !payload.targets.length) {
+    toast("请填写 Bot、目标列表和推送内容");
+    return;
+  }
+
+  const result = await request("/api/proactive/tasks", {
+    method: "POST",
+    body: JSON.stringify(payload)
+  });
+  toast(`主动任务已创建：#${result.task.id}`);
+  els.proactiveForm.title.value = "";
+  els.proactiveForm.content.value = "";
+  await loadProactiveTasks();
+}
+
+async function loadProactiveTasks() {
+  const data = await request("/api/proactive/tasks?limit=20");
+  renderProactiveTasks(data.tasks || []);
+}
+
+function renderProactiveTasks(tasks) {
+  els.proactiveTasksTable.innerHTML = tasks
+    .map((task) => {
+      const progress = `${task.sentCount || 0}/${task.totalCount || 0}`;
+      const failed = task.failedCount ? `，失败 ${task.failedCount}` : "";
+      return `
+        <tr>
+          <td>
+            <strong>#${task.id} ${escapeHtml(task.title || "主动推送")}</strong>
+            <div class="muted">${escapeHtml(task.content || "").slice(0, 80)}</div>
+          </td>
+          <td class="muted">${escapeHtml(task.botId)}</td>
+          <td><span class="pill ${task.status === "sent" ? "ok" : task.status === "failed" ? "bad" : "off"}">${escapeHtml(task.status)}</span></td>
+          <td>${escapeHtml(progress + failed)}</td>
+          <td class="muted">${escapeHtml(task.updatedAt || task.createdAt || "")}</td>
+          <td><button class="secondary" data-task="${task.id}" type="button">详情</button></td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  els.proactiveTasksTable.querySelectorAll("button[data-task]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const data = await request(`/api/proactive/tasks/${encodeURIComponent(button.dataset.task)}`);
+      els.logsOutput.textContent = JSON.stringify(data, null, 2);
+      toast(`已加载任务 #${button.dataset.task}`);
+    });
+  });
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -207,9 +304,15 @@ els.botForm.addEventListener("submit", (event) => saveBot(event).catch((error) =
 els.debugReplyForm.addEventListener("submit", (event) =>
   saveDebugReply(event).catch((error) => toast(error.message))
 );
+els.proactiveForm.addEventListener("submit", (event) =>
+  createProactiveTask(event).catch((error) => toast(error.message))
+);
+els.refreshProactiveButton.addEventListener("click", () =>
+  loadProactiveTasks().catch((error) => toast(error.message))
+);
 els.resetFormButton.addEventListener("click", () => els.botForm.reset());
 els.loadLogsButton.addEventListener("click", () => loadLogs().catch((error) => toast(error.message)));
 
-Promise.all([loadBots(), loadDebugReply()]).catch((error) => {
+Promise.all([loadBots(), loadDebugReply(), loadProactiveTasks()]).catch((error) => {
   els.logsOutput.textContent = `无法加载配置：${error.message}`;
 });

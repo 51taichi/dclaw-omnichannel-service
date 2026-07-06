@@ -5,17 +5,26 @@ import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
 import { buildDclawRequest, invokeDclawAgent } from "./dclaw.js";
 import {
+  claimNextProactiveTarget,
+  createProactiveTask,
   finishAgentInvocation,
   getBotBinding,
   getConversationKey,
   getSetting,
+  getProactiveTask,
   insertAgentInvocationStart,
   insertCommandCallback,
   insertIncomingMessage,
   insertOutgoingMessage,
+  listProactiveTasks,
+  listProactiveTaskTargets,
   listBotBindings,
   listRecords,
+  markProactiveTargetFailed,
+  markProactiveTargetSent,
+  resetInterruptedProactiveTargets,
   setSetting,
+  updateProactiveTargetFromCommandCallback,
   upsertBotBinding,
   upsertConversation
 } from "./db.js";
@@ -37,6 +46,7 @@ app.use(express.json({ limit: "2mb" }));
 app.use("/console", express.static(path.join(publicDir, "console")));
 
 await loadBotBindingsFromConfig();
+resetInterruptedProactiveTargets();
 
 function assertCallbackSecret(req) {
   const expected = process.env.CALLBACK_SECRET;
@@ -139,6 +149,14 @@ const defaultDebugReplyConfig = {
   reply: "pong"
 };
 
+const proactiveWorkerConfig = {
+  enabled: process.env.PROACTIVE_WORKER_ENABLED !== "false",
+  intervalMs: Number(process.env.PROACTIVE_WORKER_INTERVAL_MS || 2000),
+  maxAttempts: Number(process.env.PROACTIVE_MAX_ATTEMPTS || 2)
+};
+
+let proactiveWorkerBusy = false;
+
 function getDebugReplyConfig() {
   const config = getSetting("debug_reply", defaultDebugReplyConfig);
   return {
@@ -172,6 +190,74 @@ async function handleDebugPing({ botId, message, conversationKey }) {
     worktoolResponse: result
   });
   return true;
+}
+
+function normalizeProactiveTargets(targets) {
+  if (!Array.isArray(targets)) return [];
+  const seen = new Set();
+  return targets
+    .map((target) => {
+      if (typeof target === "string") {
+        return { targetType: "private", targetName: target.trim() };
+      }
+      return {
+        targetType: target.targetType === "group" ? "group" : "private",
+        targetName: String(target.targetName || target.name || "").trim()
+      };
+    })
+    .filter((target) => target.targetName)
+    .filter((target) => {
+      const key = `${target.targetType}:${target.targetName}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+async function processNextProactiveTarget() {
+  if (!proactiveWorkerConfig.enabled || proactiveWorkerBusy) return;
+  proactiveWorkerBusy = true;
+  try {
+    const target = claimNextProactiveTarget();
+    if (!target) return;
+
+    try {
+      const result = await sendTextMessage({
+        robotId: target.botId,
+        targets: [target.targetName],
+        content: target.content
+      });
+      markProactiveTargetSent({
+        id: target.id,
+        messageId: result.data,
+        worktoolResponse: result
+      });
+      insertOutgoingMessage({
+        botId: target.botId,
+        conversationKey: `${target.botId}:proactive:${target.targetType}:${target.targetName}`,
+        messageId: result.data,
+        targetName: target.targetName,
+        content: target.content,
+        worktoolResponse: result
+      });
+    } catch (error) {
+      markProactiveTargetFailed({
+        id: target.id,
+        error: error.message,
+        retry: target.attempts < proactiveWorkerConfig.maxAttempts
+      });
+    }
+  } finally {
+    proactiveWorkerBusy = false;
+  }
+}
+
+if (proactiveWorkerConfig.enabled) {
+  setInterval(() => {
+    void processNextProactiveTarget().catch((error) => {
+      console.error("proactive worker failed:", error);
+    });
+  }, proactiveWorkerConfig.intervalMs).unref();
 }
 
 async function processIncomingMessage({ botId, message }) {
@@ -325,6 +411,10 @@ app.post("/worktool/:botId/command-callback", (req, res) => {
     botId: req.params.botId,
     payload: req.body || {}
   });
+  updateProactiveTargetFromCommandCallback({
+    messageId: req.body?.messageId,
+    payload: req.body || {}
+  });
   res.json({ code: 0, message: "参数接收成功" });
 });
 
@@ -335,6 +425,10 @@ app.post("/worktool/command-callback", (req, res) => {
     return;
   }
   insertCommandCallback({ botId, payload: req.body || {} });
+  updateProactiveTargetFromCommandCallback({
+    messageId: req.body?.messageId,
+    payload: req.body || {}
+  });
   res.json({ code: 0, message: "参数接收成功" });
 });
 
@@ -406,6 +500,72 @@ app.put(
       reply: String(body.reply || "pong")
     });
     res.json({ ok: true, config });
+  })
+);
+
+app.post(
+  "/api/proactive/tasks",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const body = req.body || {};
+    const botId = String(body.botId || process.env.ROBOT_ID || "").trim();
+    const content = String(body.content || "").trim();
+    const targets = normalizeProactiveTargets(body.targets);
+    const binding = botId ? getBotBinding(botId) : null;
+
+    if (!botId) throw new Error("botId is required");
+    if (!content) throw new Error("content is required");
+    if (!targets.length) throw new Error("at least one target is required");
+    if (targets.length > Number(process.env.PROACTIVE_MAX_TARGETS || 50)) {
+      throw new Error("too many targets");
+    }
+
+    const task = createProactiveTask({
+      botId,
+      agentId: binding?.agentId || "",
+      title: String(body.title || "").trim(),
+      content,
+      targets,
+      createdBy: "console"
+    });
+
+    void processNextProactiveTarget().catch((error) => {
+      console.error("proactive worker failed:", error);
+    });
+
+    res.json({
+      ok: true,
+      task,
+      targets: listProactiveTaskTargets(task.id)
+    });
+  })
+);
+
+app.get(
+  "/api/proactive/tasks",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    res.json({
+      ok: true,
+      tasks: listProactiveTasks(Number(req.query.limit || 20))
+    });
+  })
+);
+
+app.get(
+  "/api/proactive/tasks/:taskId",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const task = getProactiveTask(req.params.taskId);
+    if (!task) {
+      res.status(404).json({ ok: false, message: "task not found" });
+      return;
+    }
+    res.json({
+      ok: true,
+      task,
+      targets: listProactiveTaskTargets(req.params.taskId)
+    });
   })
 );
 

@@ -3,14 +3,14 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>WorkTool Bot Console</title>
+    <title>WorkTool Console</title>
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
     <header class="topbar">
       <div>
         <h1>WorkTool Bot Console</h1>
-        <p>配置 botId 与 DClaw Agent 的连接关系</p>
+        <p>管理 botId、DClaw Agent 绑定与回调运行数据</p>
       </div>
       <button id="refreshButton" type="button">刷新</button>
     </header>
@@ -89,6 +89,49 @@
 
       <section class="panel">
         <div class="section-head">
+          <h2>主动推送</h2>
+          <button id="refreshProactiveButton" class="secondary" type="button">刷新任务</button>
+        </div>
+        <form id="proactiveForm" class="form-grid">
+          <label>
+            Bot
+            <select name="botId" required></select>
+          </label>
+          <label>
+            任务名称
+            <input name="title" placeholder="例如 客户资料跟进" />
+          </label>
+          <label class="wide">
+            目标列表
+            <textarea name="targets" required rows="5" placeholder="每行一个目标，例如&#10;private:魔兮&#10;group:A招商服务群"></textarea>
+          </label>
+          <label class="wide">
+            推送内容
+            <textarea name="content" required rows="4" placeholder="请输入要主动推送的固定文案"></textarea>
+          </label>
+          <div class="actions">
+            <button type="submit">创建并发送</button>
+          </div>
+        </form>
+        <div class="table-wrap proactive-table">
+          <table>
+            <thead>
+              <tr>
+                <th>任务</th>
+                <th>Bot</th>
+                <th>状态</th>
+                <th>进度</th>
+                <th>时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="proactiveTasksTable"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="section-head">
           <h2>已配置 Bot</h2>
           <span id="botCount" class="muted"></span>
         </div>
@@ -118,6 +161,8 @@
               <option value="agent-invocations">Agent 调用</option>
               <option value="command-callbacks">指令回调</option>
               <option value="conversations">会话</option>
+              <option value="proactive-tasks">主动任务</option>
+              <option value="proactive-targets">主动目标</option>
             </select>
             <button id="loadLogsButton" type="button">查看</button>
           </div>

@@ -92,6 +92,42 @@ db.exec(`
     value_json TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS proactive_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT,
+    title TEXT,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL,
+    total_count INTEGER NOT NULL DEFAULT 0,
+    sent_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS proactive_task_targets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id INTEGER NOT NULL,
+    bot_id TEXT NOT NULL,
+    target_type TEXT NOT NULL,
+    target_name TEXT NOT NULL,
+    content TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    message_id TEXT,
+    error_message TEXT,
+    worktool_response_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT,
+    FOREIGN KEY(task_id) REFERENCES proactive_tasks(id)
+  );
 `);
 
 function ensureColumn(table, column, definition) {
@@ -373,6 +409,287 @@ export function finishAgentInvocation({ id, response, status = "success", error 
   `).run(json(response), status, error || "", now(), id);
 }
 
+function rowToProactiveTask(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    title: row.title,
+    content: row.content,
+    status: row.status,
+    totalCount: row.total_count,
+    sentCount: row.sent_count,
+    failedCount: row.failed_count,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at
+  };
+}
+
+function rowToProactiveTarget(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    botId: row.bot_id,
+    targetType: row.target_type,
+    targetName: row.target_name,
+    content: row.content,
+    status: row.status,
+    attempts: row.attempts,
+    messageId: row.message_id,
+    errorMessage: row.error_message,
+    worktoolResponse: parseJson(row.worktool_response_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at
+  };
+}
+
+export function createProactiveTask({ botId, agentId, title, content, targets, createdBy }) {
+  const timestamp = now();
+  const normalizedTargets = targets.map((target) => ({
+    targetType: target.targetType === "group" ? "group" : "private",
+    targetName: String(target.targetName || "").trim()
+  }));
+
+  const result = db.prepare(`
+    INSERT INTO proactive_tasks (
+      bot_id, agent_id, title, content, status, total_count, created_by,
+      created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    botId,
+    agentId || "",
+    title || "",
+    content,
+    "pending",
+    normalizedTargets.length,
+    createdBy || "console",
+    timestamp,
+    timestamp
+  );
+
+  const taskId = result.lastInsertRowid;
+  const insertTarget = db.prepare(`
+    INSERT INTO proactive_task_targets (
+      task_id, bot_id, target_type, target_name, content, status, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const target of normalizedTargets) {
+    insertTarget.run(
+      taskId,
+      botId,
+      target.targetType,
+      target.targetName,
+      content,
+      "pending",
+      timestamp,
+      timestamp
+    );
+  }
+
+  return getProactiveTask(taskId);
+}
+
+export function getProactiveTask(id) {
+  return rowToProactiveTask(
+    db.prepare("SELECT * FROM proactive_tasks WHERE id = ?").get(id)
+  );
+}
+
+export function listProactiveTasks(limit = 20) {
+  return db
+    .prepare("SELECT * FROM proactive_tasks ORDER BY id DESC LIMIT ?")
+    .all(Number(limit))
+    .map(rowToProactiveTask);
+}
+
+export function listProactiveTaskTargets(taskId) {
+  return db
+    .prepare("SELECT * FROM proactive_task_targets WHERE task_id = ? ORDER BY id ASC")
+    .all(taskId)
+    .map(rowToProactiveTarget);
+}
+
+export function claimNextProactiveTarget() {
+  const target = db
+    .prepare(`
+      SELECT *
+      FROM proactive_task_targets
+      WHERE status = 'pending'
+      ORDER BY id ASC
+      LIMIT 1
+    `)
+    .get();
+  if (!target) return null;
+
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE proactive_task_targets
+    SET status = 'sending',
+        attempts = attempts + 1,
+        started_at = COALESCE(started_at, ?),
+        updated_at = ?
+    WHERE id = ? AND status = 'pending'
+  `).run(timestamp, timestamp, target.id);
+  if (!result.changes) return null;
+
+  db.prepare(`
+    UPDATE proactive_tasks
+    SET status = CASE WHEN status = 'pending' THEN 'sending' ELSE status END,
+        started_at = COALESCE(started_at, ?),
+        updated_at = ?
+    WHERE id = ?
+  `).run(timestamp, timestamp, target.task_id);
+
+  return rowToProactiveTarget(
+    db.prepare("SELECT * FROM proactive_task_targets WHERE id = ?").get(target.id)
+  );
+}
+
+export function resetInterruptedProactiveTargets() {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE proactive_task_targets
+    SET status = 'pending',
+        updated_at = ?
+    WHERE status = 'sending'
+  `).run(timestamp);
+  db.prepare(`
+    UPDATE proactive_tasks
+    SET status = 'pending',
+        updated_at = ?
+    WHERE status = 'sending'
+      AND id NOT IN (
+        SELECT DISTINCT task_id
+        FROM proactive_task_targets
+        WHERE status IN ('sent', 'failed')
+      )
+  `).run(timestamp);
+}
+
+export function markProactiveTargetSent({ id, messageId, worktoolResponse }) {
+  const timestamp = now();
+  const target = db.prepare("SELECT task_id FROM proactive_task_targets WHERE id = ?").get(id);
+  db.prepare(`
+    UPDATE proactive_task_targets
+    SET status = 'sent',
+        message_id = ?,
+        error_message = '',
+        worktool_response_json = ?,
+        finished_at = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(messageId || "", json(worktoolResponse), timestamp, timestamp, id);
+  if (target) refreshProactiveTaskStatus(target.task_id);
+}
+
+export function updateProactiveTargetFromCommandCallback({ messageId, payload }) {
+  if (!messageId) return false;
+  const target = db
+    .prepare("SELECT id, task_id FROM proactive_task_targets WHERE message_id = ?")
+    .get(messageId);
+  if (!target) return false;
+
+  const errorCode = Number(payload.errorCode || 0);
+  const failed =
+    errorCode !== 0 ||
+    (Array.isArray(payload.failList) && payload.failList.length > 0);
+  const timestamp = now();
+
+  db.prepare(`
+    UPDATE proactive_task_targets
+    SET status = ?,
+        error_message = ?,
+        worktool_response_json = ?,
+        finished_at = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    failed ? "failed" : "sent",
+    failed ? payload.errorReason || payload.errorMsg || "WorkTool command failed" : "",
+    json(payload),
+    timestamp,
+    timestamp,
+    target.id
+  );
+  refreshProactiveTaskStatus(target.task_id);
+  return true;
+}
+
+export function markProactiveTargetFailed({ id, error, retry = false }) {
+  const timestamp = now();
+  const target = db.prepare("SELECT task_id FROM proactive_task_targets WHERE id = ?").get(id);
+  db.prepare(`
+    UPDATE proactive_task_targets
+    SET status = ?,
+        error_message = ?,
+        finished_at = CASE WHEN ? THEN finished_at ELSE ? END,
+        updated_at = ?
+    WHERE id = ?
+  `).run(retry ? "pending" : "failed", error || "", retry ? 1 : 0, timestamp, timestamp, id);
+  if (target) refreshProactiveTaskStatus(target.task_id);
+}
+
+export function refreshProactiveTaskStatus(taskId) {
+  const counts = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed,
+      SUM(CASE WHEN status IN ('pending', 'sending') THEN 1 ELSE 0 END) AS active
+    FROM proactive_task_targets
+    WHERE task_id = ?
+  `).get(taskId);
+
+  let status = "pending";
+  let finishedAt = null;
+  if (counts.total > 0 && counts.sent === counts.total) {
+    status = "sent";
+    finishedAt = now();
+  } else if (counts.total > 0 && counts.failed === counts.total) {
+    status = "failed";
+    finishedAt = now();
+  } else if (counts.active > 0 && (counts.sent > 0 || counts.failed > 0)) {
+    status = "sending";
+  } else if (counts.failed > 0 && counts.sent > 0) {
+    status = "partial";
+    finishedAt = now();
+  } else if (counts.active === 0 && counts.failed > 0) {
+    status = counts.sent > 0 ? "partial" : "failed";
+    finishedAt = now();
+  } else {
+    status = "sending";
+  }
+
+  db.prepare(`
+    UPDATE proactive_tasks
+    SET status = ?,
+        total_count = ?,
+        sent_count = ?,
+        failed_count = ?,
+        finished_at = COALESCE(finished_at, ?),
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    status,
+    counts.total || 0,
+    counts.sent || 0,
+    counts.failed || 0,
+    finishedAt,
+    now(),
+    taskId
+  );
+}
+
 export function listRecords(name, limit = 50) {
   const allowed = {
     "incoming-messages": {
@@ -409,6 +726,14 @@ export function listRecords(name, limit = 50) {
       table: "conversations",
       mapper: (row) => row,
       orderBy: "updated_at"
+    },
+    "proactive-tasks": {
+      table: "proactive_tasks",
+      mapper: rowToProactiveTask
+    },
+    "proactive-targets": {
+      table: "proactive_task_targets",
+      mapper: rowToProactiveTarget
     }
   };
   const config = allowed[name];

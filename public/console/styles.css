@@ -118,19 +118,33 @@ label.wide,
 
 input,
 select,
+textarea,
 button {
-  height: 38px;
   border-radius: 6px;
   font: inherit;
 }
 
 input,
-select {
+select,
+button {
+  height: 38px;
+}
+
+input,
+select,
+textarea {
   width: 100%;
   border: 1px solid #cbd5e1;
   padding: 0 11px;
   background: #fff;
   color: var(--text);
+}
+
+textarea {
+  min-height: 96px;
+  padding: 10px 11px;
+  resize: vertical;
+  line-height: 1.5;
 }
 
 input[type="checkbox"] {
@@ -180,6 +194,10 @@ button.danger {
   overflow-x: auto;
 }
 
+.proactive-table {
+  margin-top: 16px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -222,6 +240,11 @@ th {
 .pill.off {
   color: #344054;
   background: #eef2f7;
+}
+
+.pill.bad {
+  color: var(--danger);
+  background: #fee4e2;
 }
 
 .row-actions {
