@@ -686,7 +686,9 @@ app.get(
       ok: true,
       tasks: listProactiveTasks({
         limit: Number(req.query.limit || 20),
-        botId: String(req.query.botId || "").trim()
+        botId: String(req.query.botId || "").trim(),
+        dateFrom: String(req.query.dateFrom || "").trim(),
+        dateTo: String(req.query.dateTo || "").trim()
       })
     });
   })

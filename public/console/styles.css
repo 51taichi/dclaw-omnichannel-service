@@ -642,7 +642,14 @@ button.danger:hover {
 }
 
 .proactive-table {
-  margin-top: 16px;
+  margin-top: 10px;
+}
+
+.task-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 240px));
+  gap: 10px;
+  margin-top: 14px;
 }
 
 .proactive-table th:first-child,
@@ -1031,6 +1038,7 @@ td .muted {
 
   .inline-form,
   .inline-form.compact,
+  .task-filters,
   .target-toolbar {
     grid-template-columns: 1fr;
   }

@@ -727,16 +727,25 @@ export function getProactiveTask(id) {
   );
 }
 
-export function listProactiveTasks({ limit = 20, botId = "" } = {}) {
+export function listProactiveTasks({ limit = 20, botId = "", dateFrom = "", dateTo = "" } = {}) {
+  const filters = [];
+  const values = [];
   if (botId) {
-    return db
-      .prepare("SELECT * FROM proactive_tasks WHERE bot_id = ? ORDER BY id DESC LIMIT ?")
-      .all(botId, Number(limit))
-      .map(rowToProactiveTask);
+    filters.push("bot_id = ?");
+    values.push(botId);
   }
+  if (dateFrom) {
+    filters.push("created_at >= ?");
+    values.push(dateFrom);
+  }
+  if (dateTo) {
+    filters.push("created_at < ?");
+    values.push(dateTo);
+  }
+  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
   return db
-    .prepare("SELECT * FROM proactive_tasks ORDER BY id DESC LIMIT ?")
-    .all(Number(limit))
+    .prepare(`SELECT * FROM proactive_tasks ${where} ORDER BY id DESC LIMIT ?`)
+    .all(...values, Number(limit))
     .map(rowToProactiveTask);
 }
 

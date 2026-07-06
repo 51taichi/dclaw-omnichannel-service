@@ -13,6 +13,8 @@ const els = {
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
   proactiveForm: document.querySelector("#proactiveForm"),
+  taskDateFrom: document.querySelector("#taskDateFrom"),
+  taskDateTo: document.querySelector("#taskDateTo"),
   refreshProactiveButton: document.querySelector("#refreshProactiveButton"),
   loadTargetsButton: document.querySelector("#loadTargetsButton"),
   seedTargetsButton: document.querySelector("#seedTargetsButton"),
@@ -36,6 +38,9 @@ const els = {
 };
 
 els.apiKeyInput.value = state.apiKey;
+const today = formatLocalDate();
+els.taskDateFrom.value = today;
+els.taskDateTo.value = today;
 
 function headers(extra = {}) {
   return {
@@ -56,6 +61,23 @@ function toast(message) {
 
 function icon(name) {
   return `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
+}
+
+function formatLocalDate(date = new Date()) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 10);
+}
+
+function dateToLocalIsoStart(value) {
+  if (!value) return "";
+  return new Date(`${value}T00:00:00`).toISOString();
+}
+
+function dateToLocalIsoNextDay(value) {
+  if (!value) return "";
+  const date = new Date(`${value}T00:00:00`);
+  date.setDate(date.getDate() + 1);
+  return date.toISOString();
 }
 
 async function request(path, options = {}) {
@@ -489,6 +511,10 @@ async function createProactiveTask(event) {
 async function loadProactiveTasks() {
   const params = new URLSearchParams({ limit: "20" });
   if (state.selectedBotId) params.set("botId", state.selectedBotId);
+  const dateFrom = dateToLocalIsoStart(els.taskDateFrom.value);
+  const dateTo = dateToLocalIsoNextDay(els.taskDateTo.value || els.taskDateFrom.value);
+  if (dateFrom) params.set("dateFrom", dateFrom);
+  if (dateTo) params.set("dateTo", dateTo);
   const data = await request(`/api/proactive/tasks?${params.toString()}`);
   renderProactiveTasks(data.tasks || []);
 }
@@ -548,6 +574,12 @@ els.proactiveForm.addEventListener("submit", (event) =>
 );
 els.proactiveForm.botId.addEventListener("change", () =>
   loadAddressBookTargets().catch((error) => toast(error.message))
+);
+els.taskDateFrom.addEventListener("change", () =>
+  loadProactiveTasks().catch((error) => toast(error.message))
+);
+els.taskDateTo.addEventListener("change", () =>
+  loadProactiveTasks().catch((error) => toast(error.message))
 );
 els.targetSearchInput.addEventListener("input", () => renderTargetList());
 els.loadTargetsButton.addEventListener("click", () =>
