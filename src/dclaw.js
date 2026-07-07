@@ -52,6 +52,64 @@ export function buildDclawRequest({ binding, conversation, message }) {
   };
 }
 
+export function buildDclawProactiveEventRequest({
+  binding,
+  conversationKey,
+  target,
+  worktoolMessageId,
+  worktoolResponse
+}) {
+  const isGroup = target.targetType === "group";
+  const worktoolMessage = {
+    channel: "wecom-worktool",
+    eventType: "outbound_proactive_message",
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationId: conversationKey,
+    sessionId: conversationKey,
+    messageId: worktoolMessageId || "",
+    message: target.content || "",
+    rawMessage: target.content || "",
+    roomType: isGroup ? 1 : 2,
+    groupName: isGroup ? target.targetName : "",
+    userId: isGroup ? "" : target.targetName,
+    metadata: {
+      targetType: target.targetType,
+      targetName: target.targetName,
+      messageType: target.messageType || "text",
+      messagePayload: target.messagePayload || {},
+      worktoolResponse: worktoolResponse || null,
+      payload: target
+    }
+  };
+
+  return {
+    external_user_id: worktoolMessage.userId || worktoolMessage.groupName || "unknown",
+    external_session_id: worktoolMessage.conversationId,
+    message: [
+      "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
+      "eventType=outbound_proactive_message 表示机器人已经主动向客户或群发送了一条消息。",
+      "这条事件只用于补全当前 conversationId 的会话历史，请记录该主动发送事实。",
+      "不要把它当成客户提问，不要生成客户可见回复；最终请输出空字符串。",
+      "",
+      JSON.stringify(worktoolMessage, null, 2)
+    ].join("\n"),
+    stream: true,
+    metadata: {
+      source: "worktool",
+      botId: worktoolMessage.botId,
+      agentId: worktoolMessage.agentId,
+      conversationId: worktoolMessage.conversationId,
+      messageId: worktoolMessage.messageId,
+      eventType: worktoolMessage.eventType,
+      roomType: worktoolMessage.roomType,
+      groupName: worktoolMessage.groupName,
+      userId: worktoolMessage.userId,
+      worktool: worktoolMessage
+    }
+  };
+}
+
 export async function invokeDclawAgent({ binding, request }) {
   if (!binding.agentApiUrl) {
     throw new Error("DClaw agentApiUrl is required");

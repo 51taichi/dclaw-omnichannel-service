@@ -6,7 +6,7 @@ import multer from "multer";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
-import { buildDclawRequest, invokeDclawAgent } from "./dclaw.js";
+import { buildDclawProactiveEventRequest, buildDclawRequest, invokeDclawAgent } from "./dclaw.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
   beginMessageProcessing,
@@ -30,6 +30,7 @@ import {
   listBotBindings,
   listRecords,
   markProactiveTargetFailed,
+  markProactiveTargetAgentSync,
   markProactiveTargetSent,
   resetInterruptedProactiveTargets,
   setSetting,
@@ -410,6 +411,112 @@ function buildCommandForTarget(target) {
   return null;
 }
 
+function getProactiveConversationKey(target) {
+  return `${target.botId}:${target.targetType === "group" ? "group" : "private"}:${target.targetName}`;
+}
+
+function buildProactiveConversationMessage(target) {
+  const isGroup = target.targetType === "group";
+  return {
+    roomType: isGroup ? 1 : 2,
+    receivedName: isGroup ? "" : target.targetName,
+    groupName: isGroup ? target.targetName : ""
+  };
+}
+
+async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse }) {
+  const binding = getBotBinding(target.botId);
+  if (!binding || !binding.enabled) {
+    markProactiveTargetAgentSync({
+      id: target.id,
+      status: "skipped",
+      error: "no enabled DClaw binding"
+    });
+    return;
+  }
+
+  const conversationKey = getProactiveConversationKey(target);
+  upsertConversation({
+    botId: target.botId,
+    agentId: binding.agentId,
+    conversationKey,
+    message: buildProactiveConversationMessage(target)
+  });
+  const request = buildDclawProactiveEventRequest({
+    binding,
+    conversationKey,
+    target,
+    worktoolMessageId: messageId,
+    worktoolResponse
+  });
+  const invocationId = insertAgentInvocationStart({
+    botId: target.botId,
+    agentId: binding.agentId,
+    conversationKey,
+    incomingMessageId: `proactive:${target.id}`,
+    request
+  });
+  const startedAt = Date.now();
+  markProactiveTargetAgentSync({ id: target.id, status: "syncing" });
+  logInfo("proactive.agent_sync.start", {
+    targetId: target.id,
+    taskId: target.taskId,
+    botId: target.botId,
+    agentId: binding.agentId,
+    conversationKey,
+    invocationId
+  });
+
+  try {
+    const invocation = await enqueueAgentInvocation(() =>
+      invokeDclawAgent({ binding, request })
+    );
+    finishAgentInvocation({
+      id: invocationId,
+      response: invocation.response,
+      status: "success"
+    });
+    markProactiveTargetAgentSync({
+      id: target.id,
+      status: "synced",
+      response: invocation.response
+    });
+    logInfo("proactive.agent_sync.success", {
+      targetId: target.id,
+      taskId: target.taskId,
+      botId: target.botId,
+      agentId: binding.agentId,
+      conversationKey,
+      invocationId,
+      durationMs: Date.now() - startedAt,
+      replyLength: String(invocation.reply || "").trim().length,
+      sessionId: invocation.sessionId || ""
+    });
+  } catch (error) {
+    finishAgentInvocation({
+      id: invocationId,
+      response: null,
+      status: "failed",
+      error: error.message
+    });
+    markProactiveTargetAgentSync({
+      id: target.id,
+      status: "failed",
+      error: error.message
+    });
+    logWarn("proactive.agent_sync.failed", {
+      targetId: target.id,
+      taskId: target.taskId,
+      botId: target.botId,
+      agentId: binding.agentId,
+      conversationKey,
+      invocationId,
+      durationMs: Date.now() - startedAt,
+      error: error.message
+    });
+  }
+}
+
 async function processNextProactiveTarget() {
   if (!proactiveWorkerConfig.enabled || proactiveWorkerBusy) return;
   proactiveWorkerBusy = true;
@@ -435,10 +542,16 @@ async function processNextProactiveTarget() {
       });
       insertOutgoingMessage({
         botId: target.botId,
-        conversationKey: `${target.botId}:proactive:${target.targetType}:${target.targetName}`,
+        agentId: target.agentId || "",
+        conversationKey: getProactiveConversationKey(target),
         messageId: result.data,
         targetName: target.targetName,
         content: target.content,
+        worktoolResponse: result
+      });
+      void syncProactiveTargetToAgent({
+        target,
+        messageId: result.data,
         worktoolResponse: result
       });
     } catch (error) {

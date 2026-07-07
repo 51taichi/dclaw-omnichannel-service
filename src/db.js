@@ -139,6 +139,10 @@ db.exec(`
     message_id TEXT,
     error_message TEXT,
     worktool_response_json TEXT,
+    agent_sync_status TEXT NOT NULL DEFAULT 'pending',
+    agent_sync_error TEXT,
+    agent_sync_response_json TEXT,
+    agent_sync_at TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     started_at TEXT,
@@ -176,6 +180,10 @@ ensureColumn("proactive_tasks", "message_type", "TEXT NOT NULL DEFAULT 'text'");
 ensureColumn("proactive_tasks", "message_payload_json", "TEXT");
 ensureColumn("proactive_task_targets", "message_type", "TEXT NOT NULL DEFAULT 'text'");
 ensureColumn("proactive_task_targets", "message_payload_json", "TEXT");
+ensureColumn("proactive_task_targets", "agent_sync_status", "TEXT NOT NULL DEFAULT 'pending'");
+ensureColumn("proactive_task_targets", "agent_sync_error", "TEXT");
+ensureColumn("proactive_task_targets", "agent_sync_response_json", "TEXT");
+ensureColumn("proactive_task_targets", "agent_sync_at", "TEXT");
 
 function now() {
   return new Date().toISOString();
@@ -525,6 +533,10 @@ function rowToProactiveTarget(row) {
     messageId: row.message_id,
     errorMessage: row.error_message,
     worktoolResponse: parseJson(row.worktool_response_json),
+    agentSyncStatus: row.agent_sync_status || "pending",
+    agentSyncError: row.agent_sync_error || "",
+    agentSyncResponse: parseJson(row.agent_sync_response_json),
+    agentSyncAt: row.agent_sync_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     startedAt: row.started_at,
@@ -856,6 +868,25 @@ export function markProactiveTargetSent({ id, messageId, worktoolResponse }) {
     WHERE id = ?
   `).run(messageId || "", json(worktoolResponse), timestamp, timestamp, id);
   if (target) refreshProactiveTaskStatus(target.task_id);
+}
+
+export function markProactiveTargetAgentSync({ id, status, response, error }) {
+  db.prepare(`
+    UPDATE proactive_task_targets
+    SET agent_sync_status = ?,
+        agent_sync_error = ?,
+        agent_sync_response_json = ?,
+        agent_sync_at = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    status,
+    error || "",
+    response === undefined ? null : json(response),
+    now(),
+    now(),
+    id
+  );
 }
 
 export function updateProactiveTargetFromCommandCallback({ messageId, payload }) {
