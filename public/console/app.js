@@ -13,6 +13,8 @@ const els = {
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
   proactiveForm: document.querySelector("#proactiveForm"),
+  messageTypeInput: document.querySelector('select[name="messageType"]'),
+  messageFields: document.querySelectorAll("[data-message-field]"),
   taskDateFrom: document.querySelector("#taskDateFrom"),
   taskDateTo: document.querySelector("#taskDateTo"),
   refreshProactiveButton: document.querySelector("#refreshProactiveButton"),
@@ -482,15 +484,39 @@ async function saveDebugReply(event) {
 async function createProactiveTask(event) {
   event.preventDefault();
   const data = new FormData(els.proactiveForm);
+  const messageType = String(data.get("messageType") || "text");
   const payload = {
     botId: String(data.get("botId") || "").trim(),
     title: String(data.get("title") || "").trim(),
+    messageType,
     content: String(data.get("content") || "").trim(),
     targets: getSelectedTargets()
   };
 
-  if (!payload.botId || !payload.content || !payload.targets.length) {
-    toast("请填写 Bot、目标列表和推送内容");
+  if (messageType === "media") {
+    payload.fileType = String(data.get("fileType") || "image");
+    payload.fileUrl = String(data.get("fileUrl") || "").trim();
+    payload.objectName = String(data.get("objectName") || "").trim();
+    payload.extraText = String(data.get("extraText") || "").trim();
+  } else if (messageType === "mini_program") {
+    payload.rawCommand = String(data.get("rawCommand") || "").trim();
+    payload.content = payload.title || "小程序/高级消息";
+  }
+
+  if (!payload.botId || !payload.targets.length) {
+    toast("请填写 Bot 和目标列表");
+    return;
+  }
+  if (messageType === "text" && !payload.content) {
+    toast("请填写推送内容");
+    return;
+  }
+  if (messageType === "media" && !payload.fileUrl) {
+    toast("请填写文件 URL");
+    return;
+  }
+  if (messageType === "mini_program" && !payload.rawCommand) {
+    toast("请填写小程序/高级消息 JSON");
     return;
   }
 
@@ -505,7 +531,24 @@ async function createProactiveTask(event) {
   renderTargetList();
   els.proactiveForm.title.value = "";
   els.proactiveForm.content.value = "";
+  els.proactiveForm.fileUrl.value = "";
+  els.proactiveForm.objectName.value = "";
+  els.proactiveForm.extraText.value = "";
+  els.proactiveForm.rawCommand.value = "";
   await loadProactiveTasks();
+}
+
+function syncMessageTypeFields() {
+  const type = els.messageTypeInput.value || "text";
+  els.messageFields.forEach((field) => {
+    const active = field.dataset.messageField === type;
+    field.hidden = !active;
+    field.querySelectorAll("textarea, input, select").forEach((input) => {
+      if (input.name === "content") input.required = type === "text";
+      if (input.name === "fileUrl") input.required = type === "media";
+      if (input.name === "rawCommand") input.required = type === "mini_program";
+    });
+  });
 }
 
 async function loadProactiveTasks() {
@@ -525,9 +568,16 @@ function renderProactiveTasks(tasks) {
       const progress = `${task.sentCount || 0}/${task.totalCount || 0}`;
       const failed = task.failedCount ? `，失败 ${task.failedCount}` : "";
       const content = task.content || "";
+      const typeLabel = {
+        text: "文本",
+        media: "媒体",
+        mini_program: "小程序",
+        raw: "高级"
+      }[task.messageType || "text"] || "文本";
       return `
         <tr>
           <td class="task-content-cell">
+            <small class="message-type-badge">${escapeHtml(typeLabel)}</small>
             <span class="task-content-text" title="${escapeHtml(content)}">${escapeHtml(content)}</span>
           </td>
           <td class="muted">${escapeHtml(botDisplayName(task.botId))}</td>
@@ -572,6 +622,7 @@ els.debugReplyForm.addEventListener("submit", (event) =>
 els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))
 );
+els.messageTypeInput.addEventListener("change", syncMessageTypeFields);
 els.proactiveForm.botId.addEventListener("change", () =>
   loadAddressBookTargets().catch((error) => toast(error.message))
 );
@@ -628,3 +679,4 @@ Promise.all([loadBots(), loadDebugReply(), loadProactiveTasks()])
   .catch((error) => {
     els.logsOutput.textContent = `无法加载配置：${error.message}`;
   });
+syncMessageTypeFields();

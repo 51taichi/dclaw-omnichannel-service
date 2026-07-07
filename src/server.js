@@ -36,10 +36,12 @@ import {
   upsertConversation
 } from "./db.js";
 import {
+  buildRawMediaCommand,
   bindCommandCallback,
   bindMessageCallback,
   getCallbackConfig,
   getRobotInfo,
+  sendRawCommand,
   sendTextMessage
 } from "./worktool.js";
 
@@ -261,6 +263,86 @@ function normalizeProactiveTargets(targets) {
     });
 }
 
+function normalizeMessageType(value) {
+  if (["text", "media", "mini_program", "raw"].includes(value)) return value;
+  return "text";
+}
+
+function fileTypeLabel(fileType) {
+  return {
+    image: "图片",
+    file: "文件",
+    video: "视频",
+    audio: "音频",
+    0: "图片",
+    1: "文件",
+    2: "视频",
+    3: "音频"
+  }[Number(fileType)] || "媒体";
+}
+
+function normalizeProactiveMessage(body) {
+  const messageType = normalizeMessageType(body.messageType);
+  if (messageType === "media") {
+    const payload = {
+      fileUrl: String(body.fileUrl || "").trim(),
+      objectName: String(body.objectName || "").trim(),
+      fileType: String(body.fileType || "image").trim(),
+      extraText: String(body.extraText || "").trim(),
+      sendType: Number(body.sendType || 0)
+    };
+    if (!payload.fileUrl) throw new Error("fileUrl is required");
+    buildRawMediaCommand({ targets: ["validate"], ...payload });
+    return {
+      messageType,
+      content: payload.extraText || `${fileTypeLabel(payload.fileType)}：${payload.objectName || payload.fileUrl}`,
+      messagePayload: payload
+    };
+  }
+
+  if (messageType === "mini_program" || messageType === "raw") {
+    let command;
+    try {
+      command = typeof body.rawCommand === "string" ? JSON.parse(body.rawCommand) : body.rawCommand;
+    } catch {
+      throw new Error("rawCommand must be valid JSON");
+    }
+    if (!command || typeof command !== "object" || Array.isArray(command)) {
+      throw new Error("rawCommand must be a JSON object");
+    }
+    return {
+      messageType,
+      content: String(body.content || body.title || "小程序/高级消息").trim(),
+      messagePayload: { command }
+    };
+  }
+
+  const content = String(body.content || "").trim();
+  if (!content) throw new Error("content is required");
+  return {
+    messageType: "text",
+    content,
+    messagePayload: { content }
+  };
+}
+
+function buildCommandForTarget(target) {
+  const payload = target.messagePayload || {};
+  if (target.messageType === "media") {
+    return buildRawMediaCommand({
+      targets: [target.targetName],
+      ...payload
+    });
+  }
+  if (target.messageType === "mini_program" || target.messageType === "raw") {
+    return {
+      ...(payload.command || {}),
+      titleList: [target.targetName]
+    };
+  }
+  return null;
+}
+
 async function processNextProactiveTarget() {
   if (!proactiveWorkerConfig.enabled || proactiveWorkerBusy) return;
   proactiveWorkerBusy = true;
@@ -269,11 +351,16 @@ async function processNextProactiveTarget() {
     if (!target) return;
 
     try {
-      const result = await sendTextMessage({
-        robotId: target.botId,
-        targets: [target.targetName],
-        content: target.content
-      });
+      const result = target.messageType === "text"
+        ? await sendTextMessage({
+          robotId: target.botId,
+          targets: [target.targetName],
+          content: target.content
+        })
+        : await sendRawCommand({
+          robotId: target.botId,
+          command: buildCommandForTarget(target)
+        });
       markProactiveTargetSent({
         id: target.id,
         messageId: result.data,
@@ -646,12 +733,11 @@ app.post(
     assertAdmin(req);
     const body = req.body || {};
     const botId = String(body.botId || process.env.ROBOT_ID || "").trim();
-    const content = String(body.content || "").trim();
     const targets = normalizeProactiveTargets(body.targets);
     const binding = botId ? getBotBinding(botId) : null;
+    const message = normalizeProactiveMessage(body);
 
     if (!botId) throw new Error("botId is required");
-    if (!content) throw new Error("content is required");
     if (!targets.length) throw new Error("at least one target is required");
     if (targets.length > Number(process.env.PROACTIVE_MAX_TARGETS || 50)) {
       throw new Error("too many targets");
@@ -661,7 +747,9 @@ app.post(
       botId,
       agentId: binding?.agentId || "",
       title: String(body.title || "").trim(),
-      content,
+      content: message.content,
+      messageType: message.messageType,
+      messagePayload: message.messagePayload,
       targets,
       createdBy: "console"
     });

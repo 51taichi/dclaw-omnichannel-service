@@ -94,3 +94,85 @@ export async function sendTextMessage({ robotId, targets, content, socketType = 
     })
   });
 }
+
+export function buildRawMediaCommand({
+  targets,
+  fileUrl,
+  objectName,
+  fileType,
+  extraText = "",
+  sendType = 0
+}) {
+  if (!Array.isArray(targets) || targets.length === 0) {
+    throw new Error("targets must be a non-empty array");
+  }
+  if (!fileUrl || typeof fileUrl !== "string") {
+    throw new Error("fileUrl must be a non-empty string");
+  }
+  const fileTypeMap = {
+    0: "image",
+    1: "file",
+    2: "video",
+    3: "audio",
+    image: "image",
+    file: "file",
+    video: "video",
+    audio: "audio"
+  };
+  const normalizedFileType = fileTypeMap[String(fileType)];
+  if (!normalizedFileType) {
+    throw new Error("fileType must be image, file, video, or audio");
+  }
+
+  return {
+    type: 218,
+    titleList: targets,
+    fileUrl,
+    objectName: objectName || "",
+    fileType: normalizedFileType,
+    extraText: extraText || "",
+    sendType: Number(sendType || 0)
+  };
+}
+
+export async function sendRawCommand({ robotId, command, socketType = 2 }) {
+  if (!command || typeof command !== "object") {
+    throw new Error("command must be an object");
+  }
+  if (!Array.isArray(command.titleList) || command.titleList.length === 0) {
+    throw new Error("command.titleList must be a non-empty array");
+  }
+
+  return requestWorkTool("/wework/sendRawMessage", {
+    robotId,
+    method: "POST",
+    body: JSON.stringify({
+      socketType,
+      list: [command]
+    })
+  });
+}
+
+export async function sendMediaMessage({
+  robotId,
+  targets,
+  fileUrl,
+  objectName,
+  fileType,
+  extraText,
+  sendType,
+  socketType = 2
+}) {
+  return sendRawCommand({
+    robotId,
+    socketType,
+    command: buildRawMediaCommand({
+      targets,
+      fileUrl,
+      objectName,
+      fileType,
+      extraText,
+      sendType
+    })
+  });
+}

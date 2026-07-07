@@ -112,6 +112,8 @@ db.exec(`
     agent_id TEXT,
     title TEXT,
     content TEXT NOT NULL,
+    message_type TEXT NOT NULL DEFAULT 'text',
+    message_payload_json TEXT,
     status TEXT NOT NULL,
     total_count INTEGER NOT NULL DEFAULT 0,
     sent_count INTEGER NOT NULL DEFAULT 0,
@@ -130,6 +132,8 @@ db.exec(`
     target_type TEXT NOT NULL,
     target_name TEXT NOT NULL,
     content TEXT NOT NULL,
+    message_type TEXT NOT NULL DEFAULT 'text',
+    message_payload_json TEXT,
     status TEXT NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
     message_id TEXT,
@@ -168,6 +172,10 @@ function ensureColumn(table, column, definition) {
 
 ensureColumn("bot_agent_bindings", "dclaw_base_url", "TEXT");
 ensureColumn("bot_agent_bindings", "dclaw_public_id", "TEXT");
+ensureColumn("proactive_tasks", "message_type", "TEXT NOT NULL DEFAULT 'text'");
+ensureColumn("proactive_tasks", "message_payload_json", "TEXT");
+ensureColumn("proactive_task_targets", "message_type", "TEXT NOT NULL DEFAULT 'text'");
+ensureColumn("proactive_task_targets", "message_payload_json", "TEXT");
 
 function now() {
   return new Date().toISOString();
@@ -487,6 +495,8 @@ function rowToProactiveTask(row) {
     agentId: row.agent_id,
     title: row.title,
     content: row.content,
+    messageType: row.message_type || "text",
+    messagePayload: parseJson(row.message_payload_json),
     status: row.status,
     totalCount: row.total_count,
     sentCount: row.sent_count,
@@ -508,6 +518,8 @@ function rowToProactiveTarget(row) {
     targetType: row.target_type,
     targetName: row.target_name,
     content: row.content,
+    messageType: row.message_type || "text",
+    messagePayload: parseJson(row.message_payload_json),
     status: row.status,
     attempts: row.attempts,
     messageId: row.message_id,
@@ -672,24 +684,38 @@ export function insertMockProactiveTargets(botId) {
   );
 }
 
-export function createProactiveTask({ botId, agentId, title, content, targets, createdBy }) {
+export function createProactiveTask({
+  botId,
+  agentId,
+  title,
+  content,
+  messageType = "text",
+  messagePayload = {},
+  targets,
+  createdBy
+}) {
   const timestamp = now();
   const normalizedTargets = targets.map((target) => ({
     targetType: target.targetType === "group" ? "group" : "private",
     targetName: String(target.targetName || "").trim()
   }));
+  const normalizedMessageType = ["text", "media", "mini_program", "raw"].includes(messageType)
+    ? messageType
+    : "text";
 
   const result = db.prepare(`
     INSERT INTO proactive_tasks (
-      bot_id, agent_id, title, content, status, total_count, created_by,
-      created_at, updated_at
+      bot_id, agent_id, title, content, message_type, message_payload_json,
+      status, total_count, created_by, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     botId,
     agentId || "",
     title || "",
     content,
+    normalizedMessageType,
+    json(messagePayload),
     "pending",
     normalizedTargets.length,
     createdBy || "console",
@@ -700,9 +726,10 @@ export function createProactiveTask({ botId, agentId, title, content, targets, c
   const taskId = result.lastInsertRowid;
   const insertTarget = db.prepare(`
     INSERT INTO proactive_task_targets (
-      task_id, bot_id, target_type, target_name, content, status, created_at, updated_at
+      task_id, bot_id, target_type, target_name, content, message_type,
+      message_payload_json, status, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const target of normalizedTargets) {
@@ -712,6 +739,8 @@ export function createProactiveTask({ botId, agentId, title, content, targets, c
       target.targetType,
       target.targetName,
       content,
+      normalizedMessageType,
+      json(messagePayload),
       "pending",
       timestamp,
       timestamp

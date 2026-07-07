@@ -662,6 +662,19 @@ button.danger:hover {
   min-width: 0;
 }
 
+.message-type-badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  margin-bottom: 4px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--panel-strong);
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .task-content-text {
   display: block;
   max-width: 260px;
@@ -679,6 +692,17 @@ button.danger:hover {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fffefa;
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.media-grid[hidden],
+.proactive-field[hidden] {
+  display: none;
 }
 
 .target-picker-head {
