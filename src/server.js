@@ -1,5 +1,8 @@
 import "dotenv/config";
+import crypto from "node:crypto";
 import express from "express";
+import fs from "node:fs";
+import multer from "multer";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
@@ -50,9 +53,26 @@ const port = Number(process.env.PORT || 8765);
 const host = process.env.HOST || "0.0.0.0";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../public");
+const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
+const uploadDir = path.join(dataDir, "uploads");
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadDir,
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || "");
+      cb(null, `${Date.now()}-${crypto.randomUUID()}${ext}`);
+    }
+  }),
+  limits: {
+    fileSize: Number(process.env.UPLOAD_MAX_MB || 50) * 1024 * 1024
+  }
+});
 
 app.use(express.json({ limit: "2mb" }));
 app.use("/console", express.static(path.join(publicDir, "console")));
+app.use("/uploads", express.static(uploadDir));
 
 await loadBotBindingsFromConfig();
 resetInterruptedProactiveTargets();
@@ -92,6 +112,18 @@ function buildPublicCallbackUrl(botId, pathname) {
   if (process.env.CALLBACK_SECRET) {
     url.searchParams.set("secret", process.env.CALLBACK_SECRET);
   }
+  return url.toString();
+}
+
+function buildPublicFileUrl(filename) {
+  const baseUrl = process.env.PUBLIC_BASE_URL;
+  if (!baseUrl) {
+    throw new Error("PUBLIC_BASE_URL is required for uploaded file URLs");
+  }
+  const url = new URL(
+    `/uploads/${encodeURIComponent(filename)}`,
+    baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`
+  );
   return url.toString();
 }
 
@@ -564,6 +596,38 @@ app.get("/health", (req, res) => {
     time: new Date().toISOString()
   });
 });
+
+app.post(
+  "/api/uploads",
+  (req, res, next) => {
+    try {
+      assertAdmin(req);
+      next();
+    } catch (error) {
+      next(error);
+    }
+  },
+  upload.single("file"),
+  (req, res, next) => {
+    try {
+      if (!req.file) {
+        throw new Error("file is required");
+      }
+      res.json({
+        ok: true,
+        file: {
+          originalName: req.file.originalname,
+          filename: req.file.filename,
+          size: req.file.size,
+          mimeType: req.file.mimetype,
+          url: buildPublicFileUrl(req.file.filename)
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 app.post("/worktool/:botId/message-callback", (req, res) => {
   try {

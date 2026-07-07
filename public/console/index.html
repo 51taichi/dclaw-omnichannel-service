@@ -258,7 +258,6 @@
             <select name="messageType">
               <option value="text">文本</option>
               <option value="media">图片/音视频/文件</option>
-              <option value="mini_program">小程序/高级 JSON</option>
             </select>
           </label>
           <label class="wide proactive-field" data-message-field="text">
@@ -280,8 +279,12 @@
               <input name="objectName" placeholder="例如 湘左记招商手册.pdf" />
             </label>
             <label class="wide">
+              <span class="field-label">本地上传</span>
+              <input name="uploadFile" type="file" />
+            </label>
+            <label class="wide">
               <span class="field-label">文件 URL</span>
-              <input name="fileUrl" placeholder="https://example.com/file.jpg" />
+              <input name="fileUrl" placeholder="可以手填公网 URL，也可以选择本地文件后自动生成" />
             </label>
             <label class="wide">
               <span class="field-label">附加文字</span>

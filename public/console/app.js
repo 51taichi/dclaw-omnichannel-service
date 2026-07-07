@@ -100,6 +100,29 @@ async function request(path, options = {}) {
   return data;
 }
 
+async function uploadLocalFile(file) {
+  const payload = new FormData();
+  payload.append("file", file);
+  const response = await fetch("/api/uploads", {
+    method: "POST",
+    headers: {
+      "x-api-key": state.apiKey
+    },
+    body: payload
+  });
+  const text = await response.text();
+  let data;
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    data = { raw: text };
+  }
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.message || `HTTP ${response.status}`);
+  }
+  return data.file;
+}
+
 function formData() {
   const data = new FormData(els.botForm);
   return {
@@ -498,6 +521,13 @@ async function createProactiveTask(event) {
     payload.fileUrl = String(data.get("fileUrl") || "").trim();
     payload.objectName = String(data.get("objectName") || "").trim();
     payload.extraText = String(data.get("extraText") || "").trim();
+    const localFile = els.proactiveForm.uploadFile.files?.[0];
+    if (localFile) {
+      toast("正在上传文件...");
+      const uploaded = await uploadLocalFile(localFile);
+      payload.fileUrl = uploaded.url;
+      payload.objectName = payload.objectName || uploaded.originalName || uploaded.filename;
+    }
   } else if (messageType === "mini_program") {
     payload.rawCommand = String(data.get("rawCommand") || "").trim();
     payload.content = payload.title || "小程序/高级消息";
@@ -534,6 +564,7 @@ async function createProactiveTask(event) {
   els.proactiveForm.fileUrl.value = "";
   els.proactiveForm.objectName.value = "";
   els.proactiveForm.extraText.value = "";
+  els.proactiveForm.uploadFile.value = "";
   els.proactiveForm.rawCommand.value = "";
   await loadProactiveTasks();
 }
