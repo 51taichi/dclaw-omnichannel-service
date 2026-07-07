@@ -82,28 +82,31 @@
     </header>
 
     <main class="layout console-shell">
-      <aside class="panel bot-sidebar">
-        <div class="section-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>已配置 Bot</h2>
-          <span id="botCount" class="muted"></span>
-        </div>
-        <div id="botsTable" class="bot-list"></div>
-      </aside>
+      <div class="left-rail">
+        <section class="panel auth-panel">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>管理密钥</h2>
+          <div class="auth-form">
+            <label>
+              <span class="field-label">Admin API Key</span>
+              <input id="apiKeyInput" type="password" placeholder="ADMIN_API_KEY" autocomplete="off" />
+            </label>
+            <button id="saveKeyButton" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+              保存
+            </button>
+          </div>
+        </section>
+
+        <aside class="panel bot-sidebar">
+          <div class="section-head">
+            <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>已配置 Bot</h2>
+            <span id="botCount" class="muted"></span>
+          </div>
+          <div id="botsTable" class="bot-list"></div>
+        </aside>
+      </div>
 
       <div class="workspace">
-      <section class="panel auth-panel">
-        <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>管理密钥</h2>
-        <div class="inline-form">
-          <label>
-            <span class="field-label">Admin API Key</span>
-            <input id="apiKeyInput" type="password" placeholder="ADMIN_API_KEY" autocomplete="off" />
-          </label>
-          <button id="saveKeyButton" type="button">
-            <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-            保存
-          </button>
-        </div>
-      </section>
 
       <section id="botBindingPanel" class="panel binding-panel bot-context-panel collapsible-panel">
         <div class="section-head binding-head">

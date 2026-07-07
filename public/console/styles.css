@@ -132,6 +132,13 @@ h2 {
   min-width: 0;
 }
 
+.left-rail {
+  display: grid;
+  align-self: start;
+  gap: 14px;
+  min-width: 0;
+}
+
 .panel {
   min-width: 0;
   position: relative;
@@ -186,10 +193,26 @@ h2 {
 
 .auth-panel {
   display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  align-items: center;
-  gap: 16px;
+  gap: 12px;
   background: var(--panel-strong);
+}
+
+.auth-panel .module-title {
+  justify-content: flex-start;
+}
+
+.auth-form {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.auth-form label {
+  grid-template-columns: 112px minmax(0, 1fr);
+}
+
+.auth-form button {
+  width: 100%;
 }
 
 .bot-sidebar {
@@ -1054,7 +1077,6 @@ td .muted {
   .topbar,
   .topbar-inner,
   .console-shell,
-  .auth-panel,
   .section-head,
   .form-grid,
   .compact-form {
@@ -1096,6 +1118,10 @@ td .muted {
   }
 
   label {
+    grid-template-columns: 108px minmax(0, 1fr);
+  }
+
+  .auth-form label {
     grid-template-columns: 108px minmax(0, 1fr);
   }
 
