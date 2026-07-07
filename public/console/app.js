@@ -3,6 +3,8 @@ const state = {
   selectedBotId: ""
 };
 
+const DEFAULT_FILE_URL = "https://worktool.deepmega.cn/console";
+
 const els = {
   apiKeyInput: document.querySelector("#apiKeyInput"),
   saveKeyButton: document.querySelector("#saveKeyButton"),
@@ -80,6 +82,16 @@ function dateToLocalIsoNextDay(value) {
   const date = new Date(`${value}T00:00:00`);
   date.setDate(date.getDate() + 1);
   return date.toISOString();
+}
+
+function fileNameFromUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    return decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "");
+  } catch {
+    return "";
+  }
 }
 
 async function request(path, options = {}) {
@@ -519,14 +531,14 @@ async function createProactiveTask(event) {
   if (messageType === "media") {
     payload.fileType = String(data.get("fileType") || "image");
     payload.fileUrl = String(data.get("fileUrl") || "").trim();
-    payload.objectName = String(data.get("objectName") || "").trim();
+    payload.objectName = fileNameFromUrl(payload.fileUrl);
     payload.extraText = String(data.get("extraText") || "").trim();
     const localFile = els.proactiveForm.uploadFile.files?.[0];
     if (localFile) {
       toast("正在上传文件...");
       const uploaded = await uploadLocalFile(localFile);
       payload.fileUrl = uploaded.url;
-      payload.objectName = payload.objectName || uploaded.originalName || uploaded.filename;
+      payload.objectName = uploaded.originalName || uploaded.filename || localFile.name;
     }
   } else if (messageType === "mini_program") {
     payload.rawCommand = String(data.get("rawCommand") || "").trim();
@@ -561,8 +573,7 @@ async function createProactiveTask(event) {
   renderTargetList();
   els.proactiveForm.title.value = "";
   els.proactiveForm.content.value = "";
-  els.proactiveForm.fileUrl.value = "";
-  els.proactiveForm.objectName.value = "";
+  els.proactiveForm.fileUrl.value = DEFAULT_FILE_URL;
   els.proactiveForm.extraText.value = "";
   els.proactiveForm.uploadFile.value = "";
   els.proactiveForm.rawCommand.value = "";
@@ -705,7 +716,8 @@ els.collapseButtons.forEach((button) => {
   });
 });
 
-Promise.all([loadBots(), loadDebugReply(), loadProactiveTasks()])
+loadBots()
+  .then(() => Promise.all([loadDebugReply(), loadProactiveTasks()]))
   .then(() => loadAddressBookTargets())
   .catch((error) => {
     els.logsOutput.textContent = `无法加载配置：${error.message}`;

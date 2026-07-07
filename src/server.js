@@ -55,6 +55,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../public");
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
 const uploadDir = path.join(dataDir, "uploads");
+const uploadRetentionMs = Number(process.env.UPLOAD_RETENTION_HOURS || 24) * 60 * 60 * 1000;
+const uploadCleanupIntervalMs =
+  Number(process.env.UPLOAD_CLEANUP_INTERVAL_MINUTES || 60) * 60 * 1000;
 fs.mkdirSync(uploadDir, { recursive: true });
 
 const upload = multer({
@@ -73,6 +76,38 @@ const upload = multer({
 app.use(express.json({ limit: "2mb" }));
 app.use("/console", express.static(path.join(publicDir, "console")));
 app.use("/uploads", express.static(uploadDir));
+
+async function cleanupUploadCache() {
+  if (!Number.isFinite(uploadRetentionMs) || uploadRetentionMs <= 0) return;
+  const cutoff = Date.now() - uploadRetentionMs;
+  let removed = 0;
+  const entries = await fs.promises.readdir(uploadDir, { withFileTypes: true });
+  await Promise.all(
+    entries.map(async (entry) => {
+      if (!entry.isFile()) return;
+      const filePath = path.join(uploadDir, entry.name);
+      const stat = await fs.promises.stat(filePath);
+      if (stat.mtimeMs >= cutoff) return;
+      await fs.promises.unlink(filePath);
+      removed += 1;
+    })
+  );
+  if (removed > 0) {
+    logInfo("uploads.cleanup", {
+      removed,
+      retentionHours: uploadRetentionMs / 60 / 60 / 1000
+    });
+  }
+}
+
+cleanupUploadCache().catch((error) => {
+  logWarn("uploads.cleanup_failed", { error: error.message });
+});
+setInterval(() => {
+  cleanupUploadCache().catch((error) => {
+    logWarn("uploads.cleanup_failed", { error: error.message });
+  });
+}, uploadCleanupIntervalMs).unref();
 
 await loadBotBindingsFromConfig();
 resetInterruptedProactiveTargets();

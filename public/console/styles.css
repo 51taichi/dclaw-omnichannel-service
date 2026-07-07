@@ -397,7 +397,8 @@ h2 {
   align-items: end;
 }
 
-label {
+label,
+.field-row {
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
   align-items: stretch;
@@ -419,7 +420,8 @@ label {
     background 140ms ease;
 }
 
-label:focus-within {
+label:focus-within,
+.field-row:focus-within {
   border-color: var(--accent);
   background: #ffffff;
   box-shadow: 0 0 0 3px rgba(42, 48, 216, 0.13);
@@ -436,7 +438,8 @@ label:focus-within {
   white-space: nowrap;
 }
 
-label > :is(input, select, textarea) {
+label > :is(input, select, textarea),
+.field-row > .field-control {
   min-width: 0;
 }
 
@@ -510,6 +513,12 @@ label:has(textarea) .field-label {
 input[type="checkbox"] {
   width: 18px;
   height: 18px;
+  accent-color: var(--accent);
+}
+
+input[type="radio"] {
+  width: 16px;
+  height: 16px;
   accent-color: var(--accent);
 }
 
@@ -698,6 +707,36 @@ button.danger:hover {
   display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr));
   gap: 10px;
+}
+
+.radio-group {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 10px;
+}
+
+.radio-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  height: 28px;
+  padding: 0 7px;
+  border-radius: 6px;
+  background: var(--panel);
+  color: #302321;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.radio-option input[type="radio"] {
+  width: 16px;
+  height: 16px;
 }
 
 .media-grid[hidden],
