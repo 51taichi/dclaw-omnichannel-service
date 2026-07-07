@@ -83,6 +83,14 @@
 
     <main class="layout console-shell">
       <div class="left-rail">
+        <aside class="panel bot-sidebar">
+          <div class="section-head">
+            <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>已配置 Bot</h2>
+            <span id="botCount" class="muted"></span>
+          </div>
+          <div id="botsTable" class="bot-list"></div>
+        </aside>
+
         <section class="panel auth-panel">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>管理密钥</h2>
           <div class="auth-form">
@@ -96,14 +104,6 @@
             </button>
           </div>
         </section>
-
-        <aside class="panel bot-sidebar">
-          <div class="section-head">
-            <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>已配置 Bot</h2>
-            <span id="botCount" class="muted"></span>
-          </div>
-          <div id="botsTable" class="bot-list"></div>
-        </aside>
       </div>
 
       <div class="workspace">
