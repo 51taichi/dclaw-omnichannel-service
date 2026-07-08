@@ -107,11 +107,14 @@
       </div>
 
       <div class="workspace">
-        <div class="workspace-tabs" role="tablist" aria-label="控制台模块">
-          <button class="active" data-workspace-tab="config" type="button" role="tab" aria-selected="true">配置</button>
-          <button data-workspace-tab="flow" type="button" role="tab" aria-selected="false">任务</button>
-          <button data-workspace-tab="push" type="button" role="tab" aria-selected="false">推送</button>
-          <button data-workspace-tab="logs" type="button" role="tab" aria-selected="false">日志</button>
+        <div class="workspace-head">
+          <div class="workspace-tabs" role="tablist" aria-label="控制台模块">
+            <button class="active" data-workspace-tab="config" type="button" role="tab" aria-selected="true">配置</button>
+            <button data-workspace-tab="flow" type="button" role="tab" aria-selected="false">任务</button>
+            <button data-workspace-tab="push" type="button" role="tab" aria-selected="false">推送</button>
+            <button data-workspace-tab="logs" type="button" role="tab" aria-selected="false">日志</button>
+          </div>
+          <span id="bindingState" class="binding-state">新增模式</span>
         </div>
 
       <div id="configTab" class="tab-panel active" data-tab-panel="config">
@@ -119,7 +122,6 @@
         <div class="section-head binding-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>Bot 绑定</h2>
           <div class="section-actions">
-            <span id="bindingState" class="binding-state">新增模式</span>
             <button class="collapse-button" data-collapse-target="botBindingPanel" type="button" aria-label="收起 Bot 绑定">
               <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
             </button>

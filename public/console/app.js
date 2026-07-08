@@ -216,6 +216,8 @@ function setBindingState(bot = null) {
   const accent = bot ? getBotAccent(bot) : "";
   els.workspaceTabBar?.classList.toggle("is-bound", Boolean(bot));
   els.workspaceTabBar?.style.setProperty("--bot-accent", accent);
+  els.bindingState?.classList.toggle("is-bound", Boolean(bot));
+  els.bindingState?.style.setProperty("--bot-accent", accent);
   els.botContextPanels.forEach((panel) => {
     panel.classList.toggle("is-bound", Boolean(bot));
     panel.style.setProperty("--bot-accent", accent);

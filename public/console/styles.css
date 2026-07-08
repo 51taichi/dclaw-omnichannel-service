@@ -132,6 +132,14 @@ h2 {
   min-width: 0;
 }
 
+.workspace-head {
+  display: grid;
+  grid-template-columns: minmax(0, max-content) minmax(180px, 1fr);
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+}
+
 .workspace-tabs {
   display: inline-grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -232,6 +240,8 @@ h2 {
 .binding-state {
   display: inline-flex;
   align-items: center;
+  justify-self: end;
+  max-width: 100%;
   min-height: 28px;
   padding: 0 10px;
   border: 1px solid var(--line);
@@ -240,10 +250,12 @@ h2 {
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.binding-panel.is-bound .binding-state {
+.binding-state.is-bound {
   border-color: color-mix(in srgb, var(--bot-accent) 38%, #ffffff);
   background: color-mix(in srgb, var(--bot-accent) 12%, #ffffff);
   color: var(--bot-accent);
@@ -1346,6 +1358,7 @@ td .muted {
   .topbar,
   .topbar-inner,
   .console-shell,
+  .workspace-head,
   .section-head,
   .form-grid,
   .compact-form {
@@ -1422,5 +1435,15 @@ td .muted {
   .actions button,
   .topbar button {
     width: 100%;
+  }
+
+  .workspace-tabs,
+  .binding-state {
+    width: 100%;
+  }
+
+  .binding-state {
+    justify-self: stretch;
+    justify-content: center;
   }
 }
