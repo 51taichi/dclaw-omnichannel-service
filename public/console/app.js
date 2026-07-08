@@ -11,6 +11,7 @@ const els = {
   refreshButton: document.querySelector("#refreshButton"),
   botBindingPanel: document.querySelector("#botBindingPanel"),
   proactivePanel: document.querySelector("#proactivePanel"),
+  workspaceTabBar: document.querySelector(".workspace-tabs"),
   workspaceTabs: document.querySelectorAll("[data-workspace-tab]"),
   tabPanels: document.querySelectorAll("[data-tab-panel]"),
   bindingState: document.querySelector("#bindingState"),
@@ -198,6 +199,8 @@ function tabForPanel(panel) {
 function setBindingState(bot = null) {
   state.selectedBotId = bot?.botId || "";
   const accent = bot ? getBotAccent(bot) : "";
+  els.workspaceTabBar?.classList.toggle("is-bound", Boolean(bot));
+  els.workspaceTabBar?.style.setProperty("--bot-accent", accent);
   els.botContextPanels.forEach((panel) => {
     panel.classList.toggle("is-bound", Boolean(bot));
     panel.style.setProperty("--bot-accent", accent);
