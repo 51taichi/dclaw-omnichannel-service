@@ -35,6 +35,7 @@ import {
   resetInterruptedProactiveTargets,
   setSetting,
   updateProactiveTargetFromCommandCallback,
+  updateOutgoingMessageFromCommandCallback,
   upsertProactiveAddressBookTarget,
   upsertBotBinding,
   upsertConversation
@@ -264,7 +265,7 @@ function messageLogFields({ botId, conversationKey, message }) {
   };
 }
 
-function commandCallbackLogFields({ botId, payload }) {
+function commandCallbackLogFields({ botId, payload, outgoingMatched = false }) {
   const successList = Array.isArray(payload?.successList) ? payload.successList : [];
   const failList = Array.isArray(payload?.failList) ? payload.failList : [];
   return {
@@ -278,7 +279,8 @@ function commandCallbackLogFields({ botId, payload }) {
     successList,
     failList,
     timeCost: payload?.timeCost ?? null,
-    runTime: payload?.runTime ?? null
+    runTime: payload?.runTime ?? null,
+    outgoingMatched
   };
 }
 
@@ -839,9 +841,14 @@ app.post("/worktool/:botId/command-callback", (req, res) => {
     botId: req.params.botId,
     payload: req.body || {}
   });
+  const outgoingMatched = updateOutgoingMessageFromCommandCallback({
+    messageId: req.body?.messageId,
+    payload: req.body || {}
+  });
   logInfo("worktool.command_callback.received", commandCallbackLogFields({
     botId: req.params.botId,
-    payload: req.body || {}
+    payload: req.body || {},
+    outgoingMatched
   }));
   updateProactiveTargetFromCommandCallback({
     messageId: req.body?.messageId,
@@ -857,9 +864,14 @@ app.post("/worktool/command-callback", (req, res) => {
     return;
   }
   insertCommandCallback({ botId, payload: req.body || {} });
+  const outgoingMatched = updateOutgoingMessageFromCommandCallback({
+    messageId: req.body?.messageId,
+    payload: req.body || {}
+  });
   logInfo("worktool.command_callback.received", commandCallbackLogFields({
     botId,
-    payload: req.body || {}
+    payload: req.body || {},
+    outgoingMatched
   }));
   updateProactiveTargetFromCommandCallback({
     messageId: req.body?.messageId,

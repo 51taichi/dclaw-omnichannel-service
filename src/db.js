@@ -61,6 +61,10 @@ db.exec(`
     target_name TEXT,
     content TEXT NOT NULL,
     worktool_response_json TEXT,
+    callback_error_code INTEGER,
+    callback_error_reason TEXT,
+    callback_payload_json TEXT,
+    callback_at TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -176,6 +180,10 @@ function ensureColumn(table, column, definition) {
 
 ensureColumn("bot_agent_bindings", "dclaw_base_url", "TEXT");
 ensureColumn("bot_agent_bindings", "dclaw_public_id", "TEXT");
+ensureColumn("outgoing_messages", "callback_error_code", "INTEGER");
+ensureColumn("outgoing_messages", "callback_error_reason", "TEXT");
+ensureColumn("outgoing_messages", "callback_payload_json", "TEXT");
+ensureColumn("outgoing_messages", "callback_at", "TEXT");
 ensureColumn("proactive_tasks", "message_type", "TEXT NOT NULL DEFAULT 'text'");
 ensureColumn("proactive_tasks", "message_payload_json", "TEXT");
 ensureColumn("proactive_task_targets", "message_type", "TEXT NOT NULL DEFAULT 'text'");
@@ -460,6 +468,25 @@ export function insertCommandCallback({ botId, payload }) {
     json(payload),
     now()
   );
+}
+
+export function updateOutgoingMessageFromCommandCallback({ messageId, payload }) {
+  if (!messageId) return false;
+  const result = db.prepare(`
+    UPDATE outgoing_messages
+    SET callback_error_code = ?,
+        callback_error_reason = ?,
+        callback_payload_json = ?,
+        callback_at = ?
+    WHERE message_id = ?
+  `).run(
+    payload.errorCode ?? null,
+    payload.errorReason || "",
+    json(payload),
+    now(),
+    messageId
+  );
+  return result.changes > 0;
 }
 
 export function insertAgentInvocationStart({
@@ -997,14 +1024,16 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
       table: "outgoing_messages",
       mapper: (row) => ({
         ...row,
-        worktoolResponse: parseJson(row.worktool_response_json)
+        worktoolResponse: parseJson(row.worktool_response_json),
+        callbackPayload: parseJson(row.callback_payload_json)
       })
     },
     "outgoing-commands": {
       table: "outgoing_messages",
       mapper: (row) => ({
         ...row,
-        worktoolResponse: parseJson(row.worktool_response_json)
+        worktoolResponse: parseJson(row.worktool_response_json),
+        callbackPayload: parseJson(row.callback_payload_json)
       })
     },
     "command-callbacks": {
