@@ -898,6 +898,31 @@ function renderFlowSessions() {
   });
 }
 
+function renderChatMessageContent(message) {
+  const mediaPayload = message.rawPayload?.messagePayload;
+  const mediaType = String(message.rawPayload?.messageType || "");
+  if (mediaType === "media" && mediaPayload?.fileUrl) {
+    const fileType = String(mediaPayload.fileType || "image");
+    const label = {
+      image: "图片",
+      file: "文件",
+      video: "视频",
+      audio: "音频"
+    }[fileType] || "媒体";
+    const caption = mediaPayload.extraText || message.content || "";
+    const media = fileType === "image"
+      ? `<img class="chat-media-image" src="${escapeHtml(mediaPayload.fileUrl)}" alt="${escapeHtml(mediaPayload.objectName || label)}" />`
+      : `<a class="chat-media-link" href="${escapeHtml(mediaPayload.fileUrl)}" target="_blank" rel="noreferrer">${escapeHtml(mediaPayload.objectName || label)}</a>`;
+    return `
+      <div class="chat-media">
+        ${media}
+        ${caption ? `<div class="chat-text">${escapeHtml(caption)}</div>` : ""}
+      </div>
+    `;
+  }
+  return `<div class="chat-text">${escapeHtml(message.content)}</div>`;
+}
+
 async function openFlowSession(conversationKey) {
   state.selectedFlowConversationKey = conversationKey;
   const session = currentFlowSessions.find((item) => item.conversationKey === conversationKey);
@@ -924,7 +949,7 @@ function renderChatMessages(messages) {
                 <small>${escapeHtml(sender)}</small>
                 <time>${escapeHtml(message.createdAt || "")}</time>
               </div>
-              <div class="chat-text">${escapeHtml(message.content)}</div>
+              ${renderChatMessageContent(message)}
             </div>
             ${outbound ? `<img class="chat-avatar" src="${avatar}" alt="" aria-hidden="true" />` : ""}
           </div>

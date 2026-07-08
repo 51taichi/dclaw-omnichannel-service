@@ -857,6 +857,15 @@ export function updateFlowSessionNode({ botId, conversationKey, nextNodeId, reas
   return getOrCreateFlowSession({ botId, conversationKey, machine: { entryNodeId: nextNodeId } });
 }
 
+export function touchFlowSession(conversationKey) {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE flow_sessions
+    SET last_message_at = ?, updated_at = ?
+    WHERE conversation_key = ?
+  `).run(timestamp, timestamp, conversationKey);
+}
+
 export function mergeFlowSessionData({ conversationKey, patch = {} }) {
   const session = rowToFlowSession(
     db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)

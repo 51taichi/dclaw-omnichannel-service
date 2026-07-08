@@ -1312,6 +1312,25 @@ button.danger:hover {
   white-space: pre-wrap;
 }
 
+.chat-media {
+  display: grid;
+  gap: 6px;
+}
+
+.chat-media-image {
+  display: block;
+  max-width: min(260px, 100%);
+  max-height: 180px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.chat-media-link {
+  color: var(--accent);
+  font-weight: 800;
+  word-break: break-all;
+}
+
 .flow-events-wrap {
   border-top: 1px solid var(--line);
   background: #fff;

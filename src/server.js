@@ -47,6 +47,7 @@ import {
   mergeFlowSessionData,
   resetInterruptedProactiveTargets,
   setSetting,
+  touchFlowSession,
   updateFlowSessionNode,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
@@ -504,6 +505,15 @@ function buildProactiveConversationMessage(target) {
   };
 }
 
+function proactiveConversationContent(target) {
+  if (target.messageType !== "media") return target.content || "";
+  const payload = target.messagePayload || {};
+  const label = fileTypeLabel(payload.fileType || "media");
+  const parts = [`[${label}] ${payload.objectName || payload.fileUrl || ""}`.trim()];
+  if (payload.extraText) parts.push(payload.extraText);
+  return parts.filter(Boolean).join("\n");
+}
+
 async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse }) {
   const binding = getBotBinding(target.botId);
   if (!binding || !binding.enabled) {
@@ -620,10 +630,43 @@ async function processNextProactiveTarget() {
         messageId: result.data,
         worktoolResponse: result
       });
+      const conversationKey = getProactiveConversationKey(target);
+      const binding = getBotBinding(target.botId);
+      if (binding) {
+        const flowMachine = getFlowMachine(target.botId);
+        upsertConversation({
+          botId: target.botId,
+          agentId: binding.agentId,
+          conversationKey,
+          message: buildProactiveConversationMessage(target)
+        });
+        if (flowMachine?.enabled) {
+          getOrCreateFlowSession({
+            botId: target.botId,
+            conversationKey,
+            machine: flowMachine.config
+          });
+          touchFlowSession(conversationKey);
+        }
+      }
+      insertConversationMessage({
+        botId: target.botId,
+        conversationKey,
+        direction: "outbound",
+        senderName: binding?.botName || binding?.agentName || "机器人",
+        content: proactiveConversationContent(target),
+        rawPayload: {
+          source: "proactive",
+          messageId: result.data,
+          messageType: target.messageType,
+          messagePayload: target.messagePayload || {},
+          worktoolResponse: result
+        }
+      });
       insertOutgoingMessage({
         botId: target.botId,
         agentId: target.agentId || "",
-        conversationKey: getProactiveConversationKey(target),
+        conversationKey,
         messageId: result.data,
         targetName: target.targetName,
         content: target.content,
