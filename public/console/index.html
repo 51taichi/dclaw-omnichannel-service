@@ -111,6 +111,7 @@
           <div class="workspace-tabs" role="tablist" aria-label="控制台模块">
             <button class="active" data-workspace-tab="config" type="button" role="tab" aria-selected="true">配置</button>
             <button data-workspace-tab="flow" type="button" role="tab" aria-selected="false">任务</button>
+            <button data-workspace-tab="sessions" type="button" role="tab" aria-selected="false">会话</button>
             <button data-workspace-tab="push" type="button" role="tab" aria-selected="false">推送</button>
             <button data-workspace-tab="logs" type="button" role="tab" aria-selected="false">日志</button>
           </div>
@@ -265,7 +266,9 @@
           </form>
         </div>
       </section>
+      </div>
 
+      <div id="sessionsTab" class="tab-panel" data-tab-panel="sessions" hidden>
       <section id="flowSessionsPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>客户会话</h2>
