@@ -107,7 +107,13 @@
       </div>
 
       <div class="workspace">
+        <div class="workspace-tabs" role="tablist" aria-label="控制台模块">
+          <button class="active" data-workspace-tab="config" type="button" role="tab" aria-selected="true">配置</button>
+          <button data-workspace-tab="push" type="button" role="tab" aria-selected="false">推送</button>
+          <button data-workspace-tab="logs" type="button" role="tab" aria-selected="false">日志</button>
+        </div>
 
+      <div id="configTab" class="tab-panel active" data-tab-panel="config">
       <section id="botBindingPanel" class="panel binding-panel bot-context-panel collapsible-panel">
         <div class="section-head binding-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>Bot 绑定</h2>
@@ -196,15 +202,13 @@
         </form>
         </div>
       </section>
+      </div>
 
+      <div id="pushTab" class="tab-panel" data-tab-panel="push" hidden>
       <section id="proactivePanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>主动推送</h2>
           <div class="section-actions">
-            <button id="refreshProactiveButton" class="secondary" type="button">
-              <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
-              刷新任务
-            </button>
             <button class="collapse-button" data-collapse-target="proactivePanel" type="button" aria-label="收起主动推送">
               <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
             </button>
@@ -313,7 +317,26 @@
             </button>
           </div>
         </form>
-        <div class="task-filters">
+        </div>
+      </section>
+      </div>
+
+      <div id="logsTab" class="tab-panel" data-tab-panel="logs" hidden>
+      <section id="proactiveTasksPanel" class="panel bot-context-panel collapsible-panel">
+        <div class="section-head">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>主动推送查询</h2>
+          <div class="section-actions">
+            <button id="refreshProactiveButton" class="secondary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
+              刷新任务
+            </button>
+            <button class="collapse-button" data-collapse-target="proactiveTasksPanel" type="button" aria-label="收起主动推送查询">
+              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+            </button>
+          </div>
+        </div>
+        <div class="collapsible-content">
+          <div class="task-filters">
           <label>
             <span class="field-label">开始日期</span>
             <input id="taskDateFrom" type="date" />
@@ -323,7 +346,7 @@
             <input id="taskDateTo" type="date" />
           </label>
         </div>
-        <div class="table-wrap proactive-table">
+          <div class="table-wrap proactive-table">
           <table>
             <thead>
               <tr>
@@ -373,6 +396,7 @@
         <pre id="logsOutput" class="logs"></pre>
         </div>
       </section>
+      </div>
       </div>
     </main>
 

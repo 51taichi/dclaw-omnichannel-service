@@ -132,6 +132,45 @@ h2 {
   min-width: 0;
 }
 
+.workspace-tabs {
+  display: inline-grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  width: min(420px, 100%);
+  padding: 5px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(42, 48, 216, 0.08);
+}
+
+.workspace-tabs button {
+  justify-content: center;
+  height: 36px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  box-shadow: none;
+  font-weight: 800;
+}
+
+.workspace-tabs button.active {
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(42, 48, 216, 0.16);
+}
+
+.tab-panel {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.tab-panel[hidden] {
+  display: none;
+}
+
 .left-rail {
   position: sticky;
   top: 18px;

@@ -11,6 +11,8 @@ const els = {
   refreshButton: document.querySelector("#refreshButton"),
   botBindingPanel: document.querySelector("#botBindingPanel"),
   proactivePanel: document.querySelector("#proactivePanel"),
+  workspaceTabs: document.querySelectorAll("[data-workspace-tab]"),
+  tabPanels: document.querySelectorAll("[data-tab-panel]"),
   bindingState: document.querySelector("#bindingState"),
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
@@ -173,6 +175,26 @@ function botDisplayName(botId) {
   return bot?.botName || bot?.dclawPublicId || bot?.agentName || botId || "-";
 }
 
+function switchWorkspaceTab(tabName, { scrollTo = null } = {}) {
+  els.workspaceTabs.forEach((button) => {
+    const active = button.dataset.workspaceTab === tabName;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  els.tabPanels.forEach((panel) => {
+    const active = panel.dataset.tabPanel === tabName;
+    panel.hidden = !active;
+    panel.classList.toggle("active", active);
+  });
+  if (scrollTo) {
+    requestAnimationFrame(() => scrollTo.scrollIntoView({ behavior: "smooth", block: "start" }));
+  }
+}
+
+function tabForPanel(panel) {
+  return panel?.closest("[data-tab-panel]")?.dataset.tabPanel || "";
+}
+
 function setBindingState(bot = null) {
   state.selectedBotId = bot?.botId || "";
   const accent = bot ? getBotAccent(bot) : "";
@@ -204,6 +226,8 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
     }
   }
   if (scrollTo) {
+    const tabName = tabForPanel(scrollTo);
+    if (tabName) switchWorkspaceTab(tabName);
     expandPanel(scrollTo);
     scrollTo.scrollIntoView({ behavior: "smooth", block: "start" });
   }
@@ -262,6 +286,7 @@ function renderBots(bots) {
       const botId = decodeURIComponent(actionTarget.dataset.bot);
       const bot = currentBots.find((item) => item.botId === botId);
       if (actionTarget.dataset.action === "edit") {
+        switchWorkspaceTab("config");
         fillForm(bot);
         applyBotContext(bot).catch((error) => toast(error.message));
         return;
@@ -692,6 +717,9 @@ document.querySelectorAll("[data-target-filter]").forEach((button) => {
     });
     renderTargetList();
   });
+});
+els.workspaceTabs.forEach((button) => {
+  button.addEventListener("click", () => switchWorkspaceTab(button.dataset.workspaceTab));
 });
 els.refreshProactiveButton.addEventListener("click", () =>
   loadProactiveTasks().catch((error) => toast(error.message))
