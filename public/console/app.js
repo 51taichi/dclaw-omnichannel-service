@@ -27,7 +27,6 @@ const els = {
   refreshFlowSessionsButton: document.querySelector("#refreshFlowSessionsButton"),
   flowSessionList: document.querySelector("#flowSessionList"),
   chatTitle: document.querySelector("#chatTitle"),
-  chatNode: document.querySelector("#chatNode"),
   chatMessages: document.querySelector("#chatMessages"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
   manualFlowNodeSelect: document.querySelector("#manualFlowNodeSelect"),
@@ -905,7 +904,6 @@ async function openFlowSession(conversationKey) {
   const session = currentFlowSessions.find((item) => item.conversationKey === conversationKey);
   renderFlowSessions();
   els.chatTitle.textContent = session?.receivedName || conversationKey;
-  els.chatNode.textContent = session ? `当前节点：${flowNodeLabel(session.currentNodeId)}` : "";
   renderManualNodeOptions(session?.currentNodeId || "");
   const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?limit=300`);
   renderChatMessages(data.messages || []);

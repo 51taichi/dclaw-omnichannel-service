@@ -1197,18 +1197,29 @@ button.danger:hover {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(180px, 240px) auto;
   gap: 10px;
-  align-items: end;
+  align-items: center;
   padding: 12px;
   border-bottom: 1px solid var(--line);
   background: #fff;
 }
 
-.chat-head > div {
+.chat-title-wrap {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
   min-width: 0;
 }
 
-.chat-head strong,
-.chat-head span {
+.chat-title-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 6px 14px rgba(40, 48, 124, 0.12);
+}
+
+.chat-head strong {
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1221,10 +1232,10 @@ button.danger:hover {
   font-weight: 800;
 }
 
-.chat-head span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
+.manual-node-field {
+  grid-template-columns: 20% minmax(0, 80%);
+  align-items: center;
+  min-height: 42px;
 }
 
 .chat-messages {
