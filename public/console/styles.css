@@ -1114,21 +1114,23 @@ button.danger:hover {
 
 .flow-session-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
   max-height: 620px;
   overflow: auto;
 }
 
 .flow-session-card {
   display: grid;
-  gap: 4px;
+  gap: 3px;
   width: 100%;
   height: auto;
-  padding: 10px;
+  padding: 9px 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #fff;
   color: var(--text);
+  font-size: 12px;
+  line-height: 1.25;
   text-align: left;
   box-shadow: none;
 }
@@ -1145,6 +1147,12 @@ button.danger:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.flow-session-card strong {
+  color: #302321;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .flow-session-card span,
@@ -1172,6 +1180,10 @@ button.danger:hover {
   background: #fff;
 }
 
+.chat-head > div {
+  min-width: 0;
+}
+
 .chat-head strong,
 .chat-head span {
   display: block;
@@ -1180,9 +1192,21 @@ button.danger:hover {
   white-space: nowrap;
 }
 
+.chat-head strong {
+  color: #302321;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.chat-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .chat-messages {
   display: grid;
-  gap: 10px;
+  gap: 9px;
   min-height: 360px;
   max-height: 560px;
   overflow: auto;
@@ -1204,6 +1228,9 @@ button.danger:hover {
   background: #fff;
   border: 1px solid var(--line);
   box-shadow: 0 8px 20px rgba(40, 48, 124, 0.08);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
   line-height: 1.45;
   white-space: pre-wrap;
 }
