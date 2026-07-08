@@ -191,7 +191,11 @@ function botDisplayName(botId) {
   return bot?.botName || bot?.dclawPublicId || bot?.agentName || botId || "-";
 }
 
-function switchWorkspaceTab(tabName, { scrollTo = null } = {}) {
+function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
+  if (!force && tabName !== "config" && !state.selectedBotId) {
+    toast("请先选择或保存一个 Bot");
+    return;
+  }
   els.workspaceTabs.forEach((button) => {
     const active = button.dataset.workspaceTab === tabName;
     button.classList.toggle("active", active);
@@ -207,6 +211,17 @@ function switchWorkspaceTab(tabName, { scrollTo = null } = {}) {
   }
 }
 
+function updateWorkspaceTabAccess(hasBotContext) {
+  els.workspaceTabs.forEach((button) => {
+    const locked = button.dataset.workspaceTab !== "config" && !hasBotContext;
+    button.disabled = locked;
+    button.setAttribute("aria-disabled", String(locked));
+  });
+  if (!hasBotContext && !document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")) {
+    switchWorkspaceTab("config", { force: true });
+  }
+}
+
 function tabForPanel(panel) {
   return panel?.closest("[data-tab-panel]")?.dataset.tabPanel || "";
 }
@@ -214,6 +229,7 @@ function tabForPanel(panel) {
 function setBindingState(bot = null) {
   state.selectedBotId = bot?.botId || "";
   const accent = bot ? getBotAccent(bot) : "";
+  updateWorkspaceTabAccess(Boolean(bot));
   els.workspaceTabBar?.classList.toggle("is-bound", Boolean(bot));
   els.workspaceTabBar?.style.setProperty("--bot-accent", accent);
   els.bindingState?.classList.toggle("is-bound", Boolean(bot));
@@ -518,6 +534,9 @@ async function loadBots() {
   if (state.selectedBotId && !currentBots.some((bot) => bot.botId === state.selectedBotId)) {
     setBindingState(null);
     return;
+  }
+  if (!state.selectedBotId) {
+    updateWorkspaceTabAccess(false);
   }
   renderBots(currentBots);
 }
@@ -1003,8 +1022,12 @@ function syncMessageTypeFields() {
 }
 
 async function loadProactiveTasks() {
+  if (!state.selectedBotId) {
+    renderProactiveTasks([]);
+    return;
+  }
   const params = new URLSearchParams({ limit: "20" });
-  if (state.selectedBotId) params.set("botId", state.selectedBotId);
+  params.set("botId", state.selectedBotId);
   const dateFrom = dateToLocalIsoStart(els.taskDateFrom.value);
   const dateTo = dateToLocalIsoNextDay(els.taskDateTo.value || els.taskDateFrom.value);
   if (dateFrom) params.set("dateFrom", dateFrom);
@@ -1014,6 +1037,10 @@ async function loadProactiveTasks() {
 }
 
 function renderProactiveTasks(tasks) {
+  if (!tasks.length) {
+    els.proactiveTasksTable.innerHTML = `<tr><td class="empty-state" colspan="6">暂无当前 Bot 的主动推送任务</td></tr>`;
+    return;
+  }
   els.proactiveTasksTable.innerHTML = tasks
     .map((task) => {
       const progress = `${task.sentCount || 0}/${task.totalCount || 0}`;
