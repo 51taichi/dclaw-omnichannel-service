@@ -109,7 +109,7 @@
       <div class="workspace">
         <div class="workspace-tabs" role="tablist" aria-label="控制台模块">
           <button class="active" data-workspace-tab="config" type="button" role="tab" aria-selected="true">配置</button>
-          <button data-workspace-tab="flow" type="button" role="tab" aria-selected="false">流程</button>
+          <button data-workspace-tab="flow" type="button" role="tab" aria-selected="false">任务</button>
           <button data-workspace-tab="push" type="button" role="tab" aria-selected="false">推送</button>
           <button data-workspace-tab="logs" type="button" role="tab" aria-selected="false">日志</button>
         </div>
@@ -208,11 +208,11 @@
       <div id="flowTab" class="tab-panel" data-tab-panel="flow" hidden>
       <section id="flowMachinePanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>流程状态机</h2>
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>任务状态机</h2>
           <div class="section-actions">
             <button id="loadDefaultFlowButton" class="secondary" type="button">载入模板</button>
             <button id="exportFlowButton" class="secondary" type="button">导出</button>
-            <button class="collapse-button" data-collapse-target="flowMachinePanel" type="button" aria-label="收起流程状态机">
+            <button class="collapse-button" data-collapse-target="flowMachinePanel" type="button" aria-label="收起任务状态机">
               <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
             </button>
           </div>
@@ -224,8 +224,8 @@
               启用私聊状态机
             </label>
             <label>
-              <span class="field-label">流程名称</span>
-              <input name="flowName" placeholder="例如 线上培训客服流程" />
+              <span class="field-label">任务名称</span>
+              <input name="flowName" placeholder="例如 线上培训客服任务" />
             </label>
             <label>
               <span class="field-label">版本</span>
@@ -237,7 +237,7 @@
             </label>
             <div class="wide flow-builder-head">
               <div>
-                <strong>流程节点</strong>
+                <strong>任务节点</strong>
                 <span class="muted">按业务推进顺序配置，每个节点代表一个客服阶段</span>
               </div>
               <button id="addFlowNodeButton" class="secondary" type="button">
@@ -468,10 +468,10 @@
                 <option value="message-processing">消息处理状态</option>
                 <option value="command-callbacks">指令回调</option>
                 <option value="conversations">会话</option>
-                <option value="flow-machines">流程状态机</option>
-                <option value="flow-sessions">流程会话</option>
+                <option value="flow-machines">任务状态机</option>
+                <option value="flow-sessions">任务会话</option>
                 <option value="conversation-messages">完整会话记录</option>
-                <option value="flow-state-events">流程状态事件</option>
+                <option value="flow-state-events">任务状态事件</option>
                 <option value="proactive-tasks">主动任务</option>
                 <option value="proactive-targets">主动目标</option>
               </select>

@@ -295,7 +295,7 @@ function renderBots(bots) {
             </span>
           </div>
           <div class="row-actions bot-actions">
-            <button class="secondary" data-action="flow" data-bot="${safeBot}" type="button">${icon("users")}客户流程</button>
+            <button class="secondary" data-action="flow" data-bot="${safeBot}" type="button">${icon("users")}客户任务</button>
             <button class="secondary" data-action="push" data-bot="${safeBot}" type="button">${icon("send")}推送消息</button>
           </div>
         </article>
