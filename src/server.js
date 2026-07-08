@@ -6,7 +6,12 @@ import multer from "multer";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
-import { buildDclawProactiveEventRequest, buildDclawRequest, invokeDclawAgent } from "./dclaw.js";
+import {
+  buildDclawProactiveEventRequest,
+  buildDclawRequest,
+  invokeDclawAgent,
+  parseAgentReply
+} from "./dclaw.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
   beginMessageProcessing,
@@ -17,13 +22,20 @@ import {
   finishMessageProcessing,
   getBotBinding,
   getConversationKey,
+  getFlowMachine,
+  getOrCreateFlowSession,
   getSetting,
   getProactiveTask,
   insertAgentInvocationStart,
+  insertConversationMessage,
   insertCommandCallback,
   insertIncomingMessage,
   insertOutgoingMessage,
   insertMockProactiveTargets,
+  listConversationMessages,
+  listFlowMachines,
+  listFlowSessions,
+  listFlowStateEvents,
   listProactiveAddressBookTargets,
   listProactiveTasks,
   listProactiveTaskTargets,
@@ -32,10 +44,13 @@ import {
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
+  mergeFlowSessionData,
   resetInterruptedProactiveTargets,
   setSetting,
+  updateFlowSessionNode,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
+  upsertFlowMachine,
   upsertProactiveAddressBookTarget,
   upsertBotBinding,
   upsertConversation
@@ -57,6 +72,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../public");
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
 const uploadDir = path.join(dataDir, "uploads");
+const uploadMaxMb = Number(process.env.UPLOAD_MAX_MB || 100);
+const uploadAllowedOrigins = String(process.env.UPLOAD_ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 const uploadRetentionMs = Number(process.env.UPLOAD_RETENTION_HOURS || 24) * 60 * 60 * 1000;
 const uploadCleanupIntervalMs =
   Number(process.env.UPLOAD_CLEANUP_INTERVAL_MINUTES || 60) * 60 * 1000;
@@ -71,7 +91,7 @@ const upload = multer({
     }
   }),
   limits: {
-    fileSize: Number(process.env.UPLOAD_MAX_MB || 50) * 1024 * 1024
+    fileSize: uploadMaxMb * 1024 * 1024
   }
 });
 
@@ -139,6 +159,27 @@ function assertAdmin(req) {
   }
 }
 
+function applyUploadCors(req, res, next) {
+  const origin = req.header("origin");
+  const allowAnyOrigin = uploadAllowedOrigins.includes("*");
+  const isAllowedOrigin = origin && (allowAnyOrigin || uploadAllowedOrigins.includes(origin));
+
+  if (isAllowedOrigin) {
+    res.setHeader("Access-Control-Allow-Origin", allowAnyOrigin ? "*" : origin);
+    res.setHeader("Vary", "Origin");
+    res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "x-api-key, authorization, content-type");
+    res.setHeader("Access-Control-Max-Age", "86400");
+  }
+
+  if (req.method === "OPTIONS") {
+    res.status(isAllowedOrigin ? 204 : 403).end();
+    return;
+  }
+
+  next();
+}
+
 function buildPublicCallbackUrl(botId, pathname) {
   const baseUrl = process.env.PUBLIC_BASE_URL;
   if (!baseUrl) {
@@ -186,6 +227,11 @@ function isGroupMessage(message) {
   return roomType === 1 || roomType === 3;
 }
 
+function isPrivateMessage(message) {
+  const roomType = Number(message.roomType);
+  return roomType === 2 || roomType === 4;
+}
+
 function isMentioned(message, binding) {
   const atMe = String(message.atMe ?? message.metadata?.atMe ?? "").toLowerCase();
   const raw = String(message.rawSpoken || message.rawMessage || message.spoken || "");
@@ -205,6 +251,61 @@ function shouldInvokeAgent(message, binding) {
     return true;
   }
   return isMentioned(message, binding);
+}
+
+function getFlowNode(machine, nodeId) {
+  const nodes = machine?.config?.nodes || machine?.nodes || [];
+  return nodes.find((node) => node.id === nodeId) || null;
+}
+
+function buildFlowContext({ botId, conversationKey, message }) {
+  if (!isPrivateMessage(message)) return null;
+  const machine = getFlowMachine(botId);
+  if (!machine || !machine.enabled) return null;
+  const session = getOrCreateFlowSession({ botId, conversationKey, machine });
+  const currentNode = getFlowNode(machine, session.currentNodeId) ||
+    getFlowNode(machine, machine.entryNodeId);
+  const recentMessages = listConversationMessages({ conversationKey, limit: 20 }).slice(-12);
+  return {
+    machine: {
+      name: machine.name,
+      version: machine.version,
+      entryNodeId: machine.entryNodeId,
+      nodes: machine.config.nodes
+    },
+    session,
+    currentNode,
+    recentMessages
+  };
+}
+
+function isValidFlowNode(machine, nodeId) {
+  const nodes = machine?.config?.nodes || machine?.nodes || [];
+  return Boolean(nodes.some((node) => node.id === nodeId));
+}
+
+function applyFlowDecision({ botId, conversationKey, flow, decision }) {
+  if (!flow || !decision || typeof decision !== "object") return;
+  const patch = decision.collectedDataPatch || decision.collectedFields || decision.dataPatch || {};
+  if (patch && typeof patch === "object" && !Array.isArray(patch)) {
+    mergeFlowSessionData({ conversationKey, patch });
+  }
+
+  const nextNodeId = String(decision.nextNodeId || "").trim();
+  if (
+    decision.nodeCompleted === true &&
+    nextNodeId &&
+    nextNodeId !== flow.session.currentNodeId &&
+    isValidFlowNode(flow.machine, nextNodeId)
+  ) {
+    updateFlowSessionNode({
+      botId,
+      conversationKey,
+      nextNodeId,
+      reason: decision.reason || "Agent 判断节点完成",
+      decision
+    });
+  }
 }
 
 function looksLikeInternalNonReplyAnalysis(reply) {
@@ -334,7 +435,7 @@ function normalizeProactiveTargets(targets) {
 }
 
 function normalizeMessageType(value) {
-  if (["text", "media", "mini_program", "raw"].includes(value)) return value;
+  if (["text", "media"].includes(value)) return value;
   return "text";
 }
 
@@ -348,7 +449,7 @@ function fileTypeLabel(fileType) {
     1: "文件",
     2: "视频",
     3: "音频"
-  }[Number(fileType)] || "媒体";
+  }[String(fileType)] || "媒体";
 }
 
 function normalizeProactiveMessage(body) {
@@ -370,23 +471,6 @@ function normalizeProactiveMessage(body) {
     };
   }
 
-  if (messageType === "mini_program" || messageType === "raw") {
-    let command;
-    try {
-      command = typeof body.rawCommand === "string" ? JSON.parse(body.rawCommand) : body.rawCommand;
-    } catch {
-      throw new Error("rawCommand must be valid JSON");
-    }
-    if (!command || typeof command !== "object" || Array.isArray(command)) {
-      throw new Error("rawCommand must be a JSON object");
-    }
-    return {
-      messageType,
-      content: String(body.content || body.title || "小程序/高级消息").trim(),
-      messagePayload: { command }
-    };
-  }
-
   const content = String(body.content || "").trim();
   if (!content) throw new Error("content is required");
   return {
@@ -403,12 +487,6 @@ function buildCommandForTarget(target) {
       targets: [target.targetName],
       ...payload
     });
-  }
-  if (target.messageType === "mini_program" || target.messageType === "raw") {
-    return {
-      ...(payload.command || {}),
-      titleList: [target.targetName]
-    };
   }
   return null;
 }
@@ -627,8 +705,19 @@ async function processIncomingMessage({ botId, message }) {
     conversationKey,
     message
   });
+  if (isPrivateMessage(message)) {
+    insertConversationMessage({
+      botId,
+      conversationKey,
+      direction: "inbound",
+      senderName: message.receivedName || "",
+      content: message.spoken || message.rawSpoken || "",
+      rawPayload: message
+    });
+  }
 
-  const request = buildDclawRequest({ binding, conversation, message });
+  const flow = buildFlowContext({ botId, conversationKey, message });
+  const request = buildDclawRequest({ binding, conversation, message, flow });
   const invocationId = insertAgentInvocationStart({
     botId,
     agentId: binding.agentId,
@@ -657,7 +746,8 @@ async function processIncomingMessage({ botId, message }) {
       status: "success"
     });
 
-    const reply = String(invocation.reply || "").trim();
+    const agentReply = parseAgentReply(invocation.reply);
+    const reply = String(agentReply.reply || "").trim();
     logInfo("agent.invoke.success", {
       ...logContext,
       agentId: binding.agentId,
@@ -696,6 +786,35 @@ async function processIncomingMessage({ botId, message }) {
       targets: [target],
       content: reply
     });
+    if (flow) {
+      applyFlowDecision({
+        botId,
+        conversationKey,
+        flow,
+        decision: agentReply.flowDecision
+      });
+      insertConversationMessage({
+        botId,
+        conversationKey,
+        direction: "outbound",
+        senderName: binding.botName || binding.agentName || "机器人",
+        content: reply,
+        rawPayload: {
+          worktoolMessageId: result.data,
+          flowDecision: agentReply.flowDecision,
+          agentReply: agentReply.raw
+        }
+      });
+    } else if (isPrivateMessage(message)) {
+      insertConversationMessage({
+        botId,
+        conversationKey,
+        direction: "outbound",
+        senderName: binding.botName || binding.agentName || "机器人",
+        content: reply,
+        rawPayload: { worktoolMessageId: result.data }
+      });
+    }
     logInfo("worktool.send.success", {
       ...logContext,
       agentId: binding.agentId,
@@ -747,8 +866,11 @@ app.get("/health", (req, res) => {
   });
 });
 
+app.options("/api/uploads", applyUploadCors);
+
 app.post(
   "/api/uploads",
+  applyUploadCors,
   (req, res, next) => {
     try {
       assertAdmin(req);
@@ -948,6 +1070,159 @@ app.put(
       reply: String(body.reply || "pong")
     });
     res.json({ ok: true, config });
+  })
+);
+
+function defaultFlowMachineConfig(botName = "客服流程") {
+  return {
+    name: `${botName}状态机`,
+    version: "1.0.0",
+    entryNodeId: "collect_basic_info",
+    nodes: [
+      {
+        id: "collect_basic_info",
+        name: "收集基础信息",
+        goal: "自然了解客户身份、需求、预算、地区和联系方式等基础信息。",
+        completionCriteria: "客户已经表达明确需求，并至少留下一个可继续跟进的信息。",
+        collectFields: ["name", "phone", "need", "budget", "city"],
+        conversationTips: [
+          "先回应客户问题，再自然补一个轻量问题",
+          "不要像问卷一样连续追问",
+          "客户抗拒时降低压迫感"
+        ],
+        nextNodeId: "invite_next_step"
+      },
+      {
+        id: "invite_next_step",
+        name: "邀约下一步",
+        goal: "根据客户意向，引导客户参加直播课、预约顾问或进入下一步沟通。",
+        completionCriteria: "客户接受了明确的下一步安排，或表达了可跟进时间。",
+        collectFields: ["preferred_time", "next_action"],
+        conversationTips: [
+          "给客户一个明确但不强迫的下一步",
+          "用选择题降低决策压力"
+        ],
+        nextNodeId: "follow_up"
+      },
+      {
+        id: "follow_up",
+        name: "跟进回访",
+        goal: "围绕客户反馈继续答疑，确认是否具备成交推进条件。",
+        completionCriteria: "客户反馈了参与结果或明确表达下一步购买/合作意向。",
+        collectFields: ["feedback", "objections"],
+        conversationTips: [
+          "先复述客户反馈，体现理解",
+          "针对疑虑给出简洁回应"
+        ],
+        nextNodeId: "close_deal"
+      },
+      {
+        id: "close_deal",
+        name: "成交推进",
+        goal: "在客户意向明确时，推荐合适产品或合作方案并推动成交。",
+        completionCriteria: "客户已经进入付款、合同、顾问对接或明确拒绝阶段。",
+        collectFields: ["product_interest", "deal_status"],
+        conversationTips: [
+          "不要过度施压",
+          "明确下一步材料、人员或动作"
+        ],
+        nextNodeId: ""
+      }
+    ]
+  };
+}
+
+app.get(
+  "/api/flow-machines",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    res.json({
+      ok: true,
+      machines: listFlowMachines({ botId: String(req.query.botId || "").trim() })
+    });
+  })
+);
+
+app.get(
+  "/api/flow-machines/:botId",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    let machine = getFlowMachine(req.params.botId);
+    if (!machine && req.query.default === "1") {
+      const binding = getBotBinding(req.params.botId);
+      machine = {
+        botId: req.params.botId,
+        enabled: false,
+        config: defaultFlowMachineConfig(binding?.botName || binding?.agentName || "客服")
+      };
+    }
+    res.json({ ok: true, machine });
+  })
+);
+
+app.put(
+  "/api/flow-machines/:botId",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const body = req.body || {};
+    const config = typeof body.config === "string" ? JSON.parse(body.config) : body.config;
+    const machine = upsertFlowMachine({
+      botId: req.params.botId,
+      config,
+      enabled: body.enabled !== false
+    });
+    res.json({ ok: true, machine });
+  })
+);
+
+app.get(
+  "/api/flow-sessions",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    res.json({
+      ok: true,
+      sessions: listFlowSessions({
+        botId: String(req.query.botId || "").trim(),
+        limit: Number(req.query.limit || 100)
+      })
+    });
+  })
+);
+
+app.get(
+  "/api/flow-sessions/:conversationKey",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const conversationKey = decodeURIComponent(req.params.conversationKey);
+    res.json({
+      ok: true,
+      messages: listConversationMessages({ conversationKey, limit: Number(req.query.limit || 300) }),
+      events: listFlowStateEvents({ conversationKey, limit: 100 })
+    });
+  })
+);
+
+app.put(
+  "/api/flow-sessions/:conversationKey/node",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const body = req.body || {};
+    const conversationKey = decodeURIComponent(req.params.conversationKey);
+    const botId = String(body.botId || "").trim();
+    const nextNodeId = String(body.nextNodeId || "").trim();
+    if (!botId || !nextNodeId) throw new Error("botId and nextNodeId are required");
+    const machine = getFlowMachine(botId);
+    if (!machine || !machine.config.nodes.some((node) => node.id === nextNodeId)) {
+      throw new Error("nextNodeId is not valid for this bot");
+    }
+    const session = updateFlowSessionNode({
+      botId,
+      conversationKey,
+      nextNodeId,
+      reason: body.reason || "控制台手动修改",
+      decision: { source: "console", reason: body.reason || "" }
+    });
+    res.json({ ok: true, session });
   })
 );
 

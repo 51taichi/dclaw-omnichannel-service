@@ -1,6 +1,7 @@
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
-  selectedBotId: ""
+  selectedBotId: "",
+  selectedFlowConversationKey: ""
 };
 
 const DEFAULT_FILE_URL = "https://worktool.deepmega.cn/console";
@@ -17,6 +18,17 @@ const els = {
   bindingState: document.querySelector("#bindingState"),
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
+  flowMachineForm: document.querySelector("#flowMachineForm"),
+  loadDefaultFlowButton: document.querySelector("#loadDefaultFlowButton"),
+  exportFlowButton: document.querySelector("#exportFlowButton"),
+  refreshFlowSessionsButton: document.querySelector("#refreshFlowSessionsButton"),
+  flowSessionList: document.querySelector("#flowSessionList"),
+  chatTitle: document.querySelector("#chatTitle"),
+  chatNode: document.querySelector("#chatNode"),
+  chatMessages: document.querySelector("#chatMessages"),
+  flowEventsOutput: document.querySelector("#flowEventsOutput"),
+  manualFlowNodeSelect: document.querySelector("#manualFlowNodeSelect"),
+  saveManualFlowNodeButton: document.querySelector("#saveManualFlowNodeButton"),
   proactiveForm: document.querySelector("#proactiveForm"),
   messageTypeInput: document.querySelector('select[name="messageType"]'),
   messageFields: document.querySelectorAll("[data-message-field]"),
@@ -223,7 +235,12 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
   if (bot?.botId) {
     els.proactiveForm.botId.value = bot.botId;
     selectedTargets.clear();
-    await Promise.all([loadAddressBookTargets(), loadProactiveTasks()]);
+    await Promise.all([
+      loadAddressBookTargets(),
+      loadProactiveTasks(),
+      loadFlowMachine(),
+      loadFlowSessions()
+    ]);
     if (els.logsOutput.textContent.trim()) {
       await loadLogs();
     }
@@ -275,6 +292,7 @@ function renderBots(bots) {
             </span>
           </div>
           <div class="row-actions bot-actions">
+            <button class="secondary" data-action="flow" data-bot="${safeBot}" type="button">${icon("users")}客户流程</button>
             <button class="secondary" data-action="push" data-bot="${safeBot}" type="button">${icon("send")}推送消息</button>
           </div>
         </article>
@@ -299,6 +317,11 @@ function renderBots(bots) {
         fillForm(bot);
         await applyBotContext(bot, { scrollTo: els.proactivePanel });
       }
+      if (actionTarget.dataset.action === "flow") {
+        event.stopPropagation();
+        fillForm(bot);
+        await applyBotContext(bot, { scrollTo: document.querySelector("#flowMachinePanel") });
+      }
     });
   });
 }
@@ -318,6 +341,8 @@ function renderBotOptions(bots) {
 let currentBots = [];
 let targetFilter = "all";
 let addressBookTargets = [];
+let currentFlowMachine = null;
+let currentFlowSessions = [];
 const selectedTargets = new Map();
 
 function targetKey(target) {
@@ -531,6 +556,166 @@ async function loadLogs() {
   els.logsOutput.textContent = JSON.stringify(data.logs || [], null, 2);
 }
 
+function flowNodeLabel(nodeId) {
+  const node = currentFlowMachine?.config?.nodes?.find((item) => item.id === nodeId);
+  return node ? `${node.name} (${node.id})` : nodeId || "-";
+}
+
+function renderManualNodeOptions(currentNodeId = "") {
+  const nodes = currentFlowMachine?.config?.nodes || [];
+  els.manualFlowNodeSelect.innerHTML = nodes
+    .map((node) => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.name)} (${escapeHtml(node.id)})</option>`)
+    .join("");
+  if (currentNodeId) els.manualFlowNodeSelect.value = currentNodeId;
+}
+
+async function loadFlowMachine({ useDefault = false } = {}) {
+  if (!state.selectedBotId) return;
+  const data = await request(
+    `/api/flow-machines/${encodeURIComponent(state.selectedBotId)}${useDefault ? "?default=1" : ""}`
+  );
+  currentFlowMachine = data.machine || null;
+  if (currentFlowMachine?.config) {
+    els.flowMachineForm.enabled.checked = Boolean(currentFlowMachine.enabled);
+    els.flowMachineForm.config.value = JSON.stringify(currentFlowMachine.config, null, 2);
+  } else {
+    els.flowMachineForm.enabled.checked = false;
+    els.flowMachineForm.config.value = "";
+  }
+  renderManualNodeOptions();
+}
+
+async function saveFlowMachine(event) {
+  event.preventDefault();
+  if (!state.selectedBotId) {
+    toast("请先选择 Bot");
+    return;
+  }
+  let config;
+  try {
+    config = JSON.parse(els.flowMachineForm.config.value);
+  } catch {
+    toast("状态机 JSON 格式不正确");
+    return;
+  }
+  const data = await request(`/api/flow-machines/${encodeURIComponent(state.selectedBotId)}`, {
+    method: "PUT",
+    body: JSON.stringify({
+      enabled: els.flowMachineForm.enabled.checked,
+      config
+    })
+  });
+  currentFlowMachine = data.machine;
+  toast("状态机已保存");
+  renderManualNodeOptions();
+  await loadFlowSessions();
+}
+
+async function loadDefaultFlowMachine() {
+  if (!state.selectedBotId) {
+    toast("请先选择 Bot");
+    return;
+  }
+  await loadFlowMachine({ useDefault: true });
+  toast("模板已载入，确认后请保存");
+}
+
+function exportFlowMachine() {
+  if (!currentFlowMachine?.config) {
+    toast("当前没有可导出的状态机");
+    return;
+  }
+  const blob = new Blob([JSON.stringify(currentFlowMachine.config, null, 2)], {
+    type: "application/json"
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${currentFlowMachine.config.name || "flow-machine"}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function loadFlowSessions() {
+  if (!state.selectedBotId) return;
+  const params = new URLSearchParams({ botId: state.selectedBotId, limit: "100" });
+  const data = await request(`/api/flow-sessions?${params.toString()}`);
+  currentFlowSessions = data.sessions || [];
+  renderFlowSessions();
+}
+
+function renderFlowSessions() {
+  els.flowSessionList.innerHTML = currentFlowSessions.length
+    ? currentFlowSessions
+        .map((session) => {
+          const active = session.conversationKey === state.selectedFlowConversationKey;
+          const name = session.receivedName || session.conversationKey;
+          return `
+            <button class="flow-session-card ${active ? "selected" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
+              <strong>${escapeHtml(name)}</strong>
+              <span>${escapeHtml(flowNodeLabel(session.currentNodeId))}</span>
+              <small>${escapeHtml(session.lastMessageAt || "")}</small>
+            </button>
+          `;
+        })
+        .join("")
+    : `<div class="empty-state">暂无私聊状态机会话。启用状态机后，新的私聊会自动出现在这里。</div>`;
+
+  els.flowSessionList.querySelectorAll("[data-flow-session]").forEach((button) => {
+    button.addEventListener("click", () =>
+      openFlowSession(button.dataset.flowSession).catch((error) => toast(error.message))
+    );
+  });
+}
+
+async function openFlowSession(conversationKey) {
+  state.selectedFlowConversationKey = conversationKey;
+  const session = currentFlowSessions.find((item) => item.conversationKey === conversationKey);
+  renderFlowSessions();
+  els.chatTitle.textContent = session?.receivedName || conversationKey;
+  els.chatNode.textContent = session ? `当前节点：${flowNodeLabel(session.currentNodeId)}` : "";
+  renderManualNodeOptions(session?.currentNodeId || "");
+  const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?limit=300`);
+  renderChatMessages(data.messages || []);
+  els.flowEventsOutput.textContent = JSON.stringify(data.events || [], null, 2);
+}
+
+function renderChatMessages(messages) {
+  els.chatMessages.innerHTML = messages.length
+    ? messages
+        .map((message) => `
+          <div class="chat-bubble-row ${message.direction === "outbound" ? "outbound" : "inbound"}">
+            <div class="chat-bubble">
+              <small>${escapeHtml(message.senderName || (message.direction === "outbound" ? "机器人" : "客户"))}</small>
+              <div>${escapeHtml(message.content)}</div>
+              <time>${escapeHtml(message.createdAt || "")}</time>
+            </div>
+          </div>
+        `)
+        .join("")
+    : `<div class="empty-state">暂无会话记录</div>`;
+  els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+}
+
+async function saveManualFlowNode() {
+  if (!state.selectedBotId || !state.selectedFlowConversationKey) {
+    toast("请先选择会话");
+    return;
+  }
+  const nextNodeId = els.manualFlowNodeSelect.value;
+  await request(`/api/flow-sessions/${encodeURIComponent(state.selectedFlowConversationKey)}/node`, {
+    method: "PUT",
+    body: JSON.stringify({
+      botId: state.selectedBotId,
+      nextNodeId,
+      reason: "控制台手动修改"
+    })
+  });
+  toast("会话节点已修改");
+  await loadFlowSessions();
+  await openFlowSession(state.selectedFlowConversationKey);
+}
+
 async function saveDebugReply(event) {
   event.preventDefault();
   await request("/api/settings/debug-reply", {
@@ -568,9 +753,6 @@ async function createProactiveTask(event) {
       payload.fileUrl = uploaded.url;
       payload.objectName = uploaded.originalName || uploaded.filename || localFile.name;
     }
-  } else if (messageType === "mini_program") {
-    payload.rawCommand = String(data.get("rawCommand") || "").trim();
-    payload.content = payload.title || "小程序/高级消息";
   }
 
   if (!payload.botId || !payload.targets.length) {
@@ -583,10 +765,6 @@ async function createProactiveTask(event) {
   }
   if (messageType === "media" && !payload.fileUrl) {
     toast("请填写文件 URL");
-    return;
-  }
-  if (messageType === "mini_program" && !payload.rawCommand) {
-    toast("请填写小程序/高级消息 JSON");
     return;
   }
 
@@ -604,7 +782,6 @@ async function createProactiveTask(event) {
   els.proactiveForm.fileUrl.value = DEFAULT_FILE_URL;
   els.proactiveForm.extraText.value = "";
   els.proactiveForm.uploadFile.value = "";
-  els.proactiveForm.rawCommand.value = "";
   await loadProactiveTasks();
 }
 
@@ -616,7 +793,6 @@ function syncMessageTypeFields() {
     field.querySelectorAll("textarea, input, select").forEach((input) => {
       if (input.name === "content") input.required = type === "text";
       if (input.name === "fileUrl") input.required = type === "media";
-      if (input.name === "rawCommand") input.required = type === "mini_program";
     });
   });
 }
@@ -640,9 +816,7 @@ function renderProactiveTasks(tasks) {
       const content = task.content || "";
       const typeLabel = {
         text: "文本",
-        media: "媒体",
-        mini_program: "小程序",
-        raw: "高级"
+        media: "媒体"
       }[task.messageType || "text"] || "文本";
       return `
         <tr>
@@ -688,6 +862,19 @@ els.refreshButton.addEventListener("click", () => loadBots().catch((error) => to
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch((error) => toast(error.message)));
 els.debugReplyForm.addEventListener("submit", (event) =>
   saveDebugReply(event).catch((error) => toast(error.message))
+);
+els.flowMachineForm.addEventListener("submit", (event) =>
+  saveFlowMachine(event).catch((error) => toast(error.message))
+);
+els.loadDefaultFlowButton.addEventListener("click", () =>
+  loadDefaultFlowMachine().catch((error) => toast(error.message))
+);
+els.exportFlowButton.addEventListener("click", exportFlowMachine);
+els.refreshFlowSessionsButton.addEventListener("click", () =>
+  Promise.all([loadFlowMachine(), loadFlowSessions()]).catch((error) => toast(error.message))
+);
+els.saveManualFlowNodeButton.addEventListener("click", () =>
+  saveManualFlowNode().catch((error) => toast(error.message))
 );
 els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))

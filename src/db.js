@@ -169,6 +169,52 @@ db.exec(`
 
   CREATE UNIQUE INDEX IF NOT EXISTS idx_proactive_targets_unique
   ON proactive_targets (bot_id, target_type, target_name);
+
+  CREATE TABLE IF NOT EXISTS flow_machines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    version TEXT,
+    entry_node_id TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS flow_sessions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL UNIQUE,
+    current_node_id TEXT NOT NULL,
+    collected_data_json TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    last_message_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS conversation_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    direction TEXT NOT NULL,
+    sender_name TEXT,
+    content TEXT NOT NULL,
+    raw_payload_json TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS flow_state_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    from_node_id TEXT,
+    to_node_id TEXT,
+    reason TEXT,
+    agent_decision_json TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 function ensureColumn(table, column, definition) {
@@ -587,6 +633,300 @@ function rowToProactiveAddressBookTarget(row) {
   };
 }
 
+function normalizeFlowConfig(input) {
+  const config = input && typeof input === "object" ? input : {};
+  const nodes = Array.isArray(config.nodes) ? config.nodes : [];
+  if (!nodes.length) {
+    throw new Error("flow machine requires at least one node");
+  }
+  const normalizedNodes = nodes.map((node) => ({
+    id: String(node.id || "").trim(),
+    name: String(node.name || "").trim(),
+    goal: String(node.goal || "").trim(),
+    completionCriteria: String(node.completionCriteria || "").trim(),
+    collectFields: Array.isArray(node.collectFields) ? node.collectFields.map(String) : [],
+    conversationTips: Array.isArray(node.conversationTips) ? node.conversationTips.map(String) : [],
+    nextNodeId: String(node.nextNodeId || "").trim(),
+    transitions: Array.isArray(node.transitions) ? node.transitions : []
+  }));
+  if (normalizedNodes.some((node) => !node.id || !node.name)) {
+    throw new Error("each flow node requires id and name");
+  }
+  const ids = new Set(normalizedNodes.map((node) => node.id));
+  if (ids.size !== normalizedNodes.length) {
+    throw new Error("flow node ids must be unique");
+  }
+  const entryNodeId = String(config.entryNodeId || normalizedNodes[0].id).trim();
+  if (!ids.has(entryNodeId)) {
+    throw new Error("entryNodeId must match a node id");
+  }
+  for (const node of normalizedNodes) {
+    if (node.nextNodeId && !ids.has(node.nextNodeId)) {
+      throw new Error(`nextNodeId not found: ${node.nextNodeId}`);
+    }
+  }
+  return {
+    name: String(config.name || "默认客服流程").trim(),
+    version: String(config.version || "1.0.0").trim(),
+    entryNodeId,
+    nodes: normalizedNodes
+  };
+}
+
+function rowToFlowMachine(row) {
+  if (!row) return null;
+  const config = parseJson(row.config_json) || {};
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    name: row.name,
+    version: row.version,
+    entryNodeId: row.entry_node_id,
+    config,
+    enabled: Boolean(row.enabled),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToFlowSession(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    conversationKey: row.conversation_key,
+    currentNodeId: row.current_node_id,
+    collectedData: parseJson(row.collected_data_json) || {},
+    status: row.status,
+    lastMessageAt: row.last_message_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToConversationMessage(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    conversationKey: row.conversation_key,
+    direction: row.direction,
+    senderName: row.sender_name,
+    content: row.content,
+    rawPayload: parseJson(row.raw_payload_json),
+    createdAt: row.created_at
+  };
+}
+
+function rowToFlowStateEvent(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    conversationKey: row.conversation_key,
+    fromNodeId: row.from_node_id,
+    toNodeId: row.to_node_id,
+    reason: row.reason,
+    agentDecision: parseJson(row.agent_decision_json),
+    createdAt: row.created_at
+  };
+}
+
+export function upsertFlowMachine({ botId, config, enabled = true }) {
+  const normalized = normalizeFlowConfig(config);
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO flow_machines (
+      bot_id, name, version, entry_node_id, config_json, enabled, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(bot_id) DO UPDATE SET
+      name = excluded.name,
+      version = excluded.version,
+      entry_node_id = excluded.entry_node_id,
+      config_json = excluded.config_json,
+      enabled = excluded.enabled,
+      updated_at = excluded.updated_at
+  `).run(
+    botId,
+    normalized.name,
+    normalized.version,
+    normalized.entryNodeId,
+    json(normalized),
+    enabled === false ? 0 : 1,
+    timestamp,
+    timestamp
+  );
+  return getFlowMachine(botId);
+}
+
+export function getFlowMachine(botId) {
+  return rowToFlowMachine(
+    db.prepare("SELECT * FROM flow_machines WHERE bot_id = ?").get(botId)
+  );
+}
+
+export function listFlowMachines({ botId = "" } = {}) {
+  const rows = botId
+    ? db.prepare("SELECT * FROM flow_machines WHERE bot_id = ? ORDER BY updated_at DESC").all(botId)
+    : db.prepare("SELECT * FROM flow_machines ORDER BY updated_at DESC").all();
+  return rows.map(rowToFlowMachine);
+}
+
+export function getOrCreateFlowSession({ botId, conversationKey, machine }) {
+  let row = db
+    .prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?")
+    .get(conversationKey);
+  if (!row) {
+    const timestamp = now();
+    db.prepare(`
+      INSERT INTO flow_sessions (
+        bot_id, conversation_key, current_node_id, collected_data_json, status,
+        last_message_at, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+    `).run(
+      botId,
+      conversationKey,
+      machine.entryNodeId,
+      json({}),
+      timestamp,
+      timestamp,
+      timestamp
+    );
+    row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey);
+  }
+  return rowToFlowSession(row);
+}
+
+export function listFlowSessions({ botId, limit = 100 } = {}) {
+  const params = [];
+  let where = "";
+  if (botId) {
+    where = "WHERE fs.bot_id = ?";
+    params.push(botId);
+  }
+  params.push(Number(limit));
+  return db.prepare(`
+    SELECT
+      fs.*,
+      c.received_name,
+      c.group_name,
+      c.room_type,
+      fm.name AS flow_name
+    FROM flow_sessions fs
+    LEFT JOIN conversations c ON c.conversation_key = fs.conversation_key
+    LEFT JOIN flow_machines fm ON fm.bot_id = fs.bot_id
+    ${where}
+    ORDER BY fs.last_message_at DESC
+    LIMIT ?
+  `).all(...params).map((row) => ({
+    ...rowToFlowSession(row),
+    receivedName: row.received_name,
+    groupName: row.group_name,
+    roomType: row.room_type,
+    flowName: row.flow_name
+  }));
+}
+
+export function updateFlowSessionNode({ botId, conversationKey, nextNodeId, reason, decision = null }) {
+  const session = rowToFlowSession(
+    db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)
+  );
+  if (!session) throw new Error("flow session not found");
+  const timestamp = now();
+  db.prepare(`
+    UPDATE flow_sessions
+    SET current_node_id = ?, updated_at = ?, last_message_at = ?
+    WHERE conversation_key = ?
+  `).run(nextNodeId, timestamp, timestamp, conversationKey);
+  db.prepare(`
+    INSERT INTO flow_state_events (
+      bot_id, conversation_key, from_node_id, to_node_id, reason, agent_decision_json, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    botId,
+    conversationKey,
+    session.currentNodeId,
+    nextNodeId,
+    reason || "",
+    json(decision),
+    timestamp
+  );
+  return getOrCreateFlowSession({ botId, conversationKey, machine: { entryNodeId: nextNodeId } });
+}
+
+export function mergeFlowSessionData({ conversationKey, patch = {} }) {
+  const session = rowToFlowSession(
+    db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)
+  );
+  if (!session) return null;
+  const nextData = {
+    ...(session.collectedData || {}),
+    ...(patch && typeof patch === "object" && !Array.isArray(patch) ? patch : {})
+  };
+  const timestamp = now();
+  db.prepare(`
+    UPDATE flow_sessions
+    SET collected_data_json = ?, last_message_at = ?, updated_at = ?
+    WHERE conversation_key = ?
+  `).run(json(nextData), timestamp, timestamp, conversationKey);
+  return rowToFlowSession(
+    db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)
+  );
+}
+
+export function insertConversationMessage({
+  botId,
+  conversationKey,
+  direction,
+  senderName,
+  content,
+  rawPayload
+}) {
+  db.prepare(`
+    INSERT INTO conversation_messages (
+      bot_id, conversation_key, direction, sender_name, content, raw_payload_json, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    botId,
+    conversationKey,
+    direction,
+    senderName || "",
+    content || "",
+    json(rawPayload),
+    now()
+  );
+}
+
+export function listConversationMessages({ conversationKey, limit = 200 }) {
+  return db
+    .prepare(`
+      SELECT *
+      FROM conversation_messages
+      WHERE conversation_key = ?
+      ORDER BY id ASC
+      LIMIT ?
+    `)
+    .all(conversationKey, Number(limit))
+    .map(rowToConversationMessage);
+}
+
+export function listFlowStateEvents({ conversationKey, limit = 100 }) {
+  return db
+    .prepare(`
+      SELECT *
+      FROM flow_state_events
+      WHERE conversation_key = ?
+      ORDER BY id ASC
+      LIMIT ?
+    `)
+    .all(conversationKey, Number(limit))
+    .map(rowToFlowStateEvent);
+}
+
 export function upsertProactiveAddressBookTarget({
   botId,
   targetType,
@@ -738,7 +1078,7 @@ export function createProactiveTask({
     targetType: target.targetType === "group" ? "group" : "private",
     targetName: String(target.targetName || "").trim()
   }));
-  const normalizedMessageType = ["text", "media", "mini_program", "raw"].includes(messageType)
+  const normalizedMessageType = ["text", "media"].includes(messageType)
     ? messageType
     : "text";
 
@@ -1057,6 +1397,24 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
       table: "conversations",
       mapper: (row) => row,
       orderBy: "updated_at"
+    },
+    "flow-machines": {
+      table: "flow_machines",
+      mapper: rowToFlowMachine,
+      orderBy: "updated_at"
+    },
+    "flow-sessions": {
+      table: "flow_sessions",
+      mapper: rowToFlowSession,
+      orderBy: "updated_at"
+    },
+    "conversation-messages": {
+      table: "conversation_messages",
+      mapper: rowToConversationMessage
+    },
+    "flow-state-events": {
+      table: "flow_state_events",
+      mapper: rowToFlowStateEvent
     },
     "proactive-tasks": {
       table: "proactive_tasks",

@@ -1,4 +1,4 @@
-export function buildDclawRequest({ binding, conversation, message }) {
+export function buildDclawRequest({ binding, conversation, message, flow = null }) {
   const roomType = Number(message.roomType);
   const isGroup = roomType === 1 || roomType === 3;
   const worktoolMessage = {
@@ -24,18 +24,37 @@ export function buildDclawRequest({ binding, conversation, message }) {
     }
   };
 
+  const instructions = [
+    "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
+    "WorkTool 房间类型约定：roomType=2/4 表示私聊，必须默认回复；roomType=1/3 表示群聊，只有被 @ 时才回复。",
+    "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
+    "群聊被 @ 后，业务问题必须和私聊一样优先调用 DClaw 企业智库；不要因为是群聊就跳过知识库检索。",
+    "最终回复的真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。"
+  ];
+  if (flow) {
+    instructions.push(
+      "当前私聊会话启用了客服流程状态机。你必须围绕 flow.currentNode 的 goal、completionCriteria、collectFields 和 conversationTips 推进对话。",
+      "不要机械追问；先回应客户当前表达，再自然推进当前节点目标。",
+      "最终请只输出一个 JSON 对象，不要输出 Markdown 或分析过程。",
+      "JSON 格式：{\"reply\":\"发给客户的文本\",\"flowDecision\":{\"currentNodeId\":\"当前节点ID\",\"nextNodeId\":\"建议下一节点ID或当前节点ID\",\"nodeCompleted\":false,\"confidence\":0.0,\"reason\":\"判断原因\",\"collectedDataPatch\":{}}}",
+      "如果当前节点已经完成，可以设置 nodeCompleted=true，并给出合法 nextNodeId；服务器会最终决定是否迁移。"
+    );
+  } else {
+    instructions.push(
+      "请只输出要发回企微客户的最终文本；不要输出分析过程、规则解释、JSON 或 Markdown；如果不需要回复，请输出空字符串。"
+    );
+  }
+
   return {
     external_user_id: worktoolMessage.userId || "unknown",
     external_session_id: worktoolMessage.conversationId,
     message: [
-      "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
-      "WorkTool 房间类型约定：roomType=2/4 表示私聊，必须默认回复；roomType=1/3 表示群聊，只有被 @ 时才回复。",
-      "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
-      "群聊被 @ 后，业务问题必须和私聊一样优先调用 DClaw 企业智库；不要因为是群聊就跳过知识库检索。",
-      "最终回复的真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。",
-      "请只输出要发回企微客户的最终文本；不要输出分析过程、规则解释、JSON 或 Markdown；如果不需要回复，请输出空字符串。",
+      ...instructions,
       "",
-      JSON.stringify(worktoolMessage, null, 2)
+      JSON.stringify({
+        worktoolMessage,
+        flow
+      }, null, 2)
     ].join("\n"),
     stream: true,
     metadata: {
@@ -47,7 +66,8 @@ export function buildDclawRequest({ binding, conversation, message }) {
       roomType: worktoolMessage.roomType,
       groupName: worktoolMessage.groupName,
       userId: worktoolMessage.userId,
-      worktool: worktoolMessage
+      worktool: worktoolMessage,
+      flow
     }
   };
 }
@@ -136,7 +156,7 @@ export async function invokeDclawAgent({ binding, request }) {
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("text/event-stream")) {
     const result = await readSseText(response);
-    const reply = extractReplyFromText(result.text) || extractReply(result.events);
+    const reply = result.text.trim() || extractReply(result.events);
     return {
       request,
       response: result.events,
@@ -156,9 +176,60 @@ export async function invokeDclawAgent({ binding, request }) {
   return {
     request,
     response: data,
-    reply: extractReply(data),
+    reply:
+      data && typeof data === "object" && !Array.isArray(data) &&
+      (data.flowDecision || data.stateUpdate || data.reply || data.message || data.content)
+        ? JSON.stringify(data)
+        : extractReply(data),
     sessionId: data.sessionId || data.session_id || data.conversationId || data.data?.sessionId || null
   };
+}
+
+export function parseAgentReply(rawReply) {
+  const text = String(rawReply || "").trim();
+  if (!text) return { reply: "", flowDecision: null, raw: rawReply };
+
+  const parsed = parseJsonObjectFromText(text);
+  if (!parsed) return { reply: text, flowDecision: null, raw: rawReply };
+
+  const reply =
+    typeof parsed.reply === "string"
+      ? parsed.reply
+      : typeof parsed.message === "string"
+        ? parsed.message
+        : typeof parsed.content === "string"
+          ? parsed.content
+          : "";
+  return {
+    reply: reply.trim(),
+    flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
+    raw: parsed
+  };
+}
+
+function parseJsonObjectFromText(text) {
+  try {
+    const data = JSON.parse(text);
+    return data && typeof data === "object" && !Array.isArray(data) ? data : null;
+  } catch {}
+
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fenced) {
+    try {
+      const data = JSON.parse(fenced[1]);
+      return data && typeof data === "object" && !Array.isArray(data) ? data : null;
+    } catch {}
+  }
+
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start >= 0 && end > start) {
+    try {
+      const data = JSON.parse(text.slice(start, end + 1));
+      return data && typeof data === "object" && !Array.isArray(data) ? data : null;
+    } catch {}
+  }
+  return null;
 }
 
 async function readSseText(response) {
