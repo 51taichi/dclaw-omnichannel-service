@@ -910,9 +910,11 @@ function renderChatMessages(messages) {
         .map((message) => `
           <div class="chat-bubble-row ${message.direction === "outbound" ? "outbound" : "inbound"}">
             <div class="chat-bubble">
-              <small>${escapeHtml(message.senderName || (message.direction === "outbound" ? "机器人" : "客户"))}</small>
-              <div>${escapeHtml(message.content)}</div>
-              <time>${escapeHtml(message.createdAt || "")}</time>
+              <div class="chat-meta">
+                <small>${escapeHtml(message.senderName || (message.direction === "outbound" ? "机器人" : "客户"))}</small>
+                <time>${escapeHtml(message.createdAt || "")}</time>
+              </div>
+              <div class="chat-text">${escapeHtml(message.content)}</div>
             </div>
           </div>
         `)
