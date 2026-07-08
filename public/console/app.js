@@ -30,7 +30,6 @@ const els = {
   chatMessages: document.querySelector("#chatMessages"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
   manualFlowNodeSelect: document.querySelector("#manualFlowNodeSelect"),
-  saveManualFlowNodeButton: document.querySelector("#saveManualFlowNodeButton"),
   proactiveForm: document.querySelector("#proactiveForm"),
   messageTypeInput: document.querySelector('select[name="messageType"]'),
   messageFields: document.querySelectorAll("[data-message-field]"),
@@ -950,7 +949,7 @@ async function saveManualFlowNode() {
       reason: "控制台手动修改"
     })
   });
-  toast("会话节点已修改");
+  toast("状态已保存");
   await loadFlowSessions();
   await openFlowSession(state.selectedFlowConversationKey);
 }
@@ -1123,7 +1122,7 @@ els.exportFlowButton.addEventListener("click", exportFlowMachine);
 els.refreshFlowSessionsButton.addEventListener("click", () =>
   Promise.all([loadFlowMachine(), loadFlowSessions()]).catch((error) => toast(error.message))
 );
-els.saveManualFlowNodeButton.addEventListener("click", () =>
+els.manualFlowNodeSelect.addEventListener("change", () =>
   saveManualFlowNode().catch((error) => toast(error.message))
 );
 els.proactiveForm.addEventListener("submit", (event) =>
