@@ -159,8 +159,10 @@ h2 {
 }
 
 .workspace-tabs button {
+  gap: 6px;
   justify-content: center;
   height: 36px;
+  padding: 0 10px;
   border: 0;
   border-radius: 6px;
   background: transparent;
