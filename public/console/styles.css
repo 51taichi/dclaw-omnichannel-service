@@ -1215,10 +1215,21 @@ button.danger:hover {
 
 .chat-bubble-row {
   display: flex;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .chat-bubble-row.outbound {
   justify-content: flex-end;
+}
+
+.chat-avatar {
+  flex: 0 0 30px;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 6px 14px rgba(40, 48, 124, 0.12);
 }
 
 .chat-bubble {

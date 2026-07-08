@@ -907,17 +907,24 @@ async function openFlowSession(conversationKey) {
 function renderChatMessages(messages) {
   els.chatMessages.innerHTML = messages.length
     ? messages
-        .map((message) => `
-          <div class="chat-bubble-row ${message.direction === "outbound" ? "outbound" : "inbound"}">
+        .map((message) => {
+          const outbound = message.direction === "outbound";
+          const avatar = outbound ? "./assets/bot-avatar.png" : "./assets/ddeer.png";
+          const sender = message.senderName || (outbound ? "机器人" : "客户");
+          return `
+          <div class="chat-bubble-row ${outbound ? "outbound" : "inbound"}">
+            ${outbound ? "" : `<img class="chat-avatar" src="${avatar}" alt="" aria-hidden="true" />`}
             <div class="chat-bubble">
               <div class="chat-meta">
-                <small>${escapeHtml(message.senderName || (message.direction === "outbound" ? "机器人" : "客户"))}</small>
+                <small>${escapeHtml(sender)}</small>
                 <time>${escapeHtml(message.createdAt || "")}</time>
               </div>
               <div class="chat-text">${escapeHtml(message.content)}</div>
             </div>
+            ${outbound ? `<img class="chat-avatar" src="${avatar}" alt="" aria-hidden="true" />` : ""}
           </div>
-        `)
+        `;
+        })
         .join("")
     : `<div class="empty-state">暂无会话记录</div>`;
   els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
