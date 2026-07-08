@@ -587,6 +587,11 @@ function flowNodeLabel(nodeId) {
   return node ? `${node.name} (${node.id})` : nodeId || "-";
 }
 
+function flowNodeName(nodeId) {
+  const node = currentFlowMachine?.config?.nodes?.find((item) => item.id === nodeId);
+  return node?.name || nodeId || "-";
+}
+
 function splitList(value) {
   return String(value || "")
     .split(/\n|,/)
@@ -874,11 +879,14 @@ function renderFlowSessions() {
         .map((session) => {
           const active = session.conversationKey === state.selectedFlowConversationKey;
           const name = session.receivedName || session.conversationKey;
+          const status = flowNodeName(session.currentNodeId);
           return `
             <button class="flow-session-card ${active ? "selected" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
-              <strong>${escapeHtml(name)}</strong>
-              <span>${escapeHtml(flowNodeLabel(session.currentNodeId))}</span>
-              <small>${escapeHtml(session.lastMessageAt || "")}</small>
+              <img class="flow-session-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
+              <span class="flow-session-main">
+                <strong>${escapeHtml(name)}<span>（状态：${escapeHtml(status)}）</span></strong>
+                <small>${escapeHtml(session.lastMessageAt || "")}</small>
+              </span>
             </button>
           `;
         })

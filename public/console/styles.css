@@ -1121,42 +1121,65 @@ button.danger:hover {
 
 .flow-session-card {
   display: grid;
-  gap: 3px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
   width: 100%;
   height: auto;
-  padding: 9px 10px;
-  border: 1px solid var(--line);
+  padding: 9px 10px 9px 9px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 32%, var(--line));
   border-radius: 8px;
-  background: #fff;
+  background: color-mix(in srgb, var(--cyan) 8%, #ffffff);
   color: var(--text);
   font-size: 12px;
   line-height: 1.25;
   text-align: left;
-  box-shadow: none;
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--cyan) 9%, transparent);
 }
 
 .flow-session-card.selected,
 .flow-session-card:hover {
   border-color: var(--accent);
-  background: var(--accent-soft);
+  background: color-mix(in srgb, var(--accent) 10%, #ffffff);
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
-.flow-session-card strong,
-.flow-session-card span,
-.flow-session-card small {
+.flow-session-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  object-fit: cover;
+  box-shadow: 0 6px 14px rgba(40, 48, 124, 0.12);
+}
+
+.flow-session-main {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.flow-session-main strong,
+.flow-session-main strong span,
+.flow-session-main small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.flow-session-card strong {
+.flow-session-main strong {
+  display: block;
   color: #302321;
   font-size: 13px;
   font-weight: 800;
 }
 
-.flow-session-card span,
-.flow-session-card small {
+.flow-session-main strong span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.flow-session-main small {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
