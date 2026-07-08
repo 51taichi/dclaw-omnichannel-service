@@ -1019,6 +1019,18 @@ button.danger:hover {
   display: block;
 }
 
+.flow-builder-head strong {
+  color: #302321;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.flow-builder-head span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .flow-node-list {
   display: grid;
   gap: 12px;
@@ -1032,6 +1044,8 @@ button.danger:hover {
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 10px 24px rgba(40, 48, 124, 0.08);
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .flow-node-card-head {
@@ -1049,6 +1063,9 @@ button.danger:hover {
 
 .flow-node-card-head strong {
   overflow: hidden;
+  color: #302321;
+  font-size: 13px;
+  font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
