@@ -19,6 +19,9 @@ const els = {
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
   flowMachineForm: document.querySelector("#flowMachineForm"),
+  addFlowNodeButton: document.querySelector("#addFlowNodeButton"),
+  applyFlowJsonButton: document.querySelector("#applyFlowJsonButton"),
+  flowNodeList: document.querySelector("#flowNodeList"),
   loadDefaultFlowButton: document.querySelector("#loadDefaultFlowButton"),
   exportFlowButton: document.querySelector("#exportFlowButton"),
   refreshFlowSessionsButton: document.querySelector("#refreshFlowSessionsButton"),
@@ -343,6 +346,7 @@ let targetFilter = "all";
 let addressBookTargets = [];
 let currentFlowMachine = null;
 let currentFlowSessions = [];
+let flowDraftNodes = [];
 const selectedTargets = new Map();
 
 function targetKey(target) {
@@ -561,6 +565,167 @@ function flowNodeLabel(nodeId) {
   return node ? `${node.name} (${node.id})` : nodeId || "-";
 }
 
+function splitList(value) {
+  return String(value || "")
+    .split(/\n|,/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function joinLines(value) {
+  return Array.isArray(value) ? value.join("\n") : "";
+}
+
+function createBlankFlowNode(index = flowDraftNodes.length + 1) {
+  return {
+    id: `node_${index}`,
+    name: `节点 ${index}`,
+    goal: "",
+    completionCriteria: "",
+    collectFields: [],
+    conversationTips: [],
+    nextNodeId: "",
+    transitions: []
+  };
+}
+
+function setFlowEditorFromConfig(config = {}) {
+  els.flowMachineForm.flowName.value = config.name || "";
+  els.flowMachineForm.flowVersion.value = config.version || "1.0.0";
+  flowDraftNodes = Array.isArray(config.nodes) && config.nodes.length
+    ? config.nodes.map((node) => ({
+        id: node.id || "",
+        name: node.name || "",
+        goal: node.goal || "",
+        completionCriteria: node.completionCriteria || "",
+        collectFields: Array.isArray(node.collectFields) ? node.collectFields : [],
+        conversationTips: Array.isArray(node.conversationTips) ? node.conversationTips : [],
+        nextNodeId: node.nextNodeId || "",
+        transitions: Array.isArray(node.transitions) ? node.transitions : []
+      }))
+    : [createBlankFlowNode(1)];
+  renderFlowNodeEditor(config.entryNodeId || flowDraftNodes[0]?.id || "");
+  syncFlowJsonTextarea();
+}
+
+function buildFlowConfigFromEditor() {
+  const nodes = flowDraftNodes.map((node, index) => ({
+    id: String(node.id || `node_${index + 1}`).trim(),
+    name: String(node.name || `节点 ${index + 1}`).trim(),
+    goal: String(node.goal || "").trim(),
+    completionCriteria: String(node.completionCriteria || "").trim(),
+    collectFields: Array.isArray(node.collectFields) ? node.collectFields : [],
+    conversationTips: Array.isArray(node.conversationTips) ? node.conversationTips : [],
+    nextNodeId: String(node.nextNodeId || "").trim(),
+    transitions: Array.isArray(node.transitions) ? node.transitions : []
+  }));
+  return {
+    name: String(els.flowMachineForm.flowName.value || "客服状态机").trim(),
+    version: String(els.flowMachineForm.flowVersion.value || "1.0.0").trim(),
+    entryNodeId: els.flowMachineForm.entryNodeId.value || nodes[0]?.id || "",
+    nodes
+  };
+}
+
+function syncFlowJsonTextarea() {
+  els.flowMachineForm.config.value = JSON.stringify(buildFlowConfigFromEditor(), null, 2);
+}
+
+function updateDraftNodeFromInput(input) {
+  const card = input.closest("[data-flow-node-index]");
+  if (!card) return;
+  const index = Number(card.dataset.flowNodeIndex);
+  const node = flowDraftNodes[index];
+  if (!node) return;
+  const field = input.dataset.flowNodeField;
+  if (field === "collectFields" || field === "conversationTips") {
+    node[field] = splitList(input.value);
+  } else {
+    node[field] = input.value;
+  }
+  syncFlowJsonTextarea();
+}
+
+function renderFlowNodeEditor(entryNodeId = "") {
+  const validEntry = flowDraftNodes.some((node) => node.id === entryNodeId)
+    ? entryNodeId
+    : flowDraftNodes[0]?.id || "";
+  els.flowMachineForm.entryNodeId.innerHTML = flowDraftNodes
+    .map((node) => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.name || node.id)}</option>`)
+    .join("");
+  els.flowMachineForm.entryNodeId.value = validEntry;
+
+  els.flowNodeList.innerHTML = flowDraftNodes
+    .map((node, index) => {
+      const nodeOptions = [
+        `<option value="">不自动跳转</option>`,
+        ...flowDraftNodes
+          .filter((item) => item.id !== node.id)
+          .map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === node.nextNodeId ? "selected" : ""}>${escapeHtml(item.name || item.id)}</option>`)
+      ].join("");
+      return `
+        <article class="flow-node-card" data-flow-node-index="${index}">
+          <div class="flow-node-card-head">
+            <strong>${escapeHtml(node.name || `节点 ${index + 1}`)}</strong>
+            <button class="secondary danger-text" data-remove-flow-node="${index}" type="button">删除</button>
+          </div>
+          <div class="flow-node-grid">
+            <label>
+              <span class="field-label">节点 ID</span>
+              <input data-flow-node-field="id" value="${escapeHtml(node.id)}" placeholder="collect_basic_info" />
+            </label>
+            <label>
+              <span class="field-label">节点名称</span>
+              <input data-flow-node-field="name" value="${escapeHtml(node.name)}" placeholder="收集基础信息" />
+            </label>
+            <label class="wide">
+              <span class="field-label">节点目标</span>
+              <textarea data-flow-node-field="goal" rows="2" placeholder="这个阶段要让 AI 完成什么">${escapeHtml(node.goal)}</textarea>
+            </label>
+            <label class="wide">
+              <span class="field-label">完成条件</span>
+              <textarea data-flow-node-field="completionCriteria" rows="2" placeholder="什么情况下可以进入下一节点">${escapeHtml(node.completionCriteria)}</textarea>
+            </label>
+            <label>
+              <span class="field-label">收集字段</span>
+              <textarea data-flow-node-field="collectFields" rows="3" placeholder="每行一个，例如：手机号">${escapeHtml(joinLines(node.collectFields))}</textarea>
+            </label>
+            <label>
+              <span class="field-label">交流技巧</span>
+              <textarea data-flow-node-field="conversationTips" rows="3" placeholder="每行一个，例如：先回应再追问">${escapeHtml(joinLines(node.conversationTips))}</textarea>
+            </label>
+            <label class="wide">
+              <span class="field-label">完成后进入</span>
+              <select data-flow-node-field="nextNodeId">${nodeOptions}</select>
+            </label>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  els.flowNodeList.querySelectorAll("[data-flow-node-field]").forEach((input) => {
+    input.addEventListener("input", () => updateDraftNodeFromInput(input));
+    input.addEventListener("change", () => {
+      updateDraftNodeFromInput(input);
+      if (input.dataset.flowNodeField === "id" || input.dataset.flowNodeField === "name") {
+        renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+      }
+    });
+  });
+  els.flowNodeList.querySelectorAll("[data-remove-flow-node]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (flowDraftNodes.length <= 1) {
+        toast("至少保留一个节点");
+        return;
+      }
+      flowDraftNodes.splice(Number(button.dataset.removeFlowNode), 1);
+      renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+      syncFlowJsonTextarea();
+    });
+  });
+}
+
 function renderManualNodeOptions(currentNodeId = "") {
   const nodes = currentFlowMachine?.config?.nodes || [];
   els.manualFlowNodeSelect.innerHTML = nodes
@@ -577,10 +742,10 @@ async function loadFlowMachine({ useDefault = false } = {}) {
   currentFlowMachine = data.machine || null;
   if (currentFlowMachine?.config) {
     els.flowMachineForm.enabled.checked = Boolean(currentFlowMachine.enabled);
-    els.flowMachineForm.config.value = JSON.stringify(currentFlowMachine.config, null, 2);
+    setFlowEditorFromConfig(currentFlowMachine.config);
   } else {
     els.flowMachineForm.enabled.checked = false;
-    els.flowMachineForm.config.value = "";
+    setFlowEditorFromConfig({});
   }
   renderManualNodeOptions();
 }
@@ -591,13 +756,7 @@ async function saveFlowMachine(event) {
     toast("请先选择 Bot");
     return;
   }
-  let config;
-  try {
-    config = JSON.parse(els.flowMachineForm.config.value);
-  } catch {
-    toast("状态机 JSON 格式不正确");
-    return;
-  }
+  const config = buildFlowConfigFromEditor();
   const data = await request(`/api/flow-machines/${encodeURIComponent(state.selectedBotId)}`, {
     method: "PUT",
     body: JSON.stringify({
@@ -606,6 +765,7 @@ async function saveFlowMachine(event) {
     })
   });
   currentFlowMachine = data.machine;
+  setFlowEditorFromConfig(currentFlowMachine.config);
   toast("状态机已保存");
   renderManualNodeOptions();
   await loadFlowSessions();
@@ -620,18 +780,35 @@ async function loadDefaultFlowMachine() {
   toast("模板已载入，确认后请保存");
 }
 
+function addFlowNode() {
+  flowDraftNodes.push(createBlankFlowNode(flowDraftNodes.length + 1));
+  renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+  syncFlowJsonTextarea();
+}
+
+function applyFlowJsonToEditor() {
+  try {
+    const config = JSON.parse(els.flowMachineForm.config.value);
+    setFlowEditorFromConfig(config);
+    toast("JSON 已导入到表单");
+  } catch {
+    toast("状态机 JSON 格式不正确");
+  }
+}
+
 function exportFlowMachine() {
-  if (!currentFlowMachine?.config) {
+  const config = buildFlowConfigFromEditor();
+  if (!config.nodes.length) {
     toast("当前没有可导出的状态机");
     return;
   }
-  const blob = new Blob([JSON.stringify(currentFlowMachine.config, null, 2)], {
+  const blob = new Blob([JSON.stringify(config, null, 2)], {
     type: "application/json"
   });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${currentFlowMachine.config.name || "flow-machine"}.json`;
+  a.download = `${config.name || "flow-machine"}.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -866,6 +1043,9 @@ els.debugReplyForm.addEventListener("submit", (event) =>
 els.flowMachineForm.addEventListener("submit", (event) =>
   saveFlowMachine(event).catch((error) => toast(error.message))
 );
+els.addFlowNodeButton.addEventListener("click", addFlowNode);
+els.applyFlowJsonButton.addEventListener("click", applyFlowJsonToEditor);
+els.flowMachineForm.entryNodeId.addEventListener("change", syncFlowJsonTextarea);
 els.loadDefaultFlowButton.addEventListener("click", () =>
   loadDefaultFlowMachine().catch((error) => toast(error.message))
 );

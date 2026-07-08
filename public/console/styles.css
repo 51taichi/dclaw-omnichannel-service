@@ -981,6 +981,73 @@ button.danger:hover {
   white-space: nowrap;
 }
 
+.flow-builder-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffefa;
+}
+
+.flow-builder-head strong,
+.flow-builder-head span {
+  display: block;
+}
+
+.flow-node-list {
+  display: grid;
+  gap: 12px;
+}
+
+.flow-node-card {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 10px 24px rgba(40, 48, 124, 0.08);
+}
+
+.flow-node-card-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.flow-node-card-head strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-node-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 10px;
+}
+
+.advanced-json {
+  padding: 10px 12px;
+  border: 1px dashed var(--line-strong);
+  border-radius: 8px;
+  background: #fffefa;
+}
+
+.advanced-json summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.danger-text {
+  color: var(--danger);
+}
+
 .flow-workbench {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -1315,7 +1382,9 @@ td .muted {
   .task-filters,
   .target-toolbar,
   .flow-workbench,
-  .chat-head {
+  .chat-head,
+  .flow-builder-head,
+  .flow-node-grid {
     grid-template-columns: 1fr;
   }
 

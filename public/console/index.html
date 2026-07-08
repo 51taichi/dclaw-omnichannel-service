@@ -223,10 +223,37 @@
               <input name="enabled" type="checkbox" />
               启用私聊状态机
             </label>
-            <label class="wide">
-              <span class="field-label">状态机 JSON</span>
-              <textarea name="config" rows="16" spellcheck="false" placeholder="选择 Bot 后载入或粘贴状态机 JSON"></textarea>
+            <label>
+              <span class="field-label">流程名称</span>
+              <input name="flowName" placeholder="例如 线上培训客服流程" />
             </label>
+            <label>
+              <span class="field-label">版本</span>
+              <input name="flowVersion" placeholder="1.0.0" />
+            </label>
+            <label>
+              <span class="field-label">入口节点</span>
+              <select name="entryNodeId"></select>
+            </label>
+            <div class="wide flow-builder-head">
+              <div>
+                <strong>流程节点</strong>
+                <span class="muted">按业务推进顺序配置，每个节点代表一个客服阶段</span>
+              </div>
+              <button id="addFlowNodeButton" class="secondary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                添加节点
+              </button>
+            </div>
+            <div id="flowNodeList" class="wide flow-node-list"></div>
+            <details class="wide advanced-json">
+              <summary>高级：导入/查看 JSON</summary>
+              <label class="wide">
+                <span class="field-label">状态机 JSON</span>
+                <textarea name="config" rows="12" spellcheck="false" placeholder="可粘贴导入 JSON；普通用户无需编辑"></textarea>
+              </label>
+              <button id="applyFlowJsonButton" class="secondary" type="button">从 JSON 导入到表单</button>
+            </details>
             <div class="actions">
               <button class="primary" type="submit">
                 <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
