@@ -347,6 +347,7 @@ let addressBookTargets = [];
 let currentFlowMachine = null;
 let currentFlowSessions = [];
 let flowDraftNodes = [];
+const collapsedFlowNodes = new Set();
 const selectedTargets = new Map();
 
 function targetKey(target) {
@@ -576,6 +577,10 @@ function joinLines(value) {
   return Array.isArray(value) ? value.join("\n") : "";
 }
 
+function flowNodeCollapseKey(node, index) {
+  return String(node?.id || `index_${index}`);
+}
+
 function createBlankFlowNode(index = flowDraftNodes.length + 1) {
   return {
     id: `node_${index}`,
@@ -657,6 +662,8 @@ function renderFlowNodeEditor(entryNodeId = "") {
 
   els.flowNodeList.innerHTML = flowDraftNodes
     .map((node, index) => {
+      const collapseKey = flowNodeCollapseKey(node, index);
+      const isCollapsed = collapsedFlowNodes.has(collapseKey);
       const nodeOptions = [
         `<option value="">不自动跳转</option>`,
         ...flowDraftNodes
@@ -664,10 +671,15 @@ function renderFlowNodeEditor(entryNodeId = "") {
           .map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === node.nextNodeId ? "selected" : ""}>${escapeHtml(item.name || item.id)}</option>`)
       ].join("");
       return `
-        <article class="flow-node-card" data-flow-node-index="${index}">
+        <article class="flow-node-card ${isCollapsed ? "is-collapsed" : ""}" data-flow-node-index="${index}" data-flow-node-collapse-key="${escapeHtml(collapseKey)}">
           <div class="flow-node-card-head">
             <strong>${escapeHtml(node.name || `节点 ${index + 1}`)}</strong>
-            <button class="secondary danger-text" data-remove-flow-node="${index}" type="button">删除</button>
+            <div class="flow-node-actions">
+              <button class="secondary danger-text" data-remove-flow-node="${index}" type="button">删除</button>
+              <button class="collapse-button" data-toggle-flow-node="${index}" type="button" aria-label="${isCollapsed ? "展开任务节点" : "收起任务节点"}" aria-expanded="${String(!isCollapsed)}">
+                <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+              </button>
+            </div>
           </div>
           <div class="flow-node-grid">
             <label>
@@ -720,8 +732,22 @@ function renderFlowNodeEditor(entryNodeId = "") {
         return;
       }
       flowDraftNodes.splice(Number(button.dataset.removeFlowNode), 1);
+      collapsedFlowNodes.delete(button.closest("[data-flow-node-collapse-key]")?.dataset.flowNodeCollapseKey || "");
       renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
       syncFlowJsonTextarea();
+    });
+  });
+  els.flowNodeList.querySelectorAll("[data-toggle-flow-node]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const card = button.closest("[data-flow-node-collapse-key]");
+      const collapseKey = card?.dataset.flowNodeCollapseKey || "";
+      if (!collapseKey) return;
+      if (collapsedFlowNodes.has(collapseKey)) {
+        collapsedFlowNodes.delete(collapseKey);
+      } else {
+        collapsedFlowNodes.add(collapseKey);
+      }
+      renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
     });
   });
 }

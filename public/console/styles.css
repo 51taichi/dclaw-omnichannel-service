@@ -1019,10 +1019,28 @@ button.danger:hover {
   align-items: center;
 }
 
+.flow-node-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .flow-node-card-head strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.flow-node-card .collapse-button .icon {
+  transition: transform 140ms ease;
+}
+
+.flow-node-card.is-collapsed .collapse-button .icon {
+  transform: rotate(-90deg);
+}
+
+.flow-node-card.is-collapsed .flow-node-grid {
+  display: none;
 }
 
 .flow-node-grid {
