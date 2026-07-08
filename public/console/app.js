@@ -882,7 +882,7 @@ function renderFlowSessions() {
             <button class="flow-session-card ${active ? "selected" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <img class="flow-session-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
               <span class="flow-session-main">
-                <strong>${escapeHtml(name)}<span>（状态：${escapeHtml(status)}）</span></strong>
+                <strong>${escapeHtml(name)}<span>（当前任务：${escapeHtml(status)}）</span></strong>
                 <small>${escapeHtml(session.lastMessageAt || "")}</small>
               </span>
             </button>
@@ -974,7 +974,7 @@ async function saveManualFlowNode() {
       reason: "控制台手动修改"
     })
   });
-  toast("状态已保存");
+  toast("当前任务已保存");
   await loadFlowSessions();
   await openFlowSession(state.selectedFlowConversationKey);
 }
