@@ -1197,7 +1197,7 @@ button.danger:hover {
 
 .chat-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 42%);
+  grid-template-columns: minmax(180px, 1fr) minmax(360px, 52%);
   gap: 10px;
   align-items: center;
   padding: 12px;
@@ -1235,19 +1235,28 @@ button.danger:hover {
 }
 
 .chat-head-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 112px;
   align-items: center;
-  justify-content: flex-end;
   gap: 10px;
   min-width: 0;
 }
 
 .current-task-badge {
+  display: block;
+  min-width: 0;
   color: var(--muted);
   font-size: 13px;
   font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#resetConversationButton {
+  width: 112px;
+  min-width: 112px;
+  padding: 0 12px;
   white-space: nowrap;
 }
 

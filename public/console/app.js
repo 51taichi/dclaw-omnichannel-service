@@ -779,7 +779,8 @@ function renderFlowNodeEditor(entryNodeId = "") {
 
 function renderCurrentFlowNodeBadge(currentNodeId = "") {
   if (!els.currentFlowNodeBadge) return;
-  els.currentFlowNodeBadge.textContent = `当前任务：${flowNodeLabel(currentNodeId)}`;
+  els.currentFlowNodeBadge.textContent = `当前任务：${flowNodeName(currentNodeId)}`;
+  els.currentFlowNodeBadge.title = els.currentFlowNodeBadge.textContent;
 }
 
 async function loadFlowMachine({ useDefault = false } = {}) {
