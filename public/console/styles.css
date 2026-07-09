@@ -158,6 +158,22 @@ h2 {
   box-shadow: 0 12px 28px color-mix(in srgb, var(--bot-accent) 16%, transparent);
 }
 
+.current-bot-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.current-bot-actions #resetFormButton {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 12px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 .workspace-tabs button {
   gap: 6px;
   justify-content: center;
@@ -1605,11 +1621,17 @@ td .muted {
   }
 
   .workspace-tabs,
+  .current-bot-actions,
   .binding-state {
     width: 100%;
   }
 
+  .current-bot-actions {
+    justify-content: stretch;
+  }
+
   .binding-state {
+    flex: 1 1 auto;
     justify-self: stretch;
     justify-content: center;
   }

@@ -130,7 +130,13 @@
               日志
             </button>
           </div>
-          <span id="bindingState" class="binding-state">新增模式</span>
+          <div class="current-bot-actions">
+            <span id="bindingState" class="binding-state">新增模式</span>
+            <button id="resetFormButton" class="secondary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+              重置
+            </button>
+          </div>
         </div>
 
       <div id="configTab" class="tab-panel active" data-tab-panel="config">
@@ -181,10 +187,6 @@
             <button class="primary" type="submit">
               <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
               保存绑定
-            </button>
-            <button id="resetFormButton" type="button">
-              <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
-              清空
             </button>
           </div>
         </form>
