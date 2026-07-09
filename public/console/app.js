@@ -238,7 +238,7 @@ function setBindingState(bot = null) {
     panel.style.setProperty("--bot-accent", accent);
   });
   els.bindingState.textContent = bot
-    ? `编辑中：${bot.botName || bot.dclawPublicId || "当前 Bot"}`
+    ? `当前Bot：${bot.botName || bot.dclawPublicId || "当前 Bot"}`
     : "新增模式";
   renderBots(currentBots);
 }
