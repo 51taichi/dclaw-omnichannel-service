@@ -29,6 +29,9 @@ const els = {
   chatTitle: document.querySelector("#chatTitle"),
   chatMessages: document.querySelector("#chatMessages"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
+  assetsButton: document.querySelector("#assetsButton"),
+  assetsCount: document.querySelector("#assetsCount"),
+  assetsPanel: document.querySelector("#assetsPanel"),
   currentFlowNodeBadge: document.querySelector("#currentFlowNodeBadge"),
   resetConversationButton: document.querySelector("#resetConversationButton"),
   proactiveForm: document.querySelector("#proactiveForm"),
@@ -364,6 +367,7 @@ let addressBookTargets = [];
 let currentFlowMachine = null;
 let currentFlowSessions = [];
 let flowDraftNodes = [];
+let currentConversationAssets = { fields: [], totalCount: 0, collectedCount: 0 };
 const collapsedFlowNodes = new Set();
 const selectedTargets = new Map();
 
@@ -881,12 +885,16 @@ function renderFlowSessions() {
           const active = session.conversationKey === state.selectedFlowConversationKey;
           const name = session.receivedName || session.conversationKey;
           const status = flowNodeName(session.currentNodeId);
+          const assets = session.assets || {};
+          const assetSummary = assets.totalCount
+            ? `资产：${assets.collectedCount || 0}/${assets.totalCount}`
+            : "";
           return `
             <button class="flow-session-card ${active ? "selected" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <img class="flow-session-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
               <span class="flow-session-main">
                 <strong>${escapeHtml(name)}<span>（当前任务：${escapeHtml(status)}）</span></strong>
-                <small>${escapeHtml(session.lastMessageAt || "")}</small>
+                <small>${escapeHtml([assetSummary, session.lastMessageAt || ""].filter(Boolean).join(" · "))}</small>
               </span>
             </button>
           `;
@@ -899,6 +907,40 @@ function renderFlowSessions() {
       openFlowSession(button.dataset.flowSession).catch((error) => toast(error.message))
     );
   });
+}
+
+function renderConversationAssets(assets = { fields: [], totalCount: 0, collectedCount: 0 }) {
+  const fields = Array.isArray(assets.fields) ? assets.fields : [];
+  const totalCount = Number(assets.totalCount || fields.length);
+  const collectedCount = Number(assets.collectedCount || fields.filter((field) => field.collected).length);
+  currentConversationAssets = { fields, totalCount, collectedCount };
+
+  els.assetsButton.hidden = totalCount <= 0;
+  els.assetsButton.disabled = totalCount <= 0;
+  els.assetsCount.textContent = `${collectedCount}/${totalCount}`;
+  if (totalCount <= 0) {
+    els.assetsPanel.hidden = true;
+    els.assetsPanel.innerHTML = "";
+    return;
+  }
+  els.assetsPanel.hidden = true;
+
+  els.assetsPanel.innerHTML = `
+    <div class="assets-panel-head">
+      <strong>会话资产</strong>
+      <span>${collectedCount}/${totalCount} 已收集</span>
+    </div>
+    <div class="asset-list">
+      ${fields
+        .map((field) => `
+          <div class="asset-row ${field.collected ? "is-collected" : "is-empty"}">
+            <span>${escapeHtml(field.label || field.key)}</span>
+            <strong>${field.collected ? escapeHtml(field.value) : "未收集"}</strong>
+          </div>
+        `)
+        .join("")}
+    </div>
+  `;
 }
 
 function renderChatMessageContent(message) {
@@ -932,7 +974,9 @@ async function openFlowSession(conversationKey) {
   renderFlowSessions();
   els.chatTitle.textContent = session?.receivedName || conversationKey;
   renderCurrentFlowNodeBadge(session?.currentNodeId || "");
-  const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?limit=300`);
+  const params = new URLSearchParams({ limit: "300", botId: state.selectedBotId });
+  const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
+  renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
   renderChatMessages(data.messages || []);
   els.flowEventsOutput.textContent = JSON.stringify(data.events || [], null, 2);
 }
@@ -980,6 +1024,11 @@ async function resetSelectedConversation() {
   toast("会话已清空");
   await loadFlowSessions();
   await openFlowSession(state.selectedFlowConversationKey);
+}
+
+function toggleAssetsPanel() {
+  if (!currentConversationAssets.totalCount) return;
+  els.assetsPanel.hidden = !els.assetsPanel.hidden;
 }
 
 async function saveDebugReply(event) {
@@ -1153,6 +1202,7 @@ els.refreshFlowSessionsButton.addEventListener("click", () =>
 els.resetConversationButton.addEventListener("click", () =>
   resetSelectedConversation().catch((error) => toast(error.message))
 );
+els.assetsButton.addEventListener("click", toggleAssetsPanel);
 els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))
 );

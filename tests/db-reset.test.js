@@ -88,3 +88,68 @@ test("clearConversationForReset resets one flow conversation for a fresh agent r
 
   assert.equal(db.getConversationResetPending(conversationKey), false);
 });
+
+test("getConversationAssets only exposes configured collect fields", () => {
+  const botId = "bot_assets";
+  const conversationKey = `${botId}:private:李四`;
+  const machine = db.upsertFlowMachine({
+    botId,
+    enabled: true,
+    config: {
+      name: "资产状态机",
+      version: "1.0.0",
+      entryNodeId: "node_1",
+      nodes: [
+        {
+          id: "node_1",
+          name: "基础信息",
+          goal: "收集基础信息",
+          completionCriteria: "完成基础信息",
+          collectFields: ["手机号", "所在城市"],
+          conversationTips: [],
+          nextNodeId: "node_2"
+        },
+        {
+          id: "node_2",
+          name: "预算",
+          goal: "收集预算",
+          completionCriteria: "完成预算",
+          collectFields: ["预算", "手机号"],
+          conversationTips: [],
+          nextNodeId: ""
+        }
+      ]
+    }
+  });
+
+  db.upsertConversation({
+    botId,
+    agentId: "agent_assets",
+    conversationKey,
+    message: {
+      roomType: 2,
+      receivedName: "李四",
+      groupName: "李四"
+    }
+  });
+  db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  db.mergeFlowSessionData({
+    conversationKey,
+    patch: {
+      "手机号": "13800001111",
+      "预算": "",
+      interest: "了解品牌",
+      summary: "这是临时摘要"
+    }
+  });
+
+  const assets = db.getConversationAssets({ botId, conversationKey });
+
+  assert.deepEqual(assets.fields, [
+    { key: "手机号", label: "手机号", value: "13800001111", collected: true },
+    { key: "所在城市", label: "所在城市", value: "", collected: false },
+    { key: "预算", label: "预算", value: "", collected: false }
+  ]);
+  assert.equal(assets.totalCount, 3);
+  assert.equal(assets.collectedCount, 1);
+});

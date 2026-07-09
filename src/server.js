@@ -24,6 +24,7 @@ import {
   getBotBinding,
   getConversationKey,
   getConversationResetPending,
+  getConversationAssets,
   getFlowMachine,
   getOrCreateFlowSession,
   getSetting,
@@ -350,6 +351,10 @@ const replySplitConfig = {
     ? Math.max(0, configuredReplyPartDelayMs)
     : 1000
 };
+const replyEmojiConfig = {
+  enabled: process.env.WORKTOOL_ENSURE_REPLY_EMOJI !== "false",
+  defaultEmoji: process.env.WORKTOOL_REPLY_DEFAULT_EMOJI || "😊"
+};
 
 let proactiveWorkerBusy = false;
 let agentQueue = Promise.resolve();
@@ -390,8 +395,26 @@ function splitAgentReplyForWorkTool(reply, { allowSplit = true } = {}) {
   ];
 }
 
+function hasEmoji(text) {
+  return /\p{Extended_Pictographic}/u.test(String(text || ""));
+}
+
+function ensureReplyEmoji(content) {
+  const text = String(content || "").trim();
+  if (!text || !replyEmojiConfig.enabled) return text;
+
+  return text
+    .split(/\n/)
+    .map((line) => {
+      const trimmedEnd = line.trimEnd();
+      if (!trimmedEnd || hasEmoji(trimmedEnd)) return line;
+      return `${trimmedEnd} ${replyEmojiConfig.defaultEmoji}`;
+    })
+    .join("\n");
+}
+
 async function sendTextReplyParts({ robotId, target, reply, allowSplit }) {
-  const parts = splitAgentReplyForWorkTool(reply, { allowSplit });
+  const parts = splitAgentReplyForWorkTool(reply, { allowSplit }).map(ensureReplyEmoji);
   const results = [];
   for (const [index, content] of parts.entries()) {
     if (index > 0 && replySplitConfig.delayMs > 0) {
@@ -1323,7 +1346,11 @@ app.get(
     res.json({
       ok: true,
       messages: listConversationMessages({ conversationKey, limit: Number(req.query.limit || 300) }),
-      events: listFlowStateEvents({ conversationKey, limit: 100 })
+      events: listFlowStateEvents({ conversationKey, limit: 100 }),
+      assets: getConversationAssets({
+        botId: String(req.query.botId || "").trim(),
+        conversationKey
+      })
     });
   })
 );

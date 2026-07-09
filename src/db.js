@@ -751,6 +751,43 @@ function rowToFlowStateEvent(row) {
   };
 }
 
+function getFlowCollectFields(machine) {
+  const fields = [];
+  const seen = new Set();
+  for (const node of machine?.config?.nodes || []) {
+    for (const rawField of node.collectFields || []) {
+      const field = String(rawField || "").trim();
+      if (!field || seen.has(field)) continue;
+      seen.add(field);
+      fields.push(field);
+    }
+  }
+  return fields;
+}
+
+export function getConversationAssets({ botId, conversationKey }) {
+  const machine = getFlowMachine(botId);
+  const session = rowToFlowSession(
+    db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)
+  );
+  const collectedData = session?.collectedData || {};
+  const fields = getFlowCollectFields(machine).map((field) => {
+    const rawValue = collectedData[field];
+    const value = rawValue == null ? "" : String(rawValue).trim();
+    return {
+      key: field,
+      label: field,
+      value,
+      collected: Boolean(value)
+    };
+  });
+  return {
+    fields,
+    totalCount: fields.length,
+    collectedCount: fields.filter((field) => field.collected).length
+  };
+}
+
 export function upsertFlowMachine({ botId, config, enabled = true }) {
   const normalized = normalizeFlowConfig(config);
   const timestamp = now();
@@ -844,7 +881,11 @@ export function listFlowSessions({ botId, limit = 100 } = {}) {
     receivedName: row.received_name,
     groupName: row.group_name,
     roomType: row.room_type,
-    flowName: row.flow_name
+    flowName: row.flow_name,
+    assets: getConversationAssets({
+      botId: row.bot_id,
+      conversationKey: row.conversation_key
+    })
   }));
 }
 

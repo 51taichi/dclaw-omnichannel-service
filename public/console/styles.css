@@ -1252,10 +1252,20 @@ button.danger:hover {
 
 .chat-head-actions {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 112px;
+  grid-template-columns: auto minmax(0, 1fr) 112px;
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.asset-button {
+  min-width: 92px;
+  white-space: nowrap;
+}
+
+.asset-button .icon {
+  width: 15px;
+  height: 15px;
 }
 
 .current-task-badge {
@@ -1267,6 +1277,69 @@ button.danger:hover {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.assets-panel {
+  margin: 10px 12px 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdfb;
+  box-shadow: 0 10px 22px rgba(40, 48, 124, 0.08);
+  overflow: hidden;
+}
+
+.assets-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.assets-panel-head strong {
+  color: #302321;
+  font-size: 13px;
+}
+
+.assets-panel-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.asset-list {
+  display: grid;
+}
+
+.asset-row {
+  display: grid;
+  grid-template-columns: minmax(90px, 28%) minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  min-height: 38px;
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(231, 221, 214, 0.72);
+}
+
+.asset-row:last-child {
+  border-bottom: 0;
+}
+
+.asset-row span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.asset-row strong {
+  color: #302321;
+  font-size: 13px;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.asset-row.is-empty strong {
+  color: #b6aaa3;
+  font-weight: 700;
 }
 
 #resetConversationButton {
