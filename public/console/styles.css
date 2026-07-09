@@ -725,16 +725,15 @@ button.primary:hover {
 }
 
 button.danger {
-  background:
-    linear-gradient(#ffffff, #ffffff) padding-box,
-    linear-gradient(90deg, var(--danger), var(--orange)) border-box;
-  color: var(--danger-dark);
+  border-color: transparent;
+  background: linear-gradient(90deg, var(--danger), var(--orange));
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(239, 38, 37, 0.16);
 }
 
 button.danger:hover {
-  background:
-    linear-gradient(#fff7f5, #fff7f5) padding-box,
-    linear-gradient(90deg, var(--danger), var(--orange)) border-box;
+  background: linear-gradient(90deg, var(--danger-dark), var(--danger), var(--orange));
+  box-shadow: 0 12px 28px rgba(239, 38, 37, 0.22);
 }
 
 .inline-form {
@@ -1252,8 +1251,9 @@ button.danger:hover {
 
 .chat-head-actions {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) 112px;
+  grid-template-columns: auto 112px;
   align-items: center;
+  justify-content: end;
   gap: 10px;
   min-width: 0;
 }
@@ -1266,17 +1266,6 @@ button.danger:hover {
 .asset-button .icon {
   width: 15px;
   height: 15px;
-}
-
-.current-task-badge {
-  display: block;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .assets-panel {
@@ -1347,6 +1336,70 @@ button.danger:hover {
   min-width: 112px;
   padding: 0 12px;
   white-space: nowrap;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(27, 20, 20, 0.28);
+  backdrop-filter: blur(5px);
+}
+
+.modal-backdrop[hidden] {
+  display: none;
+}
+
+.confirm-dialog {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  width: min(420px, 100%);
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, var(--line));
+  border-radius: 8px;
+  background: #fffdfb;
+  box-shadow: 0 22px 54px rgba(45, 31, 29, 0.2);
+}
+
+.confirm-icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.confirm-copy {
+  min-width: 0;
+}
+
+.confirm-copy strong {
+  display: block;
+  color: #302321;
+  font-size: 16px;
+  font-weight: 860;
+}
+
+.confirm-copy p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 8px;
 }
 
 .chat-messages {

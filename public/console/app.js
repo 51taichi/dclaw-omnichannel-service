@@ -32,8 +32,10 @@ const els = {
   assetsButton: document.querySelector("#assetsButton"),
   assetsCount: document.querySelector("#assetsCount"),
   assetsPanel: document.querySelector("#assetsPanel"),
-  currentFlowNodeBadge: document.querySelector("#currentFlowNodeBadge"),
   resetConversationButton: document.querySelector("#resetConversationButton"),
+  confirmDialog: document.querySelector("#confirmDialog"),
+  confirmCancelButton: document.querySelector("#confirmCancelButton"),
+  confirmAcceptButton: document.querySelector("#confirmAcceptButton"),
   proactiveForm: document.querySelector("#proactiveForm"),
   messageTypeInput: document.querySelector('select[name="messageType"]'),
   messageFields: document.querySelectorAll("[data-message-field]"),
@@ -781,12 +783,6 @@ function renderFlowNodeEditor(entryNodeId = "") {
   });
 }
 
-function renderCurrentFlowNodeBadge(currentNodeId = "") {
-  if (!els.currentFlowNodeBadge) return;
-  els.currentFlowNodeBadge.textContent = `当前任务：${flowNodeName(currentNodeId)}`;
-  els.currentFlowNodeBadge.title = els.currentFlowNodeBadge.textContent;
-}
-
 async function loadFlowMachine({ useDefault = false } = {}) {
   if (!state.selectedBotId) return;
   const data = await request(
@@ -800,9 +796,6 @@ async function loadFlowMachine({ useDefault = false } = {}) {
     els.flowMachineForm.enabled.checked = false;
     setFlowEditorFromConfig({});
   }
-  renderCurrentFlowNodeBadge(
-    currentFlowSessions.find((item) => item.conversationKey === state.selectedFlowConversationKey)?.currentNodeId || ""
-  );
 }
 
 async function saveFlowMachine(event) {
@@ -822,9 +815,6 @@ async function saveFlowMachine(event) {
   currentFlowMachine = data.machine;
   setFlowEditorFromConfig(currentFlowMachine.config);
   toast("状态机已保存");
-  renderCurrentFlowNodeBadge(
-    currentFlowSessions.find((item) => item.conversationKey === state.selectedFlowConversationKey)?.currentNodeId || ""
-  );
   await loadFlowSessions();
 }
 
@@ -973,7 +963,6 @@ async function openFlowSession(conversationKey) {
   const session = currentFlowSessions.find((item) => item.conversationKey === conversationKey);
   renderFlowSessions();
   els.chatTitle.textContent = session?.receivedName || conversationKey;
-  renderCurrentFlowNodeBadge(session?.currentNodeId || "");
   const params = new URLSearchParams({ limit: "300", botId: state.selectedBotId });
   const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
   renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
@@ -1012,8 +1001,6 @@ async function resetSelectedConversation() {
     toast("请先选择会话");
     return;
   }
-  const confirmed = window.confirm("确定清空当前会话记录，并让下一次 Agent 调用从头开始吗？");
-  if (!confirmed) return;
   await request(`/api/flow-sessions/${encodeURIComponent(state.selectedFlowConversationKey)}/reset`, {
     method: "POST",
     body: JSON.stringify({
@@ -1024,6 +1011,18 @@ async function resetSelectedConversation() {
   toast("会话已清空");
   await loadFlowSessions();
   await openFlowSession(state.selectedFlowConversationKey);
+}
+
+function openConfirmDialog() {
+  if (!state.selectedBotId || !state.selectedFlowConversationKey) {
+    toast("请先选择会话");
+    return;
+  }
+  els.confirmDialog.hidden = false;
+}
+
+function closeConfirmDialog() {
+  els.confirmDialog.hidden = true;
 }
 
 function toggleAssetsPanel() {
@@ -1199,8 +1198,15 @@ els.exportFlowButton.addEventListener("click", exportFlowMachine);
 els.refreshFlowSessionsButton.addEventListener("click", () =>
   Promise.all([loadFlowMachine(), loadFlowSessions()]).catch((error) => toast(error.message))
 );
-els.resetConversationButton.addEventListener("click", () =>
-  resetSelectedConversation().catch((error) => toast(error.message))
+els.resetConversationButton.addEventListener("click", openConfirmDialog);
+els.confirmCancelButton.addEventListener("click", closeConfirmDialog);
+els.confirmDialog.addEventListener("click", (event) => {
+  if (event.target === els.confirmDialog) closeConfirmDialog();
+});
+els.confirmAcceptButton.addEventListener("click", () =>
+  resetSelectedConversation()
+    .then(closeConfirmDialog)
+    .catch((error) => toast(error.message))
 );
 els.assetsButton.addEventListener("click", toggleAssetsPanel);
 els.proactiveForm.addEventListener("submit", (event) =>

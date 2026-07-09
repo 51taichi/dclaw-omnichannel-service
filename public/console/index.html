@@ -318,8 +318,10 @@
                   <svg class="icon" aria-hidden="true"><use href="#icon-briefcase"></use></svg>
                   资产 <span id="assetsCount">0</span>
                 </button>
-                <span id="currentFlowNodeBadge" class="current-task-badge">当前任务：-</span>
-                <button id="resetConversationButton" class="secondary danger-text" type="button">清空会话</button>
+                <button id="resetConversationButton" class="danger" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+                  清空会话
+                </button>
               </div>
             </div>
             <div id="assetsPanel" class="assets-panel" hidden></div>
@@ -530,6 +532,24 @@
     </main>
 
     <div id="toast" class="toast" hidden></div>
+    <div id="confirmDialog" class="modal-backdrop" hidden>
+      <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
+        <div class="confirm-icon">
+          <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+        </div>
+        <div class="confirm-copy">
+          <strong id="confirmTitle">清空会话？</strong>
+          <p>确认后会清空当前会话记录，并让下一次 Agent 调用从头开始。</p>
+        </div>
+        <div class="confirm-actions">
+          <button id="confirmCancelButton" class="secondary" type="button">取消</button>
+          <button id="confirmAcceptButton" class="danger" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+            确认清空
+          </button>
+        </div>
+      </div>
+    </div>
     <script src="./app.js"></script>
   </body>
 </html>
