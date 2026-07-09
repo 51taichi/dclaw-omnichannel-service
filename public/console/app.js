@@ -29,7 +29,8 @@ const els = {
   chatTitle: document.querySelector("#chatTitle"),
   chatMessages: document.querySelector("#chatMessages"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
-  manualFlowNodeSelect: document.querySelector("#manualFlowNodeSelect"),
+  currentFlowNodeBadge: document.querySelector("#currentFlowNodeBadge"),
+  resetConversationButton: document.querySelector("#resetConversationButton"),
   proactiveForm: document.querySelector("#proactiveForm"),
   messageTypeInput: document.querySelector('select[name="messageType"]'),
   messageFields: document.querySelectorAll("[data-message-field]"),
@@ -776,12 +777,9 @@ function renderFlowNodeEditor(entryNodeId = "") {
   });
 }
 
-function renderManualNodeOptions(currentNodeId = "") {
-  const nodes = currentFlowMachine?.config?.nodes || [];
-  els.manualFlowNodeSelect.innerHTML = nodes
-    .map((node) => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.name)} (${escapeHtml(node.id)})</option>`)
-    .join("");
-  if (currentNodeId) els.manualFlowNodeSelect.value = currentNodeId;
+function renderCurrentFlowNodeBadge(currentNodeId = "") {
+  if (!els.currentFlowNodeBadge) return;
+  els.currentFlowNodeBadge.textContent = `当前任务：${flowNodeLabel(currentNodeId)}`;
 }
 
 async function loadFlowMachine({ useDefault = false } = {}) {
@@ -797,7 +795,9 @@ async function loadFlowMachine({ useDefault = false } = {}) {
     els.flowMachineForm.enabled.checked = false;
     setFlowEditorFromConfig({});
   }
-  renderManualNodeOptions();
+  renderCurrentFlowNodeBadge(
+    currentFlowSessions.find((item) => item.conversationKey === state.selectedFlowConversationKey)?.currentNodeId || ""
+  );
 }
 
 async function saveFlowMachine(event) {
@@ -817,7 +817,9 @@ async function saveFlowMachine(event) {
   currentFlowMachine = data.machine;
   setFlowEditorFromConfig(currentFlowMachine.config);
   toast("状态机已保存");
-  renderManualNodeOptions();
+  renderCurrentFlowNodeBadge(
+    currentFlowSessions.find((item) => item.conversationKey === state.selectedFlowConversationKey)?.currentNodeId || ""
+  );
   await loadFlowSessions();
 }
 
@@ -928,7 +930,7 @@ async function openFlowSession(conversationKey) {
   const session = currentFlowSessions.find((item) => item.conversationKey === conversationKey);
   renderFlowSessions();
   els.chatTitle.textContent = session?.receivedName || conversationKey;
-  renderManualNodeOptions(session?.currentNodeId || "");
+  renderCurrentFlowNodeBadge(session?.currentNodeId || "");
   const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?limit=300`);
   renderChatMessages(data.messages || []);
   els.flowEventsOutput.textContent = JSON.stringify(data.events || [], null, 2);
@@ -960,21 +962,21 @@ function renderChatMessages(messages) {
   els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }
 
-async function saveManualFlowNode() {
+async function resetSelectedConversation() {
   if (!state.selectedBotId || !state.selectedFlowConversationKey) {
     toast("请先选择会话");
     return;
   }
-  const nextNodeId = els.manualFlowNodeSelect.value;
-  await request(`/api/flow-sessions/${encodeURIComponent(state.selectedFlowConversationKey)}/node`, {
-    method: "PUT",
+  const confirmed = window.confirm("确定清空当前会话记录，并让下一次 Agent 调用从头开始吗？");
+  if (!confirmed) return;
+  await request(`/api/flow-sessions/${encodeURIComponent(state.selectedFlowConversationKey)}/reset`, {
+    method: "POST",
     body: JSON.stringify({
       botId: state.selectedBotId,
-      nextNodeId,
-      reason: "控制台手动修改"
+      reason: "控制台清空会话"
     })
   });
-  toast("当前任务已保存");
+  toast("会话已清空");
   await loadFlowSessions();
   await openFlowSession(state.selectedFlowConversationKey);
 }
@@ -1147,8 +1149,8 @@ els.exportFlowButton.addEventListener("click", exportFlowMachine);
 els.refreshFlowSessionsButton.addEventListener("click", () =>
   Promise.all([loadFlowMachine(), loadFlowSessions()]).catch((error) => toast(error.message))
 );
-els.manualFlowNodeSelect.addEventListener("change", () =>
-  saveManualFlowNode().catch((error) => toast(error.message))
+els.resetConversationButton.addEventListener("click", () =>
+  resetSelectedConversation().catch((error) => toast(error.message))
 );
 els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))

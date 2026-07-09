@@ -29,6 +29,7 @@ db.exec(`
     bot_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
     dclaw_session_id TEXT,
+    reset_pending INTEGER NOT NULL DEFAULT 0,
     room_type INTEGER,
     received_name TEXT,
     group_name TEXT,
@@ -226,6 +227,7 @@ function ensureColumn(table, column, definition) {
 
 ensureColumn("bot_agent_bindings", "dclaw_base_url", "TEXT");
 ensureColumn("bot_agent_bindings", "dclaw_public_id", "TEXT");
+ensureColumn("conversations", "reset_pending", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("outgoing_messages", "callback_error_code", "INTEGER");
 ensureColumn("outgoing_messages", "callback_error_reason", "TEXT");
 ensureColumn("outgoing_messages", "callback_payload_json", "TEXT");
@@ -431,6 +433,22 @@ export function updateConversationSession(conversationKey, dclawSessionId) {
   `).run(dclawSessionId || null, now(), conversationKey);
 }
 
+export function getConversationResetPending(conversationKey) {
+  const row = db
+    .prepare("SELECT reset_pending FROM conversations WHERE conversation_key = ?")
+    .get(conversationKey);
+  return Boolean(row?.reset_pending);
+}
+
+export function markConversationResetHandled(conversationKey) {
+  db.prepare(`
+    UPDATE conversations
+    SET reset_pending = 0,
+        updated_at = ?
+    WHERE conversation_key = ?
+  `).run(now(), conversationKey);
+}
+
 export function getConversation(conversationKey) {
   const row = db
     .prepare("SELECT * FROM conversations WHERE conversation_key = ?")
@@ -441,6 +459,7 @@ export function getConversation(conversationKey) {
     botId: row.bot_id,
     agentId: row.agent_id,
     dclawSessionId: row.dclaw_session_id,
+    resetPending: Boolean(row.reset_pending),
     roomType: row.room_type,
     receivedName: row.received_name,
     groupName: row.group_name,
@@ -934,6 +953,38 @@ export function listFlowStateEvents({ conversationKey, limit = 100 }) {
     `)
     .all(conversationKey, Number(limit))
     .map(rowToFlowStateEvent);
+}
+
+export function clearConversationForReset({ botId, conversationKey, reason = "控制台清空会话" }) {
+  const machine = getFlowMachine(botId);
+  if (!machine) throw new Error("flow machine not found");
+  const timestamp = now();
+  getOrCreateFlowSession({ botId, conversationKey, machine });
+
+  db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ?").run(conversationKey);
+  db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ?").run(conversationKey);
+  db.prepare(`
+    UPDATE flow_sessions
+    SET current_node_id = ?,
+        collected_data_json = ?,
+        status = 'active',
+        last_message_at = ?,
+        updated_at = ?
+    WHERE conversation_key = ?
+  `).run(machine.entryNodeId, json({}), timestamp, timestamp, conversationKey);
+  db.prepare(`
+    UPDATE conversations
+    SET dclaw_session_id = NULL,
+        reset_pending = 1,
+        last_message_at = ?,
+        updated_at = ?
+    WHERE conversation_key = ?
+  `).run(timestamp, timestamp, conversationKey);
+
+  return {
+    ...getOrCreateFlowSession({ botId, conversationKey, machine }),
+    reason
+  };
 }
 
 export function upsertProactiveAddressBookTarget({

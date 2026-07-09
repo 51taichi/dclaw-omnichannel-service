@@ -49,9 +49,12 @@ WORKTOOL_BASE_URL=https://api.worktool.ymdyes.cn
 PUBLIC_BASE_URL=https://你的公网域名
 CALLBACK_SECRET=自己生成一串随机字符串
 ADMIN_API_KEY=自己生成一串管理密钥
+UPLOAD_MAX_MB=100
+UPLOAD_ALLOWED_ORIGINS=https://你的外部应用域名
 ```
 
 `PUBLIC_BASE_URL` 必须是 WorkTool 可以访问到的 HTTPS 地址。正式环境建议用服务器域名；本地联调用 ngrok、frp、Cloudflare Tunnel 都可以。
+如果外部应用是在浏览器里直接调用上传接口，把它的页面 Origin 写入 `UPLOAD_ALLOWED_ORIGINS`；多个域名用英文逗号分隔。后端服务直连上传不需要配置跨域。
 
 ## 2. 启动服务
 
@@ -302,6 +305,7 @@ GET  /health
 POST /worktool/:botId/message-callback
 POST /worktool/:botId/command-callback
 POST /api/send
+POST /api/uploads
 GET  /api/bots
 PUT  /api/bots/:botId
 POST /api/config/:botId/message-callback
@@ -316,3 +320,29 @@ GET  /api/logs/conversations
 ```
 
 其中 `/worktool/*` 是给 WorkTool 调用的公网回调接口，`/api/*` 是给你自己使用的管理和测试接口。
+
+### 上传接口给外部应用调用
+
+`POST /api/uploads` 使用 `multipart/form-data`，文件字段名必须是 `file`，请求头带 `x-api-key: 你的ADMIN_API_KEY`。默认最大上传 `100MB`，返回的 `file.url` 是公网可访问地址，可直接作为媒体消息的 `fileUrl`。
+
+浏览器端示例：
+
+```js
+const form = new FormData();
+form.append("file", file);
+
+const response = await fetch("https://你的公网域名/api/uploads", {
+  method: "POST",
+  headers: {
+    "x-api-key": "你的ADMIN_API_KEY"
+  },
+  body: form
+});
+
+const data = await response.json();
+if (!response.ok || data.ok === false) {
+  throw new Error(data.message || `HTTP ${response.status}`);
+}
+
+console.log(data.file.url);
+```

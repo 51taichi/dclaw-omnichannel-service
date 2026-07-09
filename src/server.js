@@ -17,11 +17,13 @@ import {
   beginMessageProcessing,
   buildMessageKey,
   claimNextProactiveTarget,
+  clearConversationForReset,
   createProactiveTask,
   finishAgentInvocation,
   finishMessageProcessing,
   getBotBinding,
   getConversationKey,
+  getConversationResetPending,
   getFlowMachine,
   getOrCreateFlowSession,
   getSetting,
@@ -41,6 +43,7 @@ import {
   listProactiveTaskTargets,
   listBotBindings,
   listRecords,
+  markConversationResetHandled,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
@@ -335,6 +338,19 @@ const proactiveWorkerConfig = {
   maxAttempts: Number(process.env.PROACTIVE_MAX_ATTEMPTS || 2)
 };
 
+const configuredReplyMaxParts = Number(process.env.WORKTOOL_REPLY_MAX_PARTS || 3);
+const configuredReplyPartDelayMs = Number(process.env.WORKTOOL_REPLY_PART_DELAY_MS || 1000);
+const replySplitConfig = {
+  enabled: process.env.WORKTOOL_SPLIT_AGENT_REPLY !== "false",
+  splitGroup: process.env.WORKTOOL_SPLIT_GROUP_REPLY === "true",
+  maxParts: Number.isFinite(configuredReplyMaxParts)
+    ? Math.max(1, configuredReplyMaxParts)
+    : 3,
+  delayMs: Number.isFinite(configuredReplyPartDelayMs)
+    ? Math.max(0, configuredReplyPartDelayMs)
+    : 1000
+};
+
 let proactiveWorkerBusy = false;
 let agentQueue = Promise.resolve();
 
@@ -350,6 +366,45 @@ function getDebugReplyConfig() {
     ...defaultDebugReplyConfig,
     ...(config || {})
   };
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function splitAgentReplyForWorkTool(reply, { allowSplit = true } = {}) {
+  const text = String(reply || "").trim();
+  if (!text) return [];
+  if (!replySplitConfig.enabled || !allowSplit) return [text];
+
+  const parts = text
+    .split(/\n\s*\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) return [text];
+  if (parts.length <= replySplitConfig.maxParts) return parts;
+
+  return [
+    ...parts.slice(0, replySplitConfig.maxParts - 1),
+    parts.slice(replySplitConfig.maxParts - 1).join("\n\n")
+  ];
+}
+
+async function sendTextReplyParts({ robotId, target, reply, allowSplit }) {
+  const parts = splitAgentReplyForWorkTool(reply, { allowSplit });
+  const results = [];
+  for (const [index, content] of parts.entries()) {
+    if (index > 0 && replySplitConfig.delayMs > 0) {
+      await sleep(replySplitConfig.delayMs);
+    }
+    const result = await sendTextMessage({
+      robotId,
+      targets: [target],
+      content
+    });
+    results.push({ content, result });
+  }
+  return results;
 }
 
 function messageLogFields({ botId, conversationKey, message }) {
@@ -760,7 +815,14 @@ async function processIncomingMessage({ botId, message }) {
   }
 
   const flow = buildFlowContext({ botId, conversationKey, message });
-  const request = buildDclawRequest({ binding, conversation, message, flow });
+  const conversationReset = getConversationResetPending(conversationKey);
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    flow,
+    conversationReset
+  });
   const invocationId = insertAgentInvocationStart({
     botId,
     agentId: binding.agentId,
@@ -788,6 +850,9 @@ async function processIncomingMessage({ botId, message }) {
       response: invocation.response,
       status: "success"
     });
+    if (conversationReset) {
+      markConversationResetHandled(conversationKey);
+    }
 
     const agentReply = parseAgentReply(invocation.reply);
     const reply = String(agentReply.reply || "").trim();
@@ -824,11 +889,14 @@ async function processIncomingMessage({ botId, message }) {
       throw new Error("missing WorkTool reply target");
     }
 
-    const result = await sendTextMessage({
+    const sentParts = await sendTextReplyParts({
       robotId: botId,
-      targets: [target],
-      content: reply
+      target,
+      reply,
+      allowSplit: isPrivateMessage(message) || replySplitConfig.splitGroup
     });
+    const primaryResult = sentParts[0]?.result || {};
+    const worktoolMessageIds = sentParts.map((part) => part.result?.data || "").filter(Boolean);
     if (flow) {
       applyFlowDecision({
         botId,
@@ -843,7 +911,9 @@ async function processIncomingMessage({ botId, message }) {
         senderName: binding.botName || binding.agentName || "机器人",
         content: reply,
         rawPayload: {
-          worktoolMessageId: result.data,
+          worktoolMessageId: worktoolMessageIds[0] || "",
+          worktoolMessageIds,
+          replyParts: sentParts.map((part) => part.content),
           flowDecision: agentReply.flowDecision,
           agentReply: agentReply.raw
         }
@@ -855,7 +925,11 @@ async function processIncomingMessage({ botId, message }) {
         direction: "outbound",
         senderName: binding.botName || binding.agentName || "机器人",
         content: reply,
-        rawPayload: { worktoolMessageId: result.data }
+        rawPayload: {
+          worktoolMessageId: worktoolMessageIds[0] || "",
+          worktoolMessageIds,
+          replyParts: sentParts.map((part) => part.content)
+        }
       });
     }
     logInfo("worktool.send.success", {
@@ -863,20 +937,29 @@ async function processIncomingMessage({ botId, message }) {
       agentId: binding.agentId,
       invocationId,
       targetName: target,
-      worktoolMessageId: result.data || "",
-      worktoolCode: result.code ?? null,
-      worktoolMessage: result.message || "",
+      worktoolMessageId: worktoolMessageIds[0] || "",
+      worktoolMessageIds,
+      replyPartCount: sentParts.length,
+      worktoolCode: primaryResult.code ?? null,
+      worktoolMessage: primaryResult.message || "",
       totalDurationMs: Date.now() - startedAt
     });
-    insertOutgoingMessage({
-      botId,
-      agentId: binding.agentId,
-      conversationKey,
-      messageId: result.data,
-      targetName: target,
-      content: reply,
-      worktoolResponse: result
-    });
+    for (const [index, part] of sentParts.entries()) {
+      insertOutgoingMessage({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        messageId: part.result?.data || "",
+        targetName: target,
+        content: part.content,
+        worktoolResponse: {
+          ...(part.result || {}),
+          replyPartIndex: index,
+          replyPartCount: sentParts.length,
+          originalReply: reply
+        }
+      });
+    }
     finishMessageProcessing({ messageKey, status: "replied" });
   } catch (error) {
     finishAgentInvocation({
@@ -1265,6 +1348,24 @@ app.put(
       reason: body.reason || "控制台手动修改",
       decision: { source: "console", reason: body.reason || "" }
     });
+    res.json({ ok: true, session });
+  })
+);
+
+app.post(
+  "/api/flow-sessions/:conversationKey/reset",
+  asyncHandler(async (req, res) => {
+    assertAdmin(req);
+    const body = req.body || {};
+    const conversationKey = decodeURIComponent(req.params.conversationKey);
+    const botId = String(body.botId || "").trim();
+    if (!botId) throw new Error("botId is required");
+    const session = clearConversationForReset({
+      botId,
+      conversationKey,
+      reason: body.reason || "控制台清空会话"
+    });
+    logInfo("flow_session.reset", { botId, conversationKey });
     res.json({ ok: true, session });
   })
 );

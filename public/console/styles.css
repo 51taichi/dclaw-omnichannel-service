@@ -1234,10 +1234,21 @@ button.danger:hover {
   font-weight: 800;
 }
 
-.manual-node-field {
-  grid-template-columns: 20% minmax(0, 80%);
+.chat-head-actions {
+  display: flex;
   align-items: center;
-  min-height: 42px;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
+.current-task-badge {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chat-messages {

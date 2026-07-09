@@ -1,4 +1,10 @@
-export function buildDclawRequest({ binding, conversation, message, flow = null }) {
+export function buildDclawRequest({
+  binding,
+  conversation,
+  message,
+  flow = null,
+  conversationReset = false
+}) {
   const roomType = Number(message.roomType);
   const isGroup = roomType === 1 || roomType === 3;
   const worktoolMessage = {
@@ -29,11 +35,13 @@ export function buildDclawRequest({ binding, conversation, message, flow = null 
     "WorkTool 房间类型约定：roomType=2/4 表示私聊，必须默认回复；roomType=1/3 表示群聊，只有被 @ 时才回复。",
     "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
     "群聊被 @ 后，业务问题必须和私聊一样优先调用 DClaw 企业智库；不要因为是群聊就跳过知识库检索。",
-    "最终回复的真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。"
+    "最终回复的真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。",
+    "需要连续发送 2-3 条短回复时，请用空行分隔每段。"
   ];
   if (flow) {
     instructions.push(
       "当前私聊会话启用了客服流程状态机。你必须围绕 flow.currentNode 的 goal、completionCriteria、collectFields 和 conversationTips 推进对话。",
+      "如果 conversationReset=true，表示控制台刚清空了当前会话记录；请忽略旧会话文件，重建或清空当前 conversationId 对应的短期会话记录。",
       "不要机械追问；先回应客户当前表达，再自然推进当前节点目标。",
       "最终请只输出一个 JSON 对象，不要输出 Markdown 或分析过程。",
       "JSON 格式：{\"reply\":\"发给客户的文本\",\"flowDecision\":{\"currentNodeId\":\"当前节点ID\",\"nextNodeId\":\"建议下一节点ID或当前节点ID\",\"nodeCompleted\":false,\"confidence\":0.0,\"reason\":\"判断原因\",\"collectedDataPatch\":{}}}",
@@ -53,7 +61,8 @@ export function buildDclawRequest({ binding, conversation, message, flow = null 
       "",
       JSON.stringify({
         worktoolMessage,
-        flow
+        flow,
+        conversationReset
       }, null, 2)
     ].join("\n"),
     stream: true,
@@ -67,7 +76,8 @@ export function buildDclawRequest({ binding, conversation, message, flow = null 
       groupName: worktoolMessage.groupName,
       userId: worktoolMessage.userId,
       worktool: worktoolMessage,
-      flow
+      flow,
+      conversationReset
     }
   };
 }

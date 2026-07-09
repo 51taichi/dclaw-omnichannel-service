@@ -305,10 +305,10 @@
                 <img class="chat-title-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
                 <strong id="chatTitle">请选择一个私聊会话</strong>
               </div>
-              <label class="manual-node-field">
-                <span class="field-label">当前任务</span>
-                <select id="manualFlowNodeSelect"></select>
-              </label>
+              <div class="chat-head-actions">
+                <span id="currentFlowNodeBadge" class="current-task-badge">当前任务：-</span>
+                <button id="resetConversationButton" class="secondary danger-text" type="button">清空会话</button>
+              </div>
             </div>
             <div id="chatMessages" class="chat-messages"></div>
             <details class="flow-events-wrap">
