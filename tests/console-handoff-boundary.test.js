@@ -36,3 +36,10 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(css.includes(".flow-session-filters"), true);
   assert.equal(css.includes(".handoff-status-banner"), true);
 });
+
+test("human handoff session cards have a clear pulsing highlight", () => {
+  assert.equal(css.includes("@keyframes handoffPulse"), true);
+  assert.equal(css.includes("animation: handoffPulse"), true);
+  assert.equal(css.includes("@media (prefers-reduced-motion: reduce)"), true);
+  assert.equal(css.includes(".flow-session-card.is-handoff .flow-session-name-row em"), true);
+});
