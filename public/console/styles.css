@@ -1355,6 +1355,7 @@ button.danger:hover {
 .flow-session-icons span {
   display: inline-grid;
   place-items: center;
+  position: relative;
   width: 24px;
   height: 24px;
   border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
@@ -1370,6 +1371,57 @@ button.danger:hover {
   background: color-mix(in srgb, var(--accent) 12%, #ffffff);
   color: var(--accent);
   transform: translateY(-1px);
+}
+
+.session-icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  min-width: max-content;
+  max-width: 220px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  border-radius: 7px;
+  background: #1f2937;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.3;
+  white-space: normal;
+  box-shadow: 0 10px 24px rgba(31, 41, 55, 0.18);
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+
+.session-icon::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 3px);
+  z-index: 21;
+  width: 8px;
+  height: 8px;
+  background: #1f2937;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) rotate(45deg);
+  transition: opacity 0.12s ease;
+}
+
+.session-icon:hover::after,
+.session-icon:hover::before,
+.session-icon:focus-visible::after,
+.session-icon:focus-visible::before {
+  opacity: 1;
+}
+
+.session-icon:hover::after,
+.session-icon:focus-visible::after {
+  transform: translate(-50%, 0);
 }
 
 .flow-session-icons .icon {

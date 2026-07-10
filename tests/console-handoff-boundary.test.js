@@ -16,11 +16,14 @@ test("console exposes handoff toggles on session cards and a right-side status b
 
 test("flow session cards use compact icon metadata for task, assets, time, and handoff", () => {
   assert.equal(app.includes("flow-session-icons"), true);
-  assert.equal(app.includes('title="当前任务：'), true);
-  assert.equal(app.includes('title="资产：'), true);
-  assert.equal(app.includes('title="最近消息：'), true);
+  assert.equal(app.includes("当前任务：${status}"), true);
+  assert.equal(app.includes("资产：${assetSummary}"), true);
+  assert.equal(app.includes("最近消息：${lastMessageAt}"), true);
+  assert.equal(app.includes("data-tooltip="), true);
+  assert.equal(app.includes("aria-label="), true);
   assert.equal(app.includes('title="人工接手中"'), true);
   assert.equal(css.includes(".flow-session-icons"), true);
+  assert.equal(css.includes(".session-icon::after"), true);
   assert.equal(css.includes(".handoff-button"), true);
 });
 

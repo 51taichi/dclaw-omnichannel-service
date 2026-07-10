@@ -1170,6 +1170,9 @@ function renderFlowSessions() {
             : "0/0";
           const lastMessageAt = session.lastMessageAt || "暂无";
           const isHandoff = session.handoffStatus === "human";
+          const taskTooltip = `当前任务：${status}`;
+          const assetTooltip = `资产：${assetSummary}`;
+          const timeTooltip = `最近消息：${lastMessageAt}`;
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <img class="flow-session-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
@@ -1180,9 +1183,9 @@ function renderFlowSessions() {
                 </span>
                 <span class="flow-session-tools">
                   <small class="flow-session-icons">
-                    <span class="session-icon" title="当前任务：${escapeHtml(status)}">${icon("edit")}</span>
-                    <span class="session-icon" title="资产：${escapeHtml(assetSummary)}">${icon("briefcase")}</span>
-                    <span class="session-icon" title="最近消息：${escapeHtml(lastMessageAt)}">${icon("clock")}</span>
+                    <span class="session-icon" title="${escapeHtml(taskTooltip)}" data-tooltip="${escapeHtml(taskTooltip)}" aria-label="${escapeHtml(taskTooltip)}">${icon("edit")}</span>
+                    <span class="session-icon" title="${escapeHtml(assetTooltip)}" data-tooltip="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
+                    <span class="session-icon" title="${escapeHtml(timeTooltip)}" data-tooltip="${escapeHtml(timeTooltip)}" aria-label="${escapeHtml(timeTooltip)}">${icon("clock")}</span>
                   </small>
                   <span class="handoff-button ${isHandoff ? "is-active" : ""}" data-flow-handoff="${escapeHtml(session.conversationKey)}" title="${isHandoff ? "点击恢复 AI 接手" : "点击切换人工接手"}">
                     ${icon("users")}${isHandoff ? "恢复" : "人工"}
