@@ -166,9 +166,10 @@ h2 {
   min-width: 0;
 }
 
-.current-bot-actions #resetFormButton {
+.current-bot-actions :is(#lockBotButton, #resetFormButton) {
   flex: 0 0 auto;
-  height: 30px;
+  height: 32px;
+  min-height: 32px;
   padding: 0 12px;
   font-size: 12px;
   white-space: nowrap;
@@ -270,7 +271,8 @@ h2 {
   align-items: center;
   justify-self: end;
   max-width: 100%;
-  min-height: 28px;
+  height: 32px;
+  min-height: 32px;
   padding: 0 10px;
   border: 1px solid var(--line);
   border-radius: 999px;
