@@ -766,11 +766,6 @@ button.primary:hover {
   box-shadow: 0 12px 28px rgba(42, 48, 216, 0.22);
 }
 
-#refreshProactiveButton {
-  height: 36px;
-  padding: 0 12px;
-}
-
 button.danger {
   border-color: transparent;
   background: linear-gradient(90deg, var(--danger), var(--orange));
@@ -979,6 +974,12 @@ button.danger:hover {
   box-shadow: none;
 }
 
+.target-chip .icon {
+  width: 12px;
+  height: 12px;
+  flex-basis: 12px;
+}
+
 .target-chip small {
   color: var(--muted);
   font-weight: 800;
@@ -1185,7 +1186,7 @@ button.danger:hover {
 
 .flow-session-filters {
   display: grid;
-  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  grid-template-columns: repeat(5, minmax(150px, 1fr));
   gap: 10px;
   align-items: end;
   padding: 0 0 12px;
@@ -1194,13 +1195,13 @@ button.danger:hover {
 }
 
 .flow-session-filters label {
-  display: grid;
-  gap: 5px;
+  grid-template-columns: 92px minmax(0, 1fr);
+  min-height: 42px;
 }
 
 .flow-session-filters input,
 .flow-session-filters select {
-  height: 36px;
+  height: 40px;
   min-width: 0;
 }
 

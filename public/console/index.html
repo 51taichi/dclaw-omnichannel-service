@@ -72,6 +72,10 @@
         <path d="M22 21v-2a4 4 0 0 0-3-3.9" />
         <path d="M16 3.1a4 4 0 0 1 0 7.8" />
       </symbol>
+      <symbol id="icon-user" viewBox="0 0 24 24">
+        <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+        <circle cx="12" cy="7" r="4" />
+      </symbol>
       <symbol id="icon-plus" viewBox="0 0 24 24">
         <path d="M12 5v14" />
         <path d="M5 12h14" />
@@ -223,7 +227,7 @@
             <input name="reply" placeholder="pong" />
           </label>
           <div class="actions">
-            <button type="submit">
+            <button class="primary" type="submit">
               <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
               保存调试配置
             </button>
@@ -246,7 +250,7 @@
               <input name="accessKey" type="password" placeholder="输入后重置当前 Bot 独立密钥" autocomplete="off" />
             </label>
             <div class="actions">
-              <button type="submit">
+              <button class="primary" type="submit">
                 <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
                 修改密钥
               </button>
@@ -261,8 +265,14 @@
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>任务状态机</h2>
           <div class="section-actions">
-            <button id="loadDefaultFlowButton" class="secondary" type="button">载入模板</button>
-            <button id="exportFlowButton" class="secondary" type="button">导出</button>
+            <button id="loadDefaultFlowButton" class="secondary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+              载入模板
+            </button>
+            <button id="exportFlowButton" class="secondary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+              导出
+            </button>
             <button class="collapse-button" data-collapse-target="flowMachinePanel" type="button" aria-label="收起任务状态机">
               <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
             </button>
@@ -303,7 +313,10 @@
                 <span class="field-label">状态机 JSON</span>
                 <textarea name="config" rows="12" spellcheck="false" placeholder="可粘贴导入 JSON；普通用户无需编辑"></textarea>
               </label>
-              <button id="applyFlowJsonButton" class="secondary" type="button">从 JSON 导入到表单</button>
+              <button id="applyFlowJsonButton" class="secondary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>
+                从 JSON 导入到表单
+              </button>
             </details>
             <div class="actions">
               <button class="primary" type="submit">
@@ -435,18 +448,36 @@
             </div>
             <div class="target-toolbar">
               <div class="segmented" role="tablist" aria-label="目标类型">
-                <button class="active" data-target-filter="all" type="button">全部</button>
-                <button data-target-filter="private" type="button">私聊</button>
-                <button data-target-filter="group" type="button">群组</button>
+                <button class="active" data-target-filter="all" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+                  全部
+                </button>
+                <button data-target-filter="private" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
+                  私聊
+                </button>
+                <button data-target-filter="group" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+                  群组
+                </button>
               </div>
               <label class="target-search">
                 <span class="field-label">搜索</span>
                 <input id="targetSearchInput" type="search" placeholder="输入客户或群名" />
               </label>
               <div class="bulk-actions">
-                <button id="selectPrivateTargetsButton" class="secondary" type="button">全选私聊</button>
-                <button id="selectGroupTargetsButton" class="secondary" type="button">全选群组</button>
-                <button id="clearTargetsButton" class="secondary" type="button">清空</button>
+                <button id="selectPrivateTargetsButton" class="secondary" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
+                  全选私聊
+                </button>
+                <button id="selectGroupTargetsButton" class="secondary" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+                  全选群组
+                </button>
+                <button id="clearTargetsButton" class="secondary" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+                  清空
+                </button>
               </div>
             </div>
             <div id="selectedTargets" class="selected-targets"></div>
@@ -574,7 +605,7 @@
                 <option value="proactive-targets">主动目标</option>
               </select>
             </label>
-            <button id="loadLogsButton" type="button">
+            <button id="loadLogsButton" class="secondary" type="button">
               <svg class="icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
               查看
             </button>
@@ -607,8 +638,14 @@
           </label>
         </div>
         <div class="confirm-actions">
-          <button id="unlockCancelButton" class="secondary" type="button">取消</button>
-          <button id="unlockAcceptButton" class="primary" type="button">解锁</button>
+          <button id="unlockCancelButton" class="secondary" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+            取消
+          </button>
+          <button id="unlockAcceptButton" class="primary" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#icon-lock"></use></svg>
+            解锁
+          </button>
         </div>
       </div>
     </div>
@@ -622,7 +659,10 @@
           <p>确认后会清空当前会话记录，并让下一次 Agent 调用从头开始。</p>
         </div>
         <div class="confirm-actions">
-          <button id="confirmCancelButton" class="secondary" type="button">取消</button>
+          <button id="confirmCancelButton" class="secondary" type="button">
+            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+            取消
+          </button>
           <button id="confirmAcceptButton" class="danger" type="button">
             <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
             确认清空

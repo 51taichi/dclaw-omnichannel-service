@@ -658,6 +658,7 @@ function renderSelectedTargets() {
             <button class="target-chip" data-remove-target="${key}" type="button">
               <span>${escapeHtml(target.displayName || target.targetName)}</span>
               <small>${escapeHtml(targetTypeLabel(target.targetType))}</small>
+              ${icon("reset")}
             </button>
           `;
         })
@@ -949,7 +950,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
           <div class="flow-node-card-head">
             <strong>${escapeHtml(node.name || `节点 ${index + 1}`)}</strong>
             <div class="flow-node-actions">
-              <button class="secondary danger-text" data-remove-flow-node="${index}" type="button">删除</button>
+              <button class="secondary danger-text" data-remove-flow-node="${index}" type="button">${icon("reset")}删除</button>
               <button class="collapse-button" data-toggle-flow-node="${index}" type="button" aria-label="${isCollapsed ? "展开任务节点" : "收起任务节点"}" aria-expanded="${String(!isCollapsed)}">
                 <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
               </button>
