@@ -26,6 +26,7 @@ const els = {
   workspaceTabBar: document.querySelector(".workspace-tabs"),
   workspaceTabs: document.querySelectorAll("[data-workspace-tab]"),
   tabPanels: document.querySelectorAll("[data-tab-panel]"),
+  workspaceLockPanel: document.querySelector("#workspaceLockPanel"),
   bindingState: document.querySelector("#bindingState"),
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
@@ -144,17 +145,29 @@ function isBotUnlocked(botId) {
   return Boolean(getBotSession(botId));
 }
 
+function isWorkspaceLocked() {
+  return Boolean(state.selectedBotId && !state.currentRole);
+}
+
 function syncRoleVisibility() {
   const isAdmin = state.currentRole === "admin";
   const hasBot = Boolean(state.selectedBotId);
+  const workspaceLocked = isWorkspaceLocked();
   document.body.classList.toggle("is-admin-role", isAdmin);
   document.body.classList.toggle("is-bot-role", state.currentRole === "bot");
+  document.body.classList.toggle("is-workspace-locked", workspaceLocked);
   document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", !isAdmin);
   document.querySelector("#configTab")?.toggleAttribute("hidden", !isAdmin);
   els.resetFormButton.hidden = !isAdmin;
   if (els.accessKeyPanel) els.accessKeyPanel.hidden = !isAdmin;
-  if (els.lockBotButton) els.lockBotButton.hidden = !hasBot;
-  if (!isAdmin && document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")) {
+  if (els.lockBotButton) els.lockBotButton.hidden = !hasBot || !isAdmin;
+  if (els.workspaceLockPanel) els.workspaceLockPanel.hidden = !workspaceLocked;
+  if (workspaceLocked) {
+    els.tabPanels.forEach((panel) => {
+      panel.hidden = true;
+      panel.classList.remove("active");
+    });
+  } else if (!isAdmin && document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")) {
     switchWorkspaceTab("sessions", { force: true });
   }
 }
@@ -263,6 +276,10 @@ function botDisplayName(botId) {
 }
 
 function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
+  if (!force && isWorkspaceLocked()) {
+    toast("内容区域已上锁，请先解锁当前 Bot");
+    return;
+  }
   if (!force && tabName !== "config" && !state.selectedBotId) {
     toast("请先选择或保存一个 Bot");
     return;
@@ -287,14 +304,20 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
 }
 
 function updateWorkspaceTabAccess(hasBotContext) {
+  const workspaceLocked = isWorkspaceLocked();
   els.workspaceTabs.forEach((button) => {
     const locked =
+      workspaceLocked ||
       (button.dataset.workspaceTab !== "config" && !hasBotContext) ||
       (button.dataset.workspaceTab === "config" && state.currentRole !== "admin");
     button.disabled = locked;
     button.setAttribute("aria-disabled", String(locked));
   });
-  if (!hasBotContext && !document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")) {
+  if (
+    !workspaceLocked &&
+    !hasBotContext &&
+    !document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")
+  ) {
     switchWorkspaceTab("config", { force: true });
   }
 }
@@ -318,7 +341,7 @@ function setBindingState(bot = null) {
     panel.style.setProperty("--bot-accent", accent);
   });
   els.bindingState.textContent = bot
-    ? `当前Bot：${bot.botName || bot.dclawPublicId || "当前 Bot"} · ${state.currentRole === "admin" ? "管理员" : "已解锁"}`
+    ? `当前Bot：${bot.botName || bot.dclawPublicId || "当前 Bot"} · ${state.currentRole === "admin" ? "管理员" : state.currentRole ? "已解锁" : "已上锁"}`
     : "新增模式";
   renderBots(currentBots);
 }
@@ -411,13 +434,17 @@ async function lockCurrentBot() {
   try {
     await request(`/api/bots/${encodeURIComponent(botId)}/lock`, { method: "POST" });
   } catch {}
+  const bot = currentBots.find((item) => item.botId === botId);
   clearBotSession(botId);
   state.selectedFlowConversationKey = "";
   selectedTargets.clear();
-  setBindingState(null);
+  if (bot) {
+    setBindingState(bot);
+  } else {
+    setBindingState(null);
+  }
   renderSelectedTargets();
   renderTargetList();
-  renderBots(currentBots);
   toast("已上锁");
 }
 

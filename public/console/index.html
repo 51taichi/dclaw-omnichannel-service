@@ -43,6 +43,10 @@
         <path d="M10 13a5 5 0 0 0 7.1 0l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
         <path d="M14 11a5 5 0 0 0-7.1 0l-2 2A5 5 0 0 0 12 20.1l1.1-1.1" />
       </symbol>
+      <symbol id="icon-lock" viewBox="0 0 24 24">
+        <rect x="3" y="11" width="18" height="10" rx="2" />
+        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+      </symbol>
       <symbol id="icon-terminal" viewBox="0 0 24 24">
         <path d="m4 17 5-5-5-5" />
         <path d="M12 19h8" />
@@ -139,7 +143,7 @@
           <div class="current-bot-actions">
             <span id="bindingState" class="binding-state">新增模式</span>
             <button id="lockBotButton" class="secondary" type="button" hidden>
-              <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+              <svg class="icon" aria-hidden="true"><use href="#icon-lock"></use></svg>
               上锁
             </button>
             <button id="resetFormButton" class="secondary" type="button">
@@ -148,6 +152,14 @@
             </button>
           </div>
         </div>
+
+        <section id="workspaceLockPanel" class="panel workspace-lock-panel" hidden>
+          <span class="workspace-lock-icon"><svg class="icon" aria-hidden="true"><use href="#icon-lock"></use></svg></span>
+          <span>
+            <strong>内容区域已上锁</strong>
+            <small>当前 Bot 已锁定，请先在左侧 Bot 卡片中解锁后再查看或操作相关数据。</small>
+          </span>
+        </section>
 
       <div id="configTab" class="tab-panel active" data-tab-panel="config">
       <section id="botBindingPanel" class="panel binding-panel bot-context-panel collapsible-panel">

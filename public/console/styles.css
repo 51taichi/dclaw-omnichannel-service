@@ -213,6 +213,51 @@ h2 {
   color: color-mix(in srgb, var(--bot-accent) 72%, var(--muted));
 }
 
+.workspace-lock-panel {
+  min-height: 178px;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  border-color: color-mix(in srgb, var(--danger) 38%, var(--line));
+  background:
+    linear-gradient(135deg, rgba(255, 78, 28, 0.08), rgba(255, 255, 255, 0.92) 56%),
+    #ffffff;
+  color: var(--ink);
+}
+
+.workspace-lock-panel[hidden] {
+  display: none;
+}
+
+.workspace-lock-icon {
+  width: 46px;
+  height: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: rgba(255, 78, 28, 0.12);
+  color: var(--danger);
+  box-shadow: 0 12px 24px rgba(255, 78, 28, 0.12);
+}
+
+.workspace-lock-panel strong,
+.workspace-lock-panel small {
+  display: block;
+}
+
+.workspace-lock-panel strong {
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.workspace-lock-panel small {
+  margin-top: 6px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
 .tab-panel {
   display: grid;
   gap: 14px;
