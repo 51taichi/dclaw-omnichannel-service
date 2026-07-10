@@ -462,8 +462,10 @@ function renderBots(bots) {
             </span>
           </div>
           <div class="row-actions bot-actions">
-            <button class="secondary icon-button" data-action="${unlocked ? "flow" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "客户任务" : "解锁"}" title="${unlocked ? "客户任务" : "解锁"}">${icon(unlocked ? "users" : "link")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "tasks" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "任务配置" : "解锁"}" title="${unlocked ? "任务配置" : "解锁"}">${icon(unlocked ? "edit" : "link")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "sessions" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "客户会话" : "解锁"}" title="${unlocked ? "客户会话" : "解锁"}">${icon(unlocked ? "users" : "link")}</button>
             <button class="secondary icon-button" data-action="${unlocked ? "push" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "推送消息" : "解锁"}" title="${unlocked ? "推送消息" : "解锁"}">${icon(unlocked ? "send" : "link")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "logs" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "运行日志" : "解锁"}" title="${unlocked ? "运行日志" : "解锁"}">${icon(unlocked ? "eye" : "link")}</button>
           </div>
         </article>
       `;
@@ -494,10 +496,20 @@ function renderBots(bots) {
         fillForm(bot);
         await applyBotContext(bot, { scrollTo: els.proactivePanel });
       }
-      if (actionTarget.dataset.action === "flow") {
+      if (actionTarget.dataset.action === "tasks") {
         event.stopPropagation();
         fillForm(bot);
         await applyBotContext(bot, { scrollTo: document.querySelector("#flowMachinePanel") });
+      }
+      if (actionTarget.dataset.action === "sessions") {
+        event.stopPropagation();
+        fillForm(bot);
+        await applyBotContext(bot, { scrollTo: document.querySelector("#flowSessionsPanel") });
+      }
+      if (actionTarget.dataset.action === "logs") {
+        event.stopPropagation();
+        fillForm(bot);
+        await applyBotContext(bot, { scrollTo: document.querySelector("#logsPanel") });
       }
     });
   });

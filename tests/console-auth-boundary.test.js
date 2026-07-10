@@ -28,3 +28,10 @@ test("console hides config tab for bot role and exposes access-key reset for adm
   assert.equal(app.includes("/access-key"), true);
   assert.equal(css.includes(".bot-card.is-locked"), true);
 });
+
+test("bot cards expose four unlocked quick actions", () => {
+  assert.equal(app.includes('data-action="${unlocked ? "tasks" : "unlock"}'), true);
+  assert.equal(app.includes('data-action="${unlocked ? "sessions" : "unlock"}'), true);
+  assert.equal(app.includes('data-action="${unlocked ? "push" : "unlock"}'), true);
+  assert.equal(app.includes('data-action="${unlocked ? "logs" : "unlock"}'), true);
+});
