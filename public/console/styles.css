@@ -1208,6 +1208,11 @@ button.danger:hover {
   box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
+.flow-session-card.is-handoff {
+  border-color: color-mix(in srgb, #f59e0b 62%, var(--line));
+  background: color-mix(in srgb, #f59e0b 10%, #ffffff);
+}
+
 .flow-session-avatar {
   width: 34px;
   height: 34px;
@@ -1247,6 +1252,35 @@ button.danger:hover {
   color: var(--muted);
   font-size: 12px;
   font-weight: 700;
+}
+
+.flow-session-icons {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.flow-session-icons span {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 25%, var(--line));
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+}
+
+.flow-session-icons .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.flow-session-icons .handoff-mark {
+  border-color: color-mix(in srgb, #f59e0b 55%, var(--line));
+  color: #a16207;
+  background: color-mix(in srgb, #f59e0b 13%, #ffffff);
 }
 
 .chat-view {
@@ -1298,7 +1332,7 @@ button.danger:hover {
 
 .chat-head-actions {
   display: grid;
-  grid-template-columns: auto 112px;
+  grid-template-columns: auto auto 112px;
   align-items: center;
   justify-content: end;
   gap: 10px;
@@ -1311,6 +1345,22 @@ button.danger:hover {
 }
 
 .asset-button .icon {
+  width: 15px;
+  height: 15px;
+}
+
+.handoff-button {
+  min-width: 104px;
+  white-space: nowrap;
+}
+
+.handoff-button.is-active {
+  border-color: color-mix(in srgb, #f59e0b 60%, var(--line));
+  color: #92400e;
+  background: color-mix(in srgb, #f59e0b 12%, #ffffff);
+}
+
+.handoff-button .icon {
   width: 15px;
   height: 15px;
 }

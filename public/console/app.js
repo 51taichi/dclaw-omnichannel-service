@@ -44,6 +44,7 @@ const els = {
   assetsButton: document.querySelector("#assetsButton"),
   assetsCount: document.querySelector("#assetsCount"),
   assetsPanel: document.querySelector("#assetsPanel"),
+  handoffButton: document.querySelector("#handoffButton"),
   resetConversationButton: document.querySelector("#resetConversationButton"),
   confirmDialog: document.querySelector("#confirmDialog"),
   confirmCancelButton: document.querySelector("#confirmCancelButton"),
@@ -446,6 +447,11 @@ function resetBotContext() {
   addressBookTargets = [];
   currentFlowMachine = null;
   currentFlowSessions = [];
+  currentFlowSession = null;
+  syncHandoffButton(null);
+  renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
+  els.chatTitle.textContent = "请选择一个私聊会话";
+  els.chatMessages.innerHTML = "";
   els.botForm.reset();
   els.botForm.enabled.checked = true;
   setBindingState(null);
@@ -570,6 +576,7 @@ let currentFlowMachine = null;
 let currentFlowSessions = [];
 let flowDraftNodes = [];
 let currentConversationAssets = { fields: [], totalCount: 0, collectedCount: 0 };
+let currentFlowSession = null;
 const collapsedFlowNodes = new Set();
 const selectedTargets = new Map();
 
@@ -1108,14 +1115,21 @@ function renderFlowSessions() {
           const status = flowNodeName(session.currentNodeId);
           const assets = session.assets || {};
           const assetSummary = assets.totalCount
-            ? `资产：${assets.collectedCount || 0}/${assets.totalCount}`
-            : "";
+            ? `${assets.collectedCount || 0}/${assets.totalCount}`
+            : "0/0";
+          const lastMessageAt = session.lastMessageAt || "暂无";
+          const isHandoff = session.handoffStatus === "human";
           return `
-            <button class="flow-session-card ${active ? "selected" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
+            <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <img class="flow-session-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
               <span class="flow-session-main">
-                <strong>${escapeHtml(name)}<span>（当前任务：${escapeHtml(status)}）</span></strong>
-                <small>${escapeHtml([assetSummary, session.lastMessageAt || ""].filter(Boolean).join(" · "))}</small>
+                <strong>${escapeHtml(name)}</strong>
+                <small class="flow-session-icons">
+                  <span title="当前任务：${escapeHtml(status)}">${icon("edit")}</span>
+                  <span title="资产：${escapeHtml(assetSummary)}">${icon("briefcase")}</span>
+                  <span title="最近消息：${escapeHtml(lastMessageAt)}">${icon("clock")}</span>
+                  ${isHandoff ? `<span class="handoff-mark" title="人工接手中">${icon("users")}</span>` : ""}
+                </small>
               </span>
             </button>
           `;
@@ -1164,6 +1178,18 @@ function renderConversationAssets(assets = { fields: [], totalCount: 0, collecte
   `;
 }
 
+function syncHandoffButton(session = currentFlowSession) {
+  currentFlowSession = session || null;
+  const hasSession = Boolean(currentFlowSession && state.selectedFlowConversationKey);
+  els.handoffButton.hidden = !hasSession;
+  if (!hasSession) return;
+
+  const isHandoff = currentFlowSession.handoffStatus === "human";
+  els.handoffButton.classList.toggle("is-active", isHandoff);
+  els.handoffButton.title = isHandoff ? "当前为人工接手，点击恢复 AI" : "点击后该会话暂停 AI 回复";
+  els.handoffButton.innerHTML = `${icon("users")}${isHandoff ? "恢复 AI" : "人工接手"}`;
+}
+
 function renderChatMessageContent(message) {
   const mediaPayload = message.rawPayload?.messagePayload;
   const mediaType = String(message.rawPayload?.messageType || "");
@@ -1196,9 +1222,36 @@ async function openFlowSession(conversationKey) {
   els.chatTitle.textContent = session?.receivedName || conversationKey;
   const params = new URLSearchParams({ limit: "300", botId: state.selectedBotId });
   const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
+  currentFlowSession = data.session || session || null;
+  syncHandoffButton(currentFlowSession);
   renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
   renderChatMessages(data.messages || []);
   els.flowEventsOutput.textContent = JSON.stringify(data.events || [], null, 2);
+}
+
+async function toggleSelectedConversationHandoff() {
+  if (!state.selectedBotId || !state.selectedFlowConversationKey || !currentFlowSession) {
+    toast("请先选择会话");
+    return;
+  }
+  const nextStatus = currentFlowSession.handoffStatus === "human" ? "ai" : "human";
+  const data = await request(`/api/flow-sessions/${encodeURIComponent(state.selectedFlowConversationKey)}/handoff`, {
+    method: "PUT",
+    body: JSON.stringify({
+      botId: state.selectedBotId,
+      handoffStatus: nextStatus,
+      reason: nextStatus === "human" ? "控制台人工接手" : "控制台恢复 AI"
+    })
+  });
+  currentFlowSession = data.session;
+  syncHandoffButton(currentFlowSession);
+  currentFlowSessions = currentFlowSessions.map((session) =>
+    session.conversationKey === currentFlowSession.conversationKey
+      ? { ...session, ...currentFlowSession }
+      : session
+  );
+  renderFlowSessions();
+  toast(nextStatus === "human" ? "已切换为人工接手" : "已恢复 AI 接手");
 }
 
 function renderChatMessages(messages) {
@@ -1445,6 +1498,9 @@ els.loadDefaultFlowButton.addEventListener("click", () =>
 els.exportFlowButton.addEventListener("click", exportFlowMachine);
 els.refreshFlowSessionsButton.addEventListener("click", () =>
   Promise.all([loadFlowMachine(), loadFlowSessions()]).catch((error) => toast(error.message))
+);
+els.handoffButton.addEventListener("click", () =>
+  toggleSelectedConversationHandoff().catch((error) => toast(error.message))
 );
 els.resetConversationButton.addEventListener("click", openConfirmDialog);
 els.confirmCancelButton.addEventListener("click", closeConfirmDialog);

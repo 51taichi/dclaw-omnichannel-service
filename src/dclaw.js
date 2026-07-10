@@ -82,6 +82,75 @@ export function buildDclawRequest({
   };
 }
 
+export function buildDclawHandoffTranscriptRequest({
+  binding,
+  conversation,
+  message,
+  flow = null,
+  conversationReset = false
+}) {
+  const roomType = Number(message.roomType);
+  const isGroup = roomType === 1 || roomType === 3;
+  const worktoolMessage = {
+    channel: "wecom-worktool",
+    eventType: "handoff_transcript_message",
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationId: conversation.conversationKey,
+    sessionId: conversation.conversationKey,
+    messageId: message.messageId || "",
+    message: message.spoken || "",
+    rawMessage: message.rawSpoken || message.spoken || "",
+    roomType: message.roomType,
+    groupName: isGroup ? message.groupName || "" : "",
+    userId: message.receivedName || "",
+    metadata: {
+      receivedName: message.receivedName || "",
+      atMe: message.atMe,
+      textType: message.textType,
+      fileName: message.fileName || "",
+      filePath: message.filePath || "",
+      handoffStatus: "human",
+      payload: message
+    }
+  };
+
+  return {
+    external_user_id: worktoolMessage.userId || "unknown",
+    external_session_id: worktoolMessage.conversationId,
+    message: [
+      "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
+      "eventType=handoff_transcript_message 表示这是人工接手期间的聊天记录。",
+      "这条消息只用于补全当前 conversationId 的历史。",
+      "不要生成客户可见回复。",
+      "不要推进状态机。",
+      "不要输出话术。",
+      "最终请输出空字符串。",
+      "",
+      JSON.stringify({
+        worktoolMessage,
+        flow,
+        conversationReset
+      }, null, 2)
+    ].join("\n"),
+    stream: true,
+    metadata: {
+      source: "worktool",
+      eventType: worktoolMessage.eventType,
+      botId: worktoolMessage.botId,
+      agentId: worktoolMessage.agentId,
+      conversationId: worktoolMessage.conversationId,
+      messageId: worktoolMessage.messageId,
+      roomType: worktoolMessage.roomType,
+      groupName: worktoolMessage.groupName,
+      userId: worktoolMessage.userId,
+      worktool: worktoolMessage,
+      flow,
+      conversationReset
+    }
+  };
+}
+
 export function buildDclawProactiveEventRequest({
   binding,
   conversationKey,
@@ -172,7 +241,7 @@ export async function invokeDclawAgentWithRetry({
       };
     } catch (error) {
       lastError = error;
-      if (!isTimeoutError(error) || attempt >= maxAttempts) {
+      if (!isRetryableDclawError(error) || attempt >= maxAttempts) {
         throw error;
       }
       onRetry?.({ attempt, maxAttempts, timeoutMs, error });
@@ -202,7 +271,9 @@ export async function invokeDclawAgent({ binding, request, timeoutMs = getDclawA
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`DClaw OpenAPI failed: ${response.status} ${errorText}`);
+    const error = new Error(`DClaw OpenAPI failed: ${response.status} ${errorText}`);
+    error.status = response.status;
+    throw error;
   }
 
   const contentType = response.headers.get("content-type") || "";
@@ -246,6 +317,11 @@ function isTimeoutError(error) {
     message.includes("aborted due to timeout") ||
     message.includes("timeout")
   );
+}
+
+function isRetryableDclawError(error) {
+  const status = Number(error?.status);
+  return isTimeoutError(error) || status === 502 || status === 503 || status === 504;
 }
 
 export function parseAgentReply(rawReply) {

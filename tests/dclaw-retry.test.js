@@ -36,12 +36,41 @@ test("retries a timed out DClaw invocation once", async () => {
   }
 });
 
-test("does not retry non-timeout DClaw failures", async () => {
+test("retries DClaw gateway failures", async () => {
   const originalFetch = globalThis.fetch;
   let attempts = 0;
   globalThis.fetch = async () => {
     attempts += 1;
-    throw new Error("DClaw OpenAPI failed: 500");
+    if (attempts === 1) {
+      return new Response("Bad Gateway", { status: 502 });
+    }
+    return new Response(JSON.stringify({ reply: "ok" }), {
+      headers: { "content-type": "application/json" }
+    });
+  };
+
+  try {
+    const result = await invokeDclawAgentWithRetry({
+      binding,
+      request: { message: "hello" },
+      maxAttempts: 2,
+      timeoutMs: 25
+    });
+
+    assert.equal(attempts, 2);
+    assert.deepEqual(result.response, { reply: "ok" });
+    assert.equal(result.attempts, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("does not retry non-retryable DClaw failures", async () => {
+  const originalFetch = globalThis.fetch;
+  let attempts = 0;
+  globalThis.fetch = async () => {
+    attempts += 1;
+    return new Response("Internal Server Error", { status: 500 });
   };
 
   try {

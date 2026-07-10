@@ -57,12 +57,15 @@ UPLOAD_ALLOWED_ORIGINS=https://你的外部应用域名
 `PUBLIC_BASE_URL` 必须是 WorkTool 可以访问到的 HTTPS 地址。正式环境建议用服务器域名；本地联调用 ngrok、frp、Cloudflare Tunnel 都可以。
 如果外部应用是在浏览器里直接调用上传接口，把它的页面 Origin 写入 `UPLOAD_ALLOWED_ORIGINS`；多个域名用英文逗号分隔。后端服务直连上传不需要配置跨域。
 
-DClaw 调用默认 25 秒超时，超时会快速重试 1 次：
+DClaw 调用默认 25 秒超时，超时或 DClaw 网关返回 `502/503/504` 会快速重试 1 次。如果最终仍失败，私聊会发送一条兜底提示，避免客户侧完全无响应：
 
 ```bash
 DCLAW_AGENT_TIMEOUT_MS=25000
 DCLAW_AGENT_MAX_ATTEMPTS=2
+AGENT_FAILURE_FALLBACK_REPLY=刚刚这边有点卡，我稍后回复你哈
 ```
+
+人工接手是服务端会话状态，不需要 WorkTool 做额外配置。控制台把某个私聊切到“人工接手”后，本服务仍会接收并保存 WorkTool 回调，也会把记录同步给 DClaw 作为历史，但不会再把 Agent 回复发送给客户；恢复 AI 后，新消息重新进入正常 Agent 回复链路。
 
 ## 2. 启动服务
 

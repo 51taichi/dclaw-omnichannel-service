@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
 import {
+  buildDclawHandoffTranscriptRequest,
   buildDclawProactiveEventRequest,
   buildDclawRequest,
   getDclawAgentMaxAttempts,
@@ -35,6 +36,7 @@ import {
   getConversationResetPending,
   getConversationAssets,
   getFlowMachine,
+  getFlowSession,
   getOrCreateFlowSession,
   getSetting,
   getProactiveTask,
@@ -62,6 +64,7 @@ import {
   setSetting,
   setBotAccessKey,
   touchFlowSession,
+  updateFlowSessionHandoff,
   updateFlowSessionNode,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
@@ -93,6 +96,8 @@ const uploadAllowedOrigins = String(process.env.UPLOAD_ALLOWED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+const agentFailureFallbackReply =
+  process.env.AGENT_FAILURE_FALLBACK_REPLY || "刚刚这边有点卡，我稍后回复你哈";
 const uploadRetentionMs = Number(process.env.UPLOAD_RETENTION_HOURS || 24) * 60 * 60 * 1000;
 const uploadCleanupIntervalMs =
   Number(process.env.UPLOAD_CLEANUP_INTERVAL_MINUTES || 60) * 60 * 1000;
@@ -480,6 +485,74 @@ async function sendTextReplyParts({ robotId, target, reply, allowSplit }) {
     results.push({ content, result });
   }
   return results;
+}
+
+async function sendAgentFailureFallback({
+  botId,
+  binding,
+  conversationKey,
+  message,
+  invocationId,
+  logContext,
+  error
+}) {
+  if (!isPrivateMessage(message)) return false;
+  const reply = String(agentFailureFallbackReply || "").trim();
+  if (!reply) return false;
+  const target = getReplyTarget(message);
+  if (!target) return false;
+
+  const sentParts = await sendTextReplyParts({
+    robotId: botId,
+    target,
+    reply,
+    allowSplit: false
+  });
+  const worktoolMessageIds = sentParts.map((part) => part.result?.data || "").filter(Boolean);
+
+  insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "outbound",
+    senderName: binding?.botName || binding?.agentName || "机器人",
+    content: reply,
+    rawPayload: {
+      fallback: true,
+      reason: "agent_invocation_failed",
+      error: error.message,
+      worktoolMessageId: worktoolMessageIds[0] || "",
+      worktoolMessageIds,
+      replyParts: sentParts.map((part) => part.content)
+    }
+  });
+
+  for (const [index, part] of sentParts.entries()) {
+    insertOutgoingMessage({
+      botId,
+      agentId: binding?.agentId || "",
+      conversationKey,
+      messageId: part.result?.data || "",
+      targetName: target,
+      content: part.content,
+      worktoolResponse: {
+        ...(part.result || {}),
+        fallback: true,
+        replyPartIndex: index,
+        replyPartCount: sentParts.length,
+        originalReply: reply
+      }
+    });
+  }
+
+  logWarn("agent.fallback_replied", {
+    ...logContext,
+    agentId: binding?.agentId || "",
+    invocationId,
+    targetName: target,
+    worktoolMessageIds,
+    error: error.message
+  });
+  return true;
 }
 
 function messageLogFields({ botId, conversationKey, message }) {
@@ -883,12 +956,6 @@ async function processIncomingMessage({ botId, message }) {
     return;
   }
 
-  if (await handleDebugPing({ botId, message, conversationKey })) {
-    logInfo("incoming.debug_reply", logContext);
-    finishMessageProcessing({ messageKey, status: "debug_replied" });
-    return;
-  }
-
   if (!binding || !binding.enabled) {
     logWarn("incoming.skipped", {
       ...logContext,
@@ -917,6 +984,90 @@ async function processIncomingMessage({ botId, message }) {
 
   const flow = buildFlowContext({ botId, conversationKey, message });
   const conversationReset = getConversationResetPending(conversationKey);
+  if (isPrivateMessage(message) && flow?.session?.handoffStatus === "human") {
+    const request = buildDclawHandoffTranscriptRequest({
+      binding,
+      conversation,
+      message,
+      flow,
+      conversationReset
+    });
+    const invocationId = insertAgentInvocationStart({
+      botId,
+      agentId: binding.agentId,
+      conversationKey,
+      incomingMessageId: message.messageId,
+      request
+    });
+    const handoffStartedAt = Date.now();
+    logInfo("agent.handoff_sync.start", {
+      ...logContext,
+      agentId: binding.agentId,
+      invocationId
+    });
+
+    try {
+      const invocation = await enqueueAgentInvocation(() =>
+        invokeDclawAgentWithRetry({
+          binding,
+          request,
+          onRetry: (retry) => {
+            logWarn("agent.handoff_sync.retry", {
+              ...logContext,
+              agentId: binding.agentId,
+              invocationId,
+              attempt: retry.attempt,
+              maxAttempts: retry.maxAttempts,
+              timeoutMs: retry.timeoutMs,
+              error: retry.error.message
+            });
+          }
+        })
+      );
+      finishAgentInvocation({
+        id: invocationId,
+        response: invocation.response,
+        status: "success"
+      });
+      if (conversationReset) {
+        markConversationResetHandled(conversationKey);
+      }
+      logInfo("agent.handoff_sync.success", {
+        ...logContext,
+        agentId: binding.agentId,
+        invocationId,
+        durationMs: Date.now() - handoffStartedAt,
+        attempts: invocation.attempts || 1,
+        timeoutMs: getDclawAgentTimeoutMs(),
+        maxAttempts: getDclawAgentMaxAttempts(),
+        sessionId: invocation.sessionId || ""
+      });
+    } catch (error) {
+      finishAgentInvocation({
+        id: invocationId,
+        response: null,
+        status: "failed",
+        error: error.message
+      });
+      logWarn("agent.handoff_sync.failed", {
+        ...logContext,
+        agentId: binding.agentId,
+        invocationId,
+        durationMs: Date.now() - handoffStartedAt,
+        error: error.message
+      });
+    }
+
+    finishMessageProcessing({ messageKey, status: "human_handoff" });
+    return;
+  }
+
+  if (await handleDebugPing({ botId, message, conversationKey })) {
+    logInfo("incoming.debug_reply", logContext);
+    finishMessageProcessing({ messageKey, status: "debug_replied" });
+    return;
+  }
+
   const request = buildDclawRequest({
     binding,
     conversation,
@@ -938,6 +1089,7 @@ async function processIncomingMessage({ botId, message }) {
     invocationId
   });
 
+  let agentInvocationSucceeded = false;
   try {
     const invocation = await enqueueAgentInvocation(() =>
       invokeDclawAgentWithRetry({
@@ -962,6 +1114,7 @@ async function processIncomingMessage({ botId, message }) {
       response: invocation.response,
       status: "success"
     });
+    agentInvocationSucceeded = true;
     if (conversationReset) {
       markConversationResetHandled(conversationKey);
     }
@@ -1077,12 +1230,42 @@ async function processIncomingMessage({ botId, message }) {
     }
     finishMessageProcessing({ messageKey, status: "replied" });
   } catch (error) {
-    finishAgentInvocation({
-      id: invocationId,
-      response: null,
-      status: "failed",
-      error: error.message
-    });
+    if (!agentInvocationSucceeded) {
+      finishAgentInvocation({
+        id: invocationId,
+        response: null,
+        status: "failed",
+        error: error.message
+      });
+
+      try {
+        const fallbackSent = await sendAgentFailureFallback({
+          botId,
+          binding,
+          conversationKey,
+          message,
+          invocationId,
+          logContext,
+          error
+        });
+        if (fallbackSent) {
+          finishMessageProcessing({
+            messageKey,
+            status: "fallback_replied",
+            error: error.message
+          });
+          return;
+        }
+      } catch (fallbackError) {
+        logError("agent.fallback_failed", {
+          ...logContext,
+          agentId: binding?.agentId || "",
+          invocationId,
+          originalError: error.message,
+          error: fallbackError
+        });
+      }
+    }
     finishMessageProcessing({ messageKey, status: "failed", error: error.message });
     logError("incoming.failed", {
       ...logContext,
@@ -1499,17 +1682,43 @@ app.get(
 app.get(
   "/api/flow-sessions/:conversationKey",
   asyncHandler(async (req, res) => {
-    assertBotAccess(req, String(req.query.botId || "").trim());
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
     const conversationKey = decodeURIComponent(req.params.conversationKey);
     res.json({
       ok: true,
+      session: getFlowSession(conversationKey),
       messages: listConversationMessages({ conversationKey, limit: Number(req.query.limit || 300) }),
       events: listFlowStateEvents({ conversationKey, limit: 100 }),
       assets: getConversationAssets({
-        botId: String(req.query.botId || "").trim(),
+        botId,
         conversationKey
       })
     });
+  })
+);
+
+app.put(
+  "/api/flow-sessions/:conversationKey/handoff",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const conversationKey = decodeURIComponent(req.params.conversationKey);
+    const botId = String(body.botId || "").trim();
+    assertBotAccess(req, botId);
+    if (!botId) throw new Error("botId is required");
+    const session = updateFlowSessionHandoff({
+      botId,
+      conversationKey,
+      handoffStatus: body.handoffStatus,
+      handoffBy: "console",
+      reason: body.reason || (body.handoffStatus === "human" ? "人工接手" : "恢复 AI")
+    });
+    logInfo("flow_session.handoff", {
+      botId,
+      conversationKey,
+      handoffStatus: session.handoffStatus
+    });
+    res.json({ ok: true, session });
   })
 );
 

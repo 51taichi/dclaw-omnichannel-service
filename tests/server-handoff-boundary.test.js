@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+const serverSource = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+
+test("server exposes a bot-scoped handoff route", () => {
+  assert.equal(serverSource.includes('"/api/flow-sessions/:conversationKey/handoff"'), true);
+  assert.equal(serverSource.includes("updateFlowSessionHandoff"), true);
+});
+
+test("server branches human handoff before sending WorkTool replies", () => {
+  assert.equal(serverSource.includes("buildDclawHandoffTranscriptRequest"), true);
+  assert.equal(serverSource.includes('status: "human_handoff"'), true);
+  assert.equal(serverSource.includes("flow?.session?.handoffStatus === \"human\""), true);
+});
+
+test("human handoff is evaluated before debug auto-reply", () => {
+  assert.equal(
+    serverSource.indexOf('status: "human_handoff"') < serverSource.indexOf("incoming.debug_reply"),
+    true
+  );
+});

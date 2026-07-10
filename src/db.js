@@ -243,6 +243,10 @@ ensureColumn("proactive_task_targets", "agent_sync_status", "TEXT NOT NULL DEFAU
 ensureColumn("proactive_task_targets", "agent_sync_error", "TEXT");
 ensureColumn("proactive_task_targets", "agent_sync_response_json", "TEXT");
 ensureColumn("proactive_task_targets", "agent_sync_at", "TEXT");
+ensureColumn("flow_sessions", "handoff_status", "TEXT NOT NULL DEFAULT 'ai'");
+ensureColumn("flow_sessions", "handoff_at", "TEXT");
+ensureColumn("flow_sessions", "handoff_by", "TEXT");
+ensureColumn("flow_sessions", "handoff_reason", "TEXT");
 
 function now() {
   return new Date().toISOString();
@@ -736,6 +740,10 @@ function rowToFlowSession(row) {
     currentNodeId: row.current_node_id,
     collectedData: parseJson(row.collected_data_json) || {},
     status: row.status,
+    handoffStatus: row.handoff_status || "ai",
+    handoffAt: row.handoff_at || "",
+    handoffBy: row.handoff_by || "",
+    handoffReason: row.handoff_reason || "",
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -943,6 +951,38 @@ export function touchFlowSession(conversationKey) {
     SET last_message_at = ?, updated_at = ?
     WHERE conversation_key = ?
   `).run(timestamp, timestamp, conversationKey);
+}
+
+export function getFlowSession(conversationKey) {
+  return rowToFlowSession(
+    db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)
+  );
+}
+
+export function updateFlowSessionHandoff({
+  botId,
+  conversationKey,
+  handoffStatus,
+  handoffBy = "console",
+  reason = ""
+}) {
+  const status = handoffStatus === "human" ? "human" : "ai";
+  const session = getFlowSession(conversationKey);
+  if (!session || session.botId !== botId) {
+    throw new Error("flow session not found");
+  }
+  const timestamp = now();
+  db.prepare(`
+    UPDATE flow_sessions
+    SET handoff_status = ?,
+        handoff_at = ?,
+        handoff_by = ?,
+        handoff_reason = ?,
+        updated_at = ?
+    WHERE conversation_key = ?
+      AND bot_id = ?
+  `).run(status, timestamp, handoffBy || "", reason || "", timestamp, conversationKey, botId);
+  return getFlowSession(conversationKey);
 }
 
 export function mergeFlowSessionData({ conversationKey, patch = {} }) {
