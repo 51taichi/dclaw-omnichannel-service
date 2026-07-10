@@ -6,9 +6,10 @@ const html = fs.readFileSync(new URL("../public/console/index.html", import.meta
 const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 
-test("console exposes a handoff toggle in the active conversation header", () => {
-  assert.equal(html.includes('id="handoffButton"'), true);
+test("console exposes handoff toggles on session cards and a right-side status banner", () => {
+  assert.equal(html.includes('id="handoffStatusBanner"'), true);
   assert.equal(app.includes("toggleSelectedConversationHandoff"), true);
+  assert.equal(app.includes("data-flow-handoff"), true);
   assert.equal(app.includes("/handoff"), true);
   assert.equal(app.includes("handoffStatus"), true);
 });
@@ -21,4 +22,17 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
   assert.equal(app.includes('title="人工接手中"'), true);
   assert.equal(css.includes(".flow-session-icons"), true);
   assert.equal(css.includes(".handoff-button"), true);
+});
+
+test("flow sessions can be filtered and human handoff sessions are pinned first", () => {
+  assert.equal(html.includes('id="flowSessionDateFrom"'), true);
+  assert.equal(html.includes('id="flowSessionDateTo"'), true);
+  assert.equal(html.includes('id="flowSessionAssetFilter"'), true);
+  assert.equal(html.includes('id="flowSessionNodeFilter"'), true);
+  assert.equal(html.includes('id="flowSessionHandoffFilter"'), true);
+  assert.equal(app.includes("getVisibleFlowSessions"), true);
+  assert.equal(app.includes("sortFlowSessions"), true);
+  assert.equal(app.includes('handoffStatus === "human"'), true);
+  assert.equal(css.includes(".flow-session-filters"), true);
+  assert.equal(css.includes(".handoff-status-banner"), true);
 });

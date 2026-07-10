@@ -330,6 +330,38 @@
             </button>
           </div>
         </div>
+        <div class="flow-session-filters">
+          <label>
+            <span class="field-label">开始日期</span>
+            <input id="flowSessionDateFrom" type="date" />
+          </label>
+          <label>
+            <span class="field-label">结束日期</span>
+            <input id="flowSessionDateTo" type="date" />
+          </label>
+          <label>
+            <span class="field-label">资产</span>
+            <select id="flowSessionAssetFilter">
+              <option value="all">全部</option>
+              <option value="pending">有待收集</option>
+              <option value="complete">已全部收集</option>
+            </select>
+          </label>
+          <label>
+            <span class="field-label">任务状态</span>
+            <select id="flowSessionNodeFilter">
+              <option value="all">全部</option>
+            </select>
+          </label>
+          <label>
+            <span class="field-label">接手状态</span>
+            <select id="flowSessionHandoffFilter">
+              <option value="all">全部</option>
+              <option value="human">人工</option>
+              <option value="ai">AI</option>
+            </select>
+          </label>
+        </div>
         <div class="collapsible-content flow-workbench">
           <div id="flowSessionList" class="flow-session-list"></div>
           <div class="chat-view">
@@ -343,15 +375,15 @@
                   <svg class="icon" aria-hidden="true"><use href="#icon-briefcase"></use></svg>
                   资产 <span id="assetsCount">0</span>
                 </button>
-                <button id="handoffButton" class="secondary handoff-button" type="button" hidden>
-                  <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
-                  人工接手
-                </button>
                 <button id="resetConversationButton" class="danger" type="button">
                   <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
                   清空会话
                 </button>
               </div>
+            </div>
+            <div id="handoffStatusBanner" class="handoff-status-banner" hidden>
+              <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+              <span>人工接手中，AI 已暂停回复</span>
             </div>
             <div id="assetsPanel" class="assets-panel" hidden></div>
             <div id="chatMessages" class="chat-messages"></div>

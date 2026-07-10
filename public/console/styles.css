@@ -1183,6 +1183,27 @@ button.danger:hover {
   overflow: auto;
 }
 
+.flow-session-filters {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(110px, 1fr));
+  gap: 10px;
+  align-items: end;
+  padding: 0 0 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
+  margin-bottom: 12px;
+}
+
+.flow-session-filters label {
+  display: grid;
+  gap: 5px;
+}
+
+.flow-session-filters input,
+.flow-session-filters select {
+  height: 36px;
+  min-width: 0;
+}
+
 .flow-session-card {
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
@@ -1223,16 +1244,22 @@ button.danger:hover {
 
 .flow-session-main {
   display: grid;
-  gap: 3px;
+  gap: 7px;
   min-width: 0;
 }
 
-.flow-session-main strong,
-.flow-session-main strong span,
-.flow-session-main small {
+.flow-session-name-row,
+.flow-session-main strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.flow-session-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
 }
 
 .flow-session-main strong {
@@ -1240,6 +1267,18 @@ button.danger:hover {
   color: #302321;
   font-size: 13px;
   font-weight: 800;
+}
+
+.flow-session-name-row em {
+  flex: 0 0 auto;
+  padding: 2px 6px;
+  border: 1px solid color-mix(in srgb, #f59e0b 45%, var(--line));
+  border-radius: 999px;
+  color: #92400e;
+  background: color-mix(in srgb, #f59e0b 12%, #ffffff);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
 }
 
 .flow-session-main strong span {
@@ -1254,6 +1293,14 @@ button.danger:hover {
   font-weight: 700;
 }
 
+.flow-session-tools {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .flow-session-icons {
   display: flex;
   align-items: center;
@@ -1264,12 +1311,21 @@ button.danger:hover {
 .flow-session-icons span {
   display: inline-grid;
   place-items: center;
-  width: 22px;
-  height: 22px;
-  border: 1px solid color-mix(in srgb, var(--cyan) 25%, var(--line));
+  width: 24px;
+  height: 24px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
   border-radius: 999px;
-  background: #fff;
-  color: var(--muted);
+  background: color-mix(in srgb, var(--cyan) 8%, #ffffff);
+  color: color-mix(in srgb, var(--text) 70%, var(--accent));
+  cursor: help;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.flow-session-icons span:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
+  color: var(--accent);
+  transform: translateY(-1px);
 }
 
 .flow-session-icons .icon {
@@ -1332,7 +1388,7 @@ button.danger:hover {
 
 .chat-head-actions {
   display: grid;
-  grid-template-columns: auto auto 112px;
+  grid-template-columns: auto 112px;
   align-items: center;
   justify-content: end;
   gap: 10px;
@@ -1350,8 +1406,28 @@ button.danger:hover {
 }
 
 .handoff-button {
-  min-width: 104px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 62px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
   white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.handoff-button:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
+  transform: translateY(-1px);
 }
 
 .handoff-button.is-active {
@@ -1361,8 +1437,31 @@ button.danger:hover {
 }
 
 .handoff-button .icon {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
+}
+
+.handoff-status-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 12px 0;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, #f59e0b 52%, var(--line));
+  border-radius: 8px;
+  color: #92400e;
+  background: color-mix(in srgb, #f59e0b 11%, #ffffff);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.handoff-status-banner[hidden] {
+  display: none;
+}
+
+.handoff-status-banner .icon {
+  width: 16px;
+  height: 16px;
 }
 
 .assets-panel {

@@ -38,13 +38,18 @@ const els = {
   exportFlowButton: document.querySelector("#exportFlowButton"),
   refreshFlowSessionsButton: document.querySelector("#refreshFlowSessionsButton"),
   flowSessionList: document.querySelector("#flowSessionList"),
+  flowSessionDateFrom: document.querySelector("#flowSessionDateFrom"),
+  flowSessionDateTo: document.querySelector("#flowSessionDateTo"),
+  flowSessionAssetFilter: document.querySelector("#flowSessionAssetFilter"),
+  flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
+  flowSessionHandoffFilter: document.querySelector("#flowSessionHandoffFilter"),
   chatTitle: document.querySelector("#chatTitle"),
   chatMessages: document.querySelector("#chatMessages"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
   assetsButton: document.querySelector("#assetsButton"),
   assetsCount: document.querySelector("#assetsCount"),
   assetsPanel: document.querySelector("#assetsPanel"),
-  handoffButton: document.querySelector("#handoffButton"),
+  handoffStatusBanner: document.querySelector("#handoffStatusBanner"),
   resetConversationButton: document.querySelector("#resetConversationButton"),
   confirmDialog: document.querySelector("#confirmDialog"),
   confirmCancelButton: document.querySelector("#confirmCancelButton"),
@@ -1034,6 +1039,7 @@ async function loadFlowMachine({ useDefault = false } = {}) {
     els.flowMachineForm.enabled.checked = false;
     setFlowEditorFromConfig({});
   }
+  renderFlowSessionNodeFilter();
 }
 
 async function saveFlowMachine(event) {
@@ -1103,12 +1109,57 @@ async function loadFlowSessions() {
   const params = new URLSearchParams({ botId: state.selectedBotId, limit: "100" });
   const data = await request(`/api/flow-sessions?${params.toString()}`);
   currentFlowSessions = data.sessions || [];
+  renderFlowSessionNodeFilter();
   renderFlowSessions();
 }
 
+function sortFlowSessions(sessions) {
+  return [...sessions].sort((a, b) => {
+    const aHuman = a.handoffStatus === "human" ? 1 : 0;
+    const bHuman = b.handoffStatus === "human" ? 1 : 0;
+    if (aHuman !== bHuman) return bHuman - aHuman;
+    return Date.parse(b.lastMessageAt || b.updatedAt || b.createdAt || 0)
+      - Date.parse(a.lastMessageAt || a.updatedAt || a.createdAt || 0);
+  });
+}
+
+function getVisibleFlowSessions() {
+  const from = els.flowSessionDateFrom.value ? Date.parse(`${els.flowSessionDateFrom.value}T00:00:00`) : null;
+  const to = els.flowSessionDateTo.value ? Date.parse(`${els.flowSessionDateTo.value}T23:59:59`) : null;
+  const assetFilter = els.flowSessionAssetFilter.value;
+  const nodeFilter = els.flowSessionNodeFilter.value;
+  const handoffFilter = els.flowSessionHandoffFilter.value;
+
+  return sortFlowSessions(currentFlowSessions.filter((session) => {
+    const sessionTime = Date.parse(session.lastMessageAt || session.updatedAt || session.createdAt || 0);
+    if (from && (!Number.isFinite(sessionTime) || sessionTime < from)) return false;
+    if (to && (!Number.isFinite(sessionTime) || sessionTime > to)) return false;
+    if (nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
+    if (handoffFilter !== "all" && (session.handoffStatus || "ai") !== handoffFilter) return false;
+
+    const assets = session.assets || {};
+    const totalCount = Number(assets.totalCount || 0);
+    const collectedCount = Number(assets.collectedCount || 0);
+    if (assetFilter === "pending" && !(totalCount > 0 && collectedCount < totalCount)) return false;
+    if (assetFilter === "complete" && !(totalCount > 0 && collectedCount >= totalCount)) return false;
+    return true;
+  }));
+}
+
+function renderFlowSessionNodeFilter() {
+  const current = els.flowSessionNodeFilter.value || "all";
+  const nodes = currentFlowMachine?.config?.nodes || [];
+  els.flowSessionNodeFilter.innerHTML = [
+    `<option value="all">全部</option>`,
+    ...nodes.map((node) => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.name || node.id)}</option>`)
+  ].join("");
+  els.flowSessionNodeFilter.value = nodes.some((node) => node.id === current) ? current : "all";
+}
+
 function renderFlowSessions() {
-  els.flowSessionList.innerHTML = currentFlowSessions.length
-    ? currentFlowSessions
+  const visibleSessions = getVisibleFlowSessions();
+  els.flowSessionList.innerHTML = visibleSessions.length
+    ? visibleSessions
         .map((session) => {
           const active = session.conversationKey === state.selectedFlowConversationKey;
           const name = session.receivedName || session.conversationKey;
@@ -1123,24 +1174,37 @@ function renderFlowSessions() {
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <img class="flow-session-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
               <span class="flow-session-main">
-                <strong>${escapeHtml(name)}</strong>
-                <small class="flow-session-icons">
-                  <span title="当前任务：${escapeHtml(status)}">${icon("edit")}</span>
-                  <span title="资产：${escapeHtml(assetSummary)}">${icon("briefcase")}</span>
-                  <span title="最近消息：${escapeHtml(lastMessageAt)}">${icon("clock")}</span>
-                  ${isHandoff ? `<span class="handoff-mark" title="人工接手中">${icon("users")}</span>` : ""}
-                </small>
+                <span class="flow-session-name-row">
+                  <strong>${escapeHtml(name)}</strong>
+                  ${isHandoff ? `<em title="人工接手中">人工接手中</em>` : ""}
+                </span>
+                <span class="flow-session-tools">
+                  <small class="flow-session-icons">
+                    <span class="session-icon" title="当前任务：${escapeHtml(status)}">${icon("edit")}</span>
+                    <span class="session-icon" title="资产：${escapeHtml(assetSummary)}">${icon("briefcase")}</span>
+                    <span class="session-icon" title="最近消息：${escapeHtml(lastMessageAt)}">${icon("clock")}</span>
+                  </small>
+                  <span class="handoff-button ${isHandoff ? "is-active" : ""}" data-flow-handoff="${escapeHtml(session.conversationKey)}" title="${isHandoff ? "点击恢复 AI 接手" : "点击切换人工接手"}">
+                    ${icon("users")}${isHandoff ? "恢复" : "人工"}
+                  </span>
+                </span>
               </span>
             </button>
           `;
         })
         .join("")
-    : `<div class="empty-state">暂无私聊状态机会话。启用状态机后，新的私聊会自动出现在这里。</div>`;
+    : `<div class="empty-state">${currentFlowSessions.length ? "没有符合筛选条件的会话。" : "暂无私聊状态机会话。启用状态机后，新的私聊会自动出现在这里。"}</div>`;
 
   els.flowSessionList.querySelectorAll("[data-flow-session]").forEach((button) => {
     button.addEventListener("click", () =>
       openFlowSession(button.dataset.flowSession).catch((error) => toast(error.message))
     );
+  });
+  els.flowSessionList.querySelectorAll("[data-flow-handoff]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleSelectedConversationHandoff(button.dataset.flowHandoff).catch((error) => toast(error.message));
+    });
   });
 }
 
@@ -1181,13 +1245,11 @@ function renderConversationAssets(assets = { fields: [], totalCount: 0, collecte
 function syncHandoffButton(session = currentFlowSession) {
   currentFlowSession = session || null;
   const hasSession = Boolean(currentFlowSession && state.selectedFlowConversationKey);
-  els.handoffButton.hidden = !hasSession;
+  els.handoffStatusBanner.hidden = !hasSession || currentFlowSession.handoffStatus !== "human";
   if (!hasSession) return;
 
   const isHandoff = currentFlowSession.handoffStatus === "human";
-  els.handoffButton.classList.toggle("is-active", isHandoff);
-  els.handoffButton.title = isHandoff ? "当前为人工接手，点击恢复 AI" : "点击后该会话暂停 AI 回复";
-  els.handoffButton.innerHTML = `${icon("users")}${isHandoff ? "恢复 AI" : "人工接手"}`;
+  els.handoffStatusBanner.classList.toggle("is-active", isHandoff);
 }
 
 function renderChatMessageContent(message) {
@@ -1229,13 +1291,15 @@ async function openFlowSession(conversationKey) {
   els.flowEventsOutput.textContent = JSON.stringify(data.events || [], null, 2);
 }
 
-async function toggleSelectedConversationHandoff() {
-  if (!state.selectedBotId || !state.selectedFlowConversationKey || !currentFlowSession) {
+async function toggleSelectedConversationHandoff(conversationKey = state.selectedFlowConversationKey) {
+  const targetSession = currentFlowSessions.find((session) => session.conversationKey === conversationKey)
+    || (conversationKey === state.selectedFlowConversationKey ? currentFlowSession : null);
+  if (!state.selectedBotId || !conversationKey || !targetSession) {
     toast("请先选择会话");
     return;
   }
-  const nextStatus = currentFlowSession.handoffStatus === "human" ? "ai" : "human";
-  const data = await request(`/api/flow-sessions/${encodeURIComponent(state.selectedFlowConversationKey)}/handoff`, {
+  const nextStatus = targetSession.handoffStatus === "human" ? "ai" : "human";
+  const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/handoff`, {
     method: "PUT",
     body: JSON.stringify({
       botId: state.selectedBotId,
@@ -1243,13 +1307,18 @@ async function toggleSelectedConversationHandoff() {
       reason: nextStatus === "human" ? "控制台人工接手" : "控制台恢复 AI"
     })
   });
-  currentFlowSession = data.session;
-  syncHandoffButton(currentFlowSession);
   currentFlowSessions = currentFlowSessions.map((session) =>
-    session.conversationKey === currentFlowSession.conversationKey
-      ? { ...session, ...currentFlowSession }
+    session.conversationKey === data.session.conversationKey
+      ? { ...session, ...data.session }
       : session
   );
+  if (conversationKey === state.selectedFlowConversationKey) {
+    currentFlowSession = {
+      ...(currentFlowSession || {}),
+      ...data.session
+    };
+    syncHandoffButton(currentFlowSession);
+  }
   renderFlowSessions();
   toast(nextStatus === "human" ? "已切换为人工接手" : "已恢复 AI 接手");
 }
@@ -1499,9 +1568,15 @@ els.exportFlowButton.addEventListener("click", exportFlowMachine);
 els.refreshFlowSessionsButton.addEventListener("click", () =>
   Promise.all([loadFlowMachine(), loadFlowSessions()]).catch((error) => toast(error.message))
 );
-els.handoffButton.addEventListener("click", () =>
-  toggleSelectedConversationHandoff().catch((error) => toast(error.message))
-);
+[
+  els.flowSessionDateFrom,
+  els.flowSessionDateTo,
+  els.flowSessionAssetFilter,
+  els.flowSessionNodeFilter,
+  els.flowSessionHandoffFilter
+].forEach((control) => {
+  control.addEventListener("change", renderFlowSessions);
+});
 els.resetConversationButton.addEventListener("click", openConfirmDialog);
 els.confirmCancelButton.addEventListener("click", closeConfirmDialog);
 els.confirmDialog.addEventListener("click", (event) => {
