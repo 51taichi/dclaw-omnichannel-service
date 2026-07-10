@@ -595,12 +595,20 @@ label:focus-within,
 .field-label {
   display: flex;
   align-items: center;
+  gap: 6px;
   min-width: 0;
   padding: 0 12px;
   border-right: 1px solid var(--line);
   background: var(--panel-strong);
   color: #302321;
   white-space: nowrap;
+}
+
+.field-label .icon {
+  width: 14px;
+  height: 14px;
+  flex-basis: 14px;
+  color: var(--accent);
 }
 
 label > :is(input, select, textarea),
@@ -787,7 +795,14 @@ button.danger:hover {
 }
 
 .inline-form.compact {
-  grid-template-columns: 220px auto;
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+.inline-form.compact label,
+.target-search,
+.task-filters label,
+.flow-session-filters label {
+  grid-template-columns: max-content minmax(0, 1fr);
 }
 
 .actions {
@@ -1195,7 +1210,6 @@ button.danger:hover {
 }
 
 .flow-session-filters label {
-  grid-template-columns: 92px minmax(0, 1fr);
   min-height: 42px;
 }
 
