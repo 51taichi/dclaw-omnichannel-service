@@ -53,6 +53,8 @@ admin:
 - 如果是 Bot 密钥，进入该 Bot 的业务工作台。
 - 如果是管理员密钥，进入该 Bot 的管理员工作台。
 
+已解锁 Bot 顶部显示“上锁”按钮。点击后立即清除当前 Bot 的本地 token 和角色状态，将该 Bot 恢复为灰色锁定态，并隐藏业务工作台内容。再次操作时需要重新输入 Bot 密钥或管理员密钥。
+
 普通员工视角：
 
 - 不显示“配置”Tab。
@@ -140,6 +142,15 @@ x-bot-session-token: token
 x-api-key: ADMIN_API_KEY
 ```
 
+新增 Bot 上锁接口可选实现：
+
+```http
+POST /api/bots/:botId/lock
+x-bot-session-token: token
+```
+
+第一版也可以只做前端本地上锁：删除浏览器中的 token、role、selectedBotId 状态即可。因为 token 默认 8 小时过期，且服务端内存 session 即使暂时存在，也无法被前端继续使用。若后续需要更严格的立即失效，可以增加该接口删除服务端 token。
+
 新增管理员修改当前 Bot 密钥接口：
 
 ```http
@@ -224,6 +235,7 @@ ALTER TABLE bot_agent_bindings ADD COLUMN access_key_updated_at TEXT;
 - 未解锁 Bot 显示锁定态。
 - Bot 角色不显示配置 Tab。
 - Admin 角色显示配置 Tab 和修改密钥按钮。
+- 点击“上锁”后清除当前 Bot token，页面恢复锁定态，业务 Tab 不可继续操作。
 - 请求头从 `x-api-key` 切换为 `x-bot-session-token`。
 
 ## 非目标
