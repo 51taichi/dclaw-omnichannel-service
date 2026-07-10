@@ -75,7 +75,7 @@ const els = {
   collapseButtons: document.querySelectorAll("[data-collapse-target]")
 };
 
-els.apiKeyInput.value = state.apiKey;
+if (els.apiKeyInput) els.apiKeyInput.value = state.apiKey;
 const today = formatLocalDate();
 els.taskDateFrom.value = today;
 els.taskDateTo.value = today;
@@ -1396,8 +1396,8 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-els.saveKeyButton.addEventListener("click", () => {
-  state.apiKey = els.apiKeyInput.value.trim();
+els.saveKeyButton?.addEventListener("click", () => {
+  state.apiKey = els.apiKeyInput?.value.trim() || "";
   localStorage.setItem("worktool_console_api_key", state.apiKey);
   toast("管理密钥已保存");
 });

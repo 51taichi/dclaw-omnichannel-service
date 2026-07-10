@@ -336,30 +336,6 @@ h2 {
   color: var(--bot-accent);
 }
 
-.auth-panel {
-  display: grid;
-  gap: 12px;
-  background: var(--panel-strong);
-}
-
-.auth-panel .module-title {
-  justify-content: flex-start;
-}
-
-.auth-form {
-  display: grid;
-  gap: 10px;
-  min-width: 0;
-}
-
-.auth-form label {
-  grid-template-columns: 112px minmax(0, 1fr);
-}
-
-.auth-form button {
-  width: 100%;
-}
-
 .bot-sidebar {
   display: flex;
   flex-direction: column;
