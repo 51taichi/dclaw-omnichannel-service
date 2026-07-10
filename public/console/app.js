@@ -42,7 +42,6 @@ const els = {
   flowSessionDateTo: document.querySelector("#flowSessionDateTo"),
   flowSessionAssetFilter: document.querySelector("#flowSessionAssetFilter"),
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
-  flowSessionHandoffFilter: document.querySelector("#flowSessionHandoffFilter"),
   chatTitle: document.querySelector("#chatTitle"),
   chatMessages: document.querySelector("#chatMessages"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
@@ -1129,14 +1128,12 @@ function getVisibleFlowSessions() {
   const to = els.flowSessionDateTo.value ? Date.parse(`${els.flowSessionDateTo.value}T23:59:59`) : null;
   const assetFilter = els.flowSessionAssetFilter.value;
   const nodeFilter = els.flowSessionNodeFilter.value;
-  const handoffFilter = els.flowSessionHandoffFilter.value;
 
   return sortFlowSessions(currentFlowSessions.filter((session) => {
     const sessionTime = Date.parse(session.lastMessageAt || session.updatedAt || session.createdAt || 0);
     if (from && (!Number.isFinite(sessionTime) || sessionTime < from)) return false;
     if (to && (!Number.isFinite(sessionTime) || sessionTime > to)) return false;
     if (nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
-    if (handoffFilter !== "all" && (session.handoffStatus || "ai") !== handoffFilter) return false;
 
     const assets = session.assets || {};
     const totalCount = Number(assets.totalCount || 0);
@@ -1576,8 +1573,7 @@ els.refreshFlowSessionsButton.addEventListener("click", () =>
   els.flowSessionDateFrom,
   els.flowSessionDateTo,
   els.flowSessionAssetFilter,
-  els.flowSessionNodeFilter,
-  els.flowSessionHandoffFilter
+  els.flowSessionNodeFilter
 ].forEach((control) => {
   control.addEventListener("change", renderFlowSessions);
 });

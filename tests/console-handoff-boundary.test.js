@@ -32,7 +32,8 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(html.includes('id="flowSessionDateTo"'), true);
   assert.equal(html.includes('id="flowSessionAssetFilter"'), true);
   assert.equal(html.includes('id="flowSessionNodeFilter"'), true);
-  assert.equal(html.includes('id="flowSessionHandoffFilter"'), true);
+  assert.equal(html.includes('id="flowSessionHandoffFilter"'), false);
+  assert.equal(html.includes("接手状态"), false);
   assert.equal(app.includes("getVisibleFlowSessions"), true);
   assert.equal(app.includes("sortFlowSessions"), true);
   assert.equal(app.includes('handoffStatus === "human"'), true);
