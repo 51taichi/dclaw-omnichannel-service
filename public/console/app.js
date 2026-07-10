@@ -153,21 +153,22 @@ function syncRoleVisibility() {
   const isAdmin = state.currentRole === "admin";
   const hasBot = Boolean(state.selectedBotId);
   const workspaceLocked = isWorkspaceLocked();
+  const hideConfig = hasBot && !isAdmin;
   document.body.classList.toggle("is-admin-role", isAdmin);
   document.body.classList.toggle("is-bot-role", state.currentRole === "bot");
   document.body.classList.toggle("is-workspace-locked", workspaceLocked);
-  document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", !isAdmin);
-  document.querySelector("#configTab")?.toggleAttribute("hidden", !isAdmin);
-  els.resetFormButton.hidden = !isAdmin;
+  document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", hideConfig);
+  document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig);
+  els.resetFormButton.hidden = !hasBot;
   if (els.accessKeyPanel) els.accessKeyPanel.hidden = !isAdmin;
-  if (els.lockBotButton) els.lockBotButton.hidden = !hasBot || !isAdmin;
+  if (els.lockBotButton) els.lockBotButton.hidden = !hasBot || workspaceLocked;
   if (els.workspaceLockPanel) els.workspaceLockPanel.hidden = !workspaceLocked;
   if (workspaceLocked) {
     els.tabPanels.forEach((panel) => {
       panel.hidden = true;
       panel.classList.remove("active");
     });
-  } else if (!isAdmin && document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")) {
+  } else if (hideConfig && document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")) {
     switchWorkspaceTab("sessions", { force: true });
   }
 }
@@ -284,7 +285,7 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
     toast("请先选择或保存一个 Bot");
     return;
   }
-  if (!force && tabName === "config" && state.currentRole !== "admin") {
+  if (!force && tabName === "config" && state.selectedBotId && state.currentRole !== "admin") {
     toast("当前 Bot 未以管理员身份解锁");
     return;
   }
@@ -309,7 +310,7 @@ function updateWorkspaceTabAccess(hasBotContext) {
     const locked =
       workspaceLocked ||
       (button.dataset.workspaceTab !== "config" && !hasBotContext) ||
-      (button.dataset.workspaceTab === "config" && state.currentRole !== "admin");
+      (button.dataset.workspaceTab === "config" && hasBotContext && state.currentRole !== "admin");
     button.disabled = locked;
     button.setAttribute("aria-disabled", String(locked));
   });
@@ -434,18 +435,24 @@ async function lockCurrentBot() {
   try {
     await request(`/api/bots/${encodeURIComponent(botId)}/lock`, { method: "POST" });
   } catch {}
-  const bot = currentBots.find((item) => item.botId === botId);
   clearBotSession(botId);
+  resetBotContext();
+  toast("已上锁");
+}
+
+function resetBotContext() {
   state.selectedFlowConversationKey = "";
   selectedTargets.clear();
-  if (bot) {
-    setBindingState(bot);
-  } else {
-    setBindingState(null);
-  }
+  addressBookTargets = [];
+  currentFlowMachine = null;
+  currentFlowSessions = [];
+  els.botForm.reset();
+  els.botForm.enabled.checked = true;
+  setBindingState(null);
   renderSelectedTargets();
   renderTargetList();
-  toast("已上锁");
+  renderBots(currentBots);
+  switchWorkspaceTab("config", { force: true });
 }
 
 function fillForm(bot) {
@@ -1487,15 +1494,7 @@ els.refreshProactiveButton.addEventListener("click", () =>
   loadProactiveTasks().catch((error) => toast(error.message))
 );
 els.resetFormButton.addEventListener("click", () => {
-  if (state.currentRole !== "admin") return;
-  els.botForm.reset();
-  els.botForm.enabled.checked = true;
-  selectedTargets.clear();
-  addressBookTargets = [];
-  setBindingState(null);
-  renderSelectedTargets();
-  renderTargetList();
-  loadProactiveTasks().catch((error) => toast(error.message));
+  resetBotContext();
 });
 els.loadLogsButton.addEventListener("click", () => loadLogs().catch((error) => toast(error.message)));
 els.collapseButtons.forEach((button) => {

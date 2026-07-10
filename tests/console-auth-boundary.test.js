@@ -35,3 +35,11 @@ test("bot cards expose four unlocked quick actions", () => {
   assert.equal(app.includes('data-action="${unlocked ? "push" : "unlock"}'), true);
   assert.equal(app.includes('data-action="${unlocked ? "logs" : "unlock"}'), true);
 });
+
+test("lock and reset return to unselected config context", () => {
+  assert.equal(app.includes("function resetBotContext()"), true);
+  assert.equal(app.includes("clearBotSession(botId);"), true);
+  assert.equal(app.includes("resetBotContext();"), true);
+  assert.equal(app.includes('switchWorkspaceTab("config", { force: true });'), true);
+  assert.equal(app.includes('const hideConfig = hasBot && !isAdmin;'), true);
+});
