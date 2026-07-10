@@ -140,7 +140,48 @@ export function buildDclawProactiveEventRequest({
   };
 }
 
-export async function invokeDclawAgent({ binding, request }) {
+const defaultDclawTimeoutMs = 25000;
+const defaultDclawMaxAttempts = 2;
+
+export function getDclawAgentTimeoutMs() {
+  const configured = Number(process.env.DCLAW_AGENT_TIMEOUT_MS || defaultDclawTimeoutMs);
+  return Number.isFinite(configured) && configured > 0 ? configured : defaultDclawTimeoutMs;
+}
+
+export function getDclawAgentMaxAttempts() {
+  const configured = Number(process.env.DCLAW_AGENT_MAX_ATTEMPTS || defaultDclawMaxAttempts);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.max(1, Math.floor(configured))
+    : defaultDclawMaxAttempts;
+}
+
+export async function invokeDclawAgentWithRetry({
+  binding,
+  request,
+  maxAttempts = getDclawAgentMaxAttempts(),
+  timeoutMs = getDclawAgentTimeoutMs(),
+  onRetry = null
+}) {
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      const result = await invokeDclawAgent({ binding, request, timeoutMs });
+      return {
+        ...result,
+        attempts: attempt
+      };
+    } catch (error) {
+      lastError = error;
+      if (!isTimeoutError(error) || attempt >= maxAttempts) {
+        throw error;
+      }
+      onRetry?.({ attempt, maxAttempts, timeoutMs, error });
+    }
+  }
+  throw lastError;
+}
+
+export async function invokeDclawAgent({ binding, request, timeoutMs = getDclawAgentTimeoutMs() }) {
   if (!binding.agentApiUrl) {
     throw new Error("DClaw agentApiUrl is required");
   }
@@ -148,6 +189,7 @@ export async function invokeDclawAgent({ binding, request }) {
     throw new Error("DClaw agentApiKey is required");
   }
 
+  const signal = AbortSignal.timeout(timeoutMs);
   const response = await fetch(binding.agentApiUrl, {
     method: "POST",
     headers: {
@@ -155,7 +197,7 @@ export async function invokeDclawAgent({ binding, request }) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify(request),
-    signal: AbortSignal.timeout(Number(process.env.DCLAW_AGENT_TIMEOUT_MS || 120000))
+    signal
   });
 
   if (!response.ok) {
@@ -165,7 +207,7 @@ export async function invokeDclawAgent({ binding, request }) {
 
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("text/event-stream")) {
-    const result = await readSseText(response);
+    const result = await readSseText(response, signal);
     const reply = result.text.trim() || extractReply(result.events);
     return {
       request,
@@ -193,6 +235,17 @@ export async function invokeDclawAgent({ binding, request }) {
         : extractReply(data),
     sessionId: data.sessionId || data.session_id || data.conversationId || data.data?.sessionId || null
   };
+}
+
+function isTimeoutError(error) {
+  const name = String(error?.name || "");
+  const message = String(error?.message || "");
+  return (
+    name === "TimeoutError" ||
+    name === "AbortError" ||
+    message.includes("aborted due to timeout") ||
+    message.includes("timeout")
+  );
 }
 
 export function parseAgentReply(rawReply) {
@@ -242,38 +295,49 @@ function parseJsonObjectFromText(text) {
   return null;
 }
 
-async function readSseText(response) {
+async function readSseText(response, signal) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   let finalText = "";
   let sessionId = null;
   const events = [];
+  const cancelReader = () => {
+    reader.cancel(signal.reason).catch(() => {});
+  };
+  if (signal?.aborted) {
+    throw signal.reason || new DOMException("The operation was aborted due to timeout", "TimeoutError");
+  }
+  signal?.addEventListener("abort", cancelReader, { once: true });
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
 
-    buffer += decoder.decode(value, { stream: true });
-    const chunks = buffer.split("\n\n");
-    buffer = chunks.pop() || "";
+      buffer += decoder.decode(value, { stream: true });
+      const chunks = buffer.split("\n\n");
+      buffer = chunks.pop() || "";
 
-    for (const chunk of chunks) {
-      for (const event of parseSseChunk(chunk)) {
-        events.push(event);
-        if (event.session_id) {
-          sessionId = event.session_id;
-        }
-        if (event.object === "content" && event.type === "text" && event.text) {
-          finalText += event.text;
-        }
-        if (event.error) {
-          throw new Error(
-            typeof event.error === "string" ? event.error : JSON.stringify(event.error)
-          );
+      for (const chunk of chunks) {
+        for (const event of parseSseChunk(chunk)) {
+          events.push(event);
+          if (event.session_id) {
+            sessionId = event.session_id;
+          }
+          if (event.object === "content" && event.type === "text" && event.text) {
+            finalText += event.text;
+          }
+          if (event.error) {
+            throw new Error(
+              typeof event.error === "string" ? event.error : JSON.stringify(event.error)
+            );
+          }
         }
       }
     }
+  } finally {
+    signal?.removeEventListener("abort", cancelReader);
   }
 
   for (const event of parseSseChunk(buffer)) {

@@ -56,6 +56,13 @@ UPLOAD_ALLOWED_ORIGINS=https://你的外部应用域名
 `PUBLIC_BASE_URL` 必须是 WorkTool 可以访问到的 HTTPS 地址。正式环境建议用服务器域名；本地联调用 ngrok、frp、Cloudflare Tunnel 都可以。
 如果外部应用是在浏览器里直接调用上传接口，把它的页面 Origin 写入 `UPLOAD_ALLOWED_ORIGINS`；多个域名用英文逗号分隔。后端服务直连上传不需要配置跨域。
 
+DClaw 调用默认 25 秒超时，超时会快速重试 1 次：
+
+```bash
+DCLAW_AGENT_TIMEOUT_MS=25000
+DCLAW_AGENT_MAX_ATTEMPTS=2
+```
+
 ## 2. 启动服务
 
 ```bash

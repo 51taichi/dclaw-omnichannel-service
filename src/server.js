@@ -9,7 +9,9 @@ import { loadBotBindingsFromConfig } from "./config.js";
 import {
   buildDclawProactiveEventRequest,
   buildDclawRequest,
-  invokeDclawAgent,
+  getDclawAgentMaxAttempts,
+  getDclawAgentTimeoutMs,
+  invokeDclawAgentWithRetry,
   parseAgentReply
 } from "./dclaw.js";
 import { logError, logInfo, logWarn } from "./logger.js";
@@ -69,6 +71,7 @@ import {
   sendRawCommand,
   sendTextMessage
 } from "./worktool.js";
+import { shouldProcessInboundForAgent } from "./message-rules.js";
 
 const app = express();
 const port = Number(process.env.PORT || 8765);
@@ -615,7 +618,24 @@ async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse 
 
   try {
     const invocation = await enqueueAgentInvocation(() =>
-      invokeDclawAgent({ binding, request })
+      invokeDclawAgentWithRetry({
+        binding,
+        request,
+        onRetry: (retry) => {
+          logWarn("proactive.agent_sync.retry", {
+            targetId: target.id,
+            taskId: target.taskId,
+            botId: target.botId,
+            agentId: binding.agentId,
+            conversationKey,
+            invocationId,
+            attempt: retry.attempt,
+            maxAttempts: retry.maxAttempts,
+            timeoutMs: retry.timeoutMs,
+            error: retry.error.message
+          });
+        }
+      })
     );
     finishAgentInvocation({
       id: invocationId,
@@ -774,6 +794,15 @@ async function processIncomingMessage({ botId, message }) {
 
   insertIncomingMessage({ botId, conversationKey, payload: message });
 
+  if (!shouldProcessInboundForAgent(message)) {
+    logInfo("incoming.skipped", {
+      ...logContext,
+      reason: "non_text_or_empty_message"
+    });
+    finishMessageProcessing({ messageKey, status: "skipped" });
+    return;
+  }
+
   if (!shouldInvokeAgent(message, binding)) {
     logInfo("incoming.skipped", {
       ...logContext,
@@ -840,9 +869,20 @@ async function processIncomingMessage({ botId, message }) {
 
   try {
     const invocation = await enqueueAgentInvocation(() =>
-      invokeDclawAgent({
+      invokeDclawAgentWithRetry({
         binding,
-        request
+        request,
+        onRetry: (retry) => {
+          logWarn("agent.invoke.retry", {
+            ...logContext,
+            agentId: binding.agentId,
+            invocationId,
+            attempt: retry.attempt,
+            maxAttempts: retry.maxAttempts,
+            timeoutMs: retry.timeoutMs,
+            error: retry.error.message
+          });
+        }
       })
     );
 
@@ -863,6 +903,9 @@ async function processIncomingMessage({ botId, message }) {
       invocationId,
       durationMs: Date.now() - agentStartedAt,
       replyLength: reply.length,
+      attempts: invocation.attempts || 1,
+      timeoutMs: getDclawAgentTimeoutMs(),
+      maxAttempts: getDclawAgentMaxAttempts(),
       sessionId: invocation.sessionId || ""
     });
     if (!reply) {
