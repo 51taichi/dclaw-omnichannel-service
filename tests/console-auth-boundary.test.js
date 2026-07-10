@@ -43,3 +43,8 @@ test("lock and reset return to unselected config context", () => {
   assert.equal(app.includes('switchWorkspaceTab("config", { force: true });'), true);
   assert.equal(app.includes('const hideConfig = hasBot && !isAdmin;'), true);
 });
+
+test("locked bot cards never show using status", () => {
+  assert.equal(app.includes('const botStatusText = !unlocked ? "已上锁"'), true);
+  assert.equal(app.includes('const botStatusClass = !unlocked ? "off"'), true);
+});

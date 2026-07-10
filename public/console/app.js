@@ -482,6 +482,8 @@ function renderBots(bots) {
       const isSelected = bot.botId === state.selectedBotId;
       const unlocked = isBotUnlocked(bot.botId);
       const session = getBotSession(bot.botId);
+      const botStatusText = !unlocked ? "已上锁" : isSelected ? (session?.role === "admin" ? "管理员" : "使用中") : "已解锁";
+      const botStatusClass = !unlocked ? "off" : isSelected ? "selected" : "ok";
       const accent = getBotAccent(bot);
       return `
         <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"} ${unlocked ? "is-unlocked" : "is-locked"} ${isSelected ? "is-selected" : ""}" data-action="${unlocked ? "open" : "unlock"}" data-bot="${safeBot}" style="--bot-accent: ${escapeHtml(accent)}">
@@ -490,7 +492,7 @@ function renderBots(bots) {
             <span class="bot-summary">
               <span class="bot-title-row">
                 <strong>${escapeHtml(title)}</strong>
-                <span class="pill ${isSelected ? "selected" : unlocked ? "ok" : "off"}">${isSelected ? (session?.role === "admin" ? "管理员" : "使用中") : unlocked ? "已解锁" : "已上锁"}</span>
+                <span class="pill ${botStatusClass}">${botStatusText}</span>
               </span>
               <span class="bot-agent">${escapeHtml(bot.agentName || bot.agentId || "未绑定 Agent")}</span>
             </span>
