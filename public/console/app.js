@@ -317,8 +317,8 @@ function renderBots(bots) {
             </span>
           </div>
           <div class="row-actions bot-actions">
-            <button class="secondary" data-action="flow" data-bot="${safeBot}" type="button">${icon("users")}客户任务</button>
-            <button class="secondary" data-action="push" data-bot="${safeBot}" type="button">${icon("send")}推送消息</button>
+            <button class="secondary icon-button" data-action="flow" data-bot="${safeBot}" type="button" aria-label="客户任务" title="客户任务">${icon("users")}</button>
+            <button class="secondary icon-button" data-action="push" data-bot="${safeBot}" type="button" aria-label="推送消息" title="推送消息">${icon("send")}</button>
           </div>
         </article>
       `;

@@ -433,12 +433,22 @@ h2 {
   gap: 6px;
 }
 
+.icon-button,
 .bot-actions button {
-  min-height: 28px;
-  height: auto;
-  padding: 5px 10px;
-  font-size: 12px;
-  line-height: 1.15;
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0;
+  gap: 0;
+  font-size: 0;
+  line-height: 1;
+}
+
+.icon-button .icon,
+.bot-actions button .icon {
+  width: 16px;
+  height: 16px;
 }
 
 .empty-state {
