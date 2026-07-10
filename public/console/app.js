@@ -1411,7 +1411,7 @@ els.saveKeyButton?.addEventListener("click", () => {
   toast("管理密钥已保存");
 });
 
-els.refreshButton.addEventListener("click", () => loadBots().catch((error) => toast(error.message)));
+els.refreshButton?.addEventListener("click", () => loadBots().catch((error) => toast(error.message)));
 els.lockBotButton.addEventListener("click", () => lockCurrentBot().catch((error) => toast(error.message)));
 els.unlockCancelButton.addEventListener("click", closeUnlockDialog);
 els.unlockDialog.addEventListener("click", (event) => {
