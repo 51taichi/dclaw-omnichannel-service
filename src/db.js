@@ -2,6 +2,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { hashAccessKey } from "./auth.js";
 
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
 fs.mkdirSync(dataDir, { recursive: true });
@@ -227,6 +228,8 @@ function ensureColumn(table, column, definition) {
 
 ensureColumn("bot_agent_bindings", "dclaw_base_url", "TEXT");
 ensureColumn("bot_agent_bindings", "dclaw_public_id", "TEXT");
+ensureColumn("bot_agent_bindings", "access_key_hash", "TEXT");
+ensureColumn("bot_agent_bindings", "access_key_updated_at", "TEXT");
 ensureColumn("conversations", "reset_pending", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("outgoing_messages", "callback_error_code", "INTEGER");
 ensureColumn("outgoing_messages", "callback_error_reason", "TEXT");
@@ -312,6 +315,8 @@ function rowToBinding(row) {
     dclawPublicId,
     agentApiUrl,
     agentApiKey: row.agent_api_key,
+    accessKeyHash: row.access_key_hash || "",
+    accessKeyUpdatedAt: row.access_key_updated_at || "",
     enabled: Boolean(row.enabled),
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -363,6 +368,20 @@ export function getBotBinding(botId) {
   return rowToBinding(
     db.prepare("SELECT * FROM bot_agent_bindings WHERE bot_id = ?").get(botId)
   );
+}
+
+export function setBotAccessKey({ botId, accessKey }) {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE bot_agent_bindings
+    SET access_key_hash = ?,
+        access_key_updated_at = ?,
+        updated_at = ?
+    WHERE bot_id = ?
+  `).run(hashAccessKey(accessKey), timestamp, timestamp, botId);
+  const binding = getBotBinding(botId);
+  if (!binding) throw new Error("bot not found");
+  return binding;
 }
 
 export function listBotBindings() {

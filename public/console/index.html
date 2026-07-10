@@ -98,10 +98,10 @@
         </aside>
 
         <section class="panel auth-panel">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>管理密钥</h2>
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>管理员密钥</h2>
           <div class="auth-form">
             <label>
-              <span class="field-label">Admin API Key</span>
+              <span class="field-label">兼容旧接口</span>
               <input id="apiKeyInput" type="password" placeholder="ADMIN_API_KEY" autocomplete="off" />
             </label>
             <button id="saveKeyButton" type="button">
@@ -138,6 +138,10 @@
           </div>
           <div class="current-bot-actions">
             <span id="bindingState" class="binding-state">新增模式</span>
+            <button id="lockBotButton" class="secondary" type="button" hidden>
+              <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+              上锁
+            </button>
             <button id="resetFormButton" class="secondary" type="button">
               <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
               重置
@@ -227,6 +231,29 @@
             </button>
           </div>
         </form>
+        </div>
+      </section>
+
+      <section id="accessKeyPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
+        <div class="section-head">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>Bot 密钥</h2>
+          <button class="collapse-button" data-collapse-target="accessKeyPanel" type="button" aria-label="收起 Bot 密钥">
+            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+          </button>
+        </div>
+        <div class="collapsible-content">
+          <form id="accessKeyForm" class="form-grid compact-form">
+            <label class="wide">
+              <span class="field-label">新 Bot 密钥</span>
+              <input name="accessKey" type="password" placeholder="输入后重置当前 Bot 独立密钥" autocomplete="off" />
+            </label>
+            <div class="actions">
+              <button type="submit">
+                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+                修改密钥
+              </button>
+            </div>
+          </form>
         </div>
       </section>
       </div>
@@ -532,6 +559,25 @@
     </main>
 
     <div id="toast" class="toast" hidden></div>
+    <div id="unlockDialog" class="modal-backdrop" hidden>
+      <div class="confirm-dialog unlock-dialog" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
+        <div class="confirm-icon">
+          <svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>
+        </div>
+        <div class="confirm-copy">
+          <strong id="unlockTitle">解锁 Bot</strong>
+          <p id="unlockBotName">输入当前 Bot 密钥或管理员密钥。</p>
+          <label>
+            <span class="field-label">密钥</span>
+            <input id="unlockKeyInput" type="password" autocomplete="off" />
+          </label>
+        </div>
+        <div class="confirm-actions">
+          <button id="unlockCancelButton" class="secondary" type="button">取消</button>
+          <button id="unlockAcceptButton" class="primary" type="button">解锁</button>
+        </div>
+      </div>
+    </div>
     <div id="confirmDialog" class="modal-backdrop" hidden>
       <div class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirmTitle">
         <div class="confirm-icon">

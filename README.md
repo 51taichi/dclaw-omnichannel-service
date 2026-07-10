@@ -49,6 +49,7 @@ WORKTOOL_BASE_URL=https://api.worktool.ymdyes.cn
 PUBLIC_BASE_URL=https://你的公网域名
 CALLBACK_SECRET=自己生成一串随机字符串
 ADMIN_API_KEY=自己生成一串管理密钥
+BOT_SESSION_TTL_HOURS=8
 UPLOAD_MAX_MB=100
 UPLOAD_ALLOWED_ORIGINS=https://你的外部应用域名
 ```
@@ -293,7 +294,13 @@ http://127.0.0.1:18765
 https://worktool.deepmega.cn/console/
 ```
 
-首次打开后填入 `.env` 里的 `ADMIN_API_KEY`。页面支持：
+首次打开后会直接显示已配置 Bot。每个 Bot 默认是灰色锁定状态，点击 Bot 后在同一个解锁框里输入“当前 Bot 独立密钥”或 `.env` 里的 `ADMIN_API_KEY`：
+
+- 输入 Bot 独立密钥：只解锁当前 Bot，不显示配置 Tab。
+- 输入 `ADMIN_API_KEY`：以管理员身份解锁当前 Bot，显示配置 Tab，并可以修改当前 Bot 独立密钥。
+- 点击“上锁”会清除当前 Bot 的本地 token，恢复锁定态。
+
+页面支持：
 
 ```text
 查看 bot 绑定

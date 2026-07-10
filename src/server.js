@@ -16,6 +16,13 @@ import {
 } from "./dclaw.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
+  createBotSession,
+  deleteBotSession,
+  getBotSession,
+  publicBotView,
+  verifyAccessKey
+} from "./auth.js";
+import {
   beginMessageProcessing,
   buildMessageKey,
   claimNextProactiveTarget,
@@ -53,6 +60,7 @@ import {
   mergeFlowSessionData,
   resetInterruptedProactiveTargets,
   setSetting,
+  setBotAccessKey,
   touchFlowSession,
   updateFlowSessionNode,
   updateProactiveTargetFromCommandCallback,
@@ -167,6 +175,69 @@ function assertAdmin(req) {
   }
 }
 
+function getRequestAdminKey(req) {
+  return req.header("x-api-key") || req.header("authorization")?.replace(/^Bearer\s+/i, "");
+}
+
+function isAdminKey(req) {
+  const expected = process.env.ADMIN_API_KEY;
+  if (!expected) return true;
+  return getRequestAdminKey(req) === expected;
+}
+
+function getRequestBotSession(req) {
+  const token = req.header("x-bot-session-token");
+  return getBotSession(token);
+}
+
+function assertAdminAccess(req) {
+  if (isAdminKey(req)) return { role: "admin", botId: "*" };
+  const session = getRequestBotSession(req);
+  if (session?.role === "admin") return session;
+  const error = new Error("admin access required");
+  error.status = 401;
+  throw error;
+}
+
+function assertBotAccess(req, botId) {
+  const expectedBotId = String(botId || "").trim();
+  if (!expectedBotId) {
+    const error = new Error("botId is required");
+    error.status = 400;
+    throw error;
+  }
+  if (isAdminKey(req)) return { role: "admin", botId: expectedBotId };
+  const session = getRequestBotSession(req);
+  if (session && session.botId === expectedBotId) return session;
+  const error = new Error("bot access required");
+  error.status = 401;
+  throw error;
+}
+
+function assertAdminForBot(req, botId) {
+  const expectedBotId = String(botId || "").trim();
+  if (!expectedBotId) {
+    const error = new Error("botId is required");
+    error.status = 400;
+    throw error;
+  }
+  if (isAdminKey(req)) return { role: "admin", botId: expectedBotId };
+  const session = getRequestBotSession(req);
+  if (session?.role === "admin" && session.botId === expectedBotId) return session;
+  const error = new Error("admin access required");
+  error.status = 401;
+  throw error;
+}
+
+function assertConsoleAccess(req) {
+  if (isAdminKey(req)) return { role: "admin", botId: "*" };
+  const session = getRequestBotSession(req);
+  if (session) return session;
+  const error = new Error("console access required");
+  error.status = 401;
+  throw error;
+}
+
 function applyUploadCors(req, res, next) {
   const origin = req.header("origin");
   const allowAnyOrigin = uploadAllowedOrigins.includes("*");
@@ -176,7 +247,7 @@ function applyUploadCors(req, res, next) {
     res.setHeader("Access-Control-Allow-Origin", allowAnyOrigin ? "*" : origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "x-api-key, authorization, content-type");
+    res.setHeader("Access-Control-Allow-Headers", "x-api-key, x-bot-session-token, authorization, content-type");
     res.setHeader("Access-Control-Max-Age", "86400");
   }
 
@@ -1043,7 +1114,7 @@ app.post(
   applyUploadCors,
   (req, res, next) => {
     try {
-      assertAdmin(req);
+      assertConsoleAccess(req);
       next();
     } catch (error) {
       next(error);
@@ -1177,6 +1248,7 @@ app.post(
   asyncHandler(async (req, res) => {
     const body = req.body || {};
     const robotId = body.botId || body.robotId || process.env.ROBOT_ID;
+    assertBotAccess(req, robotId);
     const targets = Array.isArray(body.targets) ? body.targets : [body.target].filter(Boolean);
     const content = body.content;
     const socketType = body.socketType || 2;
@@ -1195,9 +1267,74 @@ app.post(
 );
 
 app.get(
+  "/api/public/bots",
+  asyncHandler(async (req, res) => {
+    res.json({ ok: true, bots: listBotBindings().map(publicBotView) });
+  })
+);
+
+app.post(
+  "/api/bots/:botId/unlock",
+  asyncHandler(async (req, res) => {
+    const binding = getBotBinding(req.params.botId);
+    if (!binding) {
+      res.status(404).json({ ok: false, message: "bot not found" });
+      return;
+    }
+    const key = String(req.body?.key || "").trim();
+    if (!key) {
+      res.status(400).json({ ok: false, message: "key is required" });
+      return;
+    }
+
+    let role = "";
+    if (process.env.ADMIN_API_KEY && key === process.env.ADMIN_API_KEY) {
+      role = "admin";
+    } else if (verifyAccessKey(key, binding.accessKeyHash)) {
+      role = "bot";
+    }
+
+    if (!role) {
+      res.status(401).json({ ok: false, message: "invalid bot key" });
+      return;
+    }
+
+    const session = createBotSession({ botId: binding.botId, role });
+    res.json({
+      ok: true,
+      role,
+      token: session.token,
+      expiresAt: session.expiresAt,
+      bot: role === "admin" ? binding : publicBotView(binding)
+    });
+  })
+);
+
+app.post(
+  "/api/bots/:botId/lock",
+  asyncHandler(async (req, res) => {
+    assertBotAccess(req, req.params.botId);
+    const token = req.header("x-bot-session-token");
+    if (token) deleteBotSession(token);
+    res.json({ ok: true });
+  })
+);
+
+app.put(
+  "/api/bots/:botId/access-key",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    const accessKey = String(req.body?.accessKey || "").trim();
+    if (!accessKey) throw new Error("accessKey is required");
+    const binding = setBotAccessKey({ botId: req.params.botId, accessKey });
+    res.json({ ok: true, binding });
+  })
+);
+
+app.get(
   "/api/bots",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertAdminAccess(req);
     res.json({ ok: true, bots: listBotBindings() });
   })
 );
@@ -1205,7 +1342,7 @@ app.get(
 app.put(
   "/api/bots/:botId",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertAdminForBot(req, req.params.botId);
     const body = req.body || {};
     const binding = upsertBotBinding({
       botId: req.params.botId,
@@ -1224,7 +1361,7 @@ app.put(
 app.get(
   "/api/settings/debug-reply",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertAdminAccess(req);
     res.json({ ok: true, config: getDebugReplyConfig() });
   })
 );
@@ -1232,7 +1369,7 @@ app.get(
 app.put(
   "/api/settings/debug-reply",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertAdminAccess(req);
     const body = req.body || {};
     const config = setSetting("debug_reply", {
       enabled: Boolean(body.enabled),
@@ -1305,7 +1442,7 @@ function defaultFlowMachineConfig(botName = "客服流程") {
 app.get(
   "/api/flow-machines",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertBotAccess(req, String(req.query.botId || "").trim());
     res.json({
       ok: true,
       machines: listFlowMachines({ botId: String(req.query.botId || "").trim() })
@@ -1316,7 +1453,7 @@ app.get(
 app.get(
   "/api/flow-machines/:botId",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertBotAccess(req, req.params.botId);
     let machine = getFlowMachine(req.params.botId);
     if (!machine && req.query.default === "1") {
       const binding = getBotBinding(req.params.botId);
@@ -1333,7 +1470,7 @@ app.get(
 app.put(
   "/api/flow-machines/:botId",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertBotAccess(req, req.params.botId);
     const body = req.body || {};
     const config = typeof body.config === "string" ? JSON.parse(body.config) : body.config;
     const machine = upsertFlowMachine({
@@ -1348,7 +1485,7 @@ app.put(
 app.get(
   "/api/flow-sessions",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertBotAccess(req, String(req.query.botId || "").trim());
     res.json({
       ok: true,
       sessions: listFlowSessions({
@@ -1362,7 +1499,7 @@ app.get(
 app.get(
   "/api/flow-sessions/:conversationKey",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertBotAccess(req, String(req.query.botId || "").trim());
     const conversationKey = decodeURIComponent(req.params.conversationKey);
     res.json({
       ok: true,
@@ -1379,10 +1516,10 @@ app.get(
 app.put(
   "/api/flow-sessions/:conversationKey/node",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
     const body = req.body || {};
     const conversationKey = decodeURIComponent(req.params.conversationKey);
     const botId = String(body.botId || "").trim();
+    assertBotAccess(req, botId);
     const nextNodeId = String(body.nextNodeId || "").trim();
     if (!botId || !nextNodeId) throw new Error("botId and nextNodeId are required");
     const machine = getFlowMachine(botId);
@@ -1403,10 +1540,10 @@ app.put(
 app.post(
   "/api/flow-sessions/:conversationKey/reset",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
     const body = req.body || {};
     const conversationKey = decodeURIComponent(req.params.conversationKey);
     const botId = String(body.botId || "").trim();
+    assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
     const session = clearConversationForReset({
       botId,
@@ -1421,9 +1558,9 @@ app.post(
 app.post(
   "/api/proactive/tasks",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
     const body = req.body || {};
     const botId = String(body.botId || process.env.ROBOT_ID || "").trim();
+    assertBotAccess(req, botId);
     const targets = normalizeProactiveTargets(body.targets);
     const binding = botId ? getBotBinding(botId) : null;
     const message = normalizeProactiveMessage(body);
@@ -1460,7 +1597,7 @@ app.post(
 app.get(
   "/api/proactive/tasks",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertBotAccess(req, String(req.query.botId || "").trim());
     res.json({
       ok: true,
       tasks: listProactiveTasks({
@@ -1476,12 +1613,12 @@ app.get(
 app.get(
   "/api/proactive/tasks/:taskId",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
     const task = getProactiveTask(req.params.taskId);
     if (!task) {
       res.status(404).json({ ok: false, message: "task not found" });
       return;
     }
+    assertBotAccess(req, task.botId);
     res.json({
       ok: true,
       task,
@@ -1493,8 +1630,8 @@ app.get(
 app.get(
   "/api/proactive/targets",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
     const botId = String(req.query.botId || process.env.ROBOT_ID || "").trim();
+    assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
     res.json({
       ok: true,
@@ -1511,9 +1648,9 @@ app.get(
 app.post(
   "/api/proactive/targets",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
     const body = req.body || {};
     const botId = String(body.botId || process.env.ROBOT_ID || "").trim();
+    assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
     const target = upsertProactiveAddressBookTarget({
       botId,
@@ -1529,8 +1666,8 @@ app.post(
 app.post(
   "/api/proactive/targets/mock",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
     const botId = String(req.body?.botId || process.env.ROBOT_ID || "").trim();
+    assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
     res.json({
       ok: true,
@@ -1542,7 +1679,7 @@ app.post(
 app.post(
   "/api/config/:botId/message-callback",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertAdminForBot(req, req.params.botId);
     const body = req.body || {};
     const callbackUrl =
       body.callbackUrl || buildPublicCallbackUrl(req.params.botId, "/message-callback");
@@ -1559,7 +1696,7 @@ app.post(
 app.post(
   "/api/config/:botId/command-callback",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertAdminForBot(req, req.params.botId);
     const body = req.body || {};
     const callBackUrl =
       body.callBackUrl || buildPublicCallbackUrl(req.params.botId, "/command-callback");
@@ -1576,6 +1713,7 @@ app.post(
   asyncHandler(async (req, res) => {
     const botId = req.body?.botId || process.env.ROBOT_ID;
     if (!botId) throw new Error("botId is required");
+    assertAdminForBot(req, botId);
     const callbackUrl =
       req.body?.callbackUrl || buildPublicCallbackUrl(botId, "/message-callback");
     const replyAll = req.body?.replyAll ?? 1;
@@ -1589,6 +1727,7 @@ app.post(
   asyncHandler(async (req, res) => {
     const botId = req.body?.botId || process.env.ROBOT_ID;
     if (!botId) throw new Error("botId is required");
+    assertAdminForBot(req, botId);
     const callBackUrl =
       req.body?.callBackUrl || buildPublicCallbackUrl(botId, "/command-callback");
     const result = await bindCommandCallback({ robotId: botId, callBackUrl });
@@ -1600,6 +1739,7 @@ app.get(
   "/api/robot",
   asyncHandler(async (req, res) => {
     const botId = req.query.botId || process.env.ROBOT_ID;
+    assertBotAccess(req, botId);
     const robotInfo = await getRobotInfo(botId);
     res.json({ ok: true, robotInfo });
   })
@@ -1608,6 +1748,7 @@ app.get(
 app.get(
   "/api/robot/:botId",
   asyncHandler(async (req, res) => {
+    assertBotAccess(req, req.params.botId);
     const robotInfo = await getRobotInfo(req.params.botId);
     res.json({ ok: true, robotInfo });
   })
@@ -1617,6 +1758,7 @@ app.get(
   "/api/callback-config",
   asyncHandler(async (req, res) => {
     const botId = req.query.botId || process.env.ROBOT_ID;
+    assertAdminForBot(req, botId);
     const callbackConfig = await getCallbackConfig(botId);
     res.json({ ok: true, callbackConfig });
   })
@@ -1625,6 +1767,7 @@ app.get(
 app.get(
   "/api/callback-config/:botId",
   asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
     const callbackConfig = await getCallbackConfig(req.params.botId);
     res.json({ ok: true, callbackConfig });
   })
@@ -1633,7 +1776,7 @@ app.get(
 app.get(
   "/api/logs/:name",
   asyncHandler(async (req, res) => {
-    assertAdmin(req);
+    assertBotAccess(req, String(req.query.botId || "").trim());
     const logs = listRecords(req.params.name, {
       limit: Number(req.query.limit || 50),
       botId: String(req.query.botId || "").trim()

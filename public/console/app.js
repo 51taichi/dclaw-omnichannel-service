@@ -1,7 +1,10 @@
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
   selectedBotId: "",
-  selectedFlowConversationKey: ""
+  selectedFlowConversationKey: "",
+  currentRole: "",
+  botSessions: JSON.parse(localStorage.getItem("worktool_console_bot_sessions") || "{}"),
+  pendingUnlockBotId: ""
 };
 
 const DEFAULT_FILE_URL = "https://worktool.deepmega.cn/console";
@@ -10,7 +13,15 @@ const els = {
   apiKeyInput: document.querySelector("#apiKeyInput"),
   saveKeyButton: document.querySelector("#saveKeyButton"),
   refreshButton: document.querySelector("#refreshButton"),
+  lockBotButton: document.querySelector("#lockBotButton"),
+  unlockDialog: document.querySelector("#unlockDialog"),
+  unlockBotName: document.querySelector("#unlockBotName"),
+  unlockKeyInput: document.querySelector("#unlockKeyInput"),
+  unlockCancelButton: document.querySelector("#unlockCancelButton"),
+  unlockAcceptButton: document.querySelector("#unlockAcceptButton"),
   botBindingPanel: document.querySelector("#botBindingPanel"),
+  accessKeyPanel: document.querySelector("#accessKeyPanel"),
+  accessKeyForm: document.querySelector("#accessKeyForm"),
   proactivePanel: document.querySelector("#proactivePanel"),
   workspaceTabBar: document.querySelector(".workspace-tabs"),
   workspaceTabs: document.querySelectorAll("[data-workspace-tab]"),
@@ -69,11 +80,17 @@ els.taskDateFrom.value = today;
 els.taskDateTo.value = today;
 
 function headers(extra = {}) {
-  return {
+  const result = {
     "Content-Type": "application/json",
-    "x-api-key": state.apiKey,
     ...extra
   };
+  const session = getSelectedBotSession();
+  if (session?.token) {
+    result["x-bot-session-token"] = session.token;
+  } else if (state.apiKey) {
+    result["x-api-key"] = state.apiKey;
+  }
+  return result;
 }
 
 function toast(message) {
@@ -92,6 +109,54 @@ function icon(name) {
 function formatLocalDate(date = new Date()) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return localDate.toISOString().slice(0, 10);
+}
+
+function saveBotSessions() {
+  localStorage.setItem("worktool_console_bot_sessions", JSON.stringify(state.botSessions));
+}
+
+function getBotSession(botId) {
+  const session = state.botSessions[botId];
+  if (!session) return null;
+  if (session.expiresAt && Date.parse(session.expiresAt) <= Date.now()) {
+    delete state.botSessions[botId];
+    saveBotSessions();
+    return null;
+  }
+  return session;
+}
+
+function getSelectedBotSession() {
+  return state.selectedBotId ? getBotSession(state.selectedBotId) : null;
+}
+
+function setBotSession(botId, session) {
+  state.botSessions[botId] = session;
+  saveBotSessions();
+}
+
+function clearBotSession(botId) {
+  delete state.botSessions[botId];
+  saveBotSessions();
+}
+
+function isBotUnlocked(botId) {
+  return Boolean(getBotSession(botId));
+}
+
+function syncRoleVisibility() {
+  const isAdmin = state.currentRole === "admin";
+  const hasBot = Boolean(state.selectedBotId);
+  document.body.classList.toggle("is-admin-role", isAdmin);
+  document.body.classList.toggle("is-bot-role", state.currentRole === "bot");
+  document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", !isAdmin);
+  document.querySelector("#configTab")?.toggleAttribute("hidden", !isAdmin);
+  els.resetFormButton.hidden = !isAdmin;
+  if (els.accessKeyPanel) els.accessKeyPanel.hidden = !isAdmin;
+  if (els.lockBotButton) els.lockBotButton.hidden = !hasBot;
+  if (!isAdmin && document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")) {
+    switchWorkspaceTab("sessions", { force: true });
+  }
 }
 
 function dateToLocalIsoStart(value) {
@@ -140,7 +205,9 @@ async function uploadLocalFile(file) {
   const response = await fetch("/api/uploads", {
     method: "POST",
     headers: {
-      "x-api-key": state.apiKey
+      ...(getSelectedBotSession()?.token
+        ? { "x-bot-session-token": getSelectedBotSession().token }
+        : { "x-api-key": state.apiKey })
     },
     body: payload
   });
@@ -200,6 +267,10 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
     toast("请先选择或保存一个 Bot");
     return;
   }
+  if (!force && tabName === "config" && state.currentRole !== "admin") {
+    toast("当前 Bot 未以管理员身份解锁");
+    return;
+  }
   els.workspaceTabs.forEach((button) => {
     const active = button.dataset.workspaceTab === tabName;
     button.classList.toggle("active", active);
@@ -217,7 +288,9 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
 
 function updateWorkspaceTabAccess(hasBotContext) {
   els.workspaceTabs.forEach((button) => {
-    const locked = button.dataset.workspaceTab !== "config" && !hasBotContext;
+    const locked =
+      (button.dataset.workspaceTab !== "config" && !hasBotContext) ||
+      (button.dataset.workspaceTab === "config" && state.currentRole !== "admin");
     button.disabled = locked;
     button.setAttribute("aria-disabled", String(locked));
   });
@@ -232,8 +305,10 @@ function tabForPanel(panel) {
 
 function setBindingState(bot = null) {
   state.selectedBotId = bot?.botId || "";
+  state.currentRole = bot ? getBotSession(bot.botId)?.role || "" : "";
   const accent = bot ? getBotAccent(bot) : "";
   updateWorkspaceTabAccess(Boolean(bot));
+  syncRoleVisibility();
   els.workspaceTabBar?.classList.toggle("is-bound", Boolean(bot));
   els.workspaceTabBar?.style.setProperty("--bot-accent", accent);
   els.bindingState?.classList.toggle("is-bound", Boolean(bot));
@@ -243,7 +318,7 @@ function setBindingState(bot = null) {
     panel.style.setProperty("--bot-accent", accent);
   });
   els.bindingState.textContent = bot
-    ? `当前Bot：${bot.botName || bot.dclawPublicId || "当前 Bot"}`
+    ? `当前Bot：${bot.botName || bot.dclawPublicId || "当前 Bot"} · ${state.currentRole === "admin" ? "管理员" : "已解锁"}`
     : "新增模式";
   renderBots(currentBots);
 }
@@ -256,16 +331,25 @@ function expandPanel(panel) {
 }
 
 async function applyBotContext(bot, { scrollTo = null } = {}) {
+  if (!isBotUnlocked(bot?.botId)) {
+    openUnlockDialog(bot);
+    return;
+  }
   setBindingState(bot);
   if (bot?.botId) {
     els.proactiveForm.botId.value = bot.botId;
     selectedTargets.clear();
-    await Promise.all([
+    if (state.currentRole === "admin") {
+      fillForm(bot);
+      await loadDebugReply();
+    }
+    const tasks = [
       loadAddressBookTargets(),
       loadProactiveTasks(),
       loadFlowMachine(),
       loadFlowSessions()
-    ]);
+    ];
+    await Promise.all(tasks);
     if (els.logsOutput.textContent.trim()) {
       await loadLogs();
     }
@@ -276,6 +360,65 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
     expandPanel(scrollTo);
     scrollTo.scrollIntoView({ behavior: "smooth", block: "start" });
   }
+  if (!scrollTo && state.currentRole !== "admin") {
+    switchWorkspaceTab("sessions", { force: true });
+  }
+}
+
+function openUnlockDialog(bot) {
+  if (!bot?.botId) return;
+  state.pendingUnlockBotId = bot.botId;
+  els.unlockBotName.textContent = `解锁 ${bot.botName || bot.agentName || bot.botId}`;
+  els.unlockKeyInput.value = "";
+  els.unlockDialog.hidden = false;
+  requestAnimationFrame(() => els.unlockKeyInput.focus());
+}
+
+function closeUnlockDialog() {
+  state.pendingUnlockBotId = "";
+  els.unlockDialog.hidden = true;
+}
+
+async function unlockPendingBot() {
+  const botId = state.pendingUnlockBotId;
+  const key = els.unlockKeyInput.value.trim();
+  if (!botId || !key) {
+    toast("请输入密钥");
+    return;
+  }
+  const data = await request(`/api/bots/${encodeURIComponent(botId)}/unlock`, {
+    method: "POST",
+    body: JSON.stringify({ key })
+  });
+  setBotSession(botId, {
+    token: data.token,
+    role: data.role,
+    expiresAt: data.expiresAt
+  });
+  closeUnlockDialog();
+  toast(data.role === "admin" ? "已用管理员身份解锁" : "Bot 已解锁");
+  await loadBots();
+  const bot = currentBots.find((item) => item.botId === botId) || data.bot;
+  if (data.role === "admin" && data.bot) {
+    Object.assign(bot, data.bot);
+  }
+  await applyBotContext(bot, { scrollTo: data.role === "admin" ? null : document.querySelector("#flowSessionsPanel") });
+}
+
+async function lockCurrentBot() {
+  const botId = state.selectedBotId;
+  if (!botId) return;
+  try {
+    await request(`/api/bots/${encodeURIComponent(botId)}/lock`, { method: "POST" });
+  } catch {}
+  clearBotSession(botId);
+  state.selectedFlowConversationKey = "";
+  selectedTargets.clear();
+  setBindingState(null);
+  renderSelectedTargets();
+  renderTargetList();
+  renderBots(currentBots);
+  toast("已上锁");
 }
 
 function fillForm(bot) {
@@ -303,22 +446,24 @@ function renderBots(bots) {
       const safeBot = encodeURIComponent(bot.botId);
       const title = bot.botName || bot.dclawPublicId || "未命名 Bot";
       const isSelected = bot.botId === state.selectedBotId;
+      const unlocked = isBotUnlocked(bot.botId);
+      const session = getBotSession(bot.botId);
       const accent = getBotAccent(bot);
       return `
-        <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"} ${isSelected ? "is-selected" : ""}" data-action="edit" data-bot="${safeBot}" style="--bot-accent: ${escapeHtml(accent)}">
+        <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"} ${unlocked ? "is-unlocked" : "is-locked"} ${isSelected ? "is-selected" : ""}" data-action="${unlocked ? "open" : "unlock"}" data-bot="${safeBot}" style="--bot-accent: ${escapeHtml(accent)}">
           <div class="bot-main">
             <img class="bot-avatar" src="./assets/bot-avatar.png" alt="" aria-hidden="true" />
             <span class="bot-summary">
               <span class="bot-title-row">
                 <strong>${escapeHtml(title)}</strong>
-                <span class="pill ${isSelected ? "selected" : bot.enabled ? "ok" : "off"}">${isSelected ? "编辑中" : bot.enabled ? "在线" : "停用"}</span>
+                <span class="pill ${isSelected ? "selected" : unlocked ? "ok" : "off"}">${isSelected ? (session?.role === "admin" ? "管理员" : "使用中") : unlocked ? "已解锁" : "已上锁"}</span>
               </span>
               <span class="bot-agent">${escapeHtml(bot.agentName || bot.agentId || "未绑定 Agent")}</span>
             </span>
           </div>
           <div class="row-actions bot-actions">
-            <button class="secondary icon-button" data-action="flow" data-bot="${safeBot}" type="button" aria-label="客户任务" title="客户任务">${icon("users")}</button>
-            <button class="secondary icon-button" data-action="push" data-bot="${safeBot}" type="button" aria-label="推送消息" title="推送消息">${icon("send")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "flow" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "客户任务" : "解锁"}" title="${unlocked ? "客户任务" : "解锁"}">${icon(unlocked ? "users" : "link")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "push" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "推送消息" : "解锁"}" title="${unlocked ? "推送消息" : "解锁"}">${icon(unlocked ? "send" : "link")}</button>
           </div>
         </article>
       `;
@@ -331,9 +476,16 @@ function renderBots(bots) {
       if (!actionTarget) return;
       const botId = decodeURIComponent(actionTarget.dataset.bot);
       const bot = currentBots.find((item) => item.botId === botId);
-      if (actionTarget.dataset.action === "edit") {
-        switchWorkspaceTab("config");
-        fillForm(bot);
+      if (actionTarget.dataset.action === "unlock") {
+        event.stopPropagation();
+        openUnlockDialog(bot);
+        return;
+      }
+      if (actionTarget.dataset.action === "open") {
+        if (getBotSession(botId)?.role === "admin") {
+          switchWorkspaceTab("config");
+          fillForm(bot);
+        }
         applyBotContext(bot).catch((error) => toast(error.message));
         return;
       }
@@ -534,7 +686,7 @@ async function seedAddressBookTargets() {
 }
 
 async function loadBots() {
-  const data = await request("/api/bots");
+  const data = await request("/api/public/bots");
   currentBots = data.bots || [];
   if (state.selectedBotId && !currentBots.some((bot) => bot.botId === state.selectedBotId)) {
     setBindingState(null);
@@ -547,6 +699,7 @@ async function loadBots() {
 }
 
 async function loadDebugReply() {
+  if (state.currentRole !== "admin") return;
   const data = await request("/api/settings/debug-reply");
   const config = data.config || {};
   els.debugReplyForm.enabled.checked = Boolean(config.enabled);
@@ -556,6 +709,10 @@ async function loadDebugReply() {
 
 async function saveBot(event) {
   event.preventDefault();
+  if (state.currentRole !== "admin") {
+    toast("需要管理员身份");
+    return;
+  }
   const bot = formData();
   if (!bot.botId || !bot.agentId || !bot.dclawBaseUrl || !bot.dclawPublicId) {
     toast("请填写 Bot ID、Agent ID、DClaw Base URL 和 Public ID");
@@ -566,12 +723,38 @@ async function saveBot(event) {
     body: JSON.stringify(bot)
   });
   toast("绑定已保存");
-  await loadBots();
+  const data = await request("/api/bots");
+  currentBots = data.bots || [];
+  renderBots(currentBots);
   const savedBot = currentBots.find((item) => item.botId === bot.botId);
   if (savedBot) await applyBotContext(savedBot);
 }
 
+async function saveAccessKey(event) {
+  event.preventDefault();
+  if (!state.selectedBotId || state.currentRole !== "admin") {
+    toast("需要管理员身份");
+    return;
+  }
+  const accessKey = String(new FormData(els.accessKeyForm).get("accessKey") || "").trim();
+  if (!accessKey) {
+    toast("请输入新的 Bot 密钥");
+    return;
+  }
+  await request(`/api/bots/${encodeURIComponent(state.selectedBotId)}/access-key`, {
+    method: "PUT",
+    body: JSON.stringify({ accessKey })
+  });
+  els.accessKeyForm.reset();
+  toast("Bot 密钥已修改");
+  await loadBots();
+}
+
 async function bindCallback(botId, type) {
+  if (state.currentRole !== "admin") {
+    toast("需要管理员身份");
+    return;
+  }
   await request(`/api/config/${encodeURIComponent(botId)}/${type}`, {
     method: "POST",
     body: JSON.stringify({})
@@ -1181,7 +1364,24 @@ els.saveKeyButton.addEventListener("click", () => {
 });
 
 els.refreshButton.addEventListener("click", () => loadBots().catch((error) => toast(error.message)));
+els.lockBotButton.addEventListener("click", () => lockCurrentBot().catch((error) => toast(error.message)));
+els.unlockCancelButton.addEventListener("click", closeUnlockDialog);
+els.unlockDialog.addEventListener("click", (event) => {
+  if (event.target === els.unlockDialog) closeUnlockDialog();
+});
+els.unlockKeyInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    unlockPendingBot().catch((error) => toast(error.message));
+  }
+});
+els.unlockAcceptButton.addEventListener("click", () =>
+  unlockPendingBot().catch((error) => toast(error.message))
+);
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch((error) => toast(error.message)));
+els.accessKeyForm.addEventListener("submit", (event) =>
+  saveAccessKey(event).catch((error) => toast(error.message))
+);
 els.debugReplyForm.addEventListener("submit", (event) =>
   saveDebugReply(event).catch((error) => toast(error.message))
 );
@@ -1248,6 +1448,7 @@ els.refreshProactiveButton.addEventListener("click", () =>
   loadProactiveTasks().catch((error) => toast(error.message))
 );
 els.resetFormButton.addEventListener("click", () => {
+  if (state.currentRole !== "admin") return;
   els.botForm.reset();
   els.botForm.enabled.checked = true;
   selectedTargets.clear();
@@ -1267,9 +1468,8 @@ els.collapseButtons.forEach((button) => {
   });
 });
 
+syncRoleVisibility();
 loadBots()
-  .then(() => Promise.all([loadDebugReply(), loadProactiveTasks()]))
-  .then(() => loadAddressBookTargets())
   .catch((error) => {
     els.logsOutput.textContent = `无法加载配置：${error.message}`;
   });

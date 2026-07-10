@@ -357,6 +357,20 @@ h2 {
   border-left-color: var(--orange);
 }
 
+.bot-card.is-locked {
+  filter: grayscale(0.82);
+  opacity: 0.68;
+  background: #f3f5fb;
+}
+
+.bot-card.is-locked .bot-avatar {
+  opacity: 0.62;
+}
+
+.bot-card.is-locked:hover {
+  opacity: 0.9;
+}
+
 .bot-card.is-selected {
   border-color: color-mix(in srgb, var(--bot-accent) 55%, var(--line));
   border-left-color: var(--bot-accent);
@@ -1373,6 +1387,21 @@ button.danger:hover {
   border-radius: 8px;
   background: #fffdfb;
   box-shadow: 0 22px 54px rgba(45, 31, 29, 0.2);
+}
+
+.unlock-dialog {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+}
+
+.unlock-dialog .confirm-icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.unlock-dialog label {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
 }
 
 .confirm-icon {
