@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
 import {
+  buildDclawActivationRequest,
   buildDclawHandoffTranscriptRequest,
   buildDclawProactiveEventRequest,
   buildDclawRequest,
@@ -27,6 +28,7 @@ import {
   beginMessageProcessing,
   buildMessageKey,
   cancelFlowActivationTasks,
+  claimDueFlowActivationTasks,
   claimNextProactiveTarget,
   clearConversationForReset,
   createProactiveTask,
@@ -57,6 +59,8 @@ import {
   listProactiveTaskTargets,
   listBotBindings,
   listRecords,
+  markFlowActivationTaskFailed,
+  markFlowActivationTaskSent,
   markConversationResetHandled,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
@@ -328,6 +332,10 @@ function addMinutes(date, minutes) {
   return new Date(date.getTime() + Number(minutes || 0) * 60 * 1000).toISOString();
 }
 
+function privateTargetNameFromConversationKey(conversationKey) {
+  return String(conversationKey || "").split(":private:")[1] || "";
+}
+
 function invalidateFlowActivation({ conversationKey, reason }) {
   const session = incrementFlowActivationGeneration({ conversationKey, reason });
   cancelFlowActivationTasks({ conversationKey, reason });
@@ -459,6 +467,15 @@ const proactiveWorkerConfig = {
   maxAttempts: Number(process.env.PROACTIVE_MAX_ATTEMPTS || 2)
 };
 
+const activationWorkerConfig = {
+  enabled: process.env.ACTIVATION_WORKER_ENABLED !== "false",
+  intervalMs: Number(process.env.ACTIVATION_WORKER_INTERVAL_MS || 10000),
+  batchSize: Number(process.env.ACTIVATION_WORKER_BATCH_SIZE || 20),
+  staleProcessingMs: Number(process.env.ACTIVATION_WORKER_STALE_PROCESSING_MS || 300000),
+  sendDelayMs: Number(process.env.ACTIVATION_SEND_DELAY_MS || 500),
+  maxConcurrentAgentCalls: Number(process.env.ACTIVATION_MAX_CONCURRENT_AGENT_CALLS || 2)
+};
+
 const configuredReplyMaxParts = Number(process.env.WORKTOOL_REPLY_MAX_PARTS || 3);
 const configuredReplyPartDelayMs = Number(process.env.WORKTOOL_REPLY_PART_DELAY_MS || 1000);
 const replySplitConfig = {
@@ -473,6 +490,7 @@ const replySplitConfig = {
 };
 
 let proactiveWorkerBusy = false;
+let activationWorkerBusy = false;
 let agentQueue = Promise.resolve();
 
 function enqueueAgentInvocation(task) {
@@ -868,6 +886,269 @@ async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse 
   }
 }
 
+function isStaleActivationTask(task) {
+  const session = getFlowSession(task.conversationKey);
+  return (
+    !session ||
+    session.handoffStatus === "human" ||
+    session.currentNodeId !== task.nodeId ||
+    Number(session.activationGeneration || 0) !== Number(task.generation || 0)
+  );
+}
+
+function recordActivationOutbound({ task, binding, target, content, result, rawPayload = {} }) {
+  insertConversationMessage({
+    botId: task.botId,
+    conversationKey: task.conversationKey,
+    direction: "outbound",
+    senderName: binding?.botName || binding?.agentName || "机器人",
+    content,
+    rawPayload: {
+      source: "flow_activation",
+      activationTaskId: task.id,
+      attemptNumber: task.attemptNumber,
+      nodeId: task.nodeId,
+      messageId: result?.data || "",
+      worktoolResponse: result || null,
+      ...rawPayload
+    }
+  });
+  insertOutgoingMessage({
+    botId: task.botId,
+    agentId: task.agentId || binding?.agentId || "",
+    conversationKey: task.conversationKey,
+    messageId: result?.data || "",
+    targetName: target,
+    content,
+    worktoolResponse: {
+      ...(result || {}),
+      source: "flow_activation",
+      activationTaskId: task.id,
+      attemptNumber: task.attemptNumber
+    }
+  });
+}
+
+async function sendActivationRawMessages({ task, binding }) {
+  const target = privateTargetNameFromConversationKey(task.conversationKey);
+  if (!target) throw new Error("missing activation target");
+  const ids = [];
+  for (const [index, content] of task.messages.entries()) {
+    const result = await sendTextMessage({
+      robotId: task.botId,
+      targets: [target],
+      content
+    });
+    ids.push(result.data || "");
+    recordActivationOutbound({
+      task,
+      binding,
+      target,
+      content,
+      result,
+      rawPayload: {
+        polishByAgent: false,
+        activationMessageIndex: index
+      }
+    });
+    if (activationWorkerConfig.sendDelayMs > 0 && index < task.messages.length - 1) {
+      await sleep(activationWorkerConfig.sendDelayMs);
+    }
+  }
+  return ids.filter(Boolean);
+}
+
+async function sendActivationPolishedMessage({ task, binding }) {
+  const target = privateTargetNameFromConversationKey(task.conversationKey);
+  if (!target) throw new Error("missing activation target");
+  const machine = getFlowMachine(task.botId);
+  const session = getFlowSession(task.conversationKey);
+  const flow = machine && session
+    ? {
+        machine: {
+          name: machine.name,
+          version: machine.version,
+          entryNodeId: machine.entryNodeId,
+          nodes: machine.config.nodes
+        },
+        session,
+        currentNode: getFlowNode(machine, session.currentNodeId),
+        recentMessages: listConversationMessages({ conversationKey: task.conversationKey, limit: 20 }).slice(-12)
+      }
+    : null;
+  const recentMessages = flow?.recentMessages || listConversationMessages({
+    conversationKey: task.conversationKey,
+    limit: 12
+  });
+  const request = buildDclawActivationRequest({
+    binding,
+    conversationKey: task.conversationKey,
+    task,
+    flow,
+    recentMessages
+  });
+  const invocationId = insertAgentInvocationStart({
+    botId: task.botId,
+    agentId: binding.agentId,
+    conversationKey: task.conversationKey,
+    incomingMessageId: `activation:${task.id}`,
+    request
+  });
+  let invocation;
+  try {
+    invocation = await enqueueAgentInvocation(() =>
+      invokeDclawAgentWithRetry({
+        binding,
+        request,
+        onRetry: (retry) => {
+          logWarn("activation.agent.retry", {
+            activationTaskId: task.id,
+            botId: task.botId,
+            agentId: binding.agentId,
+            conversationKey: task.conversationKey,
+            invocationId,
+            attempt: retry.attempt,
+            maxAttempts: retry.maxAttempts,
+            timeoutMs: retry.timeoutMs,
+            error: retry.error.message
+          });
+        }
+      })
+    );
+    finishAgentInvocation({
+      id: invocationId,
+      response: invocation.response,
+      status: "success"
+    });
+  } catch (error) {
+    finishAgentInvocation({
+      id: invocationId,
+      response: null,
+      status: "failed",
+      error: error.message
+    });
+    throw error;
+  }
+  const agentReply = parseAgentReply(invocation.reply);
+  const reply = String(agentReply.reply || "").trim();
+  if (!reply) {
+    throw new Error("empty activation reply");
+  }
+  const result = await sendTextMessage({
+    robotId: task.botId,
+    targets: [target],
+    content: reply
+  });
+  recordActivationOutbound({
+    task,
+    binding,
+    target,
+    content: reply,
+    result,
+    rawPayload: {
+      polishByAgent: true,
+      flowActivationMessages: task.messages,
+      agentReply: agentReply.raw
+    }
+  });
+  return [result.data || ""].filter(Boolean);
+}
+
+function scheduleNextActivationAttempt(task) {
+  if (task.attemptNumber >= task.maxTimes) return null;
+  return scheduleFlowActivationTask({
+    botId: task.botId,
+    agentId: task.agentId,
+    conversationKey: task.conversationKey,
+    nodeId: task.nodeId,
+    generation: task.generation,
+    activation: {
+      enabled: true,
+      intervalMinutes: task.intervalMinutes,
+      maxTimes: task.maxTimes,
+      polishByAgent: task.polishByAgent,
+      messages: task.messages
+    },
+    dueAt: addMinutes(new Date(), task.intervalMinutes),
+    attemptNumber: task.attemptNumber + 1
+  });
+}
+
+async function processFlowActivationTask(task) {
+  if (isStaleActivationTask(task)) {
+    markFlowActivationTaskFailed({ id: task.id, error: "stale_activation_task" });
+    logInfo("activation.stale_skipped", {
+      activationTaskId: task.id,
+      botId: task.botId,
+      conversationKey: task.conversationKey,
+      nodeId: task.nodeId,
+      generation: task.generation
+    });
+    return;
+  }
+  const binding = getBotBinding(task.botId);
+  if (!binding || !binding.enabled) {
+    markFlowActivationTaskFailed({ id: task.id, error: "no enabled DClaw binding" });
+    return;
+  }
+
+  try {
+    const worktoolMessageIds = task.polishByAgent
+      ? await sendActivationPolishedMessage({ task, binding })
+      : await sendActivationRawMessages({ task, binding });
+    markFlowActivationTaskSent({ id: task.id, worktoolMessageIds });
+    const nextTask = scheduleNextActivationAttempt(task);
+    logInfo("activation.sent", {
+      activationTaskId: task.id,
+      nextActivationTaskId: nextTask?.id || "",
+      botId: task.botId,
+      agentId: binding.agentId,
+      conversationKey: task.conversationKey,
+      nodeId: task.nodeId,
+      attemptNumber: task.attemptNumber,
+      maxTimes: task.maxTimes,
+      polishByAgent: task.polishByAgent,
+      worktoolMessageIds
+    });
+  } catch (error) {
+    markFlowActivationTaskFailed({ id: task.id, error: error.message });
+    logWarn("activation.failed", {
+      activationTaskId: task.id,
+      botId: task.botId,
+      conversationKey: task.conversationKey,
+      nodeId: task.nodeId,
+      attemptNumber: task.attemptNumber,
+      error: error.message
+    });
+  }
+}
+
+async function processFlowActivationBatch() {
+  if (!activationWorkerConfig.enabled || activationWorkerBusy) return;
+  activationWorkerBusy = true;
+  try {
+    const nowDate = new Date();
+    const staleBefore = new Date(nowDate.getTime() - activationWorkerConfig.staleProcessingMs).toISOString();
+    const tasks = claimDueFlowActivationTasks({
+      limit: activationWorkerConfig.batchSize,
+      nowIso: nowDate.toISOString(),
+      staleBeforeIso: staleBefore
+    });
+    if (tasks.length) {
+      logInfo("activation.worker.claimed", {
+        count: tasks.length,
+        batchSize: activationWorkerConfig.batchSize,
+        maxConcurrentAgentCalls: activationWorkerConfig.maxConcurrentAgentCalls
+      });
+    }
+    for (const task of tasks) {
+      await processFlowActivationTask(task);
+    }
+  } finally {
+    activationWorkerBusy = false;
+  }
+}
+
 async function processNextProactiveTarget() {
   if (!proactiveWorkerConfig.enabled || proactiveWorkerBusy) return;
   proactiveWorkerBusy = true;
@@ -956,6 +1237,14 @@ if (proactiveWorkerConfig.enabled) {
       logError("proactive.worker.failed", { error });
     });
   }, proactiveWorkerConfig.intervalMs).unref();
+}
+
+if (activationWorkerConfig.enabled) {
+  setInterval(() => {
+    void processFlowActivationBatch().catch((error) => {
+      logError("activation.worker.failed", { error });
+    });
+  }, activationWorkerConfig.intervalMs).unref();
 }
 
 async function processIncomingMessage({ botId, message }) {
