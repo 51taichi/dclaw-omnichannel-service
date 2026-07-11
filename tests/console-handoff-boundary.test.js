@@ -6,6 +6,13 @@ const html = fs.readFileSync(new URL("../public/console/index.html", import.meta
 const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 
+function sectionHtml(id) {
+  const start = html.indexOf(`<section id="${id}"`);
+  assert.notEqual(start, -1);
+  const nextSection = html.indexOf("<section", start + 1);
+  return html.slice(start, nextSection === -1 ? html.length : nextSection);
+}
+
 test("console exposes handoff toggles on session cards without the old status banner", () => {
   assert.equal(html.includes('id="handoffStatusBanner"'), false);
   assert.equal(app.includes("toggleSelectedConversationHandoff"), true);
@@ -58,6 +65,24 @@ test("conversation assets open as a popover without affecting chat layout", () =
   assert.match(css, /\.assets-panel\s*\{[\s\S]*position:\s*absolute/);
   assert.match(css, /\.assets-panel\s*\{[\s\S]*z-index:\s*\d+/);
   assert.match(css, /\.assets-panel\s*\{[\s\S]*max-height:/);
+});
+
+test("flow machine and proactive panels use compact title-free layouts", () => {
+  const flowPanel = sectionHtml("flowMachinePanel");
+  const proactivePanel = sectionHtml("proactivePanel");
+  const proactiveTasksPanel = sectionHtml("proactiveTasksPanel");
+  const sessionsPanel = sectionHtml("flowSessionsPanel");
+
+  assert.doesNotMatch(flowPanel, /<h2 class="module-title"[\s\S]*任务状态机/);
+  assert.equal(flowPanel.includes('class="flow-name-row"'), true);
+  assert.match(flowPanel, /class="flow-name-row"[\s\S]*id="addFlowNodeButton"/);
+  assert.doesNotMatch(proactivePanel, /<h2 class="module-title"[\s\S]*主动推送/);
+  assert.match(proactiveTasksPanel, /<h2 class="module-title"[\s\S]*主动推送查询/);
+  assert.doesNotMatch(sessionsPanel, /<h2 class="module-title"[\s\S]*客户会话/);
+  assert.match(sessionsPanel, /class="section-head flow-session-head"[\s\S]*flowSessionSearchInput[\s\S]*refreshFlowSessionsButton/);
+  assert.match(css, /#proactivePanel\s*\{[\s\S]*height:\s*clamp/);
+  assert.match(css, /#proactivePanel\s+\.collapsible-content\s*\{[\s\S]*overflow:\s*auto/);
+  assert.match(css, /#flowSessionsPanel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/);
 });
 
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {

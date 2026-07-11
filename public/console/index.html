@@ -272,25 +272,22 @@
 
       <div id="flowTab" class="tab-panel" data-tab-panel="flow" hidden>
       <section id="flowMachinePanel" class="panel bot-context-panel collapsible-panel">
-        <div class="section-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>任务状态机</h2>
-          <div class="section-actions">
-            <button id="addFlowNodeButton" class="secondary" type="button">
-              <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
-              新增节点
-            </button>
-          </div>
-        </div>
         <div class="collapsible-content">
           <form id="flowMachineForm" class="form-grid">
             <label class="toggle">
               <input name="enabled" type="checkbox" />
               启用私聊状态机
             </label>
-            <label>
-              <span class="field-label">任务名称</span>
-              <input name="flowName" placeholder="例如 线上培训客服任务" />
-            </label>
+            <div class="flow-name-row">
+              <label>
+                <span class="field-label">任务名称</span>
+                <input name="flowName" placeholder="例如 线上培训客服任务" />
+              </label>
+              <button id="addFlowNodeButton" class="secondary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                新增节点
+              </button>
+            </div>
             <input name="flowVersion" type="hidden" value="1.0.0" />
             <select name="entryNodeId" hidden aria-hidden="true"></select>
             <div id="flowNodeList" class="wide flow-node-list"></div>
@@ -404,9 +401,6 @@
 
       <div id="pushTab" class="tab-panel" data-tab-panel="push" hidden>
       <section id="proactivePanel" class="panel bot-context-panel collapsible-panel">
-        <div class="section-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>主动推送</h2>
-        </div>
         <div class="collapsible-content">
         <form id="proactiveForm" class="form-grid">
           <div class="wide target-picker">

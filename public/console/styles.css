@@ -557,6 +557,22 @@ h2 {
   margin-top: 14px;
 }
 
+.flow-name-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.flow-name-row label {
+  min-height: 40px;
+}
+
+.flow-name-row button {
+  align-self: stretch;
+  height: auto;
+}
+
 .compact-form {
   grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr);
   align-items: end;
@@ -929,6 +945,23 @@ button.danger:hover {
 .proactive-title-field {
   min-height: 40px;
   grid-template-columns: max-content minmax(0, 1fr);
+}
+
+#proactivePanel {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  height: clamp(520px, calc(100vh - 260px), 760px);
+  overflow: hidden;
+}
+
+#proactivePanel .collapsible-content {
+  min-height: 0;
+  overflow: auto;
+}
+
+#proactivePanel .form-grid {
+  margin-top: 0;
+  align-content: start;
 }
 
 .target-toolbar {
@@ -2479,6 +2512,16 @@ td .muted {
     overflow: visible;
   }
 
+  #proactivePanel {
+    height: auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  #proactivePanel .collapsible-content {
+    overflow: visible;
+  }
+
   h1 {
     font-size: 18px;
   }
@@ -2497,6 +2540,7 @@ td .muted {
   .target-picker-head,
   .target-toolbar,
   .flow-workbench,
+  .flow-name-row,
   .chat-head,
   .activation-toolbar,
   .flow-node-grid,
