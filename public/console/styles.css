@@ -1130,7 +1130,7 @@ button.danger:hover {
 
 .flow-node-card-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(120px, 220px) minmax(0, 1fr) auto;
   gap: 10px;
   align-items: center;
 }
@@ -1145,6 +1145,7 @@ button.danger:hover {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-width: 0;
   overflow: hidden;
   color: #302321;
   font-size: 13px;
@@ -1171,6 +1172,58 @@ button.danger:hover {
   height: 13px;
 }
 
+.flow-node-quick-fields {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: auto;
+  padding: 2px;
+}
+
+.flow-node-card.is-collapsed .flow-node-quick-fields {
+  display: flex;
+}
+
+.flow-node-field-pill {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid color-mix(in srgb, var(--danger) 68%, var(--orange));
+  border-radius: 999px;
+  background: #fffefa;
+  color: color-mix(in srgb, var(--danger) 72%, var(--orange));
+  box-shadow: 0 8px 18px rgba(239, 38, 37, 0.1);
+}
+
+.flow-node-field-pill .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.flow-node-field-pill.is-empty {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--line));
+  background: color-mix(in srgb, var(--danger) 5%, #ffffff);
+  color: color-mix(in srgb, var(--danger) 68%, var(--muted));
+  opacity: 0.84;
+}
+
+.flow-node-field-pill.is-filled {
+  background: color-mix(in srgb, var(--orange) 12%, #ffffff);
+}
+
+.flow-node-field-pill:hover,
+.flow-node-field-pill:focus-visible {
+  transform: translateY(-1px);
+  border-color: var(--danger);
+  color: var(--danger);
+  box-shadow: 0 10px 22px rgba(239, 38, 37, 0.18);
+}
+
 .flow-node-card .collapse-button .icon {
   transition: transform 140ms ease;
 }
@@ -1187,6 +1240,28 @@ button.danger:hover {
   display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr));
   gap: 10px;
+}
+
+.flow-node-quick-dialog {
+  width: min(560px, 100%);
+  border-color: color-mix(in srgb, var(--orange) 36%, var(--line));
+}
+
+.flow-node-quick-dialog .confirm-icon {
+  background: color-mix(in srgb, var(--orange) 12%, #ffffff);
+  color: var(--orange);
+}
+
+.flow-node-quick-control {
+  margin-top: 12px;
+}
+
+.flow-node-quick-control label {
+  width: 100%;
+}
+
+.flow-node-quick-control textarea {
+  min-height: 150px;
 }
 
 .advanced-json {
