@@ -109,5 +109,8 @@ test("console has manual reply composer with AI takeover prompt and emoji tools"
   assert.equal(app.includes("manualReplyEmojis"), true);
   assert.equal(css.includes("@keyframes aiComposerBorderSpin"), true);
   assert.equal(css.includes(".manual-reply-composer.is-ai"), true);
+  assert.match(css, /\.manual-reply-composer\.is-ai\s*\{[\s\S]*min-height:\s*86px/);
+  assert.match(css, /\.ai-takeover-card\s*\{[\s\S]*min-height:\s*66px/);
+  assert.match(css, /\.ai-takeover-card img\s*\{[\s\S]*max-height:\s*78px/);
   assert.equal(html.includes("handoffStatusBanner"), false);
 });
