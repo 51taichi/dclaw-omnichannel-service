@@ -275,16 +275,8 @@
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>任务状态机</h2>
           <div class="section-actions">
-            <button id="loadDefaultFlowButton" class="secondary" type="button">
+            <button id="addFlowNodeButton" class="secondary icon-button" type="button" aria-label="添加任务节点" title="添加任务节点">
               <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
-              载入模板
-            </button>
-            <button id="exportFlowButton" class="secondary" type="button">
-              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-              导出
-            </button>
-            <button class="collapse-button" data-collapse-target="flowMachinePanel" type="button" aria-label="收起任务状态机">
-              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
             </button>
           </div>
         </div>
@@ -300,15 +292,6 @@
             </label>
             <input name="flowVersion" type="hidden" value="1.0.0" />
             <select name="entryNodeId" hidden aria-hidden="true"></select>
-            <div class="wide flow-builder-head">
-              <div>
-                <strong>任务节点</strong>
-                <span class="muted">按业务推进顺序配置，每个节点代表一个客服阶段</span>
-              </div>
-              <button id="addFlowNodeButton" class="secondary icon-button" type="button" aria-label="添加任务节点" title="添加任务节点">
-                <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
-              </button>
-            </div>
             <div id="flowNodeList" class="wide flow-node-list"></div>
             <details class="wide advanced-json">
               <summary>高级：导入/查看 JSON</summary>
@@ -322,6 +305,14 @@
               </button>
             </details>
             <div class="actions">
+              <button id="loadDefaultFlowButton" class="secondary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                载入模板
+              </button>
+              <button id="exportFlowButton" class="secondary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+                导出
+              </button>
               <button class="primary" type="submit">
                 <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
                 保存状态机
@@ -340,9 +331,6 @@
             <button id="refreshFlowSessionsButton" class="secondary" type="button">
               <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
               刷新
-            </button>
-            <button class="collapse-button" data-collapse-target="flowSessionsPanel" type="button" aria-label="收起客户会话">
-              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
             </button>
           </div>
         </div>
@@ -409,11 +397,6 @@
       <section id="proactivePanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>主动推送</h2>
-          <div class="section-actions">
-            <button class="collapse-button" data-collapse-target="proactivePanel" type="button" aria-label="收起主动推送">
-              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
-            </button>
-          </div>
         </div>
         <div class="collapsible-content">
         <form id="proactiveForm" class="form-grid">

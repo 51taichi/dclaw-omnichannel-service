@@ -1083,34 +1083,6 @@ button.danger:hover {
   white-space: nowrap;
 }
 
-.flow-builder-head {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: #fffefa;
-}
-
-.flow-builder-head strong,
-.flow-builder-head span {
-  display: block;
-}
-
-.flow-builder-head strong {
-  color: #302321;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.flow-builder-head span {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .flow-node-list {
   display: grid;
   gap: 12px;
@@ -2218,7 +2190,6 @@ td .muted {
   .target-toolbar,
   .flow-workbench,
   .chat-head,
-  .flow-builder-head,
   .flow-node-grid {
     grid-template-columns: 1fr;
   }

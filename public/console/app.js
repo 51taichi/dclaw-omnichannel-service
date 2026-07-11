@@ -903,6 +903,8 @@ function setFlowEditorFromConfig(config = {}) {
         transitions: Array.isArray(node.transitions) ? node.transitions : []
       }))
     : [createBlankFlowNode(1)];
+  collapsedFlowNodes.clear();
+  flowDraftNodes.forEach((node, index) => collapsedFlowNodes.add(flowNodeCollapseKey(node, index)));
   renderFlowNodeEditor(flowDraftNodes[0]?.id || "");
   syncFlowJsonTextarea();
 }
@@ -1276,7 +1278,9 @@ async function loadDefaultFlowMachine() {
 }
 
 function addFlowNode() {
-  flowDraftNodes.push(createBlankFlowNode(flowDraftNodes.length + 1));
+  const node = createBlankFlowNode(flowDraftNodes.length + 1);
+  flowDraftNodes.push(node);
+  collapsedFlowNodes.add(flowNodeCollapseKey(node, flowDraftNodes.length - 1));
   renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
   syncFlowJsonTextarea();
 }
