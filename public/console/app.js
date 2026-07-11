@@ -1185,8 +1185,8 @@ function renderFlowSessions() {
                     <span class="session-icon" title="${escapeHtml(assetTooltip)}" data-tooltip="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
                     <span class="session-icon" title="${escapeHtml(timeTooltip)}" data-tooltip="${escapeHtml(timeTooltip)}" aria-label="${escapeHtml(timeTooltip)}">${icon("clock")}</span>
                   </small>
-                  <span class="handoff-button ${isHandoff ? "is-active" : ""}" data-flow-handoff="${escapeHtml(session.conversationKey)}" title="${isHandoff ? "点击恢复 AI 接手" : "点击切换人工接手"}">
-                    ${icon("users")}${isHandoff ? "恢复" : "人工"}
+                  <span class="handoff-button ${isHandoff ? "is-active" : ""}" data-flow-handoff="${escapeHtml(session.conversationKey)}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
+                    ${icon(isHandoff ? "refresh" : "users")}
                   </span>
                 </span>
               </span>
