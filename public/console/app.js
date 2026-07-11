@@ -948,7 +948,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
       return `
         <article class="flow-node-card ${isCollapsed ? "is-collapsed" : ""}" data-flow-node-index="${index}" data-flow-node-collapse-key="${escapeHtml(collapseKey)}">
           <div class="flow-node-card-head">
-            <strong>${escapeHtml(node.name || `节点 ${index + 1}`)}</strong>
+            <strong><span class="flow-node-title-icon">${icon("link")}</span>${escapeHtml(node.name || `节点 ${index + 1}`)}</strong>
             <div class="flow-node-actions">
               <button class="secondary icon-button danger-text" data-remove-flow-node="${index}" type="button" aria-label="删除任务节点" title="删除任务节点">${icon("reset")}</button>
               <button class="collapse-button" data-toggle-flow-node="${index}" type="button" aria-label="${isCollapsed ? "展开任务节点" : "收起任务节点"}" aria-expanded="${String(!isCollapsed)}">
