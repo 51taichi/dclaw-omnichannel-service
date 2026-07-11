@@ -1492,6 +1492,11 @@ button.danger:hover {
   min-height: 42px;
 }
 
+.flow-session-filters .flow-session-search {
+  grid-column: span 2;
+  grid-template-columns: max-content minmax(240px, 1fr);
+}
+
 .flow-session-filters input,
 .flow-session-filters select {
   height: 40px;
