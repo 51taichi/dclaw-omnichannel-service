@@ -332,6 +332,17 @@ function addMinutes(date, minutes) {
   return new Date(date.getTime() + Number(minutes || 0) * 60 * 1000).toISOString();
 }
 
+function activationDueAtForAttempt(anchorAt, intervalMinutes, attemptNumber) {
+  const multiplier = 2 ** Math.max(0, attemptNumber - 1);
+  return addMinutes(new Date(anchorAt), Number(intervalMinutes || 0) * multiplier);
+}
+
+function activationMessageForAttempt(task) {
+  if (!task?.messages?.length) return "";
+  const index = Math.min(task.attemptNumber - 1, task.messages.length - 1);
+  return task.messages[Math.max(0, index)] || "";
+}
+
 function privateTargetNameFromConversationKey(conversationKey) {
   return String(conversationKey || "").split(":private:")[1] || "";
 }
@@ -399,6 +410,7 @@ function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flo
   if (!activation.enabled || !activation.messages.length) return null;
 
   const session = incrementFlowActivationGeneration({ conversationKey, reason: "flow_reply_sent" });
+  const anchorAt = sentAt.toISOString();
   return scheduleFlowActivationTask({
     botId,
     agentId: binding.agentId,
@@ -406,7 +418,8 @@ function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flo
     nodeId: session.currentNodeId,
     generation: session.activationGeneration,
     activation,
-    dueAt: addMinutes(sentAt, activation.intervalMinutes),
+    anchorAt,
+    dueAt: activationDueAtForAttempt(anchorAt, activation.intervalMinutes, 1),
     attemptNumber: 1
   });
 }
@@ -932,30 +945,25 @@ function recordActivationOutbound({ task, binding, target, content, result, rawP
 async function sendActivationRawMessages({ task, binding }) {
   const target = privateTargetNameFromConversationKey(task.conversationKey);
   if (!target) throw new Error("missing activation target");
-  const ids = [];
-  for (const [index, content] of task.messages.entries()) {
-    const result = await sendTextMessage({
-      robotId: task.botId,
-      targets: [target],
-      content
-    });
-    ids.push(result.data || "");
-    recordActivationOutbound({
-      task,
-      binding,
-      target,
-      content,
-      result,
-      rawPayload: {
-        polishByAgent: false,
-        activationMessageIndex: index
-      }
-    });
-    if (activationWorkerConfig.sendDelayMs > 0 && index < task.messages.length - 1) {
-      await sleep(activationWorkerConfig.sendDelayMs);
+  const content = activationMessageForAttempt(task);
+  if (!content) throw new Error("empty activation message");
+  const result = await sendTextMessage({
+    robotId: task.botId,
+    targets: [target],
+    content
+  });
+  recordActivationOutbound({
+    task,
+    binding,
+    target,
+    content,
+    result,
+    rawPayload: {
+      polishByAgent: false,
+      activationMessageIndex: Math.min(task.attemptNumber - 1, task.messages.length - 1)
     }
-  }
-  return ids.filter(Boolean);
+  });
+  return [result.data || ""].filter(Boolean);
 }
 
 async function sendActivationPolishedMessage({ task, binding }) {
@@ -983,7 +991,10 @@ async function sendActivationPolishedMessage({ task, binding }) {
   const request = buildDclawActivationRequest({
     binding,
     conversationKey: task.conversationKey,
-    task,
+    task: {
+      ...task,
+      messages: [activationMessageForAttempt(task)].filter(Boolean)
+    },
     flow,
     recentMessages
   });
@@ -1047,7 +1058,7 @@ async function sendActivationPolishedMessage({ task, binding }) {
     result,
     rawPayload: {
       polishByAgent: true,
-      flowActivationMessages: task.messages,
+      flowActivationMessages: [activationMessageForAttempt(task)].filter(Boolean),
       agentReply: agentReply.raw
     }
   });
@@ -1056,6 +1067,7 @@ async function sendActivationPolishedMessage({ task, binding }) {
 
 function scheduleNextActivationAttempt(task) {
   if (task.attemptNumber >= task.maxTimes) return null;
+  const nextAttemptNumber = task.attemptNumber + 1;
   return scheduleFlowActivationTask({
     botId: task.botId,
     agentId: task.agentId,
@@ -1069,8 +1081,9 @@ function scheduleNextActivationAttempt(task) {
       polishByAgent: task.polishByAgent,
       messages: task.messages
     },
-    dueAt: addMinutes(new Date(), task.intervalMinutes),
-    attemptNumber: task.attemptNumber + 1
+    anchorAt: task.anchorAt,
+    dueAt: activationDueAtForAttempt(task.anchorAt, task.intervalMinutes, nextAttemptNumber),
+    attemptNumber: nextAttemptNumber
   });
 }
 

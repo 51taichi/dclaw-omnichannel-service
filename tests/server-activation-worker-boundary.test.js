@@ -18,3 +18,11 @@ test("activation worker supports agent polished and raw message sends", () => {
   assert.equal(source.includes("sendActivationRawMessages"), true);
   assert.equal(source.includes("sendActivationPolishedMessage"), true);
 });
+
+test("activation worker sends one script per attempt with exponential schedule", () => {
+  assert.equal(source.includes("activationMessageForAttempt"), true);
+  assert.equal(source.includes("activationDueAtForAttempt"), true);
+  assert.equal(source.includes("Math.min(task.attemptNumber - 1, task.messages.length - 1)"), true);
+  assert.equal(source.includes("2 ** Math.max(0, attemptNumber - 1)"), true);
+  assert.equal(source.includes("anchorAt: task.anchorAt"), true);
+});

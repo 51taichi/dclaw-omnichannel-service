@@ -55,6 +55,7 @@ test("activation tasks can be scheduled, claimed, sent, failed, and canceled", (
     conversationKey,
     nodeId: "node_1",
     generation: session.activationGeneration,
+    anchorAt: "2026-07-11T09:59:00.000Z",
     activation: {
       enabled: true,
       intervalMinutes: 30,
@@ -66,6 +67,7 @@ test("activation tasks can be scheduled, claimed, sent, failed, and canceled", (
   });
   assert.equal(task.status, "pending");
   assert.equal(task.attemptNumber, 1);
+  assert.equal(task.anchorAt, "2026-07-11T09:59:00.000Z");
 
   const claimed = db.claimDueFlowActivationTasks({
     limit: 20,

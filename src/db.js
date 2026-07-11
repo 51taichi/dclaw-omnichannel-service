@@ -231,6 +231,7 @@ db.exec(`
     polish_by_agent INTEGER NOT NULL DEFAULT 1,
     messages_json TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'pending',
+    anchor_at TEXT,
     due_at TEXT NOT NULL,
     processing_started_at TEXT,
     sent_at TEXT,
@@ -278,6 +279,7 @@ ensureColumn("flow_sessions", "handoff_at", "TEXT");
 ensureColumn("flow_sessions", "handoff_by", "TEXT");
 ensureColumn("flow_sessions", "handoff_reason", "TEXT");
 ensureColumn("flow_sessions", "activation_generation", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("flow_activation_tasks", "anchor_at", "TEXT");
 
 function now() {
   return new Date().toISOString();
@@ -798,6 +800,7 @@ function rowToFlowActivationTask(row) {
     polishByAgent: Boolean(row.polish_by_agent),
     messages: parseJson(row.messages_json) || [],
     status: row.status,
+    anchorAt: row.anchor_at || row.due_at,
     dueAt: row.due_at,
     processingStartedAt: row.processing_started_at || "",
     sentAt: row.sent_at || "",
@@ -1088,11 +1091,13 @@ export function scheduleFlowActivationTask({
   nodeId,
   generation = 0,
   activation,
+  anchorAt,
   dueAt,
   attemptNumber = 1
 }) {
   const config = normalizeActivationConfig(activation);
   const timestamp = now();
+  const taskAnchorAt = anchorAt || timestamp;
   const result = db.prepare(`
     INSERT INTO flow_activation_tasks (
       bot_id,
@@ -1106,11 +1111,12 @@ export function scheduleFlowActivationTask({
       polish_by_agent,
       messages_json,
       status,
+      anchor_at,
       due_at,
       created_at,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
   `).run(
     botId,
     agentId,
@@ -1122,6 +1128,7 @@ export function scheduleFlowActivationTask({
     config.intervalMinutes,
     config.polishByAgent ? 1 : 0,
     json(config.messages),
+    taskAnchorAt,
     dueAt || timestamp,
     timestamp,
     timestamp
