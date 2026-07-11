@@ -379,12 +379,24 @@
                 </button>
               </div>
             </div>
-            <div id="handoffStatusBanner" class="handoff-status-banner" hidden>
-              <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
-              <span>人工接手中，AI 已暂停回复</span>
-            </div>
             <div id="assetsPanel" class="assets-panel" hidden></div>
             <div id="chatMessages" class="chat-messages"></div>
+            <form id="manualReplyComposer" class="manual-reply-composer is-ai" hidden>
+              <div class="ai-takeover-card">
+                <img src="./assets/ai-chatting.png" alt="" aria-hidden="true" />
+                <span>AI 正在和客户沟通中，切换人工接手后可手动回复</span>
+              </div>
+              <div class="manual-reply-box" hidden>
+                <textarea id="manualReplyInput" rows="3" placeholder="输入人工回复，支持 emoji"></textarea>
+                <div class="manual-reply-tools">
+                  <div id="manualReplyEmojiBar" class="manual-reply-emoji-bar"></div>
+                  <button id="manualReplySendButton" class="primary" type="submit">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>
+                    发送
+                  </button>
+                </div>
+              </div>
+            </form>
             <details class="flow-events-wrap">
               <summary>状态事件</summary>
               <pre id="flowEventsOutput" class="flow-events"></pre>

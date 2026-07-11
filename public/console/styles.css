@@ -1859,33 +1859,133 @@ button.danger:hover {
   height: 14px;
 }
 
-.handoff-status-banner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 10px 12px 0;
-  padding: 9px 11px;
-  border: 1px solid color-mix(in srgb, #f59e0b 52%, var(--line));
-  border-radius: 8px;
-  color: #92400e;
-  background: color-mix(in srgb, #f59e0b 11%, #ffffff);
-  font-size: 13px;
-  font-weight: 900;
+@media (prefers-reduced-motion: reduce) {
+  .flow-session-card.is-handoff,
+  .manual-reply-composer.is-ai::before {
+    animation: none;
+  }
 }
 
-.handoff-status-banner[hidden] {
+.manual-reply-composer {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  margin: 12px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.manual-reply-composer[hidden],
+.ai-takeover-card[hidden],
+.manual-reply-box[hidden] {
   display: none;
 }
 
-.handoff-status-banner .icon {
-  width: 16px;
-  height: 16px;
+.manual-reply-composer > * {
+  position: relative;
+  z-index: 1;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .flow-session-card.is-handoff {
-    animation: none;
+.manual-reply-composer.is-ai {
+  min-height: 128px;
+  border-color: transparent;
+  background: #ffffff;
+  box-shadow: 0 16px 30px rgba(35, 42, 105, 0.08);
+}
+
+.manual-reply-composer.is-ai::before {
+  content: "";
+  position: absolute;
+  inset: -90px;
+  background: conic-gradient(
+    from 0deg,
+    rgba(47, 74, 255, 0.16),
+    rgba(255, 108, 49, 0.62),
+    rgba(38, 193, 126, 0.42),
+    rgba(47, 74, 255, 0.16)
+  );
+  animation: aiComposerBorderSpin 5.6s linear infinite;
+  z-index: 0;
+}
+
+.manual-reply-composer.is-ai::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  border-radius: 6px;
+  background: #ffffff;
+  z-index: 0;
+}
+
+@keyframes aiComposerBorderSpin {
+  to {
+    transform: rotate(360deg);
   }
+}
+
+.ai-takeover-card {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) 1fr;
+  align-items: center;
+  gap: 16px;
+  min-height: 112px;
+}
+
+.ai-takeover-card img {
+  width: 100%;
+  max-height: 112px;
+  object-fit: contain;
+}
+
+.ai-takeover-card span {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.manual-reply-box {
+  display: grid;
+  gap: 10px;
+}
+
+.manual-reply-box textarea {
+  width: 100%;
+  min-height: 82px;
+  resize: vertical;
+}
+
+.manual-reply-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.manual-reply-emoji-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.manual-reply-emoji-bar button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  cursor: pointer;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.manual-reply-emoji-bar button:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, #ffffff);
+  transform: translateY(-1px);
 }
 
 .assets-panel {
@@ -2359,8 +2459,18 @@ td .muted {
   .flow-workbench,
   .chat-head,
   .activation-toolbar,
-  .flow-node-grid {
+  .flow-node-grid,
+  .ai-takeover-card {
     grid-template-columns: 1fr;
+  }
+
+  .manual-reply-tools {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .manual-reply-tools .primary {
+    width: 100%;
   }
 
   .activation-add-button {

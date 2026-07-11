@@ -6,8 +6,8 @@ const html = fs.readFileSync(new URL("../public/console/index.html", import.meta
 const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 
-test("console exposes handoff toggles on session cards and a right-side status banner", () => {
-  assert.equal(html.includes('id="handoffStatusBanner"'), true);
+test("console exposes handoff toggles on session cards without the old status banner", () => {
+  assert.equal(html.includes('id="handoffStatusBanner"'), false);
   assert.equal(app.includes("toggleSelectedConversationHandoff"), true);
   assert.equal(app.includes("data-flow-handoff"), true);
   assert.equal(app.includes("/handoff"), true);
@@ -39,7 +39,7 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(app.includes("sortFlowSessions"), true);
   assert.equal(app.includes('handoffStatus === "human"'), true);
   assert.equal(css.includes(".flow-session-filters"), true);
-  assert.equal(css.includes(".handoff-status-banner"), true);
+  assert.equal(css.includes(".handoff-status-banner"), false);
 });
 
 test("human handoff session cards have a clear pulsing highlight", () => {
@@ -47,4 +47,15 @@ test("human handoff session cards have a clear pulsing highlight", () => {
   assert.equal(css.includes("animation: handoffPulse"), true);
   assert.equal(css.includes("@media (prefers-reduced-motion: reduce)"), true);
   assert.equal(css.includes(".flow-session-card.is-handoff .flow-session-status"), true);
+});
+
+test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
+  assert.equal(html.includes('id="manualReplyComposer"'), true);
+  assert.equal(html.includes("ai-chatting.png"), true);
+  assert.equal(app.includes("sendManualReply"), true);
+  assert.equal(app.includes("/manual-reply"), true);
+  assert.equal(app.includes("manualReplyEmojis"), true);
+  assert.equal(css.includes("@keyframes aiComposerBorderSpin"), true);
+  assert.equal(css.includes(".manual-reply-composer.is-ai"), true);
+  assert.equal(html.includes("handoffStatusBanner"), false);
 });

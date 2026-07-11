@@ -49,7 +49,10 @@ const els = {
   assetsButton: document.querySelector("#assetsButton"),
   assetsCount: document.querySelector("#assetsCount"),
   assetsPanel: document.querySelector("#assetsPanel"),
-  handoffStatusBanner: document.querySelector("#handoffStatusBanner"),
+  manualReplyComposer: document.querySelector("#manualReplyComposer"),
+  manualReplyInput: document.querySelector("#manualReplyInput"),
+  manualReplyEmojiBar: document.querySelector("#manualReplyEmojiBar"),
+  manualReplySendButton: document.querySelector("#manualReplySendButton"),
   resetConversationButton: document.querySelector("#resetConversationButton"),
   confirmDialog: document.querySelector("#confirmDialog"),
   confirmCancelButton: document.querySelector("#confirmCancelButton"),
@@ -568,6 +571,7 @@ let currentConversationAssets = { fields: [], totalCount: 0, collectedCount: 0 }
 let currentFlowSession = null;
 const collapsedFlowNodes = new Set();
 const selectedTargets = new Map();
+const manualReplyEmojis = ["😊", "👌", "👍", "🙏", "😄", "🎉", "✨", "💪"];
 
 function targetKey(target) {
   return `${target.targetType}:${target.targetName}`;
@@ -1611,12 +1615,55 @@ function renderConversationAssets(assets = { fields: [], totalCount: 0, collecte
   `;
 }
 
+function renderManualReplyEmojiBar() {
+  if (!els.manualReplyEmojiBar || els.manualReplyEmojiBar.dataset.rendered === "true") return;
+  els.manualReplyEmojiBar.innerHTML = manualReplyEmojis
+    .map((emoji) => `<button type="button" data-manual-reply-emoji="${escapeHtml(emoji)}">${escapeHtml(emoji)}</button>`)
+    .join("");
+  els.manualReplyEmojiBar.dataset.rendered = "true";
+  els.manualReplyEmojiBar.querySelectorAll("[data-manual-reply-emoji]").forEach((button) => {
+    button.addEventListener("click", () => insertManualReplyEmoji(button.dataset.manualReplyEmoji || ""));
+  });
+}
+
+function insertManualReplyEmoji(emoji) {
+  if (!emoji || !els.manualReplyInput || els.manualReplyInput.disabled) return;
+  const input = els.manualReplyInput;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  input.value = `${input.value.slice(0, start)}${emoji}${input.value.slice(end)}`;
+  const nextPosition = start + emoji.length;
+  input.focus();
+  input.setSelectionRange(nextPosition, nextPosition);
+}
+
+function renderManualReplyComposer(session) {
+  if (!els.manualReplyComposer) return;
+  const hasSession = Boolean(session && state.selectedFlowConversationKey);
+  const isHuman = session?.handoffStatus === "human";
+  const aiCard = els.manualReplyComposer.querySelector(".ai-takeover-card");
+  const replyBox = els.manualReplyComposer.querySelector(".manual-reply-box");
+
+  els.manualReplyComposer.hidden = !hasSession;
+  els.manualReplyComposer.classList.toggle("is-ai", hasSession && !isHuman);
+  els.manualReplyComposer.classList.toggle("is-human", hasSession && isHuman);
+  if (aiCard) aiCard.hidden = !hasSession || isHuman;
+  if (replyBox) replyBox.hidden = !hasSession || !isHuman;
+
+  if (els.manualReplyInput) {
+    els.manualReplyInput.disabled = !hasSession || !isHuman;
+    els.manualReplyInput.placeholder = isHuman ? "输入人工回复，支持 emoji" : "AI 正在接管中";
+  }
+  if (els.manualReplySendButton) els.manualReplySendButton.disabled = !hasSession || !isHuman;
+  renderManualReplyEmojiBar();
+}
+
 function syncHandoffButton(session = currentFlowSession) {
   currentFlowSession = session || null;
   const hasSession = Boolean(currentFlowSession && state.selectedFlowConversationKey);
-  els.handoffStatusBanner.hidden = !hasSession || currentFlowSession.handoffStatus !== "human";
   if (!hasSession) {
     if (els.chatStatusBadge) els.chatStatusBadge.hidden = true;
+    renderManualReplyComposer(null);
     return;
   }
 
@@ -1628,7 +1675,7 @@ function syncHandoffButton(session = currentFlowSession) {
     els.chatStatusBadge.classList.toggle("is-ai", !isHandoff);
     els.chatStatusBadge.classList.toggle("is-human", isHandoff);
   }
-  els.handoffStatusBanner.classList.toggle("is-active", isHandoff);
+  renderManualReplyComposer(currentFlowSession);
 }
 
 function renderChatMessageContent(message) {
@@ -1726,6 +1773,37 @@ function renderChatMessages(messages) {
         .join("")
     : `<div class="empty-state">暂无会话记录</div>`;
   els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+}
+
+async function sendManualReply(event) {
+  event.preventDefault();
+  if (!state.selectedBotId || !state.selectedFlowConversationKey || currentFlowSession?.handoffStatus !== "human") {
+    toast("请先切换为人工接手");
+    return;
+  }
+  const content = String(els.manualReplyInput?.value || "").trim();
+  if (!content) {
+    toast("请输入要发送的内容");
+    return;
+  }
+
+  els.manualReplySendButton.disabled = true;
+  try {
+    await request(`/api/flow-sessions/${encodeURIComponent(state.selectedFlowConversationKey)}/manual-reply`, {
+      method: "POST",
+      body: JSON.stringify({
+        botId: state.selectedBotId,
+        content
+      })
+    });
+    els.manualReplyInput.value = "";
+    toast("已发送");
+    await openFlowSession(state.selectedFlowConversationKey);
+  } finally {
+    if (currentFlowSession?.handoffStatus === "human") {
+      els.manualReplySendButton.disabled = false;
+    }
+  }
 }
 
 async function resetSelectedConversation() {
@@ -1970,6 +2048,9 @@ els.confirmAcceptButton.addEventListener("click", () =>
     .catch((error) => toast(error.message))
 );
 els.assetsButton.addEventListener("click", toggleAssetsPanel);
+els.manualReplyComposer.addEventListener("submit", (event) =>
+  sendManualReply(event).catch((error) => toast(error.message))
+);
 els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))
 );
