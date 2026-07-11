@@ -2093,6 +2093,87 @@ app.put(
   })
 );
 
+app.post(
+  "/api/flow-sessions/:conversationKey/manual-reply",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const conversationKey = decodeURIComponent(req.params.conversationKey);
+    const botId = String(body.botId || "").trim();
+    const content = String(body.content || "").trim();
+    assertBotAccess(req, botId);
+    if (!botId) throw new Error("botId is required");
+    if (!content) throw new Error("content is required");
+    if (!isPrivateConversationKey(conversationKey)) {
+      throw new Error("manual reply only supports private conversations");
+    }
+    const session = getFlowSession(conversationKey);
+    if (!session || session.botId !== botId) {
+      throw new Error("flow session not found");
+    }
+    if (session.handoffStatus !== "human") {
+      throw new Error("manual reply requires human handoff");
+    }
+    const binding = getBotBinding(botId);
+    if (!binding || !binding.enabled) {
+      throw new Error("no enabled bot binding");
+    }
+    const target = privateTargetNameFromConversationKey(conversationKey);
+    if (!target) {
+      throw new Error("missing manual reply target");
+    }
+
+    const result = await sendTextMessage({
+      robotId: botId,
+      targets: [target],
+      content
+    });
+    const messageId = result.data || "";
+    const senderName = binding.botName || binding.agentName || "人工客服";
+    const createdAt = new Date().toISOString();
+    const rawPayload = {
+      source: "manual_reply",
+      messageId,
+      worktoolResponse: result
+    };
+
+    insertConversationMessage({
+      botId,
+      conversationKey,
+      direction: "outbound",
+      senderName,
+      content,
+      rawPayload
+    });
+    insertOutgoingMessage({
+      botId,
+      agentId: binding.agentId,
+      conversationKey,
+      messageId,
+      targetName: target,
+      content,
+      worktoolResponse: rawPayload
+    });
+    logInfo("manual_reply.sent", {
+      botId,
+      conversationKey,
+      targetName: target,
+      messageId
+    });
+
+    res.json({
+      ok: true,
+      message: {
+        direction: "outbound",
+        senderName,
+        content,
+        rawPayload,
+        createdAt
+      },
+      worktoolResponse: result
+    });
+  })
+);
+
 app.put(
   "/api/flow-sessions/:conversationKey/node",
   asyncHandler(async (req, res) => {

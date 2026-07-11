@@ -21,3 +21,12 @@ test("human handoff is evaluated before debug auto-reply", () => {
     true
   );
 });
+
+test("server exposes manual reply route only for human handoff", () => {
+  assert.equal(serverSource.includes('"/api/flow-sessions/:conversationKey/manual-reply"'), true);
+  assert.equal(serverSource.includes('handoffStatus !== "human"'), true);
+  assert.equal(serverSource.includes('source: "manual_reply"'), true);
+  assert.equal(serverSource.includes("sendTextMessage({"), true);
+  assert.equal(serverSource.includes("insertConversationMessage({"), true);
+  assert.equal(serverSource.includes("insertOutgoingMessage({"), true);
+});
