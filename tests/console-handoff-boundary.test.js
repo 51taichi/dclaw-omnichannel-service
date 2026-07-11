@@ -52,6 +52,13 @@ test("human handoff session cards have a clear pulsing highlight", () => {
   assert.equal(css.includes(".flow-session-card.is-handoff .flow-session-status"), true);
 });
 
+test("conversation assets open as a popover without affecting chat layout", () => {
+  assert.match(css, /\.chat-view\s*\{[\s\S]*position:\s*relative/);
+  assert.match(css, /\.assets-panel\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(css, /\.assets-panel\s*\{[\s\S]*z-index:\s*\d+/);
+  assert.match(css, /\.assets-panel\s*\{[\s\S]*max-height:/);
+});
+
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
   assert.equal(html.includes('id="manualReplyComposer"'), true);
   assert.equal(html.includes("ai-chatting.png"), true);
