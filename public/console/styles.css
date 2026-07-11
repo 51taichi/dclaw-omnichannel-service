@@ -1283,13 +1283,27 @@ button.danger:hover {
 
 .activation-toolbar {
   display: grid;
-  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(110px, 0.8fr) 36px;
+  grid-template-columns: minmax(160px, 1fr) minmax(170px, 1fr) minmax(190px, 1.05fr) minmax(130px, 0.8fr) 40px;
   gap: 10px;
-  align-items: end;
+  align-items: center;
+}
+
+.activation-toolbar > label:not(.activation-toggle) {
+  min-height: 40px;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.activation-toolbar > label:not(.activation-toggle) .field-label {
+  padding: 0 10px;
+}
+
+.activation-toolbar > label:not(.activation-toggle) input {
+  height: 38px;
+  line-height: 38px;
 }
 
 .activation-toggle {
-  min-height: 36px;
+  min-height: 40px;
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   padding: 0 10px;
@@ -1340,10 +1354,10 @@ button.danger:hover {
 }
 
 .activation-add-button {
-  align-self: end;
+  align-self: center;
   justify-self: end;
-  width: 36px;
-  height: 36px;
+  width: 40px;
+  height: 40px;
   padding: 0;
 }
 

@@ -1268,8 +1268,6 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 <input data-flow-node-activation-field="polishByAgent" type="checkbox" ${activationPolishByAgent ? "checked" : ""} />
                 <span>${icon("terminal")}Agent 美化话术</span>
               </label>
-            </div>
-            <div class="activation-editor-grid">
               <label>
                 <span class="field-label">${icon("clock")}激活间隔（分钟）</span>
                 <input data-flow-node-activation-field="intervalMinutes" type="number" min="1" value="${escapeHtml(activationIntervalMinutes)}" />
