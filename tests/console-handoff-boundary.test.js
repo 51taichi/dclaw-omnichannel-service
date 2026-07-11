@@ -42,6 +42,7 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(app.includes("sortFlowSessions"), true);
   assert.equal(app.includes('handoffStatus === "human"'), true);
   assert.equal(css.includes(".flow-session-filters"), true);
+  assert.doesNotMatch(css, /\.flow-session-filters\s*\{[^}]*border-bottom:/);
   assert.equal(css.includes(".handoff-status-banner"), false);
 });
 

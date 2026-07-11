@@ -1494,7 +1494,6 @@ button.danger:hover {
   gap: 10px;
   align-items: end;
   padding: 0 0 12px;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 76%, transparent);
   margin-bottom: 12px;
 }
 
