@@ -85,6 +85,13 @@ test("flow machine and proactive panels use compact title-free layouts", () => {
   assert.match(css, /#flowSessionsPanel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/);
 });
 
+test("proactive push controls use standard button sizing", () => {
+  assert.doesNotMatch(css, /\.target-actions button,\s*\.bulk-actions button\s*\{[^}]*height:\s*(?:28|30)px/);
+  assert.doesNotMatch(css, /\.segmented button\s*\{[^}]*height:\s*28px/);
+  assert.match(css, /\.target-actions button,\s*\.bulk-actions button\s*\{[^}]*height:\s*40px/);
+  assert.match(css, /\.segmented button\s*\{[^}]*height:\s*40px/);
+});
+
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
   assert.equal(html.includes('id="manualReplyComposer"'), true);
   assert.equal(html.includes("ai-chatting.png"), true);

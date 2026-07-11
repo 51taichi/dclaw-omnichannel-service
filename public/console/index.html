@@ -323,34 +323,33 @@
 
       <div id="sessionsTab" class="tab-panel" data-tab-panel="sessions" hidden>
       <section id="flowSessionsPanel" class="panel bot-context-panel collapsible-panel">
-        <div class="section-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>客户会话</h2>
+        <div class="section-head flow-session-head">
+          <div class="flow-session-filters">
+            <label class="flow-session-search">
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索客户/会话</span>
+              <input id="flowSessionSearchInput" type="search" placeholder="输入客户名、群名或会话关键词" />
+            </label>
+            <label>
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-briefcase"></use></svg>资产</span>
+              <select id="flowSessionAssetFilter">
+                <option value="all">全部</option>
+                <option value="pending">有待收集</option>
+                <option value="complete">已全部收集</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>任务状态</span>
+              <select id="flowSessionNodeFilter">
+                <option value="all">全部</option>
+              </select>
+            </label>
+          </div>
           <div class="section-actions">
             <button id="refreshFlowSessionsButton" class="secondary" type="button">
               <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
               刷新
             </button>
           </div>
-        </div>
-        <div class="flow-session-filters">
-          <label class="flow-session-search">
-            <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索客户/会话</span>
-            <input id="flowSessionSearchInput" type="search" placeholder="输入客户名、群名或会话关键词" />
-          </label>
-          <label>
-            <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-briefcase"></use></svg>资产</span>
-            <select id="flowSessionAssetFilter">
-              <option value="all">全部</option>
-              <option value="pending">有待收集</option>
-              <option value="complete">已全部收集</option>
-            </select>
-          </label>
-          <label>
-            <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>任务状态</span>
-            <select id="flowSessionNodeFilter">
-              <option value="all">全部</option>
-            </select>
-          </label>
         </div>
         <div class="collapsible-content flow-workbench">
           <div id="flowSessionList" class="flow-session-list"></div>

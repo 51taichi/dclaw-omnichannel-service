@@ -987,15 +987,15 @@ button.danger:hover {
 }
 
 .segmented button {
-  height: 28px;
+  height: 40px;
   min-width: 48px;
-  padding: 0 9px;
+  padding: 0 14px;
   border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
   box-shadow: none;
-  font-size: 12px;
+  font-size: 14px;
   white-space: nowrap;
 }
 
@@ -1512,9 +1512,16 @@ button.danger:hover {
 
 #flowSessionsPanel {
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   height: clamp(420px, calc(100vh - 300px), 680px);
   overflow: hidden;
+}
+
+.flow-session-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
 }
 
 .flow-session-list {
@@ -1528,11 +1535,12 @@ button.danger:hover {
 
 .flow-session-filters {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  grid-template-columns: minmax(320px, 2fr) minmax(150px, 1fr) minmax(150px, 1fr);
   gap: 10px;
-  align-items: end;
-  padding: 0 0 12px;
-  margin-bottom: 12px;
+  align-items: center;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
 }
 
 .flow-session-filters label {
@@ -1540,7 +1548,6 @@ button.danger:hover {
 }
 
 .flow-session-filters .flow-session-search {
-  grid-column: span 2;
   grid-template-columns: max-content minmax(240px, 1fr);
 }
 
@@ -2327,10 +2334,10 @@ button.danger:hover {
 
 .target-actions button,
 .bulk-actions button {
-  height: 30px;
-  padding: 0 10px;
-  gap: 5px;
-  font-size: 12px;
+  height: 40px;
+  padding: 0 14px;
+  gap: 7px;
+  font-size: 14px;
 }
 
 .bulk-actions button.selected {
@@ -2539,6 +2546,8 @@ td .muted {
   .task-filters,
   .target-picker-head,
   .target-toolbar,
+  .flow-session-head,
+  .flow-session-filters,
   .flow-workbench,
   .flow-name-row,
   .chat-head,
