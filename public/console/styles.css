@@ -1928,7 +1928,7 @@ button.danger:hover {
 
 .ai-takeover-card {
   display: grid;
-  grid-template-columns: minmax(140px, 220px) 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
   align-items: center;
   gap: 16px;
   min-height: 112px;
@@ -1936,14 +1936,16 @@ button.danger:hover {
 
 .ai-takeover-card img {
   width: 100%;
-  max-height: 112px;
+  max-height: 128px;
   object-fit: contain;
+  justify-self: end;
 }
 
 .ai-takeover-card span {
   color: var(--muted);
   font-size: 14px;
   font-weight: 800;
+  line-height: 1.55;
 }
 
 .manual-reply-box {
