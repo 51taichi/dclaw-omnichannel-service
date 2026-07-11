@@ -26,6 +26,7 @@ import {
 import {
   beginMessageProcessing,
   buildMessageKey,
+  cancelFlowActivationTasks,
   claimNextProactiveTarget,
   clearConversationForReset,
   createProactiveTask,
@@ -40,6 +41,7 @@ import {
   getOrCreateFlowSession,
   getSetting,
   getProactiveTask,
+  incrementFlowActivationGeneration,
   insertAgentInvocationStart,
   insertConversationMessage,
   insertCommandCallback,
@@ -60,7 +62,9 @@ import {
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
   mergeFlowSessionData,
+  normalizeActivationConfig,
   resetInterruptedProactiveTargets,
+  scheduleFlowActivationTask,
   setSetting,
   setBotAccessKey,
   touchFlowSession,
@@ -316,6 +320,20 @@ function isPrivateMessage(message) {
   return roomType === 2 || roomType === 4;
 }
 
+function isPrivateConversationKey(conversationKey) {
+  return String(conversationKey || "").includes(":private:");
+}
+
+function addMinutes(date, minutes) {
+  return new Date(date.getTime() + Number(minutes || 0) * 60 * 1000).toISOString();
+}
+
+function invalidateFlowActivation({ conversationKey, reason }) {
+  const session = incrementFlowActivationGeneration({ conversationKey, reason });
+  cancelFlowActivationTasks({ conversationKey, reason });
+  return session;
+}
+
 function isMentioned(message, binding) {
   const atMe = String(message.atMe ?? message.metadata?.atMe ?? "").toLowerCase();
   const raw = String(message.rawSpoken || message.rawMessage || message.spoken || "");
@@ -363,6 +381,28 @@ function buildFlowContext({ botId, conversationKey, message }) {
   };
 }
 
+function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flow, sentAt = new Date() }) {
+  if (!flow || !isPrivateConversationKey(conversationKey)) return null;
+  cancelFlowActivationTasks({ conversationKey, reason: "new_flow_reply" });
+  const machine = getFlowMachine(botId);
+  const currentSession = getFlowSession(conversationKey) || flow.session;
+  const currentNode = getFlowNode(machine, currentSession?.currentNodeId) || flow.currentNode;
+  const activation = normalizeActivationConfig(currentNode?.activation || {});
+  if (!activation.enabled || !activation.messages.length) return null;
+
+  const session = incrementFlowActivationGeneration({ conversationKey, reason: "flow_reply_sent" });
+  return scheduleFlowActivationTask({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    nodeId: session.currentNodeId,
+    generation: session.activationGeneration,
+    activation,
+    dueAt: addMinutes(sentAt, activation.intervalMinutes),
+    attemptNumber: 1
+  });
+}
+
 function isValidFlowNode(machine, nodeId) {
   const nodes = machine?.config?.nodes || machine?.nodes || [];
   return Boolean(nodes.some((node) => node.id === nodeId));
@@ -389,6 +429,7 @@ function applyFlowDecision({ botId, conversationKey, flow, decision }) {
       reason: decision.reason || "Agent 判断节点完成",
       decision
     });
+    invalidateFlowActivation({ conversationKey, reason: "node_transition" });
   }
 }
 
@@ -980,6 +1021,7 @@ async function processIncomingMessage({ botId, message }) {
       content: message.spoken || message.rawSpoken || "",
       rawPayload: message
     });
+    invalidateFlowActivation({ conversationKey, reason: "customer_replied" });
   }
 
   const flow = buildFlowContext({ botId, conversationKey, message });
@@ -1226,6 +1268,25 @@ async function processIncomingMessage({ botId, message }) {
           replyPartCount: sentParts.length,
           originalReply: reply
         }
+      });
+    }
+    const activationTask = scheduleActivationAfterFlowReply({
+      botId,
+      binding,
+      conversationKey,
+      flow,
+      sentAt: new Date()
+    });
+    if (activationTask) {
+      logInfo("activation.scheduled", {
+        ...logContext,
+        agentId: binding.agentId,
+        invocationId,
+        activationTaskId: activationTask.id,
+        nodeId: activationTask.nodeId,
+        attemptNumber: activationTask.attemptNumber,
+        maxTimes: activationTask.maxTimes,
+        dueAt: activationTask.dueAt
       });
     }
     finishMessageProcessing({ messageKey, status: "replied" });
@@ -1713,6 +1774,9 @@ app.put(
       handoffBy: "console",
       reason: body.reason || (body.handoffStatus === "human" ? "人工接手" : "恢复 AI")
     });
+    if (session.handoffStatus === "human") {
+      invalidateFlowActivation({ conversationKey, reason: "human_handoff" });
+    }
     logInfo("flow_session.handoff", {
       botId,
       conversationKey,
@@ -1759,6 +1823,7 @@ app.post(
       conversationKey,
       reason: body.reason || "控制台清空会话"
     });
+    invalidateFlowActivation({ conversationKey, reason: "conversation_reset" });
     logInfo("flow_session.reset", { botId, conversationKey });
     res.json({ ok: true, session });
   })
