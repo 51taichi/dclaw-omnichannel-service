@@ -1475,8 +1475,7 @@ button.danger:hover {
 #flowSessionsPanel {
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
-  height: calc(100vh - 190px);
-  min-height: 560px;
+  height: clamp(420px, calc(100vh - 300px), 680px);
   overflow: hidden;
 }
 
