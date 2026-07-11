@@ -1138,10 +1138,37 @@ button.danger:hover {
 .flow-node-actions {
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+  min-width: 0;
+  white-space: nowrap;
 }
 
-.flow-node-card-head strong {
+.flow-node-title {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  min-width: 0;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: #302321;
+  box-shadow: none;
+}
+
+.flow-node-title:hover,
+.flow-node-title:focus-visible,
+.flow-node-title:active {
+  background: transparent;
+  color: var(--orange);
+  box-shadow: none;
+  transform: none;
+}
+
+.flow-node-title strong {
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -1170,6 +1197,22 @@ button.danger:hover {
 .flow-node-title-icon .icon {
   width: 13px;
   height: 13px;
+}
+
+.flow-node-next-field {
+  width: 260px;
+  min-height: 34px;
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+
+.flow-node-next-field .field-label {
+  padding: 0 10px;
+}
+
+.flow-node-next-field select {
+  height: 34px;
+  line-height: 34px;
+  font-size: 12px;
 }
 
 .flow-node-quick-fields {

@@ -945,7 +945,7 @@ function updateDraftNodeFromInput(input) {
   syncFlowJsonTextarea();
 }
 
-const flowNodeQuickFields = [
+const flowNodeFieldDefinitions = [
   { field: "name", label: "节点名称", icon: "edit", type: "input", placeholder: "收集基础信息" },
   { field: "goal", label: "节点目标", icon: "terminal", type: "textarea", placeholder: "这个阶段要让 AI 完成什么" },
   { field: "completionCriteria", label: "完成条件", icon: "info", type: "textarea", placeholder: "什么情况下可以进入下一节点" },
@@ -953,6 +953,13 @@ const flowNodeQuickFields = [
   { field: "conversationTips", label: "交流技巧", icon: "users", type: "textarea", placeholder: "每行一个，例如：先回应再追问", list: true },
   { field: "nextNodeId", label: "完成后进入", icon: "link", type: "select" }
 ];
+
+const flowNodeQuickFields = flowNodeFieldDefinitions.filter((definition) => definition.field !== "name" && definition.field !== "nextNodeId");
+
+function flowNodeFieldLabel(field, label) {
+  const definition = flowNodeFieldDefinitions.find((item) => item.field === field);
+  return `<span class="field-label">${definition ? icon(definition.icon) : ""}${escapeHtml(label)}</span>`;
+}
 
 function flowNodeFieldValue(node, field) {
   const value = node?.[field];
@@ -1048,7 +1055,7 @@ function closeFlowNodeQuickEditor() {
 
 function openFlowNodeQuickEditor(index, field) {
   const node = flowDraftNodes[index];
-  const definition = flowNodeQuickFields.find((item) => item.field === field);
+  const definition = flowNodeFieldDefinitions.find((item) => item.field === field);
   if (!node || !definition) return;
   const dialog = getFlowNodeQuickEditor();
   dialog.dataset.nodeIndex = String(index);
@@ -1092,7 +1099,7 @@ function saveFlowNodeQuickEditor() {
   const dialog = document.querySelector("#flowNodeQuickEditor");
   if (!dialog || dialog.hidden) return;
   const index = Number(dialog.dataset.nodeIndex);
-  const definition = flowNodeQuickFields.find((item) => item.field === dialog.dataset.field);
+  const definition = flowNodeFieldDefinitions.find((item) => item.field === dialog.dataset.field);
   const node = flowDraftNodes[index];
   const input = dialog.querySelector("[data-flow-node-quick-input]");
   if (!node || !definition || !input) return;
@@ -1124,10 +1131,17 @@ function renderFlowNodeEditor(entryNodeId = "") {
       return `
         <article class="flow-node-card ${isCollapsed ? "is-collapsed" : ""}" data-flow-node-index="${index}" data-flow-node-collapse-key="${escapeHtml(collapseKey)}">
           <div class="flow-node-card-head">
-            <strong><span class="flow-node-title-icon">${icon("link")}</span>${escapeHtml(node.name || `节点 ${index + 1}`)}</strong>
+            <button class="flow-node-title" data-edit-flow-node-name="${index}" type="button" title="双击编辑节点名称" aria-label="双击编辑节点名称：${escapeHtml(node.name || `节点 ${index + 1}`)}">
+              <span class="flow-node-title-icon">${icon("link")}</span>
+              <strong>${escapeHtml(node.name || `节点 ${index + 1}`)}</strong>
+            </button>
             ${renderFlowNodeQuickFields(node, index)}
             <div class="flow-node-actions">
-              <button class="secondary icon-button danger-text" data-remove-flow-node="${index}" type="button" aria-label="删除任务节点" title="删除任务节点">${icon("reset")}</button>
+              <label class="flow-node-next-field">
+                ${flowNodeFieldLabel("nextNodeId", "完成后进入")}
+                <select data-flow-node-field="nextNodeId">${nodeOptions}</select>
+              </label>
+              <button class="danger icon-button" data-remove-flow-node="${index}" type="button" aria-label="删除任务节点" title="删除任务节点">${icon("reset")}</button>
               <button class="collapse-button" data-toggle-flow-node="${index}" type="button" aria-label="${isCollapsed ? "展开任务节点" : "收起任务节点"}" aria-expanded="${String(!isCollapsed)}">
                 <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
               </button>
@@ -1135,28 +1149,20 @@ function renderFlowNodeEditor(entryNodeId = "") {
           </div>
           <div class="flow-node-grid">
             <label>
-              <span class="field-label">节点名称</span>
-              <input data-flow-node-field="name" value="${escapeHtml(node.name)}" placeholder="收集基础信息" />
-            </label>
-            <label class="wide">
-              <span class="field-label">节点目标</span>
+              ${flowNodeFieldLabel("goal", "节点目标")}
               <textarea data-flow-node-field="goal" rows="2" placeholder="这个阶段要让 AI 完成什么">${escapeHtml(node.goal)}</textarea>
             </label>
-            <label class="wide">
-              <span class="field-label">完成条件</span>
+            <label>
+              ${flowNodeFieldLabel("completionCriteria", "完成条件")}
               <textarea data-flow-node-field="completionCriteria" rows="2" placeholder="什么情况下可以进入下一节点">${escapeHtml(node.completionCriteria)}</textarea>
             </label>
             <label>
-              <span class="field-label">收集字段</span>
+              ${flowNodeFieldLabel("collectFields", "收集字段")}
               <textarea data-flow-node-field="collectFields" rows="3" placeholder="每行一个，例如：手机号">${escapeHtml(joinLines(node.collectFields))}</textarea>
             </label>
             <label>
-              <span class="field-label">交流技巧</span>
+              ${flowNodeFieldLabel("conversationTips", "交流技巧")}
               <textarea data-flow-node-field="conversationTips" rows="3" placeholder="每行一个，例如：先回应再追问">${escapeHtml(joinLines(node.conversationTips))}</textarea>
-            </label>
-            <label class="wide">
-              <span class="field-label">完成后进入</span>
-              <select data-flow-node-field="nextNodeId">${nodeOptions}</select>
             </label>
           </div>
         </article>
@@ -1171,6 +1177,18 @@ function renderFlowNodeEditor(entryNodeId = "") {
       if (input.dataset.flowNodeField === "name") {
         renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
       }
+    });
+  });
+  els.flowNodeList.querySelectorAll("[data-edit-flow-node-name]").forEach((button) => {
+    button.addEventListener("dblclick", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      openFlowNodeQuickEditor(Number(button.dataset.editFlowNodeName), "name");
+    });
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      openFlowNodeQuickEditor(Number(button.dataset.editFlowNodeName), "name");
     });
   });
   els.flowNodeList.querySelectorAll("[data-flow-node-quick-field]").forEach((button) => {
