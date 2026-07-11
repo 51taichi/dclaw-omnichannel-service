@@ -719,6 +719,7 @@ function normalizeFlowConfig(input) {
     completionCriteria: String(node.completionCriteria || "").trim(),
     collectFields: Array.isArray(node.collectFields) ? node.collectFields.map(String) : [],
     conversationTips: Array.isArray(node.conversationTips) ? node.conversationTips.map(String) : [],
+    activation: normalizeActivationConfig(node.activation),
     nextNodeId: String(node.nextNodeId || "").trim(),
     transitions: Array.isArray(node.transitions) ? node.transitions : []
   }));

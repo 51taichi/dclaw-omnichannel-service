@@ -1247,7 +1247,8 @@ button.danger:hover {
   transform: rotate(-90deg);
 }
 
-.flow-node-card.is-collapsed .flow-node-grid {
+.flow-node-card.is-collapsed .flow-node-grid,
+.flow-node-card.is-collapsed .activation-editor {
   display: none;
 }
 
@@ -1255,6 +1256,72 @@ button.danger:hover {
   display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr));
   gap: 10px;
+}
+
+.activation-editor {
+  display: grid;
+  gap: 10px;
+  padding: 10px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 26%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 4%, #ffffff);
+}
+
+.activation-editor-head,
+.activation-editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.activation-toggle {
+  min-height: 36px;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.activation-toggle span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #302321;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.activation-toggle .icon {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
+
+.activation-messages {
+  display: grid;
+  gap: 8px;
+}
+
+.activation-message-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 8px;
+  align-items: start;
+}
+
+.activation-message-row textarea {
+  min-height: 58px;
+}
+
+.activation-add-button {
+  justify-self: start;
+}
+
+.activation-add-button .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .flow-node-quick-dialog {
