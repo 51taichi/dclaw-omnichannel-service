@@ -298,14 +298,8 @@
               <span class="field-label">任务名称</span>
               <input name="flowName" placeholder="例如 线上培训客服任务" />
             </label>
-            <label>
-              <span class="field-label">版本</span>
-              <input name="flowVersion" placeholder="1.0.0" />
-            </label>
-            <label>
-              <span class="field-label">入口节点</span>
-              <select name="entryNodeId"></select>
-            </label>
+            <input name="flowVersion" type="hidden" value="1.0.0" />
+            <select name="entryNodeId" hidden aria-hidden="true"></select>
             <div class="wide flow-builder-head">
               <div>
                 <strong>任务节点</strong>

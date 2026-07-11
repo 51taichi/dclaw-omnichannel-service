@@ -903,7 +903,7 @@ function setFlowEditorFromConfig(config = {}) {
         transitions: Array.isArray(node.transitions) ? node.transitions : []
       }))
     : [createBlankFlowNode(1)];
-  renderFlowNodeEditor(config.entryNodeId || flowDraftNodes[0]?.id || "");
+  renderFlowNodeEditor(flowDraftNodes[0]?.id || "");
   syncFlowJsonTextarea();
 }
 
@@ -921,7 +921,7 @@ function buildFlowConfigFromEditor() {
   return {
     name: String(els.flowMachineForm.flowName.value || "客服状态机").trim(),
     version: String(els.flowMachineForm.flowVersion.value || "1.0.0").trim(),
-    entryNodeId: els.flowMachineForm.entryNodeId.value || nodes[0]?.id || "",
+    entryNodeId: nodes[0]?.id || "",
     nodes
   };
 }
