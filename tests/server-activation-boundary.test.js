@@ -8,6 +8,8 @@ const dbSource = fs.readFileSync(new URL("../src/db.js", import.meta.url), "utf8
 test("server schedules activation after successful private flow replies", () => {
   assert.equal(source.includes("scheduleActivationAfterFlowReply"), true);
   assert.equal(source.includes("scheduleFlowActivationTask"), true);
+  assert.equal(source.includes("activationSourceNode"), true);
+  assert.equal(source.includes("flow.currentNode?.activation"), true);
   assert.equal(
     source.slice(source.indexOf("worktool.send.success")).includes("scheduleActivationAfterFlowReply({"),
     true

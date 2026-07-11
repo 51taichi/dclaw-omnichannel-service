@@ -406,7 +406,12 @@ function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flo
   const machine = getFlowMachine(botId);
   const currentSession = getFlowSession(conversationKey) || flow.session;
   const currentNode = getFlowNode(machine, currentSession?.currentNodeId) || flow.currentNode;
-  const activation = normalizeActivationConfig(currentNode?.activation || {});
+  const currentNodeActivation = normalizeActivationConfig(currentNode?.activation || {});
+  const replyNodeActivation = normalizeActivationConfig(flow.currentNode?.activation || {});
+  const activationSourceNode = currentNodeActivation.enabled && currentNodeActivation.messages.length
+    ? currentNode
+    : flow.currentNode;
+  const activation = activationSourceNode === currentNode ? currentNodeActivation : replyNodeActivation;
   if (!activation.enabled || !activation.messages.length) return null;
 
   const session = incrementFlowActivationGeneration({ conversationKey, reason: "flow_reply_sent" });
