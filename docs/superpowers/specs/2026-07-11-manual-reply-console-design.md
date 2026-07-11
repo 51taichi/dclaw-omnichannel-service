@@ -30,6 +30,7 @@
 - 空消息不可发送。
 - 点击发送后由服务端调用 WorkTool 发送，并写入会话记录。
 - 发送成功后刷新当前会话记录或追加返回消息。
+- 移除现有的独立提示条 `人工接手中，AI 已暂停回复`，该信息会被会话状态标识和可用输入框替代，避免重复占用空间。
 
 ## 服务端接口
 
@@ -86,6 +87,7 @@ POST /api/flow-sessions/:conversationKey/manual-reply
 
 - 在 `chatMessages` 下方增加 `manualReplyComposer`。
 - 包含 AI 接管提示区、文本输入区、emoji 面板和发送按钮。
+- 删除现有 `handoffStatusBanner` 提示条。
 
 `public/console/app.js`：
 
@@ -93,6 +95,7 @@ POST /api/flow-sessions/:conversationKey/manual-reply
 - 根据 `currentFlowSession.handoffStatus` 渲染 composer 状态。
 - `AI接待中` 展示提示图并禁用输入。
 - `人工接手中` 启用输入和发送按钮。
+- 删除 `handoffStatusBanner` 的显示/隐藏逻辑。
 - emoji 按钮将表情插入当前光标位置。
 - 发送成功后清空输入，并重新加载当前会话。
 
