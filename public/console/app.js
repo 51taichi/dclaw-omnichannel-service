@@ -1276,6 +1276,9 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 <span class="field-label">${icon("refresh")}激活次数</span>
                 <input data-flow-node-activation-field="maxTimes" type="number" min="1" value="${escapeHtml(activationMaxTimes)}" />
               </label>
+              <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("启用：客户未回复时触发提醒；美化：由 Agent 结合上下文润色；间隔：第1次按间隔发送，第2次按间隔*2，第3次按间隔*4；次数：达到次数后停止；话术：第 N 次激活发送第 N 条话术，不够时复用最后一条。")}">
+                ${icon("info")}
+              </span>
               <button class="secondary icon-button activation-add-button" data-add-activation-message="${index}" type="button" aria-label="新增话术" title="新增话术">
                 ${icon("plus")}
               </button>

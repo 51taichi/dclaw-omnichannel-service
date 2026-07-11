@@ -1283,7 +1283,7 @@ button.danger:hover {
 
 .activation-toolbar {
   display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(170px, 1fr) minmax(190px, 1.05fr) minmax(130px, 0.8fr) 40px;
+  grid-template-columns: minmax(160px, 1fr) minmax(170px, 1fr) minmax(190px, 1.05fr) minmax(130px, 0.8fr) 34px 40px;
   gap: 10px;
   align-items: center;
 }
@@ -1335,6 +1335,55 @@ button.danger:hover {
 .activation-editor.is-active .activation-toggle:first-child span,
 .activation-editor.is-active .activation-toggle:first-child .icon {
   color: var(--orange);
+}
+
+.activation-help-icon {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  align-self: center;
+  justify-self: end;
+  width: 34px;
+  height: 34px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 999px;
+  background: #fff;
+  color: var(--accent);
+  cursor: help;
+}
+
+.activation-help-icon::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  right: -48px;
+  bottom: calc(100% + 10px);
+  z-index: 30;
+  width: 320px;
+  max-width: min(320px, calc(100vw - 40px));
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #211614;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.55;
+  white-space: normal;
+  box-shadow: var(--shadow);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(4px);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.activation-help-icon:hover::after,
+.activation-help-icon:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.activation-help-icon .icon {
+  width: 15px;
+  height: 15px;
 }
 
 .activation-messages {
