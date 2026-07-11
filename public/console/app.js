@@ -38,8 +38,7 @@ const els = {
   exportFlowButton: document.querySelector("#exportFlowButton"),
   refreshFlowSessionsButton: document.querySelector("#refreshFlowSessionsButton"),
   flowSessionList: document.querySelector("#flowSessionList"),
-  flowSessionDateFrom: document.querySelector("#flowSessionDateFrom"),
-  flowSessionDateTo: document.querySelector("#flowSessionDateTo"),
+  flowSessionSearchInput: document.querySelector("#flowSessionSearchInput"),
   flowSessionAssetFilter: document.querySelector("#flowSessionAssetFilter"),
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
   chatTitle: document.querySelector("#chatTitle"),
@@ -1487,15 +1486,19 @@ function sortFlowSessions(sessions) {
 }
 
 function getVisibleFlowSessions() {
-  const from = els.flowSessionDateFrom.value ? Date.parse(`${els.flowSessionDateFrom.value}T00:00:00`) : null;
-  const to = els.flowSessionDateTo.value ? Date.parse(`${els.flowSessionDateTo.value}T23:59:59`) : null;
+  const normalizedSessionSearch = String(els.flowSessionSearchInput.value || "").trim().toLowerCase();
   const assetFilter = els.flowSessionAssetFilter.value;
   const nodeFilter = els.flowSessionNodeFilter.value;
 
   return sortFlowSessions(currentFlowSessions.filter((session) => {
-    const sessionTime = Date.parse(session.lastMessageAt || session.updatedAt || session.createdAt || 0);
-    if (from && (!Number.isFinite(sessionTime) || sessionTime < from)) return false;
-    if (to && (!Number.isFinite(sessionTime) || sessionTime > to)) return false;
+    if (normalizedSessionSearch) {
+      const searchableText = [
+        session.receivedName,
+        session.groupName,
+        session.conversationKey
+      ].filter(Boolean).join(" ").toLowerCase();
+      if (!searchableText.includes(normalizedSessionSearch)) return false;
+    }
     if (nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
 
     const assets = session.assets || {};
@@ -2030,13 +2033,12 @@ els.refreshFlowSessionsButton.addEventListener("click", () =>
   Promise.all([loadFlowMachine(), loadFlowSessions()]).catch((error) => toast(error.message))
 );
 [
-  els.flowSessionDateFrom,
-  els.flowSessionDateTo,
   els.flowSessionAssetFilter,
   els.flowSessionNodeFilter
 ].forEach((control) => {
   control.addEventListener("change", renderFlowSessions);
 });
+els.flowSessionSearchInput.addEventListener("input", renderFlowSessions);
 els.resetConversationButton.addEventListener("click", openConfirmDialog);
 els.confirmCancelButton.addEventListener("click", closeConfirmDialog);
 els.confirmDialog.addEventListener("click", (event) => {

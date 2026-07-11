@@ -29,8 +29,11 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
 });
 
 test("flow sessions can be filtered and human handoff sessions are pinned first", () => {
-  assert.equal(html.includes('id="flowSessionDateFrom"'), true);
-  assert.equal(html.includes('id="flowSessionDateTo"'), true);
+  assert.equal(html.includes('id="flowSessionDateFrom"'), false);
+  assert.equal(html.includes('id="flowSessionDateTo"'), false);
+  assert.equal(html.includes('id="flowSessionSearchInput"'), true);
+  assert.equal(app.includes("flowSessionSearchInput"), true);
+  assert.equal(app.includes("normalizedSessionSearch"), true);
   assert.equal(html.includes('id="flowSessionAssetFilter"'), true);
   assert.equal(html.includes('id="flowSessionNodeFilter"'), true);
   assert.equal(html.includes('id="flowSessionHandoffFilter"'), false);
