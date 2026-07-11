@@ -21,7 +21,8 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
   assert.equal(app.includes("最近消息：${lastMessageAt}"), true);
   assert.equal(app.includes("data-tooltip="), true);
   assert.equal(app.includes("aria-label="), true);
-  assert.equal(app.includes('title="人工接手中"'), true);
+  assert.equal(app.includes("AI接待中"), true);
+  assert.equal(app.includes("flow-session-status"), true);
   assert.equal(css.includes(".flow-session-icons"), true);
   assert.equal(css.includes(".session-icon::after"), true);
   assert.equal(css.includes(".handoff-button"), true);
@@ -45,5 +46,5 @@ test("human handoff session cards have a clear pulsing highlight", () => {
   assert.equal(css.includes("@keyframes handoffPulse"), true);
   assert.equal(css.includes("animation: handoffPulse"), true);
   assert.equal(css.includes("@media (prefers-reduced-motion: reduce)"), true);
-  assert.equal(css.includes(".flow-session-card.is-handoff .flow-session-name-row em"), true);
+  assert.equal(css.includes(".flow-session-card.is-handoff .flow-session-status"), true);
 });

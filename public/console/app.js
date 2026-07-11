@@ -43,6 +43,7 @@ const els = {
   flowSessionAssetFilter: document.querySelector("#flowSessionAssetFilter"),
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
   chatTitle: document.querySelector("#chatTitle"),
+  chatStatusBadge: document.querySelector("#chatStatusBadge"),
   chatMessages: document.querySelector("#chatMessages"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
   assetsButton: document.querySelector("#assetsButton"),
@@ -1154,6 +1155,14 @@ function renderFlowSessionNodeFilter() {
   els.flowSessionNodeFilter.value = nodes.some((node) => node.id === current) ? current : "all";
 }
 
+function sessionStatusMeta(session) {
+  const isHandoff = session?.handoffStatus === "human";
+  return {
+    className: isHandoff ? "is-human" : "is-ai",
+    label: isHandoff ? "人工接手中" : "AI接待中"
+  };
+}
+
 function renderFlowSessions() {
   const visibleSessions = getVisibleFlowSessions();
   els.flowSessionList.innerHTML = visibleSessions.length
@@ -1171,13 +1180,14 @@ function renderFlowSessions() {
           const taskTooltip = `当前任务：${status}`;
           const assetTooltip = `资产：${assetSummary}`;
           const timeTooltip = `最近消息：${lastMessageAt}`;
+          const statusMeta = sessionStatusMeta(session);
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <img class="flow-session-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
                   <strong>${escapeHtml(name)}</strong>
-                  ${isHandoff ? `<em title="人工接手中">人工接手中</em>` : ""}
+                  <em class="flow-session-status ${escapeHtml(statusMeta.className)}" title="${escapeHtml(statusMeta.label)}">${escapeHtml(statusMeta.label)}</em>
                 </span>
                 <span class="flow-session-tools">
                   <small class="flow-session-icons">
@@ -1247,9 +1257,19 @@ function syncHandoffButton(session = currentFlowSession) {
   currentFlowSession = session || null;
   const hasSession = Boolean(currentFlowSession && state.selectedFlowConversationKey);
   els.handoffStatusBanner.hidden = !hasSession || currentFlowSession.handoffStatus !== "human";
-  if (!hasSession) return;
+  if (!hasSession) {
+    if (els.chatStatusBadge) els.chatStatusBadge.hidden = true;
+    return;
+  }
 
   const isHandoff = currentFlowSession.handoffStatus === "human";
+  const statusMeta = sessionStatusMeta(currentFlowSession);
+  if (els.chatStatusBadge) {
+    els.chatStatusBadge.hidden = false;
+    els.chatStatusBadge.textContent = statusMeta.label;
+    els.chatStatusBadge.classList.toggle("is-ai", !isHandoff);
+    els.chatStatusBadge.classList.toggle("is-human", isHandoff);
+  }
   els.handoffStatusBanner.classList.toggle("is-active", isHandoff);
 }
 
