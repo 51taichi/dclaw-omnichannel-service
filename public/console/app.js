@@ -681,7 +681,7 @@ function renderTargetList() {
           `;
         })
         .join("")
-    : `<div class="empty-targets">暂无目标，请先加载目标，或等待客户/群聊产生回调后自动沉淀。</div>`;
+    : `<div class="empty-targets">暂无目标，请先同步名单，或等待客户/群聊产生回调后自动沉淀。</div>`;
 
   els.targetList.querySelectorAll("[data-target-key]").forEach((button) => {
     button.addEventListener("click", () => {
