@@ -1347,6 +1347,16 @@ button.danger:hover {
   grid-template-columns: minmax(0, 1fr) 36px;
   gap: 8px;
   align-items: start;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 3%, #ffffff);
+}
+
+.activation-message-row:hover,
+.activation-message-row:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
+  box-shadow: 0 8px 18px rgba(42, 48, 216, 0.08);
 }
 
 .activation-message-row textarea {

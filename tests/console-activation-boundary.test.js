@@ -18,6 +18,8 @@ test("flow node editor supports activation settings", () => {
   assert.equal(app.includes("data-remove-activation-message"), true);
   assert.equal(css.includes(".activation-editor"), true);
   assert.equal(css.includes(".activation-toolbar"), true);
+  assert.equal(css.includes(".activation-message-row {"), true);
+  assert.equal(css.includes("border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));"), true);
 });
 
 test("flow config preserves node activation JSON through console and server normalization", () => {
