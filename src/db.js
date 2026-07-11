@@ -217,6 +217,36 @@ db.exec(`
     agent_decision_json TEXT,
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS flow_activation_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    generation INTEGER NOT NULL DEFAULT 0,
+    attempt_number INTEGER NOT NULL DEFAULT 1,
+    max_times INTEGER NOT NULL DEFAULT 1,
+    interval_minutes INTEGER NOT NULL DEFAULT 30,
+    polish_by_agent INTEGER NOT NULL DEFAULT 1,
+    messages_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    due_at TEXT NOT NULL,
+    processing_started_at TEXT,
+    sent_at TEXT,
+    canceled_at TEXT,
+    cancel_reason TEXT,
+    error_message TEXT,
+    worktool_message_ids_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_flow_activation_tasks_due
+  ON flow_activation_tasks (status, due_at, id);
+
+  CREATE INDEX IF NOT EXISTS idx_flow_activation_tasks_conversation
+  ON flow_activation_tasks (conversation_key, status, id);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -247,6 +277,7 @@ ensureColumn("flow_sessions", "handoff_status", "TEXT NOT NULL DEFAULT 'ai'");
 ensureColumn("flow_sessions", "handoff_at", "TEXT");
 ensureColumn("flow_sessions", "handoff_by", "TEXT");
 ensureColumn("flow_sessions", "handoff_reason", "TEXT");
+ensureColumn("flow_sessions", "activation_generation", "INTEGER NOT NULL DEFAULT 0");
 
 function now() {
   return new Date().toISOString();
@@ -744,7 +775,35 @@ function rowToFlowSession(row) {
     handoffAt: row.handoff_at || "",
     handoffBy: row.handoff_by || "",
     handoffReason: row.handoff_reason || "",
+    activationGeneration: Number(row.activation_generation || 0),
     lastMessageAt: row.last_message_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToFlowActivationTask(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    conversationKey: row.conversation_key,
+    nodeId: row.node_id,
+    generation: Number(row.generation || 0),
+    attemptNumber: Number(row.attempt_number || 1),
+    maxTimes: Number(row.max_times || 1),
+    intervalMinutes: Number(row.interval_minutes || 30),
+    polishByAgent: Boolean(row.polish_by_agent),
+    messages: parseJson(row.messages_json) || [],
+    status: row.status,
+    dueAt: row.due_at,
+    processingStartedAt: row.processing_started_at || "",
+    sentAt: row.sent_at || "",
+    canceledAt: row.canceled_at || "",
+    cancelReason: row.cancel_reason || "",
+    errorMessage: row.error_message || "",
+    worktoolMessageIds: parseJson(row.worktool_message_ids_json) || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -1003,6 +1062,190 @@ export function mergeFlowSessionData({ conversationKey, patch = {} }) {
   return rowToFlowSession(
     db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)
   );
+}
+
+export function normalizeActivationConfig(raw = {}) {
+  const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+  const intervalMinutes = Math.max(1, Number.parseInt(source.intervalMinutes ?? 30, 10) || 30);
+  const maxTimes = Math.max(1, Number.parseInt(source.maxTimes ?? 1, 10) || 1);
+  const messages = Array.isArray(source.messages)
+    ? source.messages.map((item) => String(item || "").trim()).filter(Boolean)
+    : [];
+  return {
+    enabled: Boolean(source.enabled),
+    intervalMinutes,
+    maxTimes,
+    polishByAgent: source.polishByAgent !== false,
+    messages
+  };
+}
+
+export function scheduleFlowActivationTask({
+  botId,
+  agentId,
+  conversationKey,
+  nodeId,
+  generation = 0,
+  activation,
+  dueAt,
+  attemptNumber = 1
+}) {
+  const config = normalizeActivationConfig(activation);
+  const timestamp = now();
+  const result = db.prepare(`
+    INSERT INTO flow_activation_tasks (
+      bot_id,
+      agent_id,
+      conversation_key,
+      node_id,
+      generation,
+      attempt_number,
+      max_times,
+      interval_minutes,
+      polish_by_agent,
+      messages_json,
+      status,
+      due_at,
+      created_at,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+  `).run(
+    botId,
+    agentId,
+    conversationKey,
+    nodeId,
+    Number(generation || 0),
+    Math.max(1, Number.parseInt(attemptNumber, 10) || 1),
+    config.maxTimes,
+    config.intervalMinutes,
+    config.polishByAgent ? 1 : 0,
+    json(config.messages),
+    dueAt || timestamp,
+    timestamp,
+    timestamp
+  );
+  return rowToFlowActivationTask(
+    db.prepare("SELECT * FROM flow_activation_tasks WHERE id = ?").get(result.lastInsertRowid)
+  );
+}
+
+export function claimDueFlowActivationTasks({ limit = 20, nowIso = now(), staleBeforeIso = "" } = {}) {
+  const timestamp = now();
+  if (staleBeforeIso) {
+    db.prepare(`
+      UPDATE flow_activation_tasks
+      SET status = 'pending',
+          processing_started_at = NULL,
+          updated_at = ?
+      WHERE status = 'processing'
+        AND processing_started_at < ?
+    `).run(timestamp, staleBeforeIso);
+  }
+
+  const rows = db.prepare(`
+    SELECT *
+    FROM flow_activation_tasks
+    WHERE status = 'pending'
+      AND due_at <= ?
+    ORDER BY due_at ASC, id ASC
+    LIMIT ?
+  `).all(nowIso, Math.max(1, Number.parseInt(limit, 10) || 20));
+
+  const claimed = [];
+  for (const row of rows) {
+    const result = db.prepare(`
+      UPDATE flow_activation_tasks
+      SET status = 'processing',
+          processing_started_at = ?,
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'pending'
+    `).run(timestamp, timestamp, row.id);
+    if (result.changes > 0) {
+      claimed.push(rowToFlowActivationTask(
+        db.prepare("SELECT * FROM flow_activation_tasks WHERE id = ?").get(row.id)
+      ));
+    }
+  }
+  return claimed;
+}
+
+export function cancelFlowActivationTasks({ conversationKey, reason = "" }) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE flow_activation_tasks
+    SET status = 'canceled',
+        canceled_at = ?,
+        cancel_reason = ?,
+        updated_at = ?
+    WHERE conversation_key = ?
+      AND status IN ('pending', 'processing')
+  `).run(timestamp, reason || "", timestamp, conversationKey);
+  return result.changes;
+}
+
+export function markFlowActivationTaskSent({ id, worktoolMessageIds = [] }) {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE flow_activation_tasks
+    SET status = 'sent',
+        sent_at = ?,
+        error_message = '',
+        worktool_message_ids_json = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(timestamp, json(worktoolMessageIds), timestamp, id);
+  return rowToFlowActivationTask(
+    db.prepare("SELECT * FROM flow_activation_tasks WHERE id = ?").get(id)
+  );
+}
+
+export function markFlowActivationTaskFailed({ id, error = "" }) {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE flow_activation_tasks
+    SET status = 'failed',
+        error_message = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(String(error || ""), timestamp, id);
+  return rowToFlowActivationTask(
+    db.prepare("SELECT * FROM flow_activation_tasks WHERE id = ?").get(id)
+  );
+}
+
+export function incrementFlowActivationGeneration({ conversationKey, reason = "" }) {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE flow_sessions
+    SET activation_generation = COALESCE(activation_generation, 0) + 1,
+        updated_at = ?
+    WHERE conversation_key = ?
+  `).run(timestamp, conversationKey);
+  if (reason) {
+    cancelFlowActivationTasks({ conversationKey, reason });
+  }
+  return getFlowSession(conversationKey);
+}
+
+export function listFlowActivationTasks({ conversationKey = "", limit = 100 } = {}) {
+  const normalizedLimit = Math.max(1, Number.parseInt(limit, 10) || 100);
+  const rows = conversationKey
+    ? db.prepare(`
+        SELECT *
+        FROM flow_activation_tasks
+        WHERE conversation_key = ?
+        ORDER BY id ASC
+        LIMIT ?
+      `).all(conversationKey, normalizedLimit)
+    : db.prepare(`
+        SELECT *
+        FROM flow_activation_tasks
+        ORDER BY id ASC
+        LIMIT ?
+      `).all(normalizedLimit);
+  return rows.map(rowToFlowActivationTask);
 }
 
 export function insertConversationMessage({
@@ -1575,6 +1818,10 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
     "flow-state-events": {
       table: "flow_state_events",
       mapper: rowToFlowStateEvent
+    },
+    "flow-activation-tasks": {
+      table: "flow_activation_tasks",
+      mapper: rowToFlowActivationTask
     },
     "proactive-tasks": {
       table: "proactive_tasks",
