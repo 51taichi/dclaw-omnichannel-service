@@ -1942,10 +1942,11 @@ button.danger:hover {
 }
 
 .ai-takeover-card span {
-  color: var(--muted);
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1.55;
+  color: var(--orange);
+  font-size: 30px;
+  font-weight: 900;
+  line-height: 1.18;
+  letter-spacing: 0;
 }
 
 .manual-reply-box {
