@@ -61,14 +61,12 @@ const els = {
   taskDateTo: document.querySelector("#taskDateTo"),
   refreshProactiveButton: document.querySelector("#refreshProactiveButton"),
   loadTargetsButton: document.querySelector("#loadTargetsButton"),
-  seedTargetsButton: document.querySelector("#seedTargetsButton"),
   selectPrivateTargetsButton: document.querySelector("#selectPrivateTargetsButton"),
   selectGroupTargetsButton: document.querySelector("#selectGroupTargetsButton"),
   clearTargetsButton: document.querySelector("#clearTargetsButton"),
   targetSearchInput: document.querySelector("#targetSearchInput"),
   targetList: document.querySelector("#targetList"),
   selectedTargets: document.querySelector("#selectedTargets"),
-  selectedTargetCount: document.querySelector("#selectedTargetCount"),
   resetFormButton: document.querySelector("#resetFormButton"),
   botsTable: document.querySelector("#botsTable"),
   botCount: document.querySelector("#botCount"),
@@ -367,7 +365,6 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
   }
   setBindingState(bot);
   if (bot?.botId) {
-    els.proactiveForm.botId.value = bot.botId;
     selectedTargets.clear();
     if (state.currentRole === "admin") {
       fillForm(bot);
@@ -480,7 +477,6 @@ function fillForm(bot) {
 
 function renderBots(bots) {
   els.botCount.textContent = `${bots.length} 个`;
-  renderBotOptions(bots);
   if (!bots.length) {
     els.botsTable.innerHTML = `<div class="empty-state">暂无 Bot 绑定</div>`;
     return;
@@ -562,18 +558,6 @@ function renderBots(bots) {
   });
 }
 
-function renderBotOptions(bots) {
-  const select = els.proactiveForm.botId;
-  const current = select.value;
-  select.innerHTML = bots
-    .map((bot) => {
-      const label = bot.botName || bot.dclawPublicId || bot.agentName || "未命名 Bot";
-      return `<option value="${escapeHtml(bot.botId)}">${escapeHtml(label)}</option>`;
-    })
-    .join("");
-  if (current) select.value = current;
-}
-
 let currentBots = [];
 let targetFilter = "all";
 let addressBookTargets = [];
@@ -649,7 +633,6 @@ function clearSelectedTargets() {
 
 function renderSelectedTargets() {
   const targets = getSelectedTargets();
-  els.selectedTargetCount.textContent = `已选 ${targets.length} 个`;
   els.selectedTargets.innerHTML = targets.length
     ? targets
         .map((target) => {
@@ -698,7 +681,7 @@ function renderTargetList() {
           `;
         })
         .join("")
-    : `<div class="empty-targets">暂无目标，可以添加示例目标或等待客户/群聊产生回调后自动沉淀。</div>`;
+    : `<div class="empty-targets">暂无目标，请先加载目标，或等待客户/群聊产生回调后自动沉淀。</div>`;
 
   els.targetList.querySelectorAll("[data-target-key]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -717,8 +700,11 @@ function renderTargetList() {
 }
 
 async function loadAddressBookTargets() {
-  const botId = els.proactiveForm.botId.value;
-  if (!botId) return;
+  const botId = state.selectedBotId;
+  if (!botId) {
+    toast("请先选择 Bot");
+    return;
+  }
   const params = new URLSearchParams({ botId, limit: "300" });
   const data = await request(`/api/proactive/targets?${params.toString()}`);
   addressBookTargets = data.targets || [];
@@ -730,20 +716,6 @@ async function loadAddressBookTargets() {
   renderSelectedTargets();
   renderTargetList();
   updateBulkActionButtons();
-}
-
-async function seedAddressBookTargets() {
-  const botId = els.proactiveForm.botId.value;
-  if (!botId) {
-    toast("请先选择 Bot");
-    return;
-  }
-  await request("/api/proactive/targets/mock", {
-    method: "POST",
-    body: JSON.stringify({ botId })
-  });
-  toast("示例目标已添加");
-  await loadAddressBookTargets();
 }
 
 async function loadBots() {
@@ -1629,7 +1601,7 @@ async function createProactiveTask(event) {
   const data = new FormData(els.proactiveForm);
   const messageType = String(data.get("messageType") || "text");
   const payload = {
-    botId: String(data.get("botId") || "").trim(),
+    botId: state.selectedBotId,
     title: String(data.get("title") || "").trim(),
     messageType,
     content: String(data.get("content") || "").trim(),
@@ -1650,8 +1622,12 @@ async function createProactiveTask(event) {
     }
   }
 
-  if (!payload.botId || !payload.targets.length) {
-    toast("请填写 Bot 和目标列表");
+  if (!payload.botId) {
+    toast("请先选择 Bot");
+    return;
+  }
+  if (!payload.targets.length) {
+    toast("请选择目标列表");
     return;
   }
   if (messageType === "text" && !payload.content) {
@@ -1819,9 +1795,6 @@ els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))
 );
 els.messageTypeInput.addEventListener("change", syncMessageTypeFields);
-els.proactiveForm.botId.addEventListener("change", () =>
-  loadAddressBookTargets().catch((error) => toast(error.message))
-);
 els.taskDateFrom.addEventListener("change", () =>
   loadProactiveTasks().catch((error) => toast(error.message))
 );
@@ -1831,9 +1804,6 @@ els.taskDateTo.addEventListener("change", () =>
 els.targetSearchInput.addEventListener("input", () => renderTargetList());
 els.loadTargetsButton.addEventListener("click", () =>
   loadAddressBookTargets().catch((error) => toast(error.message))
-);
-els.seedTargetsButton.addEventListener("click", () =>
-  seedAddressBookTargets().catch((error) => toast(error.message))
 );
 els.selectPrivateTargetsButton.addEventListener("click", () => toggleTargetsByType("private"));
 els.selectGroupTargetsButton.addEventListener("click", () => toggleTargetsByType("group"));

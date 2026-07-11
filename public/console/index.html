@@ -402,27 +402,15 @@
         <div class="collapsible-content">
         <form id="proactiveForm" class="form-grid">
           <label>
-            <span class="field-label">Bot</span>
-            <select name="botId" required></select>
-          </label>
-          <label>
             <span class="field-label">任务名称</span>
             <input name="title" placeholder="例如 客户资料跟进" />
           </label>
           <div class="wide target-picker">
             <div class="target-picker-head">
-              <div>
-                <strong>目标选择</strong>
-                <span id="selectedTargetCount" class="muted">已选 0 个</span>
-              </div>
               <div class="row-actions target-actions">
                 <button id="loadTargetsButton" class="secondary" type="button">
                   <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
                   加载目标
-                </button>
-                <button id="seedTargetsButton" class="secondary" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
-                  添加示例
                 </button>
               </div>
             </div>
