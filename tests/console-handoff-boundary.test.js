@@ -67,6 +67,15 @@ test("conversation assets open as a popover without affecting chat layout", () =
   assert.match(css, /\.assets-panel\s*\{[\s\S]*max-height:/);
 });
 
+test("conversation workspace keeps messages scrollable and reply composer visible", () => {
+  assert.match(css, /#flowSessionsPanel\s*\{[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 178px\)\)/);
+  assert.match(css, /\.flow-workbench\s*\{[\s\S]*height:\s*100%[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /\.chat-view\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto[\s\S]*height:\s*100%/);
+  assert.match(css, /\.chat-messages\s*\{[\s\S]*overflow:\s*auto/);
+  assert.match(css, /\.manual-reply-composer\s*\{[\s\S]*align-self:\s*end/);
+  assert.match(css, /\.flow-events-wrap\s*\{[\s\S]*display:\s*none/);
+});
+
 test("flow machine and proactive panels use compact title-free layouts", () => {
   const flowPanel = sectionHtml("flowMachinePanel");
   const proactivePanel = sectionHtml("proactivePanel");

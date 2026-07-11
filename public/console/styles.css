@@ -1507,13 +1507,15 @@ button.danger:hover {
   grid-template-columns: 260px minmax(0, 1fr);
   gap: 12px;
   align-items: stretch;
+  height: 100%;
   min-height: 0;
+  overflow: hidden;
 }
 
 #flowSessionsPanel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: clamp(420px, calc(100vh - 300px), 680px);
+  height: max(560px, calc(100vh - 178px));
   overflow: hidden;
 }
 
@@ -1793,7 +1795,8 @@ button.danger:hover {
 .chat-view {
   position: relative;
   display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   border: 1px solid var(--line);
@@ -1932,9 +1935,10 @@ button.danger:hover {
 .manual-reply-composer {
   position: relative;
   display: grid;
-  gap: 10px;
-  margin: 12px;
-  padding: 12px;
+  gap: 8px;
+  align-self: end;
+  margin: 0 12px 12px;
+  padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
@@ -1953,7 +1957,7 @@ button.danger:hover {
 }
 
 .manual-reply-composer.is-ai {
-  min-height: 128px;
+  min-height: 86px;
   border-color: transparent;
   background: #ffffff;
   box-shadow: 0 16px 30px rgba(35, 42, 105, 0.08);
@@ -1991,24 +1995,24 @@ button.danger:hover {
 
 .ai-takeover-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px);
+  grid-template-columns: minmax(0, 1fr) minmax(112px, 148px);
   align-items: center;
-  gap: 16px;
-  min-height: 112px;
+  gap: 12px;
+  min-height: 66px;
 }
 
 .ai-takeover-card img {
   width: 100%;
-  max-height: 128px;
+  max-height: 78px;
   object-fit: contain;
   justify-self: end;
 }
 
 .ai-takeover-card span {
   color: var(--orange);
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 900;
-  line-height: 1.18;
+  line-height: 1.12;
   letter-spacing: 0;
 }
 
@@ -2304,6 +2308,7 @@ button.danger:hover {
 }
 
 .flow-events-wrap {
+  display: none;
   border-top: 1px solid var(--line);
   background: #fff;
 }
