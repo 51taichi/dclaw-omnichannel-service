@@ -1995,7 +1995,7 @@ button.danger:hover {
 
 .ai-takeover-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(112px, 148px);
+  grid-template-columns: minmax(0, 1fr) minmax(96px, 148px);
   align-items: center;
   gap: 12px;
   min-height: 66px;
@@ -2009,11 +2009,14 @@ button.danger:hover {
 }
 
 .ai-takeover-card span {
+  justify-self: center;
   color: var(--orange);
-  font-size: 24px;
+  font-size: clamp(18px, 2vw, 24px);
   font-weight: 900;
   line-height: 1.12;
   letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .manual-reply-box {
@@ -2557,8 +2560,7 @@ td .muted {
   .flow-name-row,
   .chat-head,
   .activation-toolbar,
-  .flow-node-grid,
-  .ai-takeover-card {
+  .flow-node-grid {
     grid-template-columns: 1fr;
   }
 
