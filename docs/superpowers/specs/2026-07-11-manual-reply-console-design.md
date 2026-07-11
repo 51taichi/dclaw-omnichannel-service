@@ -20,6 +20,7 @@
 - 显示提示图，使用用户提供的 `Image 19.png`，实现时复制到 `public/console/assets/ai-chatting.png`。
 - 提示文案表达 AI 正在接管，切换人工接手后可以手动回复。
 - 发送按钮禁用。
+- 整个 AI 接管提示框需要有明确的动态状态感：边框使用旋转光效或呼吸闪烁动效，表达 AI 正在工作中。动效应克制，不影响阅读，也不能造成页面布局抖动。
 
 当会话处于 `人工接手中`：
 
@@ -99,6 +100,7 @@ POST /api/flow-sessions/:conversationKey/manual-reply
 
 - 新增 composer、AI 提示图、emoji toolbar、发送按钮样式。
 - 输入区高度紧凑，贴近微信/QQ 对话输入体验。
+- AI 接管中的 composer 使用动态边框：可用伪元素实现旋转边框光效，或用 box-shadow 做呼吸闪烁。优先选择不会改变元素尺寸的实现。
 
 ## 数据一致性
 
