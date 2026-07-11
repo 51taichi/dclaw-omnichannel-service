@@ -1265,6 +1265,20 @@ button.danger:hover {
   border: 1px dashed color-mix(in srgb, var(--accent) 26%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 4%, #ffffff);
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.activation-editor.is-active {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--orange) 58%, var(--danger));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--orange) 12%, #ffffff), color-mix(in srgb, var(--danger) 7%, #ffffff));
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--orange) 12%, #ffffff),
+    0 12px 26px rgba(255, 90, 18, 0.12);
 }
 
 .activation-toolbar {
@@ -1297,6 +1311,16 @@ button.danger:hover {
   width: 14px;
   height: 14px;
   color: var(--accent);
+}
+
+.activation-editor.is-active .activation-toggle:first-child {
+  border-color: color-mix(in srgb, var(--orange) 50%, var(--line));
+  background: color-mix(in srgb, var(--orange) 10%, #ffffff);
+}
+
+.activation-editor.is-active .activation-toggle:first-child span,
+.activation-editor.is-active .activation-toggle:first-child .icon {
+  color: var(--orange);
 }
 
 .activation-messages {

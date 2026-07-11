@@ -975,6 +975,9 @@ function updateDraftNodeActivationFromInput(input) {
     ...activation,
     messages: activationDraftForEditor(node.activation).messages
   };
+  if (field === "enabled") {
+    input.closest(".activation-editor")?.classList.toggle("is-active", Boolean(input.checked));
+  }
   syncFlowJsonTextarea();
 }
 
@@ -1255,7 +1258,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
               <textarea data-flow-node-field="conversationTips" rows="3" placeholder="每行一个，例如：先回应再追问">${escapeHtml(joinLines(node.conversationTips))}</textarea>
             </label>
           </div>
-          <section class="activation-editor" aria-label="客户激活设置">
+          <section class="activation-editor ${activationEnabled ? "is-active" : ""}" aria-label="客户激活设置">
             <div class="activation-toolbar">
               <label class="toggle activation-toggle">
                 <input data-flow-node-activation-field="enabled" type="checkbox" ${activationEnabled ? "checked" : ""} />
@@ -1284,7 +1287,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 .map((message, messageIndex) => `
                   <div class="activation-message-row">
                     <textarea data-activation-message-index="${messageIndex}" rows="2" placeholder="激活话术，例如：再提醒您一下，看到后回我一句就行">${escapeHtml(message)}</textarea>
-                    <button class="secondary icon-button" data-remove-activation-message="${index}:${messageIndex}" type="button" aria-label="删除激活话术" title="删除激活话术">${icon("reset")}</button>
+                    <button class="danger icon-button" data-remove-activation-message="${index}:${messageIndex}" type="button" aria-label="删除激活话术" title="删除激活话术">${icon("reset")}</button>
                   </div>
                 `)
                 .join("")}
