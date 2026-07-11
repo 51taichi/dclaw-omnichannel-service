@@ -849,6 +849,17 @@ function normalizeActivationDraft(value = {}) {
   };
 }
 
+function activationDraftForEditor(value = {}) {
+  const normalized = normalizeActivationDraft(value);
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    ...normalized,
+    messages: Array.isArray(source.messages)
+      ? source.messages.map((item) => String(item || ""))
+      : []
+  };
+}
+
 function flowNodeCollapseKey(node, index) {
   return String(node?.id || `index_${index}`);
 }
@@ -960,7 +971,10 @@ function updateDraftNodeActivationFromInput(input) {
   } else if (field === "intervalMinutes" || field === "maxTimes") {
     activation[field] = Math.max(1, Number(input.value || activation[field] || 1));
   }
-  node.activation = normalizeActivationDraft(activation);
+  node.activation = {
+    ...activation,
+    messages: activationDraftForEditor(node.activation).messages
+  };
   syncFlowJsonTextarea();
 }
 
@@ -971,28 +985,30 @@ function updateDraftNodeActivationMessage(input) {
   const messageIndex = Number(input.dataset.activationMessageIndex);
   const node = flowDraftNodes[nodeIndex];
   if (!node) return;
-  const activation = normalizeActivationDraft(node.activation);
+  const activation = activationDraftForEditor(node.activation);
   activation.messages[messageIndex] = input.value;
-  node.activation = {
-    ...activation,
-    messages: activation.messages.map((item) => String(item || "").trim()).filter(Boolean)
-  };
+  node.activation = activation;
   syncFlowJsonTextarea();
 }
 
 function addActivationMessage(index) {
   const node = flowDraftNodes[index];
   if (!node) return;
-  const activation = normalizeActivationDraft(node.activation);
-  activation.messages.push("");
+  const activation = activationDraftForEditor(node.activation);
+  activation.messages = [...activation.messages, ""];
   node.activation = activation;
   renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+  requestAnimationFrame(() => {
+    const card = els.flowNodeList.querySelector(`[data-flow-node-index="${index}"]`);
+    const inputs = card?.querySelectorAll("[data-activation-message-index]");
+    inputs?.[inputs.length - 1]?.focus();
+  });
 }
 
 function removeActivationMessage(nodeIndex, messageIndex) {
   const node = flowDraftNodes[nodeIndex];
   if (!node) return;
-  const activation = normalizeActivationDraft(node.activation);
+  const activation = activationDraftForEditor(node.activation);
   activation.messages.splice(messageIndex, 1);
   node.activation = activation;
   renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
@@ -1006,7 +1022,7 @@ function splitPastedActivationMessages(event, nodeIndex, messageIndex) {
   event.preventDefault();
   const node = flowDraftNodes[nodeIndex];
   if (!node) return;
-  const activation = normalizeActivationDraft(node.activation);
+  const activation = activationDraftForEditor(node.activation);
   activation.messages.splice(messageIndex, 1, ...lines);
   node.activation = activation;
   renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
@@ -1196,7 +1212,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
           .filter((item) => item.id !== node.id)
           .map((item) => `<option value="${escapeHtml(item.id)}" ${item.id === node.nextNodeId ? "selected" : ""}>${escapeHtml(item.name || item.id)}</option>`)
       ].join("");
-      const activation = normalizeActivationDraft(node.activation || defaultActivationConfig());
+      const activation = activationDraftForEditor(node.activation || defaultActivationConfig());
       const activationEnabled = activation.enabled;
       const activationIntervalMinutes = activation.intervalMinutes;
       const activationMaxTimes = activation.maxTimes;
@@ -1240,7 +1256,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
             </label>
           </div>
           <section class="activation-editor" aria-label="客户激活设置">
-            <div class="activation-editor-head">
+            <div class="activation-toolbar">
               <label class="toggle activation-toggle">
                 <input data-flow-node-activation-field="enabled" type="checkbox" ${activationEnabled ? "checked" : ""} />
                 <span>${icon("send")}启用客户激活</span>
@@ -1259,6 +1275,9 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 <span class="field-label">${icon("refresh")}激活次数</span>
                 <input data-flow-node-activation-field="maxTimes" type="number" min="1" value="${escapeHtml(activationMaxTimes)}" />
               </label>
+              <button class="secondary icon-button activation-add-button" data-add-activation-message="${index}" type="button" aria-label="新增话术" title="新增话术">
+                ${icon("plus")}
+              </button>
             </div>
             <div class="activation-messages">
               ${activationMessages
@@ -1270,9 +1289,6 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 `)
                 .join("")}
             </div>
-            <button class="secondary activation-add-button" data-add-activation-message="${index}" type="button">
-              ${icon("plus")}新增话术
-            </button>
           </section>
         </article>
       `;

@@ -1267,11 +1267,11 @@ button.danger:hover {
   background: color-mix(in srgb, var(--accent) 4%, #ffffff);
 }
 
-.activation-editor-head,
-.activation-editor-grid {
+.activation-toolbar {
   display: grid;
-  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  grid-template-columns: minmax(130px, 1fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(110px, 0.8fr) 36px;
   gap: 10px;
+  align-items: end;
 }
 
 .activation-toggle {
@@ -1316,7 +1316,11 @@ button.danger:hover {
 }
 
 .activation-add-button {
-  justify-self: start;
+  align-self: end;
+  justify-self: end;
+  width: 36px;
+  height: 36px;
+  padding: 0;
 }
 
 .activation-add-button .icon {
@@ -2257,8 +2261,14 @@ td .muted {
   .target-toolbar,
   .flow-workbench,
   .chat-head,
+  .activation-toolbar,
   .flow-node-grid {
     grid-template-columns: 1fr;
+  }
+
+  .activation-add-button {
+    justify-self: stretch;
+    width: 100%;
   }
 
   .segmented {
