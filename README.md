@@ -67,6 +67,17 @@ AGENT_FAILURE_FALLBACK_REPLY=刚刚这边有点卡，我稍后回复你哈
 
 人工接手是服务端会话状态，不需要 WorkTool 做额外配置。控制台把某个私聊切到“人工接手”后，本服务仍会接收并保存 WorkTool 回调，也会把记录同步给 DClaw 作为历史，但不会再把 Agent 回复发送给客户；恢复 AI 后，新消息重新进入正常 Agent 回复链路。
 
+节点激活用于私聊任务状态机：每个节点可以配置“客户多久不回复后再次提醒”、提醒次数、提醒话术，以及是否交给 Agent 美化。服务端会在 AI 成功回复客户后创建 SQLite 激活任务，后台 worker 默认每 10 秒扫描一次到期任务；如果客户回复、人工接手、清空会话或节点变化，旧激活任务会自动失效。这个能力不需要重新上传 Agent，只要服务端和控制台更新即可。
+
+```bash
+ACTIVATION_WORKER_ENABLED=true
+ACTIVATION_WORKER_INTERVAL_MS=10000
+ACTIVATION_WORKER_BATCH_SIZE=20
+ACTIVATION_WORKER_STALE_PROCESSING_MS=300000
+ACTIVATION_SEND_DELAY_MS=500
+ACTIVATION_MAX_CONCURRENT_AGENT_CALLS=2
+```
+
 ## 2. 启动服务
 
 ```bash
