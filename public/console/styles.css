@@ -920,10 +920,15 @@ button.danger:hover {
 
 .target-picker-head {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(320px, 1fr) auto;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.proactive-title-field {
+  min-height: 40px;
+  grid-template-columns: max-content minmax(0, 1fr);
 }
 
 .target-toolbar {
@@ -2489,6 +2494,7 @@ td .muted {
   .inline-form,
   .inline-form.compact,
   .task-filters,
+  .target-picker-head,
   .target-toolbar,
   .flow-workbench,
   .chat-head,
