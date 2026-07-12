@@ -1519,6 +1519,7 @@ async function processIncomingMessage({ botId, message }) {
     const agentReply = parseAgentReply(invocation.reply);
     const reply = String(agentReply.reply || "").trim();
     const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
+    const sources = Array.isArray(agentReply.sources) ? agentReply.sources : [];
     const replyWithLinkAttachments = appendLinkAttachmentsToReply(reply, attachments);
     const hasMediaAttachments = attachments
       .map(normalizeAgentAttachment)
@@ -1530,6 +1531,7 @@ async function processIncomingMessage({ botId, message }) {
       durationMs: Date.now() - agentStartedAt,
       replyLength: reply.length,
       attachmentCount: attachments.length,
+      sourceCount: sources.length,
       attempts: invocation.attempts || 1,
       timeoutMs: getDclawAgentTimeoutMs(),
       maxAttempts: getDclawAgentMaxAttempts(),
@@ -1593,6 +1595,7 @@ async function processIncomingMessage({ botId, message }) {
           worktoolMessageIds,
           replyParts: sentParts.map((part) => part.content),
           attachments: sentAttachments.map((part) => part.attachment),
+          sources,
           flowDecision: agentReply.flowDecision,
           agentReply: agentReply.raw
         }
@@ -1608,7 +1611,9 @@ async function processIncomingMessage({ botId, message }) {
           worktoolMessageId: worktoolMessageIds[0] || "",
           worktoolMessageIds,
           replyParts: sentParts.map((part) => part.content),
-          attachments: sentAttachments.map((part) => part.attachment)
+          attachments: sentAttachments.map((part) => part.attachment),
+          sources,
+          agentReply: agentReply.raw
         }
       });
     }

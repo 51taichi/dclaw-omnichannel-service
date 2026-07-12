@@ -38,6 +38,7 @@ export function buildDclawRequest({
     "最终回复的真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。",
     "如果需要发送图片、文件、视频或音频，请在最终 JSON 中增加 attachments 数组，格式为 {\"type\":\"image|file|video|audio|link\",\"url\":\"https://...\",\"name\":\"文件名\",\"title\":\"标题\"}。",
     "attachments 中 type=image/file/video/audio 会由服务器调用 WorkTool 媒体接口发送；其他类型或未知链接会作为普通 URL 文本发送。",
+    "如果回复实际命中或参考了企业智库、客服经验库、任务节点、会话上下文、客户档案或大模型兜底，请在最终 JSON 中增加 sources 数组，格式为 {\"type\":\"enterprise_knowledge|experience|flow_node|conversation|profile|llm_fallback\",\"name\":\"来源名称\",\"reason\":\"为什么用于本次回复\"}；未命中的来源不要写入 sources。",
     "需要连续发送 2-3 条短回复时，请用空行分隔每段。"
   ];
   if (flow) {
@@ -46,12 +47,12 @@ export function buildDclawRequest({
       "如果 conversationReset=true，表示控制台刚清空了当前会话记录；请忽略旧会话文件，重建或清空当前 conversationId 对应的短期会话记录。",
       "不要机械追问；先回应客户当前表达，再自然推进当前节点目标。",
       "最终请只输出一个 JSON 对象，不要输出 Markdown 或分析过程。",
-      "JSON 格式：{\"reply\":\"发给客户的文本\",\"attachments\":[],\"flowDecision\":{\"currentNodeId\":\"当前节点ID\",\"nextNodeId\":\"建议下一节点ID或当前节点ID\",\"nodeCompleted\":false,\"confidence\":0.0,\"reason\":\"判断原因\",\"collectedDataPatch\":{}}}",
+      "JSON 格式：{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[],\"flowDecision\":{\"currentNodeId\":\"当前节点ID\",\"nextNodeId\":\"建议下一节点ID或当前节点ID\",\"nodeCompleted\":false,\"confidence\":0.0,\"reason\":\"判断原因\",\"collectedDataPatch\":{}}}",
       "如果当前节点已经完成，可以设置 nodeCompleted=true，并给出合法 nextNodeId；服务器会最终决定是否迁移。"
     );
   } else {
     instructions.push(
-      "普通文本回复可以直接输出要发回企微客户的最终文本；如果需要发送资源，请只输出 JSON 对象 {\"reply\":\"发给客户的文本\",\"attachments\":[]}；不要输出分析过程或规则解释；如果不需要回复，请输出空字符串。"
+      "普通文本回复可以直接输出要发回企微客户的最终文本；如果需要发送资源或标注来源，请只输出 JSON 对象 {\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[]}；不要输出分析过程或规则解释；如果不需要回复，请输出空字符串。"
     );
   }
 
@@ -383,10 +384,10 @@ function isRetryableDclawError(error) {
 
 export function parseAgentReply(rawReply) {
   const text = String(rawReply || "").trim();
-  if (!text) return { reply: "", attachments: [], flowDecision: null, raw: rawReply };
+  if (!text) return { reply: "", attachments: [], sources: [], flowDecision: null, raw: rawReply };
 
   const parsed = parseJsonObjectFromText(text);
-  if (!parsed) return { reply: text, attachments: [], flowDecision: null, raw: rawReply };
+  if (!parsed) return { reply: text, attachments: [], sources: [], flowDecision: null, raw: rawReply };
 
   const reply =
     typeof parsed.reply === "string"
@@ -399,9 +400,27 @@ export function parseAgentReply(rawReply) {
   return {
     reply: reply.trim(),
     attachments: normalizeAgentAttachments(parsed.attachments || parsed.resources || parsed.files),
+    sources: normalizeAgentSources(parsed.sources || parsed.references || parsed.evidence),
     flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
     raw: parsed
   };
+}
+
+function normalizeAgentSources(value) {
+  const items = Array.isArray(value) ? value : value ? [value] : [];
+  return items
+    .filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    .map((item) => {
+      const source = {
+        type: String(item.type || item.sourceType || item.kind || "").trim().toLowerCase(),
+        name: String(item.name || item.title || item.label || "").trim(),
+        reason: String(item.reason || item.usage || item.description || "").trim()
+      };
+      const id = String(item.id || item.docId || item.nodeId || "").trim();
+      if (id) source.id = id;
+      return source;
+    })
+    .filter((item) => item.type && item.name);
 }
 
 function normalizeAgentAttachments(value) {

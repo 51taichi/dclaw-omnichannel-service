@@ -1684,6 +1684,7 @@ function syncHandoffButton(session = currentFlowSession) {
 function renderChatMessageContent(message) {
   const mediaPayload = message.rawPayload?.messagePayload;
   const mediaType = String(message.rawPayload?.messageType || "");
+  const sources = renderChatSources(message.rawPayload?.sources);
   if (mediaType === "media" && mediaPayload?.fileUrl) {
     const fileType = String(mediaPayload.fileType || "image");
     const label = {
@@ -1700,10 +1701,44 @@ function renderChatMessageContent(message) {
       <div class="chat-media">
         ${media}
         ${caption ? `<div class="chat-text">${escapeHtml(caption)}</div>` : ""}
+        ${sources}
       </div>
     `;
   }
-  return `<div class="chat-text">${escapeHtml(message.content)}</div>`;
+  return `
+    <div class="chat-text">${escapeHtml(message.content)}</div>
+    ${sources}
+  `;
+}
+
+function sourceTypeLabel(type) {
+  return {
+    enterprise_knowledge: "企业智库",
+    knowledge: "企业智库",
+    experience: "经验库",
+    flow_node: "任务节点",
+    conversation: "会话",
+    profile: "客户档案",
+    llm_fallback: "模型兜底"
+  }[String(type || "").trim()] || "来源";
+}
+
+function renderChatSources(value) {
+  const sources = Array.isArray(value)
+    ? value.filter((source) => source && typeof source === "object" && source.type && source.name)
+    : [];
+  if (!sources.length) return "";
+  return `
+    <div class="chat-sources" aria-label="回复来源">
+      ${sources
+        .map((source) => {
+          const label = `${sourceTypeLabel(source.type)}：${source.name}`;
+          const tooltip = source.reason ? `${label}\n${source.reason}` : label;
+          return `<span class="chat-source-chip" title="${escapeHtml(tooltip)}">${escapeHtml(label)}</span>`;
+        })
+        .join("")}
+    </div>
+  `;
 }
 
 async function openFlowSession(conversationKey) {

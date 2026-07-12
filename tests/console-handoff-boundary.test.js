@@ -117,3 +117,11 @@ test("console has manual reply composer with AI takeover prompt and emoji tools"
   assert.match(css, /\.ai-takeover-card span\s*\{[\s\S]*white-space:\s*nowrap/);
   assert.equal(html.includes("handoffStatusBanner"), false);
 });
+
+test("chat bubbles can show agent reply sources without sending them to customers", () => {
+  assert.equal(app.includes("renderChatSources"), true);
+  assert.equal(app.includes("message.rawPayload?.sources"), true);
+  assert.equal(app.includes("chat-sources"), true);
+  assert.equal(css.includes(".chat-sources"), true);
+  assert.equal(css.includes(".chat-source-chip"), true);
+});

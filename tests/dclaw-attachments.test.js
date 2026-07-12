@@ -33,3 +33,29 @@ test("parseAgentReply preserves structured attachments from agent JSON", () => {
     }
   ]);
 });
+
+test("parseAgentReply preserves only structured sources returned by the agent", () => {
+  const parsed = parseAgentReply(JSON.stringify({
+    reply: "有的，我把工厂视频发你",
+    sources: [
+      {
+        type: "experience",
+        name: "视频资料索取与实力背书回应",
+        reason: "命中工厂视频 URL"
+      },
+      {
+        type: "",
+        name: "空来源",
+        reason: "应被过滤"
+      }
+    ]
+  }));
+
+  assert.deepEqual(parsed.sources, [
+    {
+      type: "experience",
+      name: "视频资料索取与实力背书回应",
+      reason: "命中工厂视频 URL"
+    }
+  ]);
+});

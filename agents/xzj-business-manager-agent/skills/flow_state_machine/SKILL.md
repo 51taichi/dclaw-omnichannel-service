@@ -84,6 +84,7 @@ description: 当 WorkTool 回调服务器在请求中提供 flow 状态机上下
 {
   "reply": "发给客户的最终文本",
   "attachments": [],
+  "sources": [],
   "flowDecision": {
     "currentNodeId": "当前节点ID",
     "nextNodeId": "建议下一节点ID；不推进时填当前节点ID",
@@ -101,6 +102,7 @@ description: 当 WorkTool 回调服务器在请求中提供 flow 状态机上下
 
 - `reply`：客户可见回复。必须是中文自然客服表达，不要提状态机、节点、JSON、企业智库或内部规则。
 - `attachments`：数组。没有资源时使用 `[]`；有图片、文件、视频、音频或链接资源时，按 `worktool_attachment_response` 填写。
+- `sources`：数组。只记录实际命中、实际参考、实际用于生成回复的来源；未命中的来源不要写入。
 - `currentNodeId`：必须等于 `flow.session.currentNodeId`。
 - `nextNodeId`：不推进时等于当前节点；推进时必须是状态机中存在的节点 ID。
 - `nodeCompleted`：布尔值。
@@ -142,6 +144,7 @@ description: 当 WorkTool 回调服务器在请求中提供 flow 状态机上下
 {
   "reply": "湘左记主要做湘味小吃和槟榔相关合作，品牌情况建议先看你关注加盟、产品还是区域政策，我可以按重点给你讲 😊",
   "attachments": [],
+  "sources": [],
   "flowDecision": {
     "currentNodeId": "send_material",
     "nextNodeId": "send_material",
@@ -179,6 +182,13 @@ description: 当 WorkTool 回调服务器在请求中提供 flow 状态机上下
 {
   "reply": "收到，长沙这边可以先按单店加盟思路看，5万预算也有讨论空间。我先把你的情况记下，后面可以按门店位置和投入再细算 😊",
   "attachments": [],
+  "sources": [
+    {
+      "type": "flow_node",
+      "name": "收集基础信息",
+      "reason": "客户提供城市、预算、需求和联系方式，用于判断当前节点完成"
+    }
+  ],
   "flowDecision": {
     "currentNodeId": "collect_basic_info",
     "nextNodeId": "invite_next_step",

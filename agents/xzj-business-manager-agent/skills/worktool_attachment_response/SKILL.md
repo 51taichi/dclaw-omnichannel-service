@@ -33,6 +33,13 @@ description: 当回复需要携带图片、文件、视频、音频或链接资�
 ```json
 {
   "reply": "发给客户的文本",
+  "sources": [
+    {
+      "type": "experience",
+      "name": "视频资料索取与实力背书回应",
+      "reason": "命中工厂视频 URL，用于发送视频附件"
+    }
+  ],
   "attachments": [
     {
       "type": "video",
@@ -51,6 +58,7 @@ description: 当回复需要携带图片、文件、视频、音频或链接资�
 ```json
 {
   "reply": "发给客户的文本",
+  "sources": [],
   "attachments": [
     {
       "type": "file",
@@ -71,6 +79,8 @@ description: 当回复需要携带图片、文件、视频、音频或链接资�
 ```
 
 没有资源时也可以输出 `"attachments": []`，不要为了凑字段编造资源。
+
+`sources` 只记录实际命中、实际参考、实际用于生成回复的来源。未命中的企业智库、经验库或任务节点不要写入 `sources`。
 
 ## type 规则
 
