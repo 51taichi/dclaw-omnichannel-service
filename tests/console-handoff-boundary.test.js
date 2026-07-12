@@ -118,6 +118,7 @@ test("console has manual reply composer with AI takeover prompt and emoji tools"
   assert.equal(html.includes("AI is chatting with the customer</small>"), true);
   assert.equal(html.includes("AI is chatting with the customer..."), false);
   assert.equal(html.includes("ai-chatting.png"), true);
+  assert.match(html, /class="ai-takeover-card"[\s\S]*ai-chatting\.png[\s\S]*class="ai-takeover-copy"/);
   assert.equal(app.includes("sendManualReply"), true);
   assert.equal(app.includes("/manual-reply"), true);
   assert.equal(app.includes("manualReplyEmojis"), true);
@@ -125,8 +126,11 @@ test("console has manual reply composer with AI takeover prompt and emoji tools"
   assert.equal(css.includes(".manual-reply-composer.is-ai"), true);
   assert.match(css, /\.manual-reply-composer\.is-ai\s*\{[\s\S]*min-height:\s*86px/);
   assert.match(css, /\.ai-takeover-card\s*\{[\s\S]*min-height:\s*66px/);
+  assert.match(css, /\.ai-takeover-card\s*\{[\s\S]*grid-template-columns:\s*minmax\(96px,\s*148px\) max-content/);
+  assert.match(css, /\.ai-takeover-card\s*\{[\s\S]*justify-content:\s*center/);
   assert.match(css, /\.ai-takeover-card img\s*\{[\s\S]*max-height:\s*78px/);
   assert.match(css, /\.ai-takeover-copy\s*\{[\s\S]*gap:\s*4px/);
+  assert.doesNotMatch(css, /\.ai-takeover-copy\s*\{[\s\S]*margin-left:\s*50px/);
   assert.match(css, /\.ai-takeover-copy\s*\{[\s\S]*text-align:\s*left/);
   assert.match(css, /\.ai-takeover-card span\s*\{[\s\S]*font-size:\s*clamp/);
   assert.match(css, /\.ai-takeover-card span\s*\{[\s\S]*white-space:\s*nowrap/);
