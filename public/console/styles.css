@@ -1555,6 +1555,8 @@ button.danger:hover {
 }
 
 .flow-session-type-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   width: 100%;
   min-width: 0;
   box-shadow: none;
@@ -1562,6 +1564,7 @@ button.danger:hover {
 
 .flow-session-type-tabs button {
   height: 40px;
+  min-width: 0;
   padding: 0 10px;
 }
 

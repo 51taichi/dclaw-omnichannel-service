@@ -58,6 +58,7 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(css.includes(".flow-session-filters"), true);
   assert.match(sessionsPanel, /class="flow-session-sidebar"[\s\S]*class="segmented flow-session-type-tabs"[\s\S]*id="flowSessionList"/);
   assert.equal(css.includes(".flow-session-type-tabs"), true);
+  assert.match(css, /\.flow-session-type-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
   assert.equal(css.includes(".flow-session-sidebar"), true);
   assert.doesNotMatch(css, /\.flow-session-filters\s*\{[^}]*border-bottom:/);
   assert.equal(css.includes(".handoff-status-banner"), false);
