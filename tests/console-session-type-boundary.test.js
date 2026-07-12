@@ -17,3 +17,9 @@ test("console derives flow session display names by session type", () => {
   assert.match(app, /conversationKey\.split\(":"\)\.pop\(\)/);
   assert.equal(app.includes("const name = session.receivedName || session.conversationKey"), false);
 });
+
+test("console only renders handoff controls for private flow sessions", () => {
+  assert.match(app, /const sessionType = flowSessionType\(session\)/);
+  assert.match(app, /const handoffControl = sessionType === "private"/);
+  assert.match(app, /\$\{handoffControl\}/);
+});

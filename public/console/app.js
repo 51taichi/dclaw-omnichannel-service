@@ -1566,6 +1566,7 @@ function renderFlowSessions() {
     ? visibleSessions
         .map((session) => {
           const active = session.conversationKey === state.selectedFlowConversationKey;
+          const sessionType = flowSessionType(session);
           const name = flowSessionDisplayName(session);
           const status = flowNodeName(session.currentNodeId);
           const assets = session.assets || {};
@@ -1578,6 +1579,11 @@ function renderFlowSessions() {
           const assetTooltip = `资产：${assetSummary}`;
           const timeTooltip = `最近消息：${lastMessageAt}`;
           const statusMeta = sessionStatusMeta(session);
+          const handoffControl = sessionType === "private"
+            ? `<span class="handoff-button ${isHandoff ? "is-active" : ""}" data-flow-handoff="${escapeHtml(session.conversationKey)}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
+                ${icon(isHandoff ? "refresh" : "users")}
+              </span>`
+            : "";
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <img class="flow-session-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
@@ -1592,9 +1598,7 @@ function renderFlowSessions() {
                     <span class="session-icon" title="${escapeHtml(assetTooltip)}" data-tooltip="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
                     <span class="session-icon" title="${escapeHtml(timeTooltip)}" data-tooltip="${escapeHtml(timeTooltip)}" aria-label="${escapeHtml(timeTooltip)}">${icon("clock")}</span>
                   </small>
-                  <span class="handoff-button ${isHandoff ? "is-active" : ""}" data-flow-handoff="${escapeHtml(session.conversationKey)}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
-                    ${icon(isHandoff ? "refresh" : "users")}
-                  </span>
+                  ${handoffControl}
                 </span>
               </span>
             </button>
