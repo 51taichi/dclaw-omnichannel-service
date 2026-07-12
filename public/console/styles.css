@@ -1535,9 +1535,18 @@ button.danger:hover {
   overflow: auto;
 }
 
+.flow-session-sidebar {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .flow-session-filters {
   display: grid;
-  grid-template-columns: minmax(190px, auto) minmax(300px, 2fr) minmax(132px, 0.8fr) minmax(132px, 0.8fr);
+  grid-template-columns: minmax(320px, 2fr) minmax(150px, 1fr) minmax(150px, 1fr);
   gap: 10px;
   align-items: center;
   min-width: 0;
@@ -1546,8 +1555,8 @@ button.danger:hover {
 }
 
 .flow-session-type-tabs {
-  width: auto;
-  min-width: 190px;
+  width: 100%;
+  min-width: 0;
   box-shadow: none;
 }
 
@@ -2662,6 +2671,7 @@ td .muted {
   .target-toolbar,
   .flow-session-head,
   .flow-session-filters,
+  .flow-session-sidebar,
   .flow-workbench,
   .flow-name-row,
   .chat-head,
