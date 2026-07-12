@@ -2410,23 +2410,32 @@ button.danger:hover {
 .chat-sources {
   display: flex;
   flex-wrap: wrap;
-  gap: 5px;
-  margin-top: 7px;
+  gap: 4px;
+  margin-top: 6px;
 }
 
-.chat-source-chip {
+.chat-source-icon {
   display: inline-flex;
   align-items: center;
-  max-width: 100%;
-  padding: 3px 7px;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
   border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
-  border-radius: 999px;
+  border-radius: 50%;
   background: color-mix(in srgb, var(--accent) 8%, #ffffff);
   color: var(--accent-dark);
-  font-size: 11px;
+  cursor: help;
+  font-size: 10px;
   font-weight: 900;
-  line-height: 1.2;
-  white-space: nowrap;
+  line-height: 1;
+  box-shadow: 0 4px 12px color-mix(in srgb, var(--accent) 12%, transparent);
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.chat-source-icon:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, #ffffff);
 }
 
 .flow-events-wrap {

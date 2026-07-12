@@ -138,6 +138,11 @@ test("chat bubbles can show agent reply sources without sending them to customer
   assert.equal(app.includes("renderChatSources"), true);
   assert.equal(app.includes("message.rawPayload?.sources"), true);
   assert.equal(app.includes("chat-sources"), true);
+  assert.equal(app.includes("sourceTypeIcon"), true);
+  assert.equal(app.includes("chat-source-icon"), true);
+  assert.equal(app.includes("title=\"${escapeHtml(tooltip)}\""), true);
+  assert.equal(app.includes("${escapeHtml(label)}：${escapeHtml(source.name)}"), false);
   assert.equal(css.includes(".chat-sources"), true);
-  assert.equal(css.includes(".chat-source-chip"), true);
+  assert.equal(css.includes(".chat-source-icon"), true);
+  assert.equal(css.includes(".chat-source-chip"), false);
 });

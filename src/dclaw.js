@@ -35,6 +35,8 @@ export function buildDclawRequest({
     "WorkTool 房间类型约定：roomType=2/4 表示私聊，必须默认回复；roomType=1/3 表示群聊，只有被 @ 时才回复。",
     "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
     "群聊被 @ 后，业务问题必须和私聊一样优先调用 DClaw 企业智库；不要因为是群聊就跳过知识库检索。",
+    "企业智库负责事实边界，客服经验库负责表达策略和资源线索；客户出现品牌信任异议、资源索取、价格/投入/合同/售后顾虑时，必须同时查询客服经验库。",
+    "客户说没听过、不熟、靠谱吗、真的假的、小品牌，或索要视频、图片、资料、文件、链接、工厂视频、产品视频时，不能只用企业智库直接回答；如果经验库实际参与，请在 sources 中写入 experience。",
     "最终回复的真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。",
     "如果需要发送图片、文件、视频或音频，请在最终 JSON 中增加 attachments 数组，格式为 {\"type\":\"image|file|video|audio|link\",\"url\":\"https://...\",\"name\":\"文件名\",\"title\":\"标题\"}。",
     "attachments 中 type=image/file/video/audio 会由服务器调用 WorkTool 媒体接口发送；其他类型或未知链接会作为普通 URL 文本发送。",

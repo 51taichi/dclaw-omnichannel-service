@@ -15,6 +15,15 @@ test("agent must query experience resources when customers ask for media and ent
   assert.match(experienceKnowledge, /显式资源链接优先级/);
 });
 
+test("agent must force experience routing for trust objections and resource requests", () => {
+  assert.match(customerReplyFlow, /经验库强制参与场景/);
+  assert.match(customerReplyFlow, /没听过、不熟、靠谱吗、真的假的、小品牌/);
+  assert.match(customerReplyFlow, /必须同时查询客服经验库/);
+  assert.match(customerReplyFlow, /企业智库负责事实边界，客服经验库负责表达策略和资源线索/);
+  assert.match(experienceKnowledge, /品牌信任异议/);
+  assert.match(experienceKnowledge, /资源索取/);
+});
+
 test("agent template requires sources only for actually used references", () => {
   assert.match(customerReplyFlow, /sources/);
   assert.match(customerReplyFlow, /只记录实际命中、实际参考、实际用于生成回复的来源/);
