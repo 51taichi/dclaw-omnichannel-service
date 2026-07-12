@@ -88,6 +88,7 @@ import {
   getCallbackConfig,
   getRobotInfo,
   sendRawCommand,
+  sendMediaMessage,
   sendTextMessage
 } from "./worktool.js";
 import { shouldProcessInboundForAgent } from "./message-rules.js";
@@ -562,6 +563,53 @@ async function sendTextReplyParts({ robotId, target, reply, allowSplit }) {
     results.push({ content, result });
   }
   return results;
+}
+
+const supportedAgentMediaTypes = new Set(["image", "file", "video", "audio"]);
+
+function normalizeAgentAttachment(attachment) {
+  if (!attachment || typeof attachment !== "object") return null;
+  const url = String(attachment.url || attachment.fileUrl || attachment.href || "").trim();
+  if (!url) return null;
+  const type = String(attachment.type || attachment.fileType || attachment.kind || "link").trim().toLowerCase();
+  return {
+    type,
+    url,
+    name: String(attachment.name || attachment.objectName || attachment.filename || attachment.fileName || "").trim(),
+    title: String(attachment.title || attachment.label || "").trim()
+  };
+}
+
+function formatLinkAttachmentsForText(attachments = []) {
+  const lines = attachments
+    .map(normalizeAgentAttachment)
+    .filter((attachment) => attachment && !supportedAgentMediaTypes.has(attachment.type))
+    .map((attachment) => {
+      const label = attachment.title || attachment.name || "链接";
+      return `${label}：${attachment.url}`;
+    });
+  return lines.length ? lines.join("\n") : "";
+}
+
+function appendLinkAttachmentsToReply(reply, attachments = []) {
+  const links = formatLinkAttachmentsForText(attachments);
+  return [String(reply || "").trim(), links].filter(Boolean).join("\n\n");
+}
+
+async function sendAgentAttachments({ robotId, target, attachments = [] }) {
+  const sent = [];
+  for (const attachment of attachments.map(normalizeAgentAttachment).filter(Boolean)) {
+    if (!supportedAgentMediaTypes.has(attachment.type)) continue;
+    const result = await sendMediaMessage({
+      robotId,
+      targets: [target],
+      fileUrl: attachment.url,
+      objectName: attachment.name || attachment.title || attachment.url.split("/").pop() || "",
+      fileType: attachment.type
+    });
+    sent.push({ attachment, result });
+  }
+  return sent;
 }
 
 async function sendAgentFailureFallback({
@@ -1470,18 +1518,24 @@ async function processIncomingMessage({ botId, message }) {
 
     const agentReply = parseAgentReply(invocation.reply);
     const reply = String(agentReply.reply || "").trim();
+    const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
+    const replyWithLinkAttachments = appendLinkAttachmentsToReply(reply, attachments);
+    const hasMediaAttachments = attachments
+      .map(normalizeAgentAttachment)
+      .some((attachment) => attachment && supportedAgentMediaTypes.has(attachment.type));
     logInfo("agent.invoke.success", {
       ...logContext,
       agentId: binding.agentId,
       invocationId,
       durationMs: Date.now() - agentStartedAt,
       replyLength: reply.length,
+      attachmentCount: attachments.length,
       attempts: invocation.attempts || 1,
       timeoutMs: getDclawAgentTimeoutMs(),
       maxAttempts: getDclawAgentMaxAttempts(),
       sessionId: invocation.sessionId || ""
     });
-    if (!reply) {
+    if (!replyWithLinkAttachments && !hasMediaAttachments) {
       logWarn("agent.reply.empty", {
         ...logContext,
         agentId: binding.agentId,
@@ -1509,11 +1563,18 @@ async function processIncomingMessage({ botId, message }) {
     const sentParts = await sendTextReplyParts({
       robotId: botId,
       target,
-      reply,
+      reply: replyWithLinkAttachments,
       allowSplit: isPrivateMessage(message) || replySplitConfig.splitGroup
     });
+    const sentAttachments = await sendAgentAttachments({
+      robotId: botId,
+      target,
+      attachments
+    });
     const primaryResult = sentParts[0]?.result || {};
-    const worktoolMessageIds = sentParts.map((part) => part.result?.data || "").filter(Boolean);
+    const textMessageIds = sentParts.map((part) => part.result?.data || "").filter(Boolean);
+    const attachmentMessageIds = sentAttachments.map((part) => part.result?.data || "").filter(Boolean);
+    const worktoolMessageIds = [...textMessageIds, ...attachmentMessageIds].filter(Boolean);
     if (flow) {
       applyFlowDecision({
         botId,
@@ -1526,11 +1587,12 @@ async function processIncomingMessage({ botId, message }) {
         conversationKey,
         direction: "outbound",
         senderName: binding.botName || binding.agentName || "机器人",
-        content: reply,
+        content: replyWithLinkAttachments,
         rawPayload: {
           worktoolMessageId: worktoolMessageIds[0] || "",
           worktoolMessageIds,
           replyParts: sentParts.map((part) => part.content),
+          attachments: sentAttachments.map((part) => part.attachment),
           flowDecision: agentReply.flowDecision,
           agentReply: agentReply.raw
         }
@@ -1541,11 +1603,12 @@ async function processIncomingMessage({ botId, message }) {
         conversationKey,
         direction: "outbound",
         senderName: binding.botName || binding.agentName || "机器人",
-        content: reply,
+        content: replyWithLinkAttachments,
         rawPayload: {
           worktoolMessageId: worktoolMessageIds[0] || "",
           worktoolMessageIds,
-          replyParts: sentParts.map((part) => part.content)
+          replyParts: sentParts.map((part) => part.content),
+          attachments: sentAttachments.map((part) => part.attachment)
         }
       });
     }
@@ -1557,6 +1620,7 @@ async function processIncomingMessage({ botId, message }) {
       worktoolMessageId: worktoolMessageIds[0] || "",
       worktoolMessageIds,
       replyPartCount: sentParts.length,
+      attachmentCount: sentAttachments.length,
       worktoolCode: primaryResult.code ?? null,
       worktoolMessage: primaryResult.message || "",
       totalDurationMs: Date.now() - startedAt
@@ -1573,7 +1637,23 @@ async function processIncomingMessage({ botId, message }) {
           ...(part.result || {}),
           replyPartIndex: index,
           replyPartCount: sentParts.length,
-          originalReply: reply
+          originalReply: replyWithLinkAttachments
+        }
+      });
+    }
+    for (const [index, part] of sentAttachments.entries()) {
+      insertOutgoingMessage({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        messageId: part.result?.data || "",
+        targetName: target,
+        content: part.attachment.url,
+        worktoolResponse: {
+          ...(part.result || {}),
+          attachmentIndex: index,
+          attachmentCount: sentAttachments.length,
+          attachment: part.attachment
         }
       });
     }
