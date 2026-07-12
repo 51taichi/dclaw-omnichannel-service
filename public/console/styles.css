@@ -2093,6 +2093,7 @@ button.danger:hover {
   display: grid;
   gap: 4px;
   justify-self: start;
+  margin-left: 50px;
   min-width: 0;
   text-align: left;
 }
