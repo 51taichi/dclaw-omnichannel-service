@@ -29,6 +29,7 @@ export function buildDclawRequest({
       payload: message
     }
   };
+  const agentFlow = compactFlowForAgent(flow);
 
   const instructions = [
     "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
@@ -66,7 +67,7 @@ export function buildDclawRequest({
       "",
       JSON.stringify({
         worktoolMessage,
-        flow,
+        flow: agentFlow,
         conversationReset
       }, null, 2)
     ].join("\n"),
@@ -81,7 +82,7 @@ export function buildDclawRequest({
       groupName: worktoolMessage.groupName,
       userId: worktoolMessage.userId,
       worktool: worktoolMessage,
-      flow,
+      flow: agentFlow,
       conversationReset
     }
   };
@@ -244,6 +245,8 @@ export function buildDclawActivationRequest({
       referenceMessages: task.messages
     }
   };
+  const agentFlow = compactFlowForAgent(flow);
+  const agentRecentMessages = compactRecentMessages(recentMessages);
 
   return {
     external_user_id: worktoolMessage.userId || "unknown",
@@ -254,7 +257,7 @@ export function buildDclawActivationRequest({
       "请结合当前会话上下文、当前节点目标和参考话术，组织成真人客服会发送的一条激活消息。",
       "只输出最终要发送给客户的激活话术，不要输出分析过程、JSON 或 Markdown。",
       "",
-      JSON.stringify({ worktoolMessage, flow, recentMessages }, null, 2)
+      JSON.stringify({ worktoolMessage, flow: agentFlow, recentMessages: agentRecentMessages }, null, 2)
     ].join("\n"),
     stream: true,
     metadata: {
@@ -264,9 +267,30 @@ export function buildDclawActivationRequest({
       agentId: binding.agentId,
       conversationId: conversationKey,
       worktool: worktoolMessage,
-      flow
+      flow: agentFlow
     }
   };
+}
+
+function compactFlowForAgent(flow) {
+  if (!flow || typeof flow !== "object" || Array.isArray(flow)) return flow || null;
+  return {
+    ...flow,
+    recentMessages: compactRecentMessages(flow.recentMessages)
+  };
+}
+
+function compactRecentMessages(messages) {
+  const items = Array.isArray(messages) ? messages : [];
+  return items
+    .filter((message) => message && typeof message === "object" && !Array.isArray(message))
+    .map((message) => ({
+      direction: String(message.direction || "").trim(),
+      senderName: String(message.senderName || "").trim(),
+      content: String(message.content || "").trim(),
+      createdAt: String(message.createdAt || message.created_at || "").trim()
+    }))
+    .filter((message) => message.direction || message.senderName || message.content);
 }
 
 const defaultDclawTimeoutMs = 25000;
