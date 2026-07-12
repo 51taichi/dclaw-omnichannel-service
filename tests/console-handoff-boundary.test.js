@@ -13,6 +13,14 @@ function sectionHtml(id) {
   return html.slice(start, nextSection === -1 ? html.length : nextSection);
 }
 
+function cssRule(selector) {
+  const start = css.indexOf(`${selector} {`);
+  assert.notEqual(start, -1);
+  const end = css.indexOf("}", start);
+  assert.notEqual(end, -1);
+  return css.slice(start, end + 1);
+}
+
 test("console exposes handoff toggles on session cards without the old status banner", () => {
   assert.equal(html.includes('id="handoffStatusBanner"'), false);
   assert.equal(app.includes("toggleSelectedConversationHandoff"), true);
@@ -113,6 +121,8 @@ test("proactive push controls use standard button sizing", () => {
 });
 
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
+  const aiTakeoverCardRule = cssRule(".ai-takeover-card");
+
   assert.equal(html.includes('id="manualReplyComposer"'), true);
   assert.equal(html.includes("AI 正在和客户大大沟通中。。。"), true);
   assert.equal(html.includes("AI is chatting with the customer</small>"), true);
@@ -128,6 +138,7 @@ test("console has manual reply composer with AI takeover prompt and emoji tools"
   assert.match(css, /\.ai-takeover-card\s*\{[\s\S]*min-height:\s*66px/);
   assert.match(css, /\.ai-takeover-card\s*\{[\s\S]*grid-template-columns:\s*minmax\(96px,\s*148px\) max-content/);
   assert.match(css, /\.ai-takeover-card\s*\{[\s\S]*justify-content:\s*center/);
+  assert.equal(aiTakeoverCardRule.includes("gap:"), false);
   assert.match(css, /\.ai-takeover-card img\s*\{[\s\S]*max-height:\s*78px/);
   assert.match(css, /\.ai-takeover-copy\s*\{[\s\S]*gap:\s*4px/);
   assert.doesNotMatch(css, /\.ai-takeover-copy\s*\{[\s\S]*margin-left:\s*50px/);

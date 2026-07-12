@@ -2045,7 +2045,6 @@ button.danger:hover {
   grid-template-columns: minmax(96px, 148px) max-content;
   align-items: center;
   justify-content: center;
-  gap: 18px;
   min-height: 66px;
   overflow: hidden;
 }
