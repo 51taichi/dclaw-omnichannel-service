@@ -1487,9 +1487,22 @@ function sortFlowSessions(sessions) {
 }
 
 function flowSessionType(session) {
+  const conversationKey = String(session?.conversationKey || "");
+  if (conversationKey.includes(":group:")) return "group";
+  if (conversationKey.includes(":private:")) return "private";
   const roomType = Number(session?.roomType || 0);
-  if (session?.groupName || roomType === 1 || roomType === 3) return "group";
-  return String(session?.conversationKey || "").includes(":group:") ? "group" : "private";
+  if (roomType === 1 || roomType === 3) return "group";
+  if (roomType === 2 || roomType === 4) return "private";
+  return session?.groupName && !session?.receivedName ? "group" : "private";
+}
+
+function flowSessionDisplayName(session) {
+  const conversationKey = String(session?.conversationKey || "");
+  const fallback = conversationKey.split(":").pop() || conversationKey || "未命名会话";
+  if (flowSessionType(session) === "group") {
+    return session?.groupName || fallback;
+  }
+  return session?.receivedName || fallback;
 }
 
 function currentFlowSessionTypeFilter() {
@@ -1553,7 +1566,7 @@ function renderFlowSessions() {
     ? visibleSessions
         .map((session) => {
           const active = session.conversationKey === state.selectedFlowConversationKey;
-          const name = session.receivedName || session.conversationKey;
+          const name = flowSessionDisplayName(session);
           const status = flowNodeName(session.currentNodeId);
           const assets = session.assets || {};
           const assetSummary = assets.totalCount
@@ -1764,7 +1777,7 @@ async function openFlowSession(conversationKey) {
   state.selectedFlowConversationKey = conversationKey;
   const session = currentFlowSessions.find((item) => item.conversationKey === conversationKey);
   renderFlowSessions();
-  els.chatTitle.textContent = session?.receivedName || conversationKey;
+  els.chatTitle.textContent = flowSessionDisplayName(session || { conversationKey });
   const params = new URLSearchParams({ limit: "300", botId: state.selectedBotId });
   const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
   currentFlowSession = data.session || session || null;
