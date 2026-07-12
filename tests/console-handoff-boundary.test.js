@@ -162,3 +162,13 @@ test("chat bubbles can show agent reply sources without sending them to customer
   assert.equal(css.includes(".chat-source-icon"), true);
   assert.equal(css.includes(".chat-source-chip"), false);
 });
+
+test("chat bubbles can show agent attachment urls for audit logs", () => {
+  assert.equal(app.includes("renderChatAttachments"), true);
+  assert.equal(app.includes("message.rawPayload?.attachments"), true);
+  assert.equal(app.includes("message.rawPayload?.agentReply?.attachments"), true);
+  assert.equal(app.includes("chat-attachments"), true);
+  assert.equal(app.includes("chat-attachment-link"), true);
+  assert.equal(css.includes(".chat-attachments"), true);
+  assert.equal(css.includes(".chat-attachment-link"), true);
+});

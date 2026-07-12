@@ -1626,6 +1626,7 @@ async function processIncomingMessage({ botId, message }) {
       worktoolMessageIds,
       replyPartCount: sentParts.length,
       attachmentCount: sentAttachments.length,
+      attachmentUrls: sentAttachments.map((part) => part.attachment?.url || "").filter(Boolean),
       worktoolCode: primaryResult.code ?? null,
       worktoolMessage: primaryResult.message || "",
       totalDurationMs: Date.now() - startedAt

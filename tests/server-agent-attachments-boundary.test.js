@@ -18,3 +18,8 @@ test("server stores agent reply sources in conversation message raw payload", ()
   assert.equal(source.includes("sourceCount: sources.length"), true);
   assert.equal(source.includes("sources,"), true);
 });
+
+test("server logs agent attachment urls on WorkTool send success", () => {
+  assert.equal(source.includes("attachmentUrls:"), true);
+  assert.match(source, /sentAttachments\.map\(\(part\) => part\.attachment\?\.url/);
+});

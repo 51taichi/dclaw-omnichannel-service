@@ -1721,6 +1721,9 @@ function renderChatMessageContent(message) {
   const mediaPayload = message.rawPayload?.messagePayload;
   const mediaType = String(message.rawPayload?.messageType || "");
   const sources = renderChatSources(message.rawPayload?.sources);
+  const attachments = renderChatAttachments(
+    message.rawPayload?.attachments || message.rawPayload?.agentReply?.attachments
+  );
   if (mediaType === "media" && mediaPayload?.fileUrl) {
     const fileType = String(mediaPayload.fileType || "image");
     const label = {
@@ -1737,13 +1740,44 @@ function renderChatMessageContent(message) {
       <div class="chat-media">
         ${media}
         ${caption ? `<div class="chat-text">${escapeHtml(caption)}</div>` : ""}
+        ${attachments}
         ${sources}
       </div>
     `;
   }
   return `
     <div class="chat-text">${escapeHtml(message.content)}</div>
+    ${attachments}
     ${sources}
+  `;
+}
+
+function attachmentTypeLabel(type) {
+  return {
+    image: "图片",
+    file: "文件",
+    video: "视频",
+    audio: "音频",
+    link: "链接"
+  }[String(type || "").trim()] || "附件";
+}
+
+function renderChatAttachments(value) {
+  const attachments = Array.isArray(value)
+    ? value.filter((item) => item && typeof item === "object" && item.url)
+    : [];
+  if (!attachments.length) return "";
+  return `
+    <div class="chat-attachments" aria-label="附件链接">
+      ${attachments
+        .map((attachment) => {
+          const type = attachmentTypeLabel(attachment.type || attachment.fileType);
+          const name = attachment.name || attachment.title || attachment.url;
+          const label = `${type}：${name}`;
+          return `<a class="chat-attachment-link" href="${escapeHtml(attachment.url)}" target="_blank" rel="noreferrer" title="${escapeHtml(attachment.url)}">${escapeHtml(label)}</a>`;
+        })
+        .join("")}
+    </div>
   `;
 }
 
