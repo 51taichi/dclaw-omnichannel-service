@@ -124,7 +124,8 @@ test("console has manual reply composer with AI takeover prompt and emoji tools"
   const aiTakeoverCardRule = cssRule(".ai-takeover-card");
 
   assert.equal(html.includes('id="manualReplyComposer"'), true);
-  assert.equal(html.includes("AI 正在和客户大大沟通中。。。"), true);
+  assert.equal(html.includes("AI 正在和客户大大沟通中</span>"), true);
+  assert.equal(html.includes("AI 正在和客户大大沟通中。。。"), false);
   assert.equal(html.includes("AI is chatting with the customer</small>"), true);
   assert.equal(html.includes("AI is chatting with the customer..."), false);
   assert.equal(html.includes("ai-chatting.png"), true);
