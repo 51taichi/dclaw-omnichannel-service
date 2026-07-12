@@ -1537,12 +1537,23 @@ button.danger:hover {
 
 .flow-session-filters {
   display: grid;
-  grid-template-columns: minmax(320px, 2fr) minmax(150px, 1fr) minmax(150px, 1fr);
+  grid-template-columns: minmax(190px, auto) minmax(300px, 2fr) minmax(132px, 0.8fr) minmax(132px, 0.8fr);
   gap: 10px;
   align-items: center;
   min-width: 0;
   padding: 0;
   margin: 0;
+}
+
+.flow-session-type-tabs {
+  width: auto;
+  min-width: 190px;
+  box-shadow: none;
+}
+
+.flow-session-type-tabs button {
+  height: 40px;
+  padding: 0 10px;
 }
 
 .flow-session-filters label {

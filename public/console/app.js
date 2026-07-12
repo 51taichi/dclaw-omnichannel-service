@@ -38,6 +38,7 @@ const els = {
   exportFlowButton: document.querySelector("#exportFlowButton"),
   refreshFlowSessionsButton: document.querySelector("#refreshFlowSessionsButton"),
   flowSessionList: document.querySelector("#flowSessionList"),
+  flowSessionTypeButtons: document.querySelectorAll("[data-flow-session-type]"),
   flowSessionSearchInput: document.querySelector("#flowSessionSearchInput"),
   flowSessionAssetFilter: document.querySelector("#flowSessionAssetFilter"),
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
@@ -1485,12 +1486,24 @@ function sortFlowSessions(sessions) {
   });
 }
 
+function flowSessionType(session) {
+  const roomType = Number(session?.roomType || 0);
+  if (session?.groupName || roomType === 1 || roomType === 3) return "group";
+  return String(session?.conversationKey || "").includes(":group:") ? "group" : "private";
+}
+
+function currentFlowSessionTypeFilter() {
+  return document.querySelector("[data-flow-session-type].active")?.dataset.flowSessionType || "all";
+}
+
 function getVisibleFlowSessions() {
+  const typeFilter = currentFlowSessionTypeFilter();
   const normalizedSessionSearch = String(els.flowSessionSearchInput.value || "").trim().toLowerCase();
   const assetFilter = els.flowSessionAssetFilter.value;
   const nodeFilter = els.flowSessionNodeFilter.value;
 
   return sortFlowSessions(currentFlowSessions.filter((session) => {
+    if (typeFilter !== "all" && flowSessionType(session) !== typeFilter) return false;
     if (normalizedSessionSearch) {
       const searchableText = [
         session.receivedName,
@@ -1530,6 +1543,12 @@ function sessionStatusMeta(session) {
 
 function renderFlowSessions() {
   const visibleSessions = getVisibleFlowSessions();
+  const typeFilter = currentFlowSessionTypeFilter();
+  const emptyCopy = typeFilter === "private"
+    ? "没有符合筛选条件的私聊会话。"
+    : typeFilter === "group"
+      ? "没有符合筛选条件的群聊会话。"
+      : "没有符合筛选条件的会话。";
   els.flowSessionList.innerHTML = visibleSessions.length
     ? visibleSessions
         .map((session) => {
@@ -1569,7 +1588,7 @@ function renderFlowSessions() {
           `;
         })
         .join("")
-    : `<div class="empty-state">${currentFlowSessions.length ? "没有符合筛选条件的会话。" : "暂无私聊状态机会话。启用状态机后，新的私聊会自动出现在这里。"}</div>`;
+    : `<div class="empty-state">${currentFlowSessions.length ? emptyCopy : "暂无客户会话。启用状态机后，新的私聊或群聊会自动出现在这里。"}</div>`;
 
   els.flowSessionList.querySelectorAll("[data-flow-session]").forEach((button) => {
     button.addEventListener("click", () =>
@@ -2067,6 +2086,16 @@ els.exportFlowButton.addEventListener("click", exportFlowMachine);
 els.refreshFlowSessionsButton.addEventListener("click", () =>
   Promise.all([loadFlowMachine(), loadFlowSessions()]).catch((error) => toast(error.message))
 );
+els.flowSessionTypeButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    els.flowSessionTypeButtons.forEach((item) => {
+      const active = item === button;
+      item.classList.toggle("active", active);
+      item.setAttribute("aria-selected", String(active));
+    });
+    renderFlowSessions();
+  });
+});
 [
   els.flowSessionAssetFilter,
   els.flowSessionNodeFilter

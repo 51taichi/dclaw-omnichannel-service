@@ -325,6 +325,20 @@
       <section id="flowSessionsPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head flow-session-head">
           <div class="flow-session-filters">
+            <div class="segmented flow-session-type-tabs" role="tablist" aria-label="会话类型">
+              <button class="active" data-flow-session-type="all" type="button" aria-selected="true">
+                <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+                全部
+              </button>
+              <button data-flow-session-type="private" type="button" aria-selected="false">
+                <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
+                私聊
+              </button>
+              <button data-flow-session-type="group" type="button" aria-selected="false">
+                <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+                群聊
+              </button>
+            </div>
             <label class="flow-session-search">
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索客户/会话</span>
               <input id="flowSessionSearchInput" type="search" placeholder="输入客户名、群名或会话关键词" />

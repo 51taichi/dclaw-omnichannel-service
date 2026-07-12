@@ -39,8 +39,13 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(html.includes('id="flowSessionDateFrom"'), false);
   assert.equal(html.includes('id="flowSessionDateTo"'), false);
   assert.equal(html.includes('id="flowSessionSearchInput"'), true);
+  assert.equal(html.includes('data-flow-session-type="all"'), true);
+  assert.equal(html.includes('data-flow-session-type="private"'), true);
+  assert.equal(html.includes('data-flow-session-type="group"'), true);
   assert.equal(app.includes("flowSessionSearchInput"), true);
   assert.equal(app.includes("normalizedSessionSearch"), true);
+  assert.equal(app.includes("flowSessionType(session) !== typeFilter"), true);
+  assert.equal(app.includes("[data-flow-session-type].active"), true);
   assert.equal(html.includes('id="flowSessionAssetFilter"'), true);
   assert.equal(html.includes('id="flowSessionNodeFilter"'), true);
   assert.equal(html.includes('id="flowSessionHandoffFilter"'), false);
@@ -49,6 +54,7 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(app.includes("sortFlowSessions"), true);
   assert.equal(app.includes('handoffStatus === "human"'), true);
   assert.equal(css.includes(".flow-session-filters"), true);
+  assert.equal(css.includes(".flow-session-type-tabs"), true);
   assert.doesNotMatch(css, /\.flow-session-filters\s*\{[^}]*border-bottom:/);
   assert.equal(css.includes(".handoff-status-banner"), false);
 });
