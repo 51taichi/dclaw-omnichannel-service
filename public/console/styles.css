@@ -2064,16 +2064,31 @@ button.danger:hover {
   justify-self: end;
 }
 
-.ai-takeover-card span {
+.ai-takeover-copy {
   position: relative;
   z-index: 1;
+  display: grid;
+  gap: 4px;
   justify-self: center;
+  min-width: 0;
+  text-align: center;
+}
+
+.ai-takeover-card span {
   color: var(--orange);
   font-size: clamp(18px, 2vw, 24px);
   font-weight: 900;
   line-height: 1.12;
   letter-spacing: 0;
-  text-align: center;
+  white-space: nowrap;
+}
+
+.ai-takeover-card small {
+  color: color-mix(in srgb, var(--orange) 72%, var(--muted));
+  font-size: clamp(11px, 1.05vw, 13px);
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: 0;
   white-space: nowrap;
 }
 
