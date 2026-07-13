@@ -131,7 +131,45 @@ test("debug auto-reply configuration is requested and saved for the selected bot
 
   assert.match(loadBody, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/settings\/debug-reply/);
   assert.match(loadBody, /isCurrentBotContext\(botId, contextVersion\)/);
-  assert.match(saveBody, /\/api\/bots\/\$\{encodeURIComponent\(state\.selectedBotId\)\}\/settings\/debug-reply/);
+  assert.match(saveBody, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/settings\/debug-reply/);
   assert.equal(loadBody.includes('"/api/settings/debug-reply"'), false);
   assert.equal(saveBody.includes('"/api/settings/debug-reply"'), false);
+});
+
+test("Bot-scoped mutations and drafts cannot cross an in-flight Bot switch", () => {
+  const clearStart = app.indexOf("function clearBotScopedContent");
+  const clearEnd = app.indexOf("function expandPanel", clearStart);
+  const clearBody = app.slice(clearStart, clearEnd);
+  assert.match(clearBody, /els\.manualReplyInput\.value = ""/);
+  assert.match(clearBody, /els\.proactiveForm\.reset\(\)/);
+  assert.match(clearBody, /els\.accessKeyForm\.reset\(\)/);
+
+  [
+    "saveAccessKey",
+    "saveFlowMachine",
+    "toggleSelectedConversationHandoff",
+    "sendManualReply",
+    "resetSelectedConversation",
+    "saveDebugReply",
+    "createProactiveTask"
+  ].forEach((name) => {
+    const start = app.indexOf(`async function ${name}`);
+    const end = app.indexOf("\nasync function ", start + 1);
+    const body = app.slice(start, end === -1 ? undefined : end);
+    assert.match(body, /const botId = state\.selectedBotId/);
+    assert.match(body, /const contextVersion = state\.botContextVersion/);
+    assert.match(body, /isCurrentBotContext\(botId, contextVersion\)/);
+  });
+});
+
+test("uploads and task-detail views stay within the Bot that initiated them", () => {
+  const uploadBody = app.match(/async function uploadLocalFile\([\s\S]*?\n}\n\n/)[0];
+  assert.match(uploadBody, /async function uploadLocalFile\(file, botId\)/);
+  assert.match(uploadBody, /\/api\/uploads\?botId=\$\{encodeURIComponent\(botId\)\}/);
+
+  const taskDetailStart = app.indexOf('button.addEventListener("click", async () => {', app.indexOf("function renderProactiveTasks"));
+  const taskDetailEnd = app.indexOf("\n    });", taskDetailStart) + 8;
+  const taskDetailBody = app.slice(taskDetailStart, taskDetailEnd);
+  assert.match(taskDetailBody, /const botId = state\.selectedBotId/);
+  assert.match(taskDetailBody, /isCurrentBotContext\(botId, contextVersion\)/);
 });
