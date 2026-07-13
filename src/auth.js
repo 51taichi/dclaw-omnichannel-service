@@ -52,6 +52,18 @@ export function deleteBotSession(token) {
   return botSessions.delete(String(token || ""));
 }
 
+export function deleteBotSessionsForBot(botId) {
+  const normalizedBotId = String(botId || "");
+  let removed = 0;
+  for (const [token, session] of botSessions.entries()) {
+    if (session.botId === normalizedBotId) {
+      botSessions.delete(token);
+      removed += 1;
+    }
+  }
+  return removed;
+}
+
 export function publicBotView(binding) {
   return {
     botId: binding.botId,

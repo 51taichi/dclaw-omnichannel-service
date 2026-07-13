@@ -20,6 +20,7 @@ import { logError, logInfo, logWarn } from "./logger.js";
 import {
   createBotSession,
   deleteBotSession,
+  deleteBotSessionsForBot,
   getBotSession,
   publicBotView,
   verifyAccessKey
@@ -32,6 +33,7 @@ import {
   claimNextProactiveTarget,
   clearConversationForReset,
   createProactiveTask,
+  deleteBotData,
   finishAgentInvocation,
   finishMessageProcessing,
   getBotBinding,
@@ -2184,6 +2186,26 @@ app.put(
       });
     }
     res.json({ ok: true, binding, callbackBinding });
+  })
+);
+
+app.delete(
+  "/api/bots/:botId",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    const deleted = deleteBotData(req.params.botId);
+    if (!deleted) {
+      res.status(404).json({ ok: false, message: "bot not found" });
+      return;
+    }
+    const removedSessions = deleteBotSessionsForBot(req.params.botId);
+    await fs.promises.rm(getBotUploadDir(req.params.botId), { recursive: true, force: true });
+    logInfo("bot.deleted", {
+      botId: req.params.botId,
+      removedSessions,
+      deleted: deleted.deleted
+    });
+    res.json({ ok: true, deleted, removedSessions });
   })
 );
 

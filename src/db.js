@@ -428,6 +428,51 @@ export function listBotBindings() {
     .map(rowToBinding);
 }
 
+export function deleteBotData(botId) {
+  const normalizedBotId = String(botId || "").trim();
+  if (!normalizedBotId) throw new Error("botId is required");
+
+  const binding = getBotBinding(normalizedBotId);
+  if (!binding) return null;
+
+  const tables = [
+    "flow_activation_tasks",
+    "flow_state_events",
+    "conversation_messages",
+    "flow_sessions",
+    "proactive_task_targets",
+    "proactive_tasks",
+    "proactive_targets",
+    "message_processing",
+    "agent_invocations",
+    "command_callbacks",
+    "outgoing_messages",
+    "incoming_messages",
+    "conversations",
+    "flow_machines",
+    "bot_agent_bindings"
+  ];
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const deleted = {};
+    for (const table of tables) {
+      const result = db.prepare(`DELETE FROM ${table} WHERE bot_id = ?`).run(normalizedBotId);
+      deleted[table] = result.changes;
+    }
+    db.exec("COMMIT");
+    return {
+      ok: true,
+      botId: normalizedBotId,
+      deleted,
+      binding
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function getSetting(key, defaultValue = null) {
   const row = db.prepare("SELECT value_json FROM app_settings WHERE key = ?").get(key);
   return row ? parseJson(row.value_json) : defaultValue;

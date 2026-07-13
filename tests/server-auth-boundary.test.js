@@ -8,6 +8,9 @@ test("server exposes public bot list and unified unlock routes", () => {
   assert.equal(serverSource.includes('"/api/public/bots"'), true);
   assert.equal(serverSource.includes('"/api/bots/:botId/unlock"'), true);
   assert.equal(serverSource.includes('"/api/bots/:botId/access-key"'), true);
+  assert.equal(serverSource.includes('"/api/bots/:botId"'), true);
+  assert.equal(serverSource.includes("deleteBotData"), true);
+  assert.equal(serverSource.includes("getBotUploadDir(req.params.botId)"), true);
 });
 
 test("server supports bot scoped session authorization", () => {

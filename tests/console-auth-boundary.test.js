@@ -57,6 +57,19 @@ test("bot cards expose four unlocked quick actions", () => {
   assert.equal(app.includes('data-action="${unlocked ? "logs" : "unlock"}'), true);
 });
 
+test("admin bot cards expose a dangerous delete action with password confirmation", () => {
+  assert.equal(app.includes('session?.role === "admin"'), true);
+  assert.equal(app.includes('data-action="delete"'), true);
+  assert.equal(app.includes('class="danger bot-delete-button"'), true);
+  assert.equal(app.includes("<span>删除</span>"), true);
+  assert.equal(app.includes('async function deleteBot(bot)'), true);
+  assert.equal(app.includes("删除 Bot 需要管理员密码"), true);
+  assert.equal(app.includes("确认删除该 Bot 及其所有数据？此操作不可恢复。"), true);
+  assert.match(app, /request\(`\/api\/bots\/\$\{encodeURIComponent\(botId\)\}`,\s*\{[\s\S]*method:\s*"DELETE"/);
+  assert.match(app, /clearBotSession\(botId\);[\s\S]*resetBotContext\(\);[\s\S]*loadBots\(\)/);
+  assert.match(css, /\.bot-delete-button\s*\{[\s\S]*color:\s*var\(--danger\)/);
+});
+
 test("locked bot quick actions use lock icons", () => {
   assert.equal(app.includes('icon(unlocked ? "edit" : "lock")'), true);
   assert.equal(app.includes('icon(unlocked ? "users" : "lock")'), true);

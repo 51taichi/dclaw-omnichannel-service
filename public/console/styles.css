@@ -548,6 +548,29 @@ h2 {
   line-height: 1;
 }
 
+.bot-delete-button {
+  width: auto;
+  min-width: 62px;
+  height: 32px;
+  min-height: 32px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-color: color-mix(in srgb, var(--danger) 48%, var(--line));
+  background: color-mix(in srgb, var(--danger) 8%, #ffffff);
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.bot-delete-button:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #ffffff;
+}
+
 .icon-button .icon,
 .bot-actions button .icon {
   width: 16px;

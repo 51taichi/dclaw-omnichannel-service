@@ -126,3 +126,83 @@ test("command callbacks only update delivery rows owned by the callback Bot", ()
   assert.equal(botARow.callback_error_code, 0);
   assert.equal(botBRow.callback_error_code, null);
 });
+
+test("deleteBotData removes the bot binding and bot scoped records", () => {
+  const botId = "bot_delete_me";
+  const otherBotId = "bot_keep_me";
+  const conversationKey = `${botId}:private:待删除客户`;
+
+  db.upsertBotBinding({
+    botId,
+    botName: "待删除 Bot",
+    agentId: "agent_delete",
+    agentName: "待删除 Agent",
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: "delete_public",
+    agentApiKey: "secret",
+    enabled: true
+  });
+  db.upsertBotBinding({
+    botId: otherBotId,
+    botName: "保留 Bot",
+    agentId: "agent_keep",
+    agentName: "保留 Agent",
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: "keep_public",
+    agentApiKey: "secret",
+    enabled: true
+  });
+  createSession(botId, "待删除客户", "node_delete");
+  createSession(otherBotId, "保留客户", "node_keep");
+  db.createProactiveTask({
+    botId,
+    agentId: "agent_delete",
+    title: "删除任务",
+    content: "删除内容",
+    targets: [{ targetType: "private", targetName: "待删除客户" }],
+    createdBy: "test"
+  });
+  db.upsertProactiveAddressBookTarget({
+    botId,
+    targetType: "private",
+    targetName: "待删除客户",
+    displayName: "待删除客户",
+    source: "test"
+  });
+  db.insertIncomingMessage({
+    botId,
+    conversationKey,
+    payload: { messageId: "delete-msg", spoken: "hello", receivedName: "待删除客户" }
+  });
+  db.insertOutgoingMessage({
+    botId,
+    agentId: "agent_delete",
+    conversationKey,
+    targetName: "待删除客户",
+    content: "reply",
+    messageId: "delete-out",
+    worktoolResponse: {}
+  });
+  db.insertCommandCallback({
+    botId,
+    payload: { messageId: "delete-out", errorCode: 0, errorReason: "" }
+  });
+  db.insertAgentInvocationStart({
+    botId,
+    agentId: "agent_delete",
+    conversationKey,
+    incomingMessageId: "delete-msg",
+    request: {}
+  });
+
+  const deleted = db.deleteBotData(botId);
+
+  assert.equal(deleted.botId, botId);
+  assert.equal(db.getBotBinding(botId), null);
+  assert.equal(db.getFlowSessionForBot({ botId, conversationKey }), null);
+  assert.deepEqual(db.listConversationMessages({ botId, conversationKey }), []);
+  assert.equal(db.listProactiveTasks({ botId }).length, 0);
+  assert.equal(db.listProactiveAddressBookTargets({ botId }).length, 0);
+  assert.ok(db.getBotBinding(otherBotId));
+  assert.ok(db.listFlowSessions({ botId: otherBotId }).length > 0);
+});

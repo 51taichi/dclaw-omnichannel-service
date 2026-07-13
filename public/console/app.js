@@ -635,6 +635,24 @@ async function lockCurrentBot() {
   toast("已上锁");
 }
 
+async function deleteBot(bot) {
+  const botId = bot?.botId || "";
+  if (!botId) return;
+  const adminKey = await openAdminKeyDialog("删除 Bot 需要管理员密码。确认删除该 Bot 及其所有数据？此操作不可恢复。");
+  if (!adminKey) return;
+  await request(`/api/bots/${encodeURIComponent(botId)}`, {
+    method: "DELETE",
+    botId: "",
+    headers: { "x-api-key": adminKey }
+  });
+  clearBotSession(botId);
+  if (state.selectedBotId === botId) {
+    resetBotContext();
+  }
+  await loadBots();
+  toast("Bot 已删除");
+}
+
 function resetBotContext() {
   beginBotContext();
   setBindingState(null);
@@ -668,6 +686,7 @@ function renderBots(bots) {
       const isSelected = bot.botId === state.selectedBotId;
       const unlocked = isBotUnlocked(bot.botId);
       const session = getBotSession(bot.botId);
+      const canDelete = unlocked && session?.role === "admin";
       const botStatusText = !unlocked ? "已上锁" : isSelected ? (session?.role === "admin" ? "管理员" : "使用中") : "已解锁";
       const botStatusClass = !unlocked ? "off" : isSelected ? "selected" : "ok";
       const accent = getBotAccent(bot);
@@ -692,6 +711,7 @@ function renderBots(bots) {
             <span class="pill ${botStatusClass}">${botStatusText}</span>
           </div>
           <div class="row-actions bot-actions">
+            ${canDelete ? `<button class="danger bot-delete-button" data-action="delete" data-bot="${safeBot}" type="button" aria-label="删除 Bot" title="删除 Bot">${icon("reset")}<span>删除</span></button>` : ""}
             <button class="secondary icon-button" data-action="${unlocked ? "tasks" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "任务配置" : "解锁"}" title="${unlocked ? "任务配置" : "解锁"}">${icon(unlocked ? "edit" : "lock")}</button>
             <button class="secondary icon-button" data-action="${unlocked ? "sessions" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "客户会话" : "解锁"}" title="${unlocked ? "客户会话" : "解锁"}">${icon(unlocked ? "users" : "lock")}</button>
             <button class="secondary icon-button" data-action="${unlocked ? "push" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "推送消息" : "解锁"}" title="${unlocked ? "推送消息" : "解锁"}">${icon(unlocked ? "send" : "lock")}</button>
@@ -711,6 +731,11 @@ function renderBots(bots) {
       if (actionTarget.dataset.action === "unlock") {
         event.stopPropagation();
         openUnlockDialog(bot);
+        return;
+      }
+      if (actionTarget.dataset.action === "delete") {
+        event.stopPropagation();
+        await deleteBot(bot);
         return;
       }
       if (actionTarget.dataset.action === "open") {
