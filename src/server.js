@@ -40,6 +40,7 @@ import {
   getConversationAssets,
   getFlowMachine,
   getFlowSession,
+  getFlowSessionForBot,
   getOrCreateConversationSession,
   getOrCreateFlowSession,
   getSetting,
@@ -114,9 +115,20 @@ const uploadCleanupIntervalMs =
   Number(process.env.UPLOAD_CLEANUP_INTERVAL_MINUTES || 60) * 60 * 1000;
 fs.mkdirSync(uploadDir, { recursive: true });
 
+function getUploadFolderName(botId) {
+  return crypto.createHash("sha256").update(String(botId)).digest("hex");
+}
+
+function getBotUploadDir(botId) {
+  return path.join(uploadDir, getUploadFolderName(botId));
+}
+
 const upload = multer({
   storage: multer.diskStorage({
-    destination: uploadDir,
+    destination: (req, file, cb) => {
+      const destination = getBotUploadDir(req.uploadBotId);
+      fs.mkdir(destination, { recursive: true }, (error) => cb(error, destination));
+    },
     filename: (req, file, cb) => {
       const ext = path.extname(file.originalname || "");
       cb(null, `${Date.now()}-${crypto.randomUUID()}${ext}`);
@@ -135,17 +147,24 @@ async function cleanupUploadCache() {
   if (!Number.isFinite(uploadRetentionMs) || uploadRetentionMs <= 0) return;
   const cutoff = Date.now() - uploadRetentionMs;
   let removed = 0;
-  const entries = await fs.promises.readdir(uploadDir, { withFileTypes: true });
-  await Promise.all(
-    entries.map(async (entry) => {
+  async function cleanDirectory(directory) {
+    const entries = await fs.promises.readdir(directory, { withFileTypes: true });
+    await Promise.all(entries.map(async (entry) => {
+      const filePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        await cleanDirectory(filePath);
+        const remaining = await fs.promises.readdir(filePath);
+        if (!remaining.length) await fs.promises.rmdir(filePath);
+        return;
+      }
       if (!entry.isFile()) return;
-      const filePath = path.join(uploadDir, entry.name);
       const stat = await fs.promises.stat(filePath);
       if (stat.mtimeMs >= cutoff) return;
       await fs.promises.unlink(filePath);
       removed += 1;
-    })
-  );
+    }));
+  }
+  await cleanDirectory(uploadDir);
   if (removed > 0) {
     logInfo("uploads.cleanup", {
       removed,
@@ -169,7 +188,9 @@ resetInterruptedProactiveTargets();
 function assertCallbackSecret(req) {
   const expected = process.env.CALLBACK_SECRET;
   if (!expected) {
-    return;
+    const error = new Error("callback secret is not configured");
+    error.status = 503;
+    throw error;
   }
   if (req.query.secret !== expected) {
     const error = new Error("invalid callback secret");
@@ -181,7 +202,9 @@ function assertCallbackSecret(req) {
 function assertAdmin(req) {
   const expected = process.env.ADMIN_API_KEY;
   if (!expected) {
-    return;
+    const error = new Error("admin API key is not configured");
+    error.status = 503;
+    throw error;
   }
   const actual = req.header("x-api-key") || req.header("authorization")?.replace(/^Bearer\s+/i, "");
   if (actual !== expected) {
@@ -197,7 +220,7 @@ function getRequestAdminKey(req) {
 
 function isAdminKey(req) {
   const expected = process.env.ADMIN_API_KEY;
-  if (!expected) return true;
+  if (!expected) return false;
   return getRequestAdminKey(req) === expected;
 }
 
@@ -310,13 +333,13 @@ async function bindBotCallbacks(botId, { replyAll = 1 } = {}) {
   };
 }
 
-function buildPublicFileUrl(filename) {
+function buildPublicFileUrl(botId, filename) {
   const baseUrl = process.env.PUBLIC_BASE_URL;
   if (!baseUrl) {
     throw new Error("PUBLIC_BASE_URL is required for uploaded file URLs");
   }
   const url = new URL(
-    `/uploads/${encodeURIComponent(filename)}`,
+    `/uploads/${encodeURIComponent(getUploadFolderName(botId))}/${encodeURIComponent(filename)}`,
     baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`
   );
   return url.toString();
@@ -1805,7 +1828,9 @@ app.post(
   applyUploadCors,
   (req, res, next) => {
     try {
-      assertConsoleAccess(req);
+      const botId = String(req.query.botId || "").trim();
+      assertBotAccess(req, botId);
+      req.uploadBotId = botId;
       next();
     } catch (error) {
       next(error);
@@ -1824,7 +1849,7 @@ app.post(
           filename: req.file.filename,
           size: req.file.size,
           mimeType: req.file.mimetype,
-          url: buildPublicFileUrl(req.file.filename)
+          url: buildPublicFileUrl(req.uploadBotId, req.file.filename)
         }
       });
     } catch (error) {
@@ -1896,6 +1921,7 @@ app.post("/worktool/:botId/command-callback", (req, res) => {
     payload: req.body || {}
   });
   const outgoingMatched = updateOutgoingMessageFromCommandCallback({
+    botId: req.params.botId,
     messageId: req.body?.messageId,
     payload: req.body || {}
   });
@@ -1905,6 +1931,7 @@ app.post("/worktool/:botId/command-callback", (req, res) => {
     outgoingMatched
   }));
   updateProactiveTargetFromCommandCallback({
+    botId: req.params.botId,
     messageId: req.body?.messageId,
     payload: req.body || {}
   });
@@ -1912,6 +1939,12 @@ app.post("/worktool/:botId/command-callback", (req, res) => {
 });
 
 app.post("/worktool/command-callback", (req, res) => {
+  try {
+    assertCallbackSecret(req);
+  } catch (error) {
+    res.status(error.status || 500).json({ code: -1, message: error.message });
+    return;
+  }
   const botId = resolveLegacyBotId(req);
   if (!botId) {
     res.status(400).json({ code: -1, message: "missing botId" });
@@ -1919,6 +1952,7 @@ app.post("/worktool/command-callback", (req, res) => {
   }
   insertCommandCallback({ botId, payload: req.body || {} });
   const outgoingMatched = updateOutgoingMessageFromCommandCallback({
+    botId,
     messageId: req.body?.messageId,
     payload: req.body || {}
   });
@@ -1928,6 +1962,7 @@ app.post("/worktool/command-callback", (req, res) => {
     outgoingMatched
   }));
   updateProactiveTargetFromCommandCallback({
+    botId,
     messageId: req.body?.messageId,
     payload: req.body || {}
   });
@@ -2208,11 +2243,16 @@ app.get(
     const botId = String(req.query.botId || "").trim();
     assertBotAccess(req, botId);
     const conversationKey = decodeURIComponent(req.params.conversationKey);
+    const session = getFlowSessionForBot({ botId, conversationKey });
     res.json({
       ok: true,
-      session: getFlowSession(conversationKey),
-      messages: listConversationMessages({ conversationKey, limit: Number(req.query.limit || 300) }),
-      events: listFlowStateEvents({ conversationKey, limit: 100 }),
+      session,
+      messages: listConversationMessages({
+        botId,
+        conversationKey,
+        limit: Number(req.query.limit || 300)
+      }),
+      events: listFlowStateEvents({ botId, conversationKey, limit: 100 }),
       assets: getConversationAssets({
         botId,
         conversationKey
@@ -2376,7 +2416,7 @@ app.post(
   "/api/proactive/tasks",
   asyncHandler(async (req, res) => {
     const body = req.body || {};
-    const botId = String(body.botId || process.env.ROBOT_ID || "").trim();
+    const botId = String(body.botId || "").trim();
     assertBotAccess(req, botId);
     const targets = normalizeProactiveTargets(body.targets);
     const binding = botId ? getBotBinding(botId) : null;
@@ -2447,7 +2487,7 @@ app.get(
 app.get(
   "/api/proactive/targets",
   asyncHandler(async (req, res) => {
-    const botId = String(req.query.botId || process.env.ROBOT_ID || "").trim();
+    const botId = String(req.query.botId || "").trim();
     assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
     res.json({
@@ -2466,7 +2506,7 @@ app.post(
   "/api/proactive/targets",
   asyncHandler(async (req, res) => {
     const body = req.body || {};
-    const botId = String(body.botId || process.env.ROBOT_ID || "").trim();
+    const botId = String(body.botId || "").trim();
     assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
     const target = upsertProactiveAddressBookTarget({
@@ -2483,7 +2523,7 @@ app.post(
 app.post(
   "/api/proactive/targets/mock",
   asyncHandler(async (req, res) => {
-    const botId = String(req.body?.botId || process.env.ROBOT_ID || "").trim();
+    const botId = String(req.body?.botId || "").trim();
     assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
     res.json({

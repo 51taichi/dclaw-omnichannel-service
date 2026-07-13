@@ -351,7 +351,7 @@ GET  /api/logs/conversations
 
 ### 上传接口给外部应用调用
 
-`POST /api/uploads` 使用 `multipart/form-data`，文件字段名必须是 `file`，请求头带 `x-api-key: 你的ADMIN_API_KEY`。默认最大上传 `100MB`，返回的 `file.url` 是公网可访问地址，可直接作为媒体消息的 `fileUrl`。
+`POST /api/uploads?botId=你的botId` 使用 `multipart/form-data`，文件字段名必须是 `file`，请求头带当前 Bot 的 `x-bot-session-token` 或管理员 `x-api-key: 你的ADMIN_API_KEY`。`botId` 必填，上传文件会保存到该 Bot 的独立缓存目录。默认最大上传 `100MB`，返回的 `file.url` 是公网可访问地址，可直接作为媒体消息的 `fileUrl`。
 
 浏览器端示例：
 
@@ -359,7 +359,8 @@ GET  /api/logs/conversations
 const form = new FormData();
 form.append("file", file);
 
-const response = await fetch("https://你的公网域名/api/uploads", {
+const botId = "你的botId";
+const response = await fetch(`https://你的公网域名/api/uploads?botId=${encodeURIComponent(botId)}`, {
   method: "POST",
   headers: {
     "x-api-key": "你的ADMIN_API_KEY"

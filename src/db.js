@@ -591,8 +591,8 @@ export function insertCommandCallback({ botId, payload }) {
   );
 }
 
-export function updateOutgoingMessageFromCommandCallback({ messageId, payload }) {
-  if (!messageId) return false;
+export function updateOutgoingMessageFromCommandCallback({ botId, messageId, payload }) {
+  if (!botId || !messageId) return false;
   const result = db.prepare(`
     UPDATE outgoing_messages
     SET callback_error_code = ?,
@@ -600,12 +600,14 @@ export function updateOutgoingMessageFromCommandCallback({ messageId, payload })
         callback_payload_json = ?,
         callback_at = ?
     WHERE message_id = ?
+      AND bot_id = ?
   `).run(
     payload.errorCode ?? null,
     payload.errorReason || "",
     json(payload),
     now(),
-    messageId
+    messageId,
+    botId
   );
   return result.changes > 0;
 }
@@ -858,7 +860,8 @@ function getFlowCollectFields(machine) {
 export function getConversationAssets({ botId, conversationKey }) {
   const machine = getFlowMachine(botId);
   const session = rowToFlowSession(
-    db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)
+    db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ? AND bot_id = ?")
+      .get(conversationKey, botId)
   );
   const collectedData = session?.collectedData || {};
   const fields = getFlowCollectFields(machine).map((field) => {
@@ -942,7 +945,9 @@ export function getOrCreateFlowSession({ botId, conversationKey, machine }) {
     );
     row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey);
   }
-  return rowToFlowSession(row);
+  const session = rowToFlowSession(row);
+  if (session?.botId !== botId) throw new Error("flow session not found");
+  return session;
 }
 
 export function getOrCreateConversationSession({
@@ -1017,16 +1022,15 @@ export function listFlowSessions({ botId, limit = 100 } = {}) {
 }
 
 export function updateFlowSessionNode({ botId, conversationKey, nextNodeId, reason, decision = null }) {
-  const session = rowToFlowSession(
-    db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)
-  );
+  const session = getFlowSessionForBot({ botId, conversationKey });
   if (!session) throw new Error("flow session not found");
   const timestamp = now();
   db.prepare(`
     UPDATE flow_sessions
     SET current_node_id = ?, updated_at = ?, last_message_at = ?
     WHERE conversation_key = ?
-  `).run(nextNodeId, timestamp, timestamp, conversationKey);
+      AND bot_id = ?
+  `).run(nextNodeId, timestamp, timestamp, conversationKey, botId);
   db.prepare(`
     INSERT INTO flow_state_events (
       bot_id, conversation_key, from_node_id, to_node_id, reason, agent_decision_json, created_at
@@ -1056,6 +1060,13 @@ export function touchFlowSession(conversationKey) {
 export function getFlowSession(conversationKey) {
   return rowToFlowSession(
     db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey)
+  );
+}
+
+export function getFlowSessionForBot({ botId, conversationKey }) {
+  return rowToFlowSession(
+    db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ? AND bot_id = ?")
+      .get(conversationKey, botId)
   );
 }
 
@@ -1317,29 +1328,33 @@ export function insertConversationMessage({
   );
 }
 
-export function listConversationMessages({ conversationKey, limit = 200 }) {
+export function listConversationMessages({ botId = "", conversationKey, limit = 200 }) {
+  const where = botId ? "conversation_key = ? AND bot_id = ?" : "conversation_key = ?";
+  const params = botId ? [conversationKey, botId, Number(limit)] : [conversationKey, Number(limit)];
   return db
     .prepare(`
       SELECT *
       FROM conversation_messages
-      WHERE conversation_key = ?
+      WHERE ${where}
       ORDER BY id ASC
       LIMIT ?
     `)
-    .all(conversationKey, Number(limit))
+    .all(...params)
     .map(rowToConversationMessage);
 }
 
-export function listFlowStateEvents({ conversationKey, limit = 100 }) {
+export function listFlowStateEvents({ botId = "", conversationKey, limit = 100 }) {
+  const where = botId ? "conversation_key = ? AND bot_id = ?" : "conversation_key = ?";
+  const params = botId ? [conversationKey, botId, Number(limit)] : [conversationKey, Number(limit)];
   return db
     .prepare(`
       SELECT *
       FROM flow_state_events
-      WHERE conversation_key = ?
+      WHERE ${where}
       ORDER BY id ASC
       LIMIT ?
     `)
-    .all(conversationKey, Number(limit))
+    .all(...params)
     .map(rowToFlowStateEvent);
 }
 
@@ -1347,10 +1362,13 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
   const machine = getFlowMachine(botId);
   if (!machine) throw new Error("flow machine not found");
   const timestamp = now();
-  getOrCreateFlowSession({ botId, conversationKey, machine });
+  const session = getFlowSessionForBot({ botId, conversationKey });
+  if (!session) throw new Error("flow session not found");
 
-  db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ?").run(conversationKey);
-  db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ?").run(conversationKey);
+  db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ? AND bot_id = ?")
+    .run(conversationKey, botId);
+  db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
+    .run(conversationKey, botId);
   db.prepare(`
     UPDATE flow_sessions
     SET current_node_id = ?,
@@ -1359,7 +1377,8 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
         last_message_at = ?,
         updated_at = ?
     WHERE conversation_key = ?
-  `).run(machine.entryNodeId, json({}), timestamp, timestamp, conversationKey);
+      AND bot_id = ?
+  `).run(machine.entryNodeId, json({}), timestamp, timestamp, conversationKey, botId);
   db.prepare(`
     UPDATE conversations
     SET dclaw_session_id = NULL,
@@ -1367,10 +1386,11 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
         last_message_at = ?,
         updated_at = ?
     WHERE conversation_key = ?
-  `).run(timestamp, timestamp, conversationKey);
+      AND bot_id = ?
+  `).run(timestamp, timestamp, conversationKey, botId);
 
   return {
-    ...getOrCreateFlowSession({ botId, conversationKey, machine }),
+    ...getFlowSessionForBot({ botId, conversationKey }),
     reason
   };
 }
@@ -1704,11 +1724,11 @@ export function markProactiveTargetAgentSync({ id, status, response, error }) {
   );
 }
 
-export function updateProactiveTargetFromCommandCallback({ messageId, payload }) {
-  if (!messageId) return false;
+export function updateProactiveTargetFromCommandCallback({ botId, messageId, payload }) {
+  if (!botId || !messageId) return false;
   const target = db
-    .prepare("SELECT id, task_id FROM proactive_task_targets WHERE message_id = ?")
-    .get(messageId);
+    .prepare("SELECT id, task_id FROM proactive_task_targets WHERE message_id = ? AND bot_id = ?")
+    .get(messageId, botId);
   if (!target) return false;
 
   const errorCode = Number(payload.errorCode || 0);

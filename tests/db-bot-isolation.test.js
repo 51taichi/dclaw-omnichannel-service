@@ -1,0 +1,128 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import test from "node:test";
+
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-bot-isolation-test-"));
+process.env.DATA_DIR = dataDir;
+
+const db = await import("../src/db.js");
+
+function createMachine(botId, nodeId) {
+  return db.upsertFlowMachine({
+    botId,
+    enabled: true,
+    config: {
+      name: `${botId} 状态机`,
+      version: "1.0.0",
+      entryNodeId: nodeId,
+      nodes: [{
+        id: nodeId,
+        name: "起始节点",
+        goal: "测试隔离",
+        completionCriteria: "完成",
+        collectFields: [],
+        conversationTips: [],
+        nextNodeId: ""
+      }]
+    }
+  });
+}
+
+function createSession(botId, name, nodeId) {
+  const conversationKey = `${botId}:private:${name}`;
+  const machine = createMachine(botId, nodeId);
+  db.upsertConversation({
+    botId,
+    agentId: `${botId}_agent`,
+    conversationKey,
+    message: { roomType: 2, receivedName: name, groupName: name }
+  });
+  db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  db.insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: name,
+    content: "测试消息",
+    rawPayload: {}
+  });
+  return conversationKey;
+}
+
+test("Bot A cannot read or mutate Bot B conversation by supplying Bot B conversation key", () => {
+  const botA = "bot_isolation_a";
+  const botB = "bot_isolation_b";
+  const conversationKeyB = createSession(botB, "客户乙", "node_b");
+  createMachine(botA, "node_a");
+
+  assert.equal(
+    db.getFlowSessionForBot({ botId: botA, conversationKey: conversationKeyB }),
+    null
+  );
+  assert.deepEqual(
+    db.listConversationMessages({ botId: botA, conversationKey: conversationKeyB }),
+    []
+  );
+  assert.deepEqual(
+    db.listFlowStateEvents({ botId: botA, conversationKey: conversationKeyB }),
+    []
+  );
+
+  assert.throws(
+    () => db.updateFlowSessionNode({
+      botId: botA,
+      conversationKey: conversationKeyB,
+      nextNodeId: "node_a",
+      reason: "cross bot mutation"
+    }),
+    /flow session not found/
+  );
+  assert.throws(
+    () => db.clearConversationForReset({
+      botId: botA,
+      conversationKey: conversationKeyB
+    }),
+    /flow session not found/
+  );
+
+  const botBSession = db.getFlowSessionForBot({ botId: botB, conversationKey: conversationKeyB });
+  assert.equal(botBSession.currentNodeId, "node_b");
+  assert.equal(db.listConversationMessages({ botId: botB, conversationKey: conversationKeyB }).length, 1);
+});
+
+test("command callbacks only update delivery rows owned by the callback Bot", () => {
+  const sharedMessageId = "worktool-message-shared";
+  db.insertOutgoingMessage({
+    botId: "bot_callback_a",
+    agentId: "agent_a",
+    conversationKey: "bot_callback_a:private:甲",
+    messageId: sharedMessageId,
+    targetName: "甲",
+    content: "A"
+  });
+  db.insertOutgoingMessage({
+    botId: "bot_callback_b",
+    agentId: "agent_b",
+    conversationKey: "bot_callback_b:private:乙",
+    messageId: sharedMessageId,
+    targetName: "乙",
+    content: "B"
+  });
+
+  db.updateOutgoingMessageFromCommandCallback({
+    botId: "bot_callback_a",
+    messageId: sharedMessageId,
+    payload: { errorCode: 0 }
+  });
+
+  const botARow = db.listRecords("outgoing-messages", { botId: "bot_callback_a" }).find(
+    (row) => row.message_id === sharedMessageId
+  );
+  const botBRow = db.listRecords("outgoing-messages", { botId: "bot_callback_b" }).find(
+    (row) => row.message_id === sharedMessageId
+  );
+  assert.equal(botARow.callback_error_code, 0);
+  assert.equal(botBRow.callback_error_code, null);
+});

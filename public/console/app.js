@@ -93,15 +93,15 @@ const today = formatLocalDate();
 els.taskDateFrom.value = today;
 els.taskDateTo.value = today;
 
-function headers(extra = {}) {
+function headers(extra = {}, botId = state.selectedBotId) {
   const result = {
     "Content-Type": "application/json",
     ...extra
   };
-  const session = getSelectedBotSession();
-  if (session?.token) {
+  const session = botId ? getBotSession(botId) : null;
+  if (!result["x-api-key"] && !result["x-bot-session-token"] && session?.token) {
     result["x-bot-session-token"] = session.token;
-  } else if (state.apiKey) {
+  } else if (!result["x-api-key"] && !result["x-bot-session-token"] && state.apiKey) {
     result["x-api-key"] = state.apiKey;
   }
   return result;
@@ -214,9 +214,10 @@ function fileNameFromUrl(value) {
 }
 
 async function request(path, options = {}) {
+  const { botId, ...fetchOptions } = options;
   const response = await fetch(path, {
-    ...options,
-    headers: headers(options.headers || {})
+    ...fetchOptions,
+    headers: headers(fetchOptions.headers || {}, botId)
   });
   const text = await response.text();
   let data;
@@ -231,14 +232,14 @@ async function request(path, options = {}) {
   return data;
 }
 
-async function uploadLocalFile(file) {
+async function uploadLocalFile(file, botId) {
   const payload = new FormData();
   payload.append("file", file);
-  const response = await fetch("/api/uploads", {
+  const response = await fetch(`/api/uploads?botId=${encodeURIComponent(botId)}`, {
     method: "POST",
     headers: {
-      ...(getSelectedBotSession()?.token
-        ? { "x-bot-session-token": getSelectedBotSession().token }
+      ...(getBotSession(botId)?.token
+        ? { "x-bot-session-token": getBotSession(botId).token }
         : { "x-api-key": state.apiKey })
     },
     body: payload
@@ -397,6 +398,12 @@ function clearBotScopedContent() {
   els.debugReplyForm.reset();
   els.debugReplyForm.trigger.value = "ping";
   els.debugReplyForm.reply.value = "pong";
+  els.manualReplyInput.value = "";
+  els.accessKeyForm.reset();
+  els.proactiveForm.reset();
+  els.proactiveForm.fileUrl.value = DEFAULT_FILE_URL;
+  els.proactiveForm.extraText.value = "";
+  syncMessageTypeFields();
   renderSelectedTargets();
   renderTargetList();
   renderProactiveTasks([]);
@@ -907,22 +914,26 @@ async function saveBot(event) {
 
 async function saveAccessKey(event) {
   event.preventDefault();
-  if (!state.selectedBotId) {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (!botId) {
     toast("请选择 Bot");
     return;
   }
   const adminHeaders = await promptAdminHeaders("修改 Bot 密钥需要管理员密码。");
-  if (!adminHeaders) return;
+  if (!adminHeaders || !isCurrentBotContext(botId, contextVersion)) return;
   const accessKey = String(new FormData(els.accessKeyForm).get("accessKey") || "").trim();
   if (!accessKey) {
     toast("请输入新的 Bot 密钥");
     return;
   }
-  await request(`/api/bots/${encodeURIComponent(state.selectedBotId)}/access-key`, {
+  await request(`/api/bots/${encodeURIComponent(botId)}/access-key`, {
     method: "PUT",
     headers: adminHeaders,
+    botId,
     body: JSON.stringify({ accessKey })
   });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   els.accessKeyForm.reset();
   toast("Bot 密钥已修改");
   await loadBots();
@@ -1550,18 +1561,22 @@ async function loadFlowMachine({ useDefault = false, contextVersion = state.botC
 
 async function saveFlowMachine(event) {
   event.preventDefault();
-  if (!state.selectedBotId) {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (!botId) {
     toast("请先选择 Bot");
     return;
   }
   const config = buildFlowConfigFromEditor();
-  const data = await request(`/api/flow-machines/${encodeURIComponent(state.selectedBotId)}`, {
+  const data = await request(`/api/flow-machines/${encodeURIComponent(botId)}`, {
     method: "PUT",
+    botId,
     body: JSON.stringify({
       enabled: els.flowMachineForm.enabled.checked,
       config
     })
   });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   currentFlowMachine = data.machine;
   setFlowEditorFromConfig(currentFlowMachine.config);
   toast("状态机已保存");
@@ -2014,21 +2029,25 @@ async function openFlowSession(conversationKey) {
 }
 
 async function toggleSelectedConversationHandoff(conversationKey = state.selectedFlowConversationKey) {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
   const targetSession = currentFlowSessions.find((session) => session.conversationKey === conversationKey)
     || (conversationKey === state.selectedFlowConversationKey ? currentFlowSession : null);
-  if (!state.selectedBotId || !conversationKey || !targetSession) {
+  if (!botId || !conversationKey || !targetSession) {
     toast("请先选择会话");
     return;
   }
   const nextStatus = targetSession.handoffStatus === "human" ? "ai" : "human";
   const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/handoff`, {
     method: "PUT",
+    botId,
     body: JSON.stringify({
-      botId: state.selectedBotId,
+      botId,
       handoffStatus: nextStatus,
       reason: nextStatus === "human" ? "控制台人工接手" : "控制台恢复 AI"
     })
   });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   currentFlowSessions = currentFlowSessions.map((session) =>
     session.conversationKey === data.session.conversationKey
       ? { ...session, ...data.session }
@@ -2073,7 +2092,10 @@ function renderChatMessages(messages) {
 
 async function sendManualReply(event) {
   event.preventDefault();
-  if (!state.selectedBotId || !state.selectedFlowConversationKey || currentFlowSession?.handoffStatus !== "human") {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  const conversationKey = state.selectedFlowConversationKey;
+  if (!botId || !conversationKey || currentFlowSession?.handoffStatus !== "human") {
     toast("请先切换为人工接手");
     return;
   }
@@ -2085,38 +2107,45 @@ async function sendManualReply(event) {
 
   els.manualReplySendButton.disabled = true;
   try {
-    await request(`/api/flow-sessions/${encodeURIComponent(state.selectedFlowConversationKey)}/manual-reply`, {
+    await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/manual-reply`, {
       method: "POST",
+      botId,
       body: JSON.stringify({
-        botId: state.selectedBotId,
+        botId,
         content
       })
     });
+    if (!isCurrentBotContext(botId, contextVersion)) return;
     els.manualReplyInput.value = "";
     toast("已发送");
-    await openFlowSession(state.selectedFlowConversationKey);
+    await openFlowSession(conversationKey);
   } finally {
-    if (currentFlowSession?.handoffStatus === "human") {
+    if (isCurrentBotContext(botId, contextVersion) && currentFlowSession?.handoffStatus === "human") {
       els.manualReplySendButton.disabled = false;
     }
   }
 }
 
 async function resetSelectedConversation() {
-  if (!state.selectedBotId || !state.selectedFlowConversationKey) {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  const conversationKey = state.selectedFlowConversationKey;
+  if (!botId || !conversationKey) {
     toast("请先选择会话");
     return;
   }
-  await request(`/api/flow-sessions/${encodeURIComponent(state.selectedFlowConversationKey)}/reset`, {
+  await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/reset`, {
     method: "POST",
+    botId,
     body: JSON.stringify({
-      botId: state.selectedBotId,
+      botId,
       reason: "控制台清空会话"
     })
   });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   toast("会话已清空");
   await loadFlowSessions();
-  await openFlowSession(state.selectedFlowConversationKey);
+  await openFlowSession(conversationKey);
 }
 
 function openConfirmDialog() {
@@ -2138,32 +2167,43 @@ function toggleAssetsPanel() {
 
 async function saveDebugReply(event) {
   event.preventDefault();
-  if (state.currentRole !== "admin" || !state.selectedBotId) {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (state.currentRole !== "admin" || !botId) {
     toast("请先以管理员身份选择 Bot");
     return;
   }
-  await request(`/api/bots/${encodeURIComponent(state.selectedBotId)}/settings/debug-reply`, {
+  await request(`/api/bots/${encodeURIComponent(botId)}/settings/debug-reply`, {
     method: "PUT",
+    botId,
     body: JSON.stringify({
       enabled: els.debugReplyForm.enabled.checked,
       trigger: els.debugReplyForm.trigger.value,
       reply: els.debugReplyForm.reply.value
     })
   });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   toast("调试自动回复已保存");
 }
 
 async function createProactiveTask(event) {
   event.preventDefault();
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
   const data = new FormData(els.proactiveForm);
   const messageType = String(data.get("messageType") || "text");
   const payload = {
-    botId: state.selectedBotId,
+    botId,
     title: String(data.get("title") || "").trim(),
     messageType,
     content: String(data.get("content") || "").trim(),
     targets: getSelectedTargets()
   };
+
+  if (!payload.botId) {
+    toast("请先选择 Bot");
+    return;
+  }
 
   if (messageType === "media") {
     payload.fileType = String(data.get("fileType") || "image");
@@ -2173,16 +2213,13 @@ async function createProactiveTask(event) {
     const localFile = els.proactiveForm.uploadFile.files?.[0];
     if (localFile) {
       toast("正在上传文件...");
-      const uploaded = await uploadLocalFile(localFile);
+      const uploaded = await uploadLocalFile(localFile, botId);
+      if (!isCurrentBotContext(botId, contextVersion)) return;
       payload.fileUrl = uploaded.url;
       payload.objectName = uploaded.originalName || uploaded.filename || localFile.name;
     }
   }
 
-  if (!payload.botId) {
-    toast("请先选择 Bot");
-    return;
-  }
   if (!payload.targets.length) {
     toast("请选择目标列表");
     return;
@@ -2199,8 +2236,10 @@ async function createProactiveTask(event) {
   toast("正在创建并发送...");
   const result = await request("/api/proactive/tasks", {
     method: "POST",
+    botId,
     body: JSON.stringify(payload)
   });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   toast(`主动任务已创建：#${result.task.id}`);
   selectedTargets.clear();
   renderSelectedTargets();
@@ -2274,7 +2313,10 @@ function renderProactiveTasks(tasks) {
 
   els.proactiveTasksTable.querySelectorAll("button[data-task]").forEach((button) => {
     button.addEventListener("click", async () => {
-      const data = await request(`/api/proactive/tasks/${encodeURIComponent(button.dataset.task)}`);
+      const botId = state.selectedBotId;
+      const contextVersion = state.botContextVersion;
+      const data = await request(`/api/proactive/tasks/${encodeURIComponent(button.dataset.task)}`, { botId });
+      if (!isCurrentBotContext(botId, contextVersion)) return;
       els.logsOutput.textContent = JSON.stringify(data, null, 2);
       toast(`已加载任务 #${button.dataset.task}`);
     });
