@@ -1604,7 +1604,7 @@ function renderFlowSessions() {
             : "";
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
-              <img class="flow-session-avatar" src="${avatar}" alt="" aria-hidden="true" />
+              <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
                   <strong>${escapeHtml(name)}</strong>

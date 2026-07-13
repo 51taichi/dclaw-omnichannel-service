@@ -1658,8 +1658,15 @@ button.danger:hover {
   width: 34px;
   height: 34px;
   border-radius: 8px;
+  background: #fff;
   object-fit: cover;
   box-shadow: 0 6px 14px rgba(40, 48, 124, 0.12);
+}
+
+.flow-session-avatar.is-group {
+  padding: 5px;
+  object-fit: contain;
+  box-sizing: border-box;
 }
 
 .flow-session-main {

@@ -65,7 +65,9 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(app.includes('handoffStatus === "human"'), true);
   assert.equal(app.includes('"./assets/group.png"'), true);
   assert.equal(app.includes('"./assets/ddeer.png"'), true);
+  assert.equal(app.includes('sessionType === "group" ? "is-group" : ""'), true);
   assert.equal(css.includes(".flow-session-filters"), true);
+  assert.equal(css.includes(".flow-session-avatar.is-group"), true);
   assert.match(sessionsPanel, /class="flow-session-sidebar"[\s\S]*class="segmented flow-session-type-tabs"[\s\S]*id="flowSessionList"/);
   assert.equal(css.includes(".flow-session-type-tabs"), true);
   assert.match(css, /\.flow-session-type-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
