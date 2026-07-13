@@ -380,6 +380,22 @@ function shouldInvokeAgent(message, binding) {
   return isMentioned(message, binding);
 }
 
+function normalizeMessageForAgent(message, binding) {
+  if (!isGroupMessage(message) || !isMentioned(message, binding)) {
+    return message;
+  }
+  const originalAtMe = message.atMe ?? message.metadata?.atMe ?? "";
+  return {
+    ...message,
+    atMe: "true",
+    metadata: {
+      ...(message.metadata || {}),
+      atMe: "true",
+      originalAtMe
+    }
+  };
+}
+
 function getFlowNode(machine, nodeId) {
   const nodes = machine?.config?.nodes || machine?.nodes || [];
   return nodes.find((node) => node.id === nodeId) || null;
@@ -1475,10 +1491,11 @@ async function processIncomingMessage({ botId, message }) {
     return;
   }
 
+  const agentMessage = normalizeMessageForAgent(message, binding);
   const request = buildDclawRequest({
     binding,
     conversation,
-    message,
+    message: agentMessage,
     flow,
     conversationReset
   });
