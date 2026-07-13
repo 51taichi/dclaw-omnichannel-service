@@ -460,7 +460,7 @@ function resetBotContext() {
   currentFlowSession = null;
   syncHandoffButton(null);
   renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
-  els.chatTitle.textContent = "请选择一个私聊会话";
+  els.chatTitle.textContent = emptyFlowSessionTitle();
   els.chatMessages.innerHTML = "";
   els.botForm.reset();
   els.botForm.enabled.checked = true;
@@ -1510,8 +1510,19 @@ function flowSessionDisplayName(session) {
   return session?.receivedName || fallback;
 }
 
+function sessionUsesFlowFilters(session) {
+  return flowSessionType(session) === "private";
+}
+
 function currentFlowSessionTypeFilter() {
   return document.querySelector("[data-flow-session-type].active")?.dataset.flowSessionType || "all";
+}
+
+function emptyFlowSessionTitle() {
+  const typeFilter = currentFlowSessionTypeFilter();
+  if (typeFilter === "group") return "请选择一个群聊会话";
+  if (typeFilter === "all") return "请选择一个会话";
+  return "请选择一个私聊会话";
 }
 
 function getVisibleFlowSessions() {
@@ -1522,6 +1533,7 @@ function getVisibleFlowSessions() {
 
   return sortFlowSessions(currentFlowSessions.filter((session) => {
     if (typeFilter !== "all" && flowSessionType(session) !== typeFilter) return false;
+    const appliesFlowFilters = sessionUsesFlowFilters(session);
     if (normalizedSessionSearch) {
       const searchableText = [
         session.receivedName,
@@ -1530,13 +1542,13 @@ function getVisibleFlowSessions() {
       ].filter(Boolean).join(" ").toLowerCase();
       if (!searchableText.includes(normalizedSessionSearch)) return false;
     }
-    if (nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
+    if (appliesFlowFilters && nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
 
     const assets = session.assets || {};
     const totalCount = Number(assets.totalCount || 0);
     const collectedCount = Number(assets.collectedCount || 0);
-    if (assetFilter === "pending" && !(totalCount > 0 && collectedCount < totalCount)) return false;
-    if (assetFilter === "complete" && !(totalCount > 0 && collectedCount >= totalCount)) return false;
+    if (appliesFlowFilters && assetFilter === "pending" && !(totalCount > 0 && collectedCount < totalCount)) return false;
+    if (appliesFlowFilters && assetFilter === "complete" && !(totalCount > 0 && collectedCount >= totalCount)) return false;
     return true;
   }));
 }
@@ -2161,6 +2173,9 @@ els.flowSessionTypeButtons.forEach((button) => {
       item.classList.toggle("active", active);
       item.setAttribute("aria-selected", String(active));
     });
+    if (!state.selectedFlowConversationKey) {
+      els.chatTitle.textContent = emptyFlowSessionTitle();
+    }
     renderFlowSessions();
   });
 });

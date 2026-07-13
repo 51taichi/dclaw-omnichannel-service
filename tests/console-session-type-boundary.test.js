@@ -23,3 +23,19 @@ test("console only renders handoff controls for private flow sessions", () => {
   assert.match(app, /const handoffControl = sessionType === "private"/);
   assert.match(app, /\$\{handoffControl\}/);
 });
+
+test("console does not apply private flow filters to group sessions", () => {
+  assert.match(app, /function sessionUsesFlowFilters\(session\)/);
+  assert.match(app, /return flowSessionType\(session\) === "private"/);
+  assert.match(app, /const appliesFlowFilters = sessionUsesFlowFilters\(session\)/);
+  assert.match(app, /if \(appliesFlowFilters && nodeFilter !== "all"/);
+  assert.match(app, /if \(appliesFlowFilters && assetFilter === "pending"/);
+  assert.match(app, /if \(appliesFlowFilters && assetFilter === "complete"/);
+});
+
+test("empty chat title follows the selected session type tab", () => {
+  assert.match(app, /function emptyFlowSessionTitle\(\)/);
+  assert.match(app, /const typeFilter = currentFlowSessionTypeFilter\(\)/);
+  assert.match(app, /typeFilter === "group"/);
+  assert.match(app, /请选择一个群聊会话/);
+});
