@@ -134,6 +134,14 @@ test("proactive push controls use standard button sizing", () => {
   assert.match(css, /\.segmented button\s*\{[^}]*height:\s*40px/);
 });
 
+test("proactive target cards use private and group avatar images", () => {
+  assert.equal(app.includes('targetTypeAvatar'), true);
+  assert.equal(app.includes('"./assets/ddeer.png"'), true);
+  assert.equal(app.includes('"./assets/group.png"'), true);
+  assert.match(app, /<img class="target-avatar \$\{target\.targetType === "group" \? "group" : "private"\}" src="\$\{escapeHtml\(targetTypeAvatar\(target\.targetType\)\)\}"/);
+  assert.match(css, /\.target-avatar\s*\{[\s\S]*object-fit:\s*cover/);
+});
+
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
   const aiTakeoverCardRule = cssRule(".ai-takeover-card");
 

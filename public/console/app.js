@@ -213,6 +213,20 @@ function fileNameFromUrl(value) {
   }
 }
 
+function detectFileTypeFromName(name) {
+  const ext = String(name || "").split(".").pop()?.toLowerCase() || "";
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "heif"].includes(ext)) {
+    return "image";
+  }
+  if (["mp4", "mov", "m4v", "avi", "mkv", "webm", "flv", "wmv"].includes(ext)) {
+    return "video";
+  }
+  if (["mp3", "wav", "m4a", "aac", "flac", "ogg", "amr", "wma"].includes(ext)) {
+    return "audio";
+  }
+  return "file";
+}
+
 async function request(path, options = {}) {
   const response = await fetch(path, {
     ...options,
@@ -712,6 +726,10 @@ function targetTypeIcon(type) {
   return type === "group" ? "群" : "私";
 }
 
+function targetTypeAvatar(type) {
+  return type === "group" ? "./assets/group.png" : "./assets/ddeer.png";
+}
+
 function getSelectedTargets() {
   return Array.from(selectedTargets.values());
 }
@@ -803,7 +821,7 @@ function renderTargetList() {
           const checked = selectedTargets.has(key);
           return `
             <button class="target-card ${checked ? "selected" : ""}" data-target-key="${escapeHtml(key)}" type="button">
-              <span class="target-avatar ${target.targetType === "group" ? "group" : "private"}">${escapeHtml(targetTypeIcon(target.targetType))}</span>
+              <img class="target-avatar ${target.targetType === "group" ? "group" : "private"}" src="${escapeHtml(targetTypeAvatar(target.targetType))}" alt="" aria-hidden="true" />
               <span class="target-main">
                 <strong>${escapeHtml(target.displayName || target.targetName)}</strong>
               </span>
@@ -2156,26 +2174,31 @@ async function saveDebugReply(event) {
 async function createProactiveTask(event) {
   event.preventDefault();
   const data = new FormData(els.proactiveForm);
-  const messageType = String(data.get("messageType") || "text");
+  const localFile = els.proactiveForm.uploadFile.files?.[0];
+  const content = String(data.get("content") || "").trim();
   const payload = {
     botId: state.selectedBotId,
     title: String(data.get("title") || "").trim(),
-    messageType,
-    content: String(data.get("content") || "").trim(),
+    messageType: localFile ? "media" : "text",
+    content,
     targets: getSelectedTargets()
   };
 
-  if (messageType === "media") {
-    payload.fileType = String(data.get("fileType") || "image");
-    payload.fileUrl = String(data.get("fileUrl") || "").trim();
-    payload.objectName = fileNameFromUrl(payload.fileUrl);
-    payload.extraText = String(data.get("extraText") || "").trim();
-    const localFile = els.proactiveForm.uploadFile.files?.[0];
-    if (localFile) {
-      toast("正在上传文件...");
-      const uploaded = await uploadLocalFile(localFile);
-      payload.fileUrl = uploaded.url;
-      payload.objectName = uploaded.originalName || uploaded.filename || localFile.name;
+  if (localFile) {
+    toast("正在上传文件...");
+    const uploaded = await uploadLocalFile(localFile);
+    payload.fileUrl = uploaded.url;
+    payload.objectName = uploaded.originalName || uploaded.filename || localFile.name;
+    payload.fileType = detectFileTypeFromName(payload.objectName || localFile.name || payload.fileUrl);
+    payload.extraText = content;
+  } else {
+    const fileUrl = String(data.get("fileUrl") || "").trim();
+    if (fileUrl) {
+      payload.messageType = "media";
+      payload.fileUrl = fileUrl;
+      payload.objectName = fileNameFromUrl(fileUrl);
+      payload.fileType = detectFileTypeFromName(payload.objectName || fileUrl);
+      payload.extraText = content;
     }
   }
 
@@ -2187,12 +2210,12 @@ async function createProactiveTask(event) {
     toast("请选择目标列表");
     return;
   }
-  if (messageType === "text" && !payload.content) {
-    toast("请填写推送内容");
+  if (payload.messageType === "text" && !payload.content) {
+    toast("请填写文本内容，或上传文件");
     return;
   }
-  if (messageType === "media" && !payload.fileUrl) {
-    toast("请填写文件 URL");
+  if (payload.messageType === "media" && !payload.fileUrl) {
+    toast("请上传文件");
     return;
   }
 
@@ -2207,8 +2230,7 @@ async function createProactiveTask(event) {
   renderTargetList();
   els.proactiveForm.title.value = "";
   els.proactiveForm.content.value = "";
-  els.proactiveForm.fileUrl.value = DEFAULT_FILE_URL;
-  els.proactiveForm.extraText.value = "";
+  if (els.proactiveForm.fileUrl) els.proactiveForm.fileUrl.value = "";
   els.proactiveForm.uploadFile.value = "";
   await loadProactiveTasks();
 }

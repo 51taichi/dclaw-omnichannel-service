@@ -1168,20 +1168,18 @@ button.danger:hover {
 }
 
 .target-avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   width: 24px;
   height: 24px;
   border-radius: 6px;
-  background: var(--panel-strong);
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 800;
+  background: #ffffff;
+  object-fit: cover;
+  object-position: center;
+  box-shadow: 0 2px 7px rgba(255, 90, 18, 0.12);
 }
 
 .target-avatar.group {
-  color: var(--orange);
+  object-fit: contain;
+  padding: 3px;
 }
 
 .target-main {
