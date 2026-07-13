@@ -1812,14 +1812,14 @@ function sourceTypeLabel(type) {
 
 function sourceTypeIcon(type) {
   return {
-    enterprise_knowledge: "知",
-    knowledge: "知",
-    experience: "验",
-    flow_node: "任",
-    conversation: "聊",
-    profile: "客",
-    llm_fallback: "AI"
-  }[String(type || "").trim()] || "?";
+    enterprise_knowledge: "info",
+    knowledge: "info",
+    experience: "briefcase",
+    flow_node: "edit",
+    conversation: "users",
+    profile: "user",
+    llm_fallback: "terminal"
+  }[String(type || "").trim()] || "link";
 }
 
 function renderChatSources(value) {
@@ -1833,7 +1833,7 @@ function renderChatSources(value) {
         .map((source) => {
           const label = `${sourceTypeLabel(source.type)}：${source.name}`;
           const tooltip = source.reason ? `${label}\n${source.reason}` : label;
-          return `<span class="chat-source-icon" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(label)}">${escapeHtml(sourceTypeIcon(source.type))}</span>`;
+          return `<span class="chat-source-icon" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(label)}">${icon(sourceTypeIcon(source.type))}</span>`;
         })
         .join("")}
     </div>

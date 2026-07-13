@@ -2461,6 +2461,11 @@ button.danger:hover {
   background: color-mix(in srgb, var(--accent) 14%, #ffffff);
 }
 
+.chat-source-icon .icon {
+  width: 13px;
+  height: 13px;
+}
+
 .flow-events-wrap {
   display: none;
   border-top: 1px solid var(--line);
