@@ -488,7 +488,52 @@ function parseJsonObjectFromText(text) {
       const data = JSON.parse(text.slice(start, end + 1));
       return data && typeof data === "object" && !Array.isArray(data) ? data : null;
     } catch {}
+
+    const firstObject = parseFirstJsonObject(text.slice(start));
+    if (firstObject) return firstObject;
   }
+  return null;
+}
+
+function parseFirstJsonObject(text) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+
+    if (char === "{") {
+      depth += 1;
+    } else if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const data = JSON.parse(text.slice(0, index + 1));
+          return data && typeof data === "object" && !Array.isArray(data) ? data : null;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+
   return null;
 }
 

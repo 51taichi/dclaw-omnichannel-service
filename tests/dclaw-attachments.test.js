@@ -59,3 +59,26 @@ test("parseAgentReply preserves only structured sources returned by the agent", 
     }
   ]);
 });
+
+test("parseAgentReply handles adjacent JSON objects from duplicated agent output", () => {
+  const first = {
+    reply: "魔兮姐，我们暂时还没有整理好现成的宣传视频资料哦",
+    attachments: [],
+    sources: [
+      {
+        type: "enterprise_knowledge",
+        name: "湘左记品牌加盟招商方案.pptx",
+        reason: "提供门店参观建议"
+      }
+    ]
+  };
+  const duplicated = `${JSON.stringify(first)}${JSON.stringify({
+    reply: "第二段不应该被原样发出",
+    attachments: []
+  })}`;
+
+  const parsed = parseAgentReply(duplicated);
+
+  assert.equal(parsed.reply, first.reply);
+  assert.deepEqual(parsed.sources, first.sources);
+});
