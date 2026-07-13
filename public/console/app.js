@@ -156,6 +156,17 @@ function clearBotSession(botId) {
   saveBotSessions();
 }
 
+function expireBotSession(botId) {
+  if (!botId) return;
+  clearBotSession(botId);
+  if (state.selectedBotId === botId) {
+    resetBotContext();
+  } else {
+    renderBots(currentBots);
+  }
+  loadBots().catch(() => {});
+}
+
 function isBotUnlocked(botId) {
   return Boolean(getBotSession(botId));
 }
@@ -231,9 +242,13 @@ function detectFileTypeFromName(name) {
 
 async function request(path, options = {}) {
   const { botId, ...fetchOptions } = options;
+  const effectiveBotId = botId === undefined ? state.selectedBotId : botId;
+  const session = effectiveBotId ? getBotSession(effectiveBotId) : null;
+  const requestHeaders = headers(fetchOptions.headers || {}, effectiveBotId);
+  const usedBotSession = requestHeaders["x-bot-session-token"] === session?.token;
   const response = await fetch(path, {
     ...fetchOptions,
-    headers: headers(fetchOptions.headers || {}, botId)
+    headers: requestHeaders
   });
   const text = await response.text();
   let data;
@@ -243,6 +258,10 @@ async function request(path, options = {}) {
     data = { raw: text };
   }
   if (!response.ok || data.ok === false) {
+    if (response.status === 401 && usedBotSession) {
+      expireBotSession(effectiveBotId);
+      throw new Error("Bot 解锁已失效，请重新解锁");
+    }
     throw new Error(data.message || `HTTP ${response.status}`);
   }
   return data;
