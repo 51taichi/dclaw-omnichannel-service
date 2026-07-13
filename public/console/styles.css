@@ -1016,18 +1016,46 @@ button.danger:hover {
 #proactivePanel {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  height: clamp(520px, calc(100vh - 260px), 760px);
+  height: max(560px, calc(100vh - 178px));
   overflow: hidden;
 }
 
 #proactivePanel .collapsible-content {
   min-height: 0;
-  overflow: auto;
+  display: grid;
+  overflow: hidden;
 }
 
 #proactivePanel .form-grid {
   margin-top: 0;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 12px;
+}
+
+.proactive-form-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   align-content: start;
+  gap: 10px;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.proactive-form-body > .wide,
+.proactive-form-body > label.wide {
+  grid-column: 1 / -1;
+}
+
+.proactive-actions {
+  align-self: end;
+  justify-content: flex-end;
+  min-height: 54px;
+  padding-top: 12px;
 }
 
 .target-toolbar {

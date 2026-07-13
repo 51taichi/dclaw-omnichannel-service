@@ -288,6 +288,28 @@ function buildPublicCallbackUrl(botId, pathname) {
   return url.toString();
 }
 
+async function bindBotCallbacks(botId, { replyAll = 1 } = {}) {
+  const messageCallbackUrl = buildPublicCallbackUrl(botId, "/message-callback");
+  const commandCallbackUrl = buildPublicCallbackUrl(botId, "/command-callback");
+  const messageResult = await bindMessageCallback({
+    robotId: botId,
+    callbackUrl: messageCallbackUrl,
+    replyAll
+  });
+  const commandResult = await bindCommandCallback({
+    robotId: botId,
+    callBackUrl: commandCallbackUrl
+  });
+
+  return {
+    ok: true,
+    messageCallbackUrl,
+    commandCallbackUrl,
+    messageResult,
+    commandResult
+  };
+}
+
 function buildPublicFileUrl(filename) {
   const baseUrl = process.env.PUBLIC_BASE_URL;
   if (!baseUrl) {
@@ -2023,7 +2045,22 @@ app.put(
       agentApiKey: body.agentApiKey || "",
       enabled: body.enabled !== false
     });
-    res.json({ ok: true, binding });
+    let callbackBinding;
+    try {
+      callbackBinding = await bindBotCallbacks(req.params.botId, {
+        replyAll: body.replyAll ?? 1
+      });
+    } catch (error) {
+      callbackBinding = {
+        ok: false,
+        error: error.message
+      };
+      logWarn("bot.callback_bind_failed", {
+        botId: req.params.botId,
+        error: error.message
+      });
+    }
+    res.json({ ok: true, binding, callbackBinding });
   })
 );
 
@@ -2461,8 +2498,7 @@ app.post(
   asyncHandler(async (req, res) => {
     assertAdminForBot(req, req.params.botId);
     const body = req.body || {};
-    const callbackUrl =
-      body.callbackUrl || buildPublicCallbackUrl(req.params.botId, "/message-callback");
+    const callbackUrl = body.callbackUrl || buildPublicCallbackUrl(req.params.botId, "/message-callback");
     const replyAll = body.replyAll ?? 1;
     const result = await bindMessageCallback({
       robotId: req.params.botId,
@@ -2478,8 +2514,7 @@ app.post(
   asyncHandler(async (req, res) => {
     assertAdminForBot(req, req.params.botId);
     const body = req.body || {};
-    const callBackUrl =
-      body.callBackUrl || buildPublicCallbackUrl(req.params.botId, "/command-callback");
+    const callBackUrl = body.callBackUrl || buildPublicCallbackUrl(req.params.botId, "/command-callback");
     const result = await bindCommandCallback({
       robotId: req.params.botId,
       callBackUrl

@@ -896,7 +896,7 @@ async function saveBot(event) {
     body: JSON.stringify(bot)
   });
   const unlockedBot = await ensureAdminBotSession(bot.botId, adminHeaders);
-  toast("绑定已保存");
+  toast(result.callbackBinding?.ok === false ? "绑定已保存，回调自动绑定失败" : "绑定已保存，回调已自动绑定");
   const data = await request("/api/bots", { headers: adminHeaders });
   currentBots = data.bots || [];
   renderBots(currentBots);

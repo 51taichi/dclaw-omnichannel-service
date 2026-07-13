@@ -112,9 +112,19 @@ test("flow machine and proactive panels use compact title-free layouts", () => {
   assert.match(proactiveTasksPanel, /<h2 class="module-title"[\s\S]*主动推送查询/);
   assert.doesNotMatch(sessionsPanel, /<h2 class="module-title"[\s\S]*客户会话/);
   assert.match(sessionsPanel, /class="section-head flow-session-head"[\s\S]*flowSessionSearchInput[\s\S]*refreshFlowSessionsButton/);
-  assert.match(css, /#proactivePanel\s*\{[\s\S]*height:\s*clamp/);
-  assert.match(css, /#proactivePanel\s+\.collapsible-content\s*\{[\s\S]*overflow:\s*auto/);
+  assert.match(css, /#proactivePanel\s*\{[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 178px\)\)/);
+  assert.match(css, /#proactivePanel\s+\.collapsible-content\s*\{[\s\S]*overflow:\s*hidden/);
   assert.match(css, /#flowSessionsPanel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/);
+});
+
+test("proactive panel keeps send action pinned while content scrolls", () => {
+  const proactivePanel = sectionHtml("proactivePanel");
+
+  assert.match(proactivePanel, /class="proactive-form-body"[\s\S]*class="actions proactive-actions"/);
+  assert.match(css, /#proactivePanel\s*\{[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 178px\)\)/);
+  assert.match(css, /#proactivePanel\s+\.collapsible-content\s*\{[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /\.proactive-form-body\s*\{[\s\S]*overflow:\s*auto/);
+  assert.match(css, /\.proactive-actions\s*\{[\s\S]*align-self:\s*end/);
 });
 
 test("proactive push controls use standard button sizing", () => {
