@@ -11,6 +11,7 @@ const state = {
   pendingUnlockBotId: "",
   unlockMode: "bot",
   pendingAdminKeyResolve: null,
+  proactiveSubmitting: false,
   proactiveUploadFiles: []
 };
 
@@ -69,6 +70,10 @@ const els = {
   proactiveUploadFile: document.querySelector("#proactiveUploadFile"),
   proactiveUploadName: document.querySelector("#proactiveUploadName"),
   proactiveAttachmentList: document.querySelector("#proactiveAttachmentList"),
+  proactiveMessageFields: document.querySelector("#proactiveMessageFields"),
+  proactiveUploadOverlay: document.querySelector("#proactiveUploadOverlay"),
+  proactiveSubmitButton: document.querySelector("#proactiveSubmitButton"),
+  proactiveSubmitText: document.querySelector("#proactiveSubmitText"),
   proactiveFileUrl: document.querySelector("#proactiveFileUrl"),
   proactiveTitle: document.querySelector("#proactiveTitle"),
   proactiveContent: document.querySelector("#proactiveContent"),
@@ -2298,6 +2303,14 @@ function clearProactiveUpload() {
   renderProactiveAttachments();
 }
 
+function setProactiveSubmitting(submitting) {
+  state.proactiveSubmitting = submitting;
+  if (els.proactiveSubmitButton) els.proactiveSubmitButton.disabled = submitting;
+  if (els.proactiveSubmitText) els.proactiveSubmitText.textContent = submitting ? "处理中" : "创建并发送";
+  if (els.proactiveUploadOverlay) els.proactiveUploadOverlay.hidden = !submitting;
+  els.proactiveMessageFields?.classList.toggle("is-uploading", submitting);
+}
+
 function bindProactiveUploadDropzone() {
   if (!els.proactiveUploadDropzone || !els.proactiveUploadFile) return;
   els.proactiveUploadFile.addEventListener("change", () => {
@@ -2332,6 +2345,7 @@ function bindProactiveUploadDropzone() {
 
 async function createProactiveTask(event) {
   event.preventDefault();
+  if (state.proactiveSubmitting) return;
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
   const data = new FormData(els.proactiveForm);
@@ -2350,37 +2364,6 @@ async function createProactiveTask(event) {
     return;
   }
 
-  if (localFiles.length) {
-    toast(`正在上传附件 1/${localFiles.length}...`);
-    const uploadedAttachments = [];
-    for (const [index, localFile] of localFiles.entries()) {
-      if (index > 0) toast(`正在上传附件 ${index + 1}/${localFiles.length}...`);
-      const uploaded = await uploadLocalFile(localFile, botId);
-      if (!isCurrentBotContext(botId, contextVersion)) return;
-      const objectName = uploaded.originalName || uploaded.filename || localFile.name;
-      uploadedAttachments.push({
-        fileUrl: uploaded.url,
-        objectName,
-        fileType: detectFileTypeFromName(objectName || localFile.name || uploaded.url)
-      });
-    }
-    payload.messageType = "media";
-    payload.attachments = uploadedAttachments;
-    payload.fileUrl = uploadedAttachments[0]?.fileUrl || "";
-    payload.objectName = uploadedAttachments[0]?.objectName || "";
-    payload.fileType = uploadedAttachments[0]?.fileType || "file";
-    payload.extraText = content;
-  } else {
-    const fileUrl = String(data.get("fileUrl") || "").trim();
-    if (fileUrl) {
-      payload.messageType = "media";
-      payload.fileUrl = fileUrl;
-      payload.objectName = fileNameFromUrl(fileUrl);
-      payload.fileType = detectFileTypeFromName(payload.objectName || fileUrl);
-      payload.extraText = content;
-    }
-  }
-
   if (!payload.targets.length) {
     toast("请选择目标列表");
     return;
@@ -2389,27 +2372,64 @@ async function createProactiveTask(event) {
     toast("请填写文本内容，或上传文件");
     return;
   }
-  if (payload.messageType === "media" && !payload.attachments?.length && !payload.fileUrl) {
-    toast("请上传附件");
-    return;
-  }
 
-  toast("正在创建并发送...");
-  const result = await request("/api/proactive/tasks", {
-    method: "POST",
-    botId,
-    body: JSON.stringify(payload)
-  });
-  if (!isCurrentBotContext(botId, contextVersion)) return;
-  toast(`主动任务已创建：#${result.task.id}`);
-  selectedTargets.clear();
-  renderSelectedTargets();
-  renderTargetList();
-  if (els.proactiveTitle) els.proactiveTitle.value = "";
-  if (els.proactiveContent) els.proactiveContent.value = "";
-  if (els.proactiveFileUrl) els.proactiveFileUrl.value = "";
-  clearProactiveUpload();
-  await loadProactiveTasks();
+  setProactiveSubmitting(true);
+  try {
+    if (localFiles.length) {
+      toast(`正在上传附件 1/${localFiles.length}...`);
+      const uploadedAttachments = [];
+      for (const [index, localFile] of localFiles.entries()) {
+        if (index > 0) toast(`正在上传附件 ${index + 1}/${localFiles.length}...`);
+        const uploaded = await uploadLocalFile(localFile, botId);
+        if (!isCurrentBotContext(botId, contextVersion)) return;
+        const objectName = uploaded.originalName || uploaded.filename || localFile.name;
+        uploadedAttachments.push({
+          fileUrl: uploaded.url,
+          objectName,
+          fileType: detectFileTypeFromName(objectName || localFile.name || uploaded.url)
+        });
+      }
+      payload.messageType = "media";
+      payload.attachments = uploadedAttachments;
+      payload.fileUrl = uploadedAttachments[0]?.fileUrl || "";
+      payload.objectName = uploadedAttachments[0]?.objectName || "";
+      payload.fileType = uploadedAttachments[0]?.fileType || "file";
+      payload.extraText = content;
+    } else {
+      const fileUrl = String(data.get("fileUrl") || "").trim();
+      if (fileUrl) {
+        payload.messageType = "media";
+        payload.fileUrl = fileUrl;
+        payload.objectName = fileNameFromUrl(fileUrl);
+        payload.fileType = detectFileTypeFromName(payload.objectName || fileUrl);
+        payload.extraText = content;
+      }
+    }
+
+    if (payload.messageType === "media" && !payload.attachments?.length && !payload.fileUrl) {
+      toast("请上传附件");
+      return;
+    }
+
+    toast("正在创建并发送...");
+    const result = await request("/api/proactive/tasks", {
+      method: "POST",
+      botId,
+      body: JSON.stringify(payload)
+    });
+    if (!isCurrentBotContext(botId, contextVersion)) return;
+    toast(`主动任务已创建：#${result.task.id}`);
+    selectedTargets.clear();
+    renderSelectedTargets();
+    renderTargetList();
+    if (els.proactiveTitle) els.proactiveTitle.value = "";
+    if (els.proactiveContent) els.proactiveContent.value = "";
+    if (els.proactiveFileUrl) els.proactiveFileUrl.value = "";
+    clearProactiveUpload();
+    await loadProactiveTasks();
+  } finally {
+    setProactiveSubmitting(false);
+  }
 }
 
 function syncMessageTypeFields() {
