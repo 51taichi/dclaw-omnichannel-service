@@ -71,3 +71,21 @@ test("locked bot cards never show using status", () => {
   assert.equal(css.includes(".bot-card.is-locked .bot-lock-mask"), true);
   assert.equal(css.includes(".bot-card.is-locked .bot-identity-content"), true);
 });
+
+test("admin bot context loads full binding before filling config form", () => {
+  const applyStart = app.indexOf("async function applyBotContext");
+  const applyEnd = app.indexOf("function openUnlockDialog", applyStart);
+  const body = app.slice(applyStart, applyEnd);
+  assert.match(body, /const data = await request\("\/api\/bots"\)/);
+  assert.match(body, /activeBot = currentBots\.find\(\(item\) => item\.botId === bot\.botId\) \|\| bot/);
+  assert.match(body, /fillForm\(activeBot\)/);
+  assert.equal(body.indexOf('const data = await request("/api/bots")') < body.indexOf("fillForm(activeBot)"), true);
+});
+
+test("bot card quick actions let applyBotContext own form synchronization", () => {
+  const renderStart = app.indexOf("function renderBots");
+  const renderEnd = app.indexOf("let currentBots", renderStart);
+  const body = app.slice(renderStart, renderEnd);
+  assert.equal(body.includes("fillForm(bot);"), false);
+  assert.match(body, /await applyBotContext\(bot\)/);
+});

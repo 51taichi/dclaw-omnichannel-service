@@ -376,10 +376,15 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
     return;
   }
   setBindingState(bot);
+  let activeBot = bot;
   if (bot?.botId) {
     selectedTargets.clear();
     if (state.currentRole === "admin") {
-      fillForm(bot);
+      const data = await request("/api/bots");
+      currentBots = data.bots || currentBots;
+      activeBot = currentBots.find((item) => item.botId === bot.botId) || bot;
+      renderBots(currentBots);
+      fillForm(activeBot);
       await loadDebugReply();
     }
     const tasks = [
@@ -625,29 +630,24 @@ function renderBots(bots) {
       if (actionTarget.dataset.action === "open") {
         if (getBotSession(botId)?.role === "admin") {
           switchWorkspaceTab("config");
-          fillForm(bot);
         }
-        applyBotContext(bot).catch((error) => toast(error.message));
+        await applyBotContext(bot);
         return;
       }
       if (actionTarget.dataset.action === "push") {
         event.stopPropagation();
-        fillForm(bot);
         await applyBotContext(bot, { scrollTo: els.proactivePanel });
       }
       if (actionTarget.dataset.action === "tasks") {
         event.stopPropagation();
-        fillForm(bot);
         await applyBotContext(bot, { scrollTo: document.querySelector("#flowMachinePanel") });
       }
       if (actionTarget.dataset.action === "sessions") {
         event.stopPropagation();
-        fillForm(bot);
         await applyBotContext(bot, { scrollTo: document.querySelector("#flowSessionsPanel") });
       }
       if (actionTarget.dataset.action === "logs") {
         event.stopPropagation();
-        fillForm(bot);
         await applyBotContext(bot, { scrollTo: document.querySelector("#logsPanel") });
       }
     });
