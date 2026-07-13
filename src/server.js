@@ -829,14 +829,40 @@ function fileTypeLabel(fileType) {
   }[String(fileType)] || "媒体";
 }
 
+function detectFileTypeFromName(name) {
+  const ext = String(name || "").split(".").pop()?.toLowerCase() || "";
+  if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "heif"].includes(ext)) {
+    return "image";
+  }
+  if (["mp4", "mov", "m4v", "avi", "mkv", "webm", "flv", "wmv"].includes(ext)) {
+    return "video";
+  }
+  if (["mp3", "wav", "m4a", "aac", "flac", "ogg", "amr", "wma"].includes(ext)) {
+    return "audio";
+  }
+  return "file";
+}
+
+function fileNameFromUrl(value) {
+  if (!value) return "";
+  try {
+    const url = new URL(value);
+    return normalizeUploadedFilename(decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || ""));
+  } catch {
+    return "";
+  }
+}
+
 function normalizeProactiveMessage(body) {
-  const messageType = normalizeMessageType(body.messageType);
+  const messageType = normalizeMessageType(body.messageType || (body.fileUrl ? "media" : "text"));
   if (messageType === "media") {
+    const fileUrl = String(body.fileUrl || "").trim();
+    const objectName = normalizeUploadedFilename(body.objectName) || fileNameFromUrl(fileUrl);
     const payload = {
-      fileUrl: String(body.fileUrl || "").trim(),
-      objectName: normalizeUploadedFilename(body.objectName),
-      fileType: String(body.fileType || "image").trim(),
-      extraText: String(body.extraText || "").trim(),
+      fileUrl,
+      objectName,
+      fileType: String(body.fileType || detectFileTypeFromName(objectName || fileUrl)).trim(),
+      extraText: String(body.extraText || body.content || "").trim(),
       sendType: Number(body.sendType || 0)
     };
     if (!payload.fileUrl) throw new Error("fileUrl is required");

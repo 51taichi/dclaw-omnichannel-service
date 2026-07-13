@@ -11,8 +11,6 @@ const state = {
   pendingAdminKeyResolve: null
 };
 
-const DEFAULT_FILE_URL = "https://worktool.deepmega.cn/console";
-
 const els = {
   apiKeyInput: document.querySelector("#apiKeyInput"),
   saveKeyButton: document.querySelector("#saveKeyButton"),
@@ -2236,13 +2234,13 @@ async function createProactiveTask(event) {
 }
 
 function syncMessageTypeFields() {
-  const type = els.messageTypeInput.value || "text";
+  const type = els.messageTypeInput?.value || "text";
   els.messageFields.forEach((field) => {
     const active = field.dataset.messageField === type;
-    field.hidden = !active;
+    field.hidden = Boolean(els.messageTypeInput) && !active;
     field.querySelectorAll("textarea, input, select").forEach((input) => {
-      if (input.name === "content") input.required = type === "text";
-      if (input.name === "fileUrl") input.required = type === "media";
+      if (input.name === "content") input.required = false;
+      if (input.name === "fileUrl") input.required = false;
     });
   });
 }
@@ -2390,7 +2388,7 @@ els.manualReplyComposer.addEventListener("submit", (event) =>
 els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))
 );
-els.messageTypeInput.addEventListener("change", syncMessageTypeFields);
+els.messageTypeInput?.addEventListener("change", syncMessageTypeFields);
 els.taskDateFrom.addEventListener("change", () =>
   loadProactiveTasks().catch((error) => toast(error.message))
 );

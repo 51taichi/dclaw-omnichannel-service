@@ -142,6 +142,15 @@ test("proactive target cards use private and group avatar images", () => {
   assert.match(css, /\.target-avatar\s*\{[\s\S]*object-fit:\s*cover/);
 });
 
+test("proactive form works without a message type dropdown", () => {
+  const proactivePanel = sectionHtml("proactivePanel");
+
+  assert.doesNotMatch(proactivePanel, /<select name="messageType"/);
+  assert.match(app, /const type = els\.messageTypeInput\?\.value \|\| "text";/);
+  assert.match(app, /field\.hidden = Boolean\(els\.messageTypeInput\) && !active;/);
+  assert.match(app, /els\.messageTypeInput\?\.addEventListener\("change", syncMessageTypeFields\);/);
+});
+
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
   const aiTakeoverCardRule = cssRule(".ai-takeover-card");
 
