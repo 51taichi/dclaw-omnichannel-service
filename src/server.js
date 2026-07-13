@@ -876,24 +876,57 @@ function fileNameFromUrl(value) {
   }
 }
 
+function normalizeProactiveAttachments(body) {
+  const rawAttachments = Array.isArray(body.attachments) ? body.attachments : [];
+  const legacyAttachment = body.fileUrl
+    ? [{
+      fileUrl: body.fileUrl,
+      objectName: body.objectName,
+      fileType: body.fileType
+    }]
+    : [];
+  const attachments = (rawAttachments.length ? rawAttachments : legacyAttachment)
+    .map((attachment) => {
+      const fileUrl = String(attachment.fileUrl || attachment.url || "").trim();
+      if (!fileUrl) return null;
+      const objectName = normalizeUploadedFilename(attachment.objectName || attachment.name) || fileNameFromUrl(fileUrl);
+      return {
+        fileUrl,
+        objectName,
+        fileType: String(attachment.fileType || attachment.type || detectFileTypeFromName(objectName || fileUrl)).trim()
+      };
+    })
+    .filter(Boolean);
+  if (attachments.length > 5) throw new Error("attachments supports up to 5 files");
+  return attachments;
+}
+
 function normalizeProactiveMessage(body) {
-  const messageType = normalizeMessageType(body.messageType || (body.fileUrl ? "media" : "text"));
+  const attachments = normalizeProactiveAttachments(body);
+  const messageType = normalizeMessageType(body.messageType || (attachments.length ? "media" : "text"));
   if (messageType === "media") {
-    const fileUrl = String(body.fileUrl || "").trim();
-    const objectName = normalizeUploadedFilename(body.objectName) || fileNameFromUrl(fileUrl);
     const payload = {
-      fileUrl,
-      objectName,
-      fileType: String(body.fileType || detectFileTypeFromName(objectName || fileUrl)).trim(),
       extraText: String(body.extraText || body.content || "").trim(),
       sendType: Number(body.sendType || 0)
     };
-    if (!payload.fileUrl) throw new Error("fileUrl is required");
-    buildRawMediaCommand({ targets: ["validate"], ...payload });
+    if (!attachments.length) throw new Error("attachments is required");
+    for (const [index, attachment] of attachments.entries()) {
+      buildRawMediaCommand({
+        targets: ["validate"],
+        ...attachment,
+        extraText: index === 0 ? payload.extraText : "",
+        sendType: payload.sendType
+      });
+    }
+    const firstAttachment = attachments[0];
+    const messagePayload = { ...payload, attachments };
+    Object.assign(messagePayload, firstAttachment);
     return {
       messageType,
-      content: payload.extraText || `${fileTypeLabel(payload.fileType)}：${payload.objectName || payload.fileUrl}`,
-      messagePayload: payload
+      content: payload.extraText || attachments
+        .map((attachment) => `${fileTypeLabel(attachment.fileType)}：${attachment.objectName || attachment.fileUrl}`)
+        .join("\n"),
+      messagePayload
     };
   }
 
@@ -917,6 +950,27 @@ function buildCommandForTarget(target) {
   return null;
 }
 
+async function sendProactiveTargetMediaAttachments(target) {
+  const payload = target.messagePayload || {};
+  const attachments = Array.isArray(payload.attachments) && payload.attachments.length
+    ? payload.attachments
+    : [payload];
+  const results = [];
+  for (const [index, attachment] of attachments.entries()) {
+    const result = await sendRawCommand({
+      robotId: target.botId,
+      command: buildRawMediaCommand({
+        targets: [target.targetName],
+        ...attachment,
+        extraText: index === 0 ? payload.extraText : "",
+        sendType: payload.sendType
+      })
+    });
+    results.push(result);
+  }
+  return results;
+}
+
 function getProactiveConversationKey(target) {
   return `${target.botId}:${target.targetType === "group" ? "group" : "private"}:${target.targetName}`;
 }
@@ -933,8 +987,13 @@ function buildProactiveConversationMessage(target) {
 function proactiveConversationContent(target) {
   if (target.messageType !== "media") return target.content || "";
   const payload = target.messagePayload || {};
-  const label = fileTypeLabel(payload.fileType || "media");
-  const parts = [`[${label}] ${payload.objectName || payload.fileUrl || ""}`.trim()];
+  const attachments = Array.isArray(payload.attachments) && payload.attachments.length
+    ? payload.attachments
+    : [payload];
+  const parts = attachments.map((attachment) => {
+    const label = fileTypeLabel(attachment.fileType || "media");
+    return `[${label}] ${attachment.objectName || attachment.fileUrl || ""}`.trim();
+  });
   if (payload.extraText) parts.push(payload.extraText);
   return parts.filter(Boolean).join("\n");
 }
@@ -1320,19 +1379,20 @@ async function processNextProactiveTarget() {
     if (!target) return;
 
     try {
+      const mediaResults = [];
       const result = target.messageType === "text"
         ? await sendTextMessage({
           robotId: target.botId,
           targets: [target.targetName],
           content: target.content
         })
-        : await sendRawCommand({
-          robotId: target.botId,
-          command: buildCommandForTarget(target)
-        });
+        : (mediaResults.push(...await sendProactiveTargetMediaAttachments(target)), mediaResults[0]);
+      const worktoolMessageIds = target.messageType === "media"
+        ? mediaResults.map((item) => item?.data || "").filter(Boolean)
+        : [result?.data].filter(Boolean);
       markProactiveTargetSent({
         id: target.id,
-        messageId: result.data,
+        messageId: worktoolMessageIds[0] || "",
         worktoolResponse: result
       });
       const conversationKey = getProactiveConversationKey(target);
@@ -1362,24 +1422,26 @@ async function processNextProactiveTarget() {
         content: proactiveConversationContent(target),
         rawPayload: {
           source: "proactive",
-          messageId: result.data,
+          messageId: worktoolMessageIds[0] || "",
+          messageIds: worktoolMessageIds,
           messageType: target.messageType,
           messagePayload: target.messagePayload || {},
-          worktoolResponse: result
+          worktoolResponse: result,
+          worktoolResponses: target.messageType === "media" ? mediaResults : [result]
         }
       });
       insertOutgoingMessage({
         botId: target.botId,
         agentId: target.agentId || "",
         conversationKey,
-        messageId: result.data,
+        messageId: worktoolMessageIds[0] || "",
         targetName: target.targetName,
         content: target.content,
         worktoolResponse: result
       });
       void syncProactiveTargetToAgent({
         target,
-        messageId: result.data,
+        messageId: worktoolMessageIds[0] || "",
         worktoolResponse: result
       });
     } catch (error) {

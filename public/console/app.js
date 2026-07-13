@@ -1,3 +1,5 @@
+const PROACTIVE_MAX_ATTACHMENTS = 5;
+
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
   selectedBotId: "",
@@ -9,7 +11,7 @@ const state = {
   pendingUnlockBotId: "",
   unlockMode: "bot",
   pendingAdminKeyResolve: null,
-  proactiveUploadFile: null
+  proactiveUploadFiles: []
 };
 
 const els = {
@@ -66,6 +68,7 @@ const els = {
   proactiveUploadDropzone: document.querySelector("#proactiveUploadDropzone"),
   proactiveUploadFile: document.querySelector("#proactiveUploadFile"),
   proactiveUploadName: document.querySelector("#proactiveUploadName"),
+  proactiveAttachmentList: document.querySelector("#proactiveAttachmentList"),
   proactiveFileUrl: document.querySelector("#proactiveFileUrl"),
   proactiveTitle: document.querySelector("#proactiveTitle"),
   proactiveContent: document.querySelector("#proactiveContent"),
@@ -2228,39 +2231,82 @@ async function saveDebugReply(event) {
   toast("调试自动回复已保存");
 }
 
-function syncProactiveUploadName() {
-  if (!els.proactiveUploadName) return;
-  const file = els.proactiveUploadFile?.files?.[0] || state.proactiveUploadFile;
-  els.proactiveUploadName.textContent = file?.name || "拖拽文件到这里，或点击选择";
-  els.proactiveUploadDropzone?.classList.toggle("has-file", Boolean(file));
+function proactiveAttachmentIcon(type) {
+  return {
+    image: "icon-image",
+    video: "icon-video",
+    audio: "icon-audio",
+    file: "icon-file"
+  }[type] || "icon-file";
+}
+
+function renderProactiveAttachments() {
+  const files = state.proactiveUploadFiles || [];
+  if (els.proactiveUploadName) {
+    els.proactiveUploadName.textContent = files.length
+      ? `已添加 ${files.length}/${PROACTIVE_MAX_ATTACHMENTS} 个附件`
+      : "最多 5 个附件，支持拖拽或点击添加";
+  }
+  els.proactiveUploadDropzone?.classList.toggle("has-file", files.length > 0);
+  if (!els.proactiveAttachmentList) return;
+  els.proactiveAttachmentList.innerHTML = files
+    .map((file, index) => {
+      const type = detectFileTypeFromName(file.name);
+      return `
+        <div class="proactive-attachment-card" title="${escapeHtml(file.name)}">
+          <span class="proactive-attachment-icon" aria-hidden="true">
+            <svg class="icon"><use href="#${proactiveAttachmentIcon(type)}"></use></svg>
+          </span>
+          <span class="proactive-attachment-name">${escapeHtml(file.name)}</span>
+          <button class="icon-button danger" type="button" data-remove-proactive-attachment="${index}" aria-label="删除附件">
+            <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+          </button>
+        </div>
+      `;
+    })
+    .join("");
 }
 
 function setProactiveUploadFiles(files) {
-  const file = files?.[0] || null;
-  state.proactiveUploadFile = file;
-  if (file && els.proactiveUploadFile) {
-    try {
-      const transfer = new DataTransfer();
-      transfer.items.add(file);
-      els.proactiveUploadFile.files = transfer.files;
-    } catch {
-      // Some browsers disallow assigning FileList; keep the file in state.
-    }
+  const incomingFiles = Array.from(files || []).filter(Boolean);
+  if (!incomingFiles.length) return;
+  const availableSlots = PROACTIVE_MAX_ATTACHMENTS - state.proactiveUploadFiles.length;
+  if (availableSlots <= 0) {
+    toast(`最多只能上传 ${PROACTIVE_MAX_ATTACHMENTS} 个附件`);
+    return;
   }
-  syncProactiveUploadName();
+  state.proactiveUploadFiles = [
+    ...state.proactiveUploadFiles,
+    ...incomingFiles.slice(0, availableSlots)
+  ];
+  if (incomingFiles.length > availableSlots) {
+    toast(`最多只能上传 ${PROACTIVE_MAX_ATTACHMENTS} 个附件，已保留前 ${PROACTIVE_MAX_ATTACHMENTS} 个`);
+  }
+  if (els.proactiveUploadFile) els.proactiveUploadFile.value = "";
+  renderProactiveAttachments();
+}
+
+function removeProactiveUploadFile(index) {
+  state.proactiveUploadFiles = state.proactiveUploadFiles.filter((_, itemIndex) => itemIndex !== index);
+  if (els.proactiveUploadFile) els.proactiveUploadFile.value = "";
+  renderProactiveAttachments();
 }
 
 function clearProactiveUpload() {
-  state.proactiveUploadFile = null;
+  state.proactiveUploadFiles = [];
   if (els.proactiveUploadFile) els.proactiveUploadFile.value = "";
-  syncProactiveUploadName();
+  renderProactiveAttachments();
 }
 
 function bindProactiveUploadDropzone() {
   if (!els.proactiveUploadDropzone || !els.proactiveUploadFile) return;
   els.proactiveUploadFile.addEventListener("change", () => {
-    state.proactiveUploadFile = els.proactiveUploadFile.files?.[0] || null;
-    syncProactiveUploadName();
+    setProactiveUploadFiles(els.proactiveUploadFile.files);
+  });
+  els.proactiveAttachmentList?.addEventListener("click", (event) => {
+    const removeButton = event.target.closest("[data-remove-proactive-attachment]");
+    if (!removeButton) return;
+    removeProactiveUploadFile(Number(removeButton.dataset.removeProactiveAttachment));
   });
   els.proactiveUploadDropzone.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
@@ -2289,12 +2335,12 @@ async function createProactiveTask(event) {
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
   const data = new FormData(els.proactiveForm);
-  const localFile = els.proactiveUploadFile?.files?.[0] || state.proactiveUploadFile;
+  const localFiles = [...(state.proactiveUploadFiles || [])];
   const content = String(data.get("content") || "").trim();
   const payload = {
     botId,
     title: String(data.get("title") || "").trim(),
-    messageType: localFile ? "media" : "text",
+    messageType: localFiles.length ? "media" : "text",
     content,
     targets: getSelectedTargets()
   };
@@ -2304,14 +2350,25 @@ async function createProactiveTask(event) {
     return;
   }
 
-  if (localFile) {
-    toast("正在上传文件...");
-    const uploaded = await uploadLocalFile(localFile, botId);
-    if (!isCurrentBotContext(botId, contextVersion)) return;
+  if (localFiles.length) {
+    toast(`正在上传附件 1/${localFiles.length}...`);
+    const uploadedAttachments = [];
+    for (const [index, localFile] of localFiles.entries()) {
+      if (index > 0) toast(`正在上传附件 ${index + 1}/${localFiles.length}...`);
+      const uploaded = await uploadLocalFile(localFile, botId);
+      if (!isCurrentBotContext(botId, contextVersion)) return;
+      const objectName = uploaded.originalName || uploaded.filename || localFile.name;
+      uploadedAttachments.push({
+        fileUrl: uploaded.url,
+        objectName,
+        fileType: detectFileTypeFromName(objectName || localFile.name || uploaded.url)
+      });
+    }
     payload.messageType = "media";
-    payload.fileUrl = uploaded.url;
-    payload.objectName = uploaded.originalName || uploaded.filename || localFile.name;
-    payload.fileType = detectFileTypeFromName(payload.objectName || localFile.name || payload.fileUrl);
+    payload.attachments = uploadedAttachments;
+    payload.fileUrl = uploadedAttachments[0]?.fileUrl || "";
+    payload.objectName = uploadedAttachments[0]?.objectName || "";
+    payload.fileType = uploadedAttachments[0]?.fileType || "file";
     payload.extraText = content;
   } else {
     const fileUrl = String(data.get("fileUrl") || "").trim();
@@ -2332,8 +2389,8 @@ async function createProactiveTask(event) {
     toast("请填写文本内容，或上传文件");
     return;
   }
-  if (payload.messageType === "media" && !payload.fileUrl) {
-    toast("请上传文件");
+  if (payload.messageType === "media" && !payload.attachments?.length && !payload.fileUrl) {
+    toast("请上传附件");
     return;
   }
 
@@ -2514,7 +2571,7 @@ els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))
 );
 bindProactiveUploadDropzone();
-syncProactiveUploadName();
+renderProactiveAttachments();
 els.messageTypeInput?.addEventListener("change", syncMessageTypeFields);
 els.taskDateFrom.addEventListener("change", () =>
   loadProactiveTasks().catch((error) => toast(error.message))

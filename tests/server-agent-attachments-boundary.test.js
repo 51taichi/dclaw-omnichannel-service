@@ -23,3 +23,12 @@ test("server logs agent attachment urls on WorkTool send success", () => {
   assert.equal(source.includes("attachmentUrls:"), true);
   assert.match(source, /sentAttachments\.map\(\(part\) => part\.attachment\?\.url/);
 });
+
+test("server supports multiple proactive media attachments per target", () => {
+  assert.equal(source.includes("normalizeProactiveAttachments"), true);
+  assert.match(source, /if \(attachments\.length > 5\) throw new Error\("attachments supports up to 5 files"\)/);
+  assert.equal(source.includes("sendProactiveTargetMediaAttachments"), true);
+  assert.match(source, /for \(const \[index, attachment\] of attachments\.entries\(\)\)/);
+  assert.match(source, /extraText:\s*index === 0 \? payload\.extraText : ""/);
+  assert.equal(source.includes("const messagePayload = { ...payload, attachments }"), true);
+});

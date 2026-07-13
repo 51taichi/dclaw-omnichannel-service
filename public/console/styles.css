@@ -1015,11 +1015,11 @@ button.danger:hover {
 .upload-dropzone {
   grid-column: 1 / -1;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
-  min-height: 82px;
-  padding: 14px;
+  gap: 10px;
+  min-height: 64px;
+  padding: 12px;
   border: 1px dashed color-mix(in srgb, var(--accent) 36%, var(--line));
   border-radius: 8px;
   background:
@@ -1054,8 +1054,8 @@ button.danger:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 42px;
+  width: 34px;
+  height: 34px;
   border-radius: 8px;
   background: linear-gradient(135deg, var(--accent), var(--cyan));
   color: #ffffff;
@@ -1063,9 +1063,9 @@ button.danger:hover {
 }
 
 .upload-dropzone-icon .icon {
-  width: 20px;
-  height: 20px;
-  flex-basis: 20px;
+  width: 18px;
+  height: 18px;
+  flex-basis: 18px;
 }
 
 .upload-dropzone-copy {
@@ -1090,6 +1090,56 @@ button.danger:hover {
 .upload-dropzone-copy small {
   color: var(--muted);
   font-weight: 800;
+}
+
+.proactive-attachment-list {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 8px;
+}
+
+.proactive-attachment-card {
+  min-width: 0;
+  min-height: 46px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.proactive-attachment-icon {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.proactive-attachment-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+
+.proactive-attachment-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+}
+
+.proactive-attachment-card .icon-button {
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
 }
 
 .target-picker-head {

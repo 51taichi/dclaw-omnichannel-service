@@ -155,12 +155,18 @@ test("proactive upload uses a custom drag and click dropzone", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
   assert.match(proactivePanel, /class="upload-dropzone"[\s\S]*上传附件/);
-  assert.match(proactivePanel, /id="proactiveUploadFile"[\s\S]*class="visually-hidden"/);
-  assert.match(proactivePanel, /id="proactiveUploadName"[\s\S]*拖拽文件到这里，或点击选择/);
-  assert.match(app, /function syncProactiveUploadName\(\)/);
+  assert.match(proactivePanel, /id="proactiveUploadFile"[\s\S]*multiple/);
+  assert.match(proactivePanel, /id="proactiveAttachmentList"/);
+  assert.match(app, /const PROACTIVE_MAX_ATTACHMENTS = 5;/);
+  assert.match(app, /proactiveUploadFiles:\s*\[\]/);
+  assert.match(app, /function renderProactiveAttachments\(\)/);
   assert.match(app, /function bindProactiveUploadDropzone\(\)/);
   assert.match(app, /els\.proactiveUploadDropzone\.addEventListener\("drop"/);
+  assert.match(app, /data-remove-proactive-attachment/);
+  assert.match(app, /payload\.attachments = uploadedAttachments;/);
   assert.match(css, /\.upload-dropzone\s*\{[\s\S]*cursor:\s*pointer/);
+  assert.match(css, /\.proactive-attachment-list\s*\{/);
+  assert.match(css, /\.proactive-attachment-card\s*\{[\s\S]*border:\s*1px solid/);
   assert.match(css, /\.upload-dropzone\.is-dragging\s*\{[\s\S]*border-color:\s*var\(--accent\)/);
 });
 
