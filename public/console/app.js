@@ -4,7 +4,9 @@ const state = {
   selectedFlowConversationKey: "",
   currentRole: "",
   botSessions: JSON.parse(localStorage.getItem("worktool_console_bot_sessions") || "{}"),
-  pendingUnlockBotId: ""
+  pendingUnlockBotId: "",
+  unlockMode: "bot",
+  pendingAdminKeyResolve: null
 };
 
 const DEFAULT_FILE_URL = "https://worktool.deepmega.cn/console";
@@ -15,7 +17,9 @@ const els = {
   refreshButton: document.querySelector("#refreshButton"),
   lockBotButton: document.querySelector("#lockBotButton"),
   unlockDialog: document.querySelector("#unlockDialog"),
+  unlockTitle: document.querySelector("#unlockTitle"),
   unlockBotName: document.querySelector("#unlockBotName"),
+  unlockKeyLabel: document.querySelector("#unlockKeyLabel"),
   unlockKeyInput: document.querySelector("#unlockKeyInput"),
   unlockCancelButton: document.querySelector("#unlockCancelButton"),
   unlockAcceptButton: document.querySelector("#unlockAcceptButton"),
@@ -402,16 +406,92 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
 
 function openUnlockDialog(bot) {
   if (!bot?.botId) return;
+  state.unlockMode = "bot";
   state.pendingUnlockBotId = bot.botId;
+  state.pendingAdminKeyResolve = null;
+  els.unlockTitle.textContent = "解锁 Bot";
   els.unlockBotName.textContent = `解锁 ${bot.botName || bot.agentName || bot.botId}`;
+  els.unlockKeyLabel.textContent = "密钥";
+  els.unlockAcceptButton.innerHTML = `${icon("lock")} 解锁`;
   els.unlockKeyInput.value = "";
   els.unlockDialog.hidden = false;
   requestAnimationFrame(() => els.unlockKeyInput.focus());
 }
 
-function closeUnlockDialog() {
+function openAdminKeyDialog(message) {
+  return new Promise((resolve) => {
+    state.unlockMode = "admin";
+    state.pendingUnlockBotId = "";
+    state.pendingAdminKeyResolve = resolve;
+    els.unlockTitle.textContent = "管理员验证";
+    els.unlockBotName.textContent = message || "请输入管理员密码后继续操作。";
+    els.unlockKeyLabel.textContent = "管理员密码";
+    els.unlockAcceptButton.innerHTML = `${icon("lock")} 确认`;
+    els.unlockKeyInput.value = "";
+    els.unlockDialog.hidden = false;
+    requestAnimationFrame(() => els.unlockKeyInput.focus());
+  });
+}
+
+function resetUnlockDialogState() {
   state.pendingUnlockBotId = "";
+  state.unlockMode = "bot";
+  els.unlockTitle.textContent = "解锁 Bot";
+  els.unlockBotName.textContent = "输入当前 Bot 密钥或管理员密钥。";
+  els.unlockKeyLabel.textContent = "密钥";
+  els.unlockAcceptButton.innerHTML = `${icon("lock")} 解锁`;
+}
+
+function closeUnlockDialog() {
+  const adminResolver = state.pendingAdminKeyResolve;
+  state.pendingAdminKeyResolve = null;
+  resetUnlockDialogState();
   els.unlockDialog.hidden = true;
+  if (adminResolver) adminResolver(null);
+}
+
+function resolveAdminKey(key) {
+  const adminResolver = state.pendingAdminKeyResolve;
+  state.pendingAdminKeyResolve = null;
+  resetUnlockDialogState();
+  els.unlockDialog.hidden = true;
+  if (adminResolver) adminResolver(key);
+}
+
+async function promptAdminHeaders(message) {
+  if (state.currentRole === "admin") return {};
+  const adminKey = await openAdminKeyDialog(message);
+  if (!adminKey) return null;
+  return { "x-api-key": adminKey };
+}
+
+async function ensureAdminBotSession(botId, adminHeaders = {}) {
+  const adminKey = adminHeaders["x-api-key"];
+  if (!botId || !adminKey || getBotSession(botId)?.role === "admin") return null;
+  const data = await request(`/api/bots/${encodeURIComponent(botId)}/unlock`, {
+    method: "POST",
+    headers: adminHeaders,
+    body: JSON.stringify({ key: adminKey })
+  });
+  setBotSession(botId, {
+    token: data.token,
+    role: data.role,
+    expiresAt: data.expiresAt
+  });
+  return data.bot || null;
+}
+
+async function acceptUnlockDialog() {
+  if (state.unlockMode === "admin") {
+    const key = els.unlockKeyInput.value.trim();
+    if (!key) {
+      toast("请输入管理员密码");
+      return;
+    }
+    resolveAdminKey(key);
+    return;
+  }
+  await unlockPendingBot();
 }
 
 async function unlockPendingBot() {
@@ -751,33 +831,36 @@ async function loadDebugReply() {
 
 async function saveBot(event) {
   event.preventDefault();
-  if (state.currentRole !== "admin") {
-    toast("需要管理员身份");
-    return;
-  }
+  const adminHeaders = await promptAdminHeaders("保存 Bot 配置需要管理员密码。");
+  if (!adminHeaders) return;
   const bot = formData();
   if (!bot.botId || !bot.agentId || !bot.dclawBaseUrl || !bot.dclawPublicId) {
     toast("请填写 Bot ID、Agent ID、DClaw Base URL 和 Public ID");
     return;
   }
-  await request(`/api/bots/${encodeURIComponent(bot.botId)}`, {
+  const result = await request(`/api/bots/${encodeURIComponent(bot.botId)}`, {
     method: "PUT",
+    headers: adminHeaders,
     body: JSON.stringify(bot)
   });
+  const unlockedBot = await ensureAdminBotSession(bot.botId, adminHeaders);
   toast("绑定已保存");
-  const data = await request("/api/bots");
+  const data = await request("/api/bots", { headers: adminHeaders });
   currentBots = data.bots || [];
   renderBots(currentBots);
-  const savedBot = currentBots.find((item) => item.botId === bot.botId);
+  const savedBot = currentBots.find((item) => item.botId === bot.botId) || unlockedBot || result.binding;
+  if (savedBot && unlockedBot) Object.assign(savedBot, unlockedBot);
   if (savedBot) await applyBotContext(savedBot);
 }
 
 async function saveAccessKey(event) {
   event.preventDefault();
-  if (!state.selectedBotId || state.currentRole !== "admin") {
-    toast("需要管理员身份");
+  if (!state.selectedBotId) {
+    toast("请选择 Bot");
     return;
   }
+  const adminHeaders = await promptAdminHeaders("修改 Bot 密钥需要管理员密码。");
+  if (!adminHeaders) return;
   const accessKey = String(new FormData(els.accessKeyForm).get("accessKey") || "").trim();
   if (!accessKey) {
     toast("请输入新的 Bot 密钥");
@@ -785,6 +868,7 @@ async function saveAccessKey(event) {
   }
   await request(`/api/bots/${encodeURIComponent(state.selectedBotId)}/access-key`, {
     method: "PUT",
+    headers: adminHeaders,
     body: JSON.stringify({ accessKey })
   });
   els.accessKeyForm.reset();
@@ -2153,11 +2237,11 @@ els.unlockDialog.addEventListener("click", (event) => {
 els.unlockKeyInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
-    unlockPendingBot().catch((error) => toast(error.message));
+    acceptUnlockDialog().catch((error) => toast(error.message));
   }
 });
 els.unlockAcceptButton.addEventListener("click", () =>
-  unlockPendingBot().catch((error) => toast(error.message))
+  acceptUnlockDialog().catch((error) => toast(error.message))
 );
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch((error) => toast(error.message)));
 els.accessKeyForm.addEventListener("submit", (event) =>

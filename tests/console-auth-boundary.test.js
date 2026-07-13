@@ -36,6 +36,18 @@ test("console hides config tab for bot role and exposes access-key reset for adm
   assert.equal(css.includes("display: none !important"), true);
 });
 
+test("config saves can request admin password on demand", () => {
+  assert.equal(html.includes("unlockKeyLabel"), true);
+  assert.equal(app.includes("openAdminKeyDialog"), true);
+  assert.equal(app.includes("promptAdminHeaders"), true);
+  assert.equal(app.includes("保存 Bot 配置需要管理员密码"), true);
+  assert.equal(app.includes("修改 Bot 密钥需要管理员密码"), true);
+  assert.equal(app.includes('return { "x-api-key": adminKey }'), true);
+  assert.equal(app.includes("ensureAdminBotSession"), true);
+  assert.equal(app.includes("acceptUnlockDialog"), true);
+  assert.equal(app.includes("state.unlockMode === \"admin\""), true);
+});
+
 test("bot cards expose four unlocked quick actions", () => {
   assert.equal(app.includes('data-action="${unlocked ? "tasks" : "unlock"}'), true);
   assert.equal(app.includes('data-action="${unlocked ? "sessions" : "unlock"}'), true);
