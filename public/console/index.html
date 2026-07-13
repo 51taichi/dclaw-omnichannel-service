@@ -506,17 +506,19 @@
               <textarea id="proactiveContent" name="content" rows="4" placeholder="不上传文件时，将作为文本推送；上传文件时，将作为文件说明一并发送"></textarea>
             </label>
             <div class="wide proactive-field media-grid" data-message-field="media">
-              <label id="proactiveUploadDropzone" class="upload-dropzone" tabindex="0">
-                <input id="proactiveUploadFile" class="visually-hidden" name="uploadFile" type="file" multiple />
-                <span class="upload-dropzone-icon">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
-                </span>
-                <span class="upload-dropzone-copy">
-                  <strong>上传附件</strong>
-                  <small id="proactiveUploadName">最多 5 个附件，支持拖拽或点击添加</small>
-                </span>
-              </label>
-              <div id="proactiveAttachmentList" class="proactive-attachment-list" aria-label="已上传附件"></div>
+              <div class="proactive-attachment-row">
+                <label id="proactiveUploadDropzone" class="upload-dropzone" tabindex="0">
+                  <input id="proactiveUploadFile" class="visually-hidden" name="uploadFile" type="file" multiple />
+                  <span class="upload-dropzone-icon">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                  </span>
+                  <span class="upload-dropzone-copy">
+                    <strong>上传附件</strong>
+                    <small id="proactiveUploadName">最多 5 个</small>
+                  </span>
+                </label>
+                <div id="proactiveAttachmentList" class="proactive-attachment-list" aria-label="已上传附件"></div>
+              </div>
               <input id="proactiveFileUrl" name="fileUrl" type="hidden" value="" />
             </div>
             <div id="proactiveUploadOverlay" class="proactive-upload-overlay" hidden>

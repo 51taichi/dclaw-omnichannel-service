@@ -2226,8 +2226,8 @@ function renderProactiveAttachments() {
   const files = state.proactiveUploadFiles || [];
   if (els.proactiveUploadName) {
     els.proactiveUploadName.textContent = files.length
-      ? `已添加 ${files.length}/${PROACTIVE_MAX_ATTACHMENTS} 个附件`
-      : "最多 5 个附件，支持拖拽或点击添加";
+      ? `${files.length}/${PROACTIVE_MAX_ATTACHMENTS} 个`
+      : `最多 ${PROACTIVE_MAX_ATTACHMENTS} 个`;
   }
   els.proactiveUploadDropzone?.classList.toggle("has-file", files.length > 0);
   if (!els.proactiveAttachmentList) return;

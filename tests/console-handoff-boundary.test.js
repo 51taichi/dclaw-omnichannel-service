@@ -172,6 +172,7 @@ test("proactive form works without a message type dropdown", () => {
 test("proactive upload uses a custom drag and click dropzone", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
+  assert.match(proactivePanel, /class="proactive-attachment-row"[\s\S]*id="proactiveUploadDropzone"[\s\S]*id="proactiveAttachmentList"/);
   assert.match(proactivePanel, /class="upload-dropzone"[\s\S]*上传附件/);
   assert.match(proactivePanel, /id="proactiveUploadFile"[\s\S]*multiple/);
   assert.match(proactivePanel, /id="proactiveAttachmentList"/);
@@ -182,7 +183,8 @@ test("proactive upload uses a custom drag and click dropzone", () => {
   assert.match(app, /els\.proactiveUploadDropzone\.addEventListener\("drop"/);
   assert.match(app, /data-remove-proactive-attachment/);
   assert.match(app, /payload\.attachments = uploadedAttachments;/);
-  assert.match(css, /\.upload-dropzone\s*\{[\s\S]*cursor:\s*pointer/);
+  assert.match(css, /\.proactive-attachment-row\s*\{[\s\S]*display:\s*flex/);
+  assert.match(css, /\.upload-dropzone\s*\{[\s\S]*width:\s*86px[\s\S]*height:\s*86px[\s\S]*cursor:\s*pointer/);
   assert.match(css, /\.proactive-attachment-list\s*\{/);
   assert.match(css, /\.proactive-attachment-list\s*\{[\s\S]*display:\s*flex/);
   assert.match(css, /\.proactive-attachment-card\s*\{[\s\S]*width:\s*86px[\s\S]*height:\s*86px[\s\S]*border:\s*1px solid/);

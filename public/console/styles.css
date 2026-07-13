@@ -1013,13 +1013,16 @@ button.danger:hover {
 }
 
 .upload-dropzone {
-  grid-column: 1 / -1;
+  width: 86px;
+  height: 86px;
+  flex: 0 0 86px;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
   align-items: center;
-  gap: 10px;
-  min-height: 64px;
-  padding: 12px;
+  gap: 6px;
+  min-height: 0;
+  padding: 10px 8px 8px;
   border: 1px dashed color-mix(in srgb, var(--accent) 36%, var(--line));
   border-radius: 8px;
   background:
@@ -1070,8 +1073,10 @@ button.danger:hover {
 
 .upload-dropzone-copy {
   display: grid;
-  gap: 4px;
+  gap: 2px;
+  width: 100%;
   min-width: 0;
+  text-align: center;
 }
 
 .upload-dropzone-copy strong,
@@ -1083,11 +1088,12 @@ button.danger:hover {
 }
 
 .upload-dropzone-copy strong {
-  font-size: 15px;
+  font-size: 12px;
   font-weight: 900;
 }
 
 .upload-dropzone-copy small {
+  font-size: 11px;
   color: var(--muted);
   font-weight: 800;
 }
@@ -1156,8 +1162,16 @@ button.danger:hover {
   font-weight: 800;
 }
 
-.proactive-attachment-list {
+.proactive-attachment-row {
   grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.proactive-attachment-list {
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
