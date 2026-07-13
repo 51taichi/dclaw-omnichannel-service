@@ -471,14 +471,14 @@ function normalizeAgentAttachments(value) {
 
 function parseJsonObjectFromText(text) {
   try {
-    const data = JSON.parse(text);
+    const data = parseJsonWithLooseStringNewlines(text);
     return data && typeof data === "object" && !Array.isArray(data) ? data : null;
   } catch {}
 
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
   if (fenced) {
     try {
-      const data = JSON.parse(fenced[1]);
+      const data = parseJsonWithLooseStringNewlines(fenced[1]);
       return data && typeof data === "object" && !Array.isArray(data) ? data : null;
     } catch {}
   }
@@ -487,7 +487,7 @@ function parseJsonObjectFromText(text) {
   const end = text.lastIndexOf("}");
   if (start >= 0 && end > start) {
     try {
-      const data = JSON.parse(text.slice(start, end + 1));
+      const data = parseJsonWithLooseStringNewlines(text.slice(start, end + 1));
       return data && typeof data === "object" && !Array.isArray(data) ? data : null;
     } catch {}
 
@@ -527,7 +527,7 @@ function parseFirstJsonObject(text) {
       depth -= 1;
       if (depth === 0) {
         try {
-          const data = JSON.parse(text.slice(0, index + 1));
+          const data = parseJsonWithLooseStringNewlines(text.slice(0, index + 1));
           return data && typeof data === "object" && !Array.isArray(data) ? data : null;
         } catch {
           return null;
@@ -537,6 +537,67 @@ function parseFirstJsonObject(text) {
   }
 
   return null;
+}
+
+function parseJsonWithLooseStringNewlines(text) {
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const normalized = escapeControlCharactersInsideJsonStrings(text);
+    if (normalized === text) throw error;
+    return JSON.parse(normalized);
+  }
+}
+
+function escapeControlCharactersInsideJsonStrings(text) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  let changed = false;
+
+  for (const char of String(text || "")) {
+    if (inString) {
+      if (escaped) {
+        output += char;
+        escaped = false;
+        continue;
+      }
+      if (char === "\\") {
+        output += char;
+        escaped = true;
+        continue;
+      }
+      if (char === "\"") {
+        output += char;
+        inString = false;
+        continue;
+      }
+      if (char === "\n") {
+        output += "\\n";
+        changed = true;
+        continue;
+      }
+      if (char === "\r") {
+        output += "\\r";
+        changed = true;
+        continue;
+      }
+      if (char === "\t") {
+        output += "\\t";
+        changed = true;
+        continue;
+      }
+      output += char;
+      continue;
+    }
+
+    output += char;
+    if (char === "\"") {
+      inString = true;
+    }
+  }
+
+  return changed ? output : text;
 }
 
 async function readSseText(response, signal) {

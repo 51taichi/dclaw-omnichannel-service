@@ -82,3 +82,20 @@ test("parseAgentReply handles adjacent JSON objects from duplicated agent output
   assert.equal(parsed.reply, first.reply);
   assert.deepEqual(parsed.sources, first.sources);
 });
+
+test("parseAgentReply tolerates raw newlines inside JSON string fields", () => {
+  const raw = `{"reply":"不好意思呀，我们这边目前确实没有视频方面的资料😅
+
+现在主要是文字和图片资料，比如招商方案、产品介绍这些。要不你先看看文字资料，有什么具体想了解的也可以问我～","attachments":[],"sources":[{"type":"enterprise_knowledge","name":"湘左记品牌加盟招商方案.pptx","reason":"确认是否有视频资源可用"}]}`;
+
+  const parsed = parseAgentReply(raw);
+
+  assert.equal(parsed.reply, "不好意思呀，我们这边目前确实没有视频方面的资料😅\n\n现在主要是文字和图片资料，比如招商方案、产品介绍这些。要不你先看看文字资料，有什么具体想了解的也可以问我～");
+  assert.deepEqual(parsed.sources, [
+    {
+      type: "enterprise_knowledge",
+      name: "湘左记品牌加盟招商方案.pptx",
+      reason: "确认是否有视频资源可用"
+    }
+  ]);
+});
