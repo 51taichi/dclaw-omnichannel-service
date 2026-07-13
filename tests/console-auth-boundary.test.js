@@ -82,6 +82,11 @@ test("locked bot cards never show using status", () => {
   assert.equal(css.includes(".bot-card.is-locked .bot-identity-content"), true);
 });
 
+test("locked bot status pill uses dark gray styling", () => {
+  assert.match(css, /\.pill\.off\s*\{[\s\S]*color:\s*#4b5563;/);
+  assert.match(css, /\.pill\.off\s*\{[\s\S]*background:\s*#e5e7eb;/);
+});
+
 test("unselected unlocked bot cards keep their own accent color", () => {
   assert.match(css, /\.bot-card\.is-unlocked\s*\{[\s\S]*?border-left-color: var\(--bot-accent\);/);
   assert.match(css, /\.bot-card\.is-unlocked:not\(\.is-selected\)\s*\{[\s\S]*?background: color-mix\(in srgb, var\(--bot-accent\) 5%, #ffffff\);/);

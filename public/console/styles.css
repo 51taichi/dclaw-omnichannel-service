@@ -2780,8 +2780,8 @@ td .muted {
 }
 
 .pill.off {
-  color: var(--warning);
-  background: var(--warning-soft);
+  color: #4b5563;
+  background: #e5e7eb;
 }
 
 .pill.bad {
