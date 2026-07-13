@@ -583,14 +583,22 @@ function renderBots(bots) {
       return `
         <article class="bot-card ${bot.enabled ? "is-online" : "is-offline"} ${unlocked ? "is-unlocked" : "is-locked"} ${isSelected ? "is-selected" : ""}" data-action="${unlocked ? "open" : "unlock"}" data-bot="${safeBot}" style="--bot-accent: ${escapeHtml(accent)}">
           <div class="bot-main">
-            <img class="bot-avatar" src="./assets/bot-avatar.png" alt="" aria-hidden="true" />
-            <span class="bot-summary">
-              <span class="bot-title-row">
-                <strong>${escapeHtml(title)}</strong>
-                <span class="pill ${botStatusClass}">${botStatusText}</span>
+            <span class="bot-identity">
+              <span class="bot-identity-content">
+                <img class="bot-avatar" src="./assets/bot-avatar.png" alt="" aria-hidden="true" />
+                <span class="bot-summary">
+                  <span class="bot-title-row">
+                    <strong>${escapeHtml(title)}</strong>
+                  </span>
+                  <span class="bot-agent">${escapeHtml(bot.agentName || bot.agentId || "未绑定 Agent")}</span>
+                </span>
               </span>
-              <span class="bot-agent">${escapeHtml(bot.agentName || bot.agentId || "未绑定 Agent")}</span>
+              <span class="bot-lock-mask" aria-hidden="true">
+                ${icon("lock")}
+                <strong>${escapeHtml(title)}</strong>
+              </span>
             </span>
+            <span class="pill ${botStatusClass}">${botStatusText}</span>
           </div>
           <div class="row-actions bot-actions">
             <button class="secondary icon-button" data-action="${unlocked ? "tasks" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "任务配置" : "解锁"}" title="${unlocked ? "任务配置" : "解锁"}">${icon(unlocked ? "edit" : "link")}</button>

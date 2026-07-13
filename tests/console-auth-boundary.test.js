@@ -66,4 +66,8 @@ test("lock and reset return to unselected config context", () => {
 test("locked bot cards never show using status", () => {
   assert.equal(app.includes('const botStatusText = !unlocked ? "已上锁"'), true);
   assert.equal(app.includes('const botStatusClass = !unlocked ? "off"'), true);
+  assert.equal(app.includes("bot-lock-mask"), true);
+  assert.equal(app.includes('${icon("lock")}'), true);
+  assert.equal(css.includes(".bot-card.is-locked .bot-lock-mask"), true);
+  assert.equal(css.includes(".bot-card.is-locked .bot-identity-content"), true);
 });
