@@ -8,7 +8,8 @@ const state = {
   botSessions: JSON.parse(localStorage.getItem("worktool_console_bot_sessions") || "{}"),
   pendingUnlockBotId: "",
   unlockMode: "bot",
-  pendingAdminKeyResolve: null
+  pendingAdminKeyResolve: null,
+  proactiveUploadFile: null
 };
 
 const els = {
@@ -62,6 +63,9 @@ const els = {
   confirmCancelButton: document.querySelector("#confirmCancelButton"),
   confirmAcceptButton: document.querySelector("#confirmAcceptButton"),
   proactiveForm: document.querySelector("#proactiveForm"),
+  proactiveUploadDropzone: document.querySelector("#proactiveUploadDropzone"),
+  proactiveUploadFile: document.querySelector("#proactiveUploadFile"),
+  proactiveUploadName: document.querySelector("#proactiveUploadName"),
   messageTypeInput: document.querySelector('select[name="messageType"]'),
   messageFields: document.querySelectorAll("[data-message-field]"),
   taskDateFrom: document.querySelector("#taskDateFrom"),
@@ -413,7 +417,7 @@ function clearBotScopedContent() {
   els.manualReplyInput.value = "";
   els.accessKeyForm.reset();
   els.proactiveForm.reset();
-  els.proactiveForm.fileUrl.value = DEFAULT_FILE_URL;
+  els.proactiveForm.fileUrl.value = "";
   els.proactiveForm.extraText.value = "";
   syncMessageTypeFields();
   renderSelectedTargets();
@@ -2202,12 +2206,68 @@ async function saveDebugReply(event) {
   toast("调试自动回复已保存");
 }
 
+function syncProactiveUploadName() {
+  if (!els.proactiveUploadName) return;
+  const file = els.proactiveUploadFile?.files?.[0] || state.proactiveUploadFile;
+  els.proactiveUploadName.textContent = file?.name || "拖拽文件到这里，或点击选择";
+  els.proactiveUploadDropzone?.classList.toggle("has-file", Boolean(file));
+}
+
+function setProactiveUploadFiles(files) {
+  const file = files?.[0] || null;
+  state.proactiveUploadFile = file;
+  if (file && els.proactiveUploadFile) {
+    try {
+      const transfer = new DataTransfer();
+      transfer.items.add(file);
+      els.proactiveUploadFile.files = transfer.files;
+    } catch {
+      // Some browsers disallow assigning FileList; keep the file in state.
+    }
+  }
+  syncProactiveUploadName();
+}
+
+function clearProactiveUpload() {
+  state.proactiveUploadFile = null;
+  if (els.proactiveUploadFile) els.proactiveUploadFile.value = "";
+  syncProactiveUploadName();
+}
+
+function bindProactiveUploadDropzone() {
+  if (!els.proactiveUploadDropzone || !els.proactiveUploadFile) return;
+  els.proactiveUploadFile.addEventListener("change", () => {
+    state.proactiveUploadFile = els.proactiveUploadFile.files?.[0] || null;
+    syncProactiveUploadName();
+  });
+  els.proactiveUploadDropzone.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    els.proactiveUploadFile.click();
+  });
+  ["dragenter", "dragover"].forEach((type) => {
+    els.proactiveUploadDropzone.addEventListener(type, (event) => {
+      event.preventDefault();
+      els.proactiveUploadDropzone.classList.add("is-dragging");
+    });
+  });
+  ["dragleave", "drop"].forEach((type) => {
+    els.proactiveUploadDropzone.addEventListener(type, () => {
+      els.proactiveUploadDropzone.classList.remove("is-dragging");
+    });
+  });
+  els.proactiveUploadDropzone.addEventListener("drop", (event) => {
+    event.preventDefault();
+    setProactiveUploadFiles(event.dataTransfer?.files);
+  });
+}
+
 async function createProactiveTask(event) {
   event.preventDefault();
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
   const data = new FormData(els.proactiveForm);
-  const localFile = els.proactiveForm.uploadFile.files?.[0];
+  const localFile = els.proactiveForm.uploadFile.files?.[0] || state.proactiveUploadFile;
   const content = String(data.get("content") || "").trim();
   const payload = {
     botId,
@@ -2269,7 +2329,7 @@ async function createProactiveTask(event) {
   els.proactiveForm.title.value = "";
   els.proactiveForm.content.value = "";
   if (els.proactiveForm.fileUrl) els.proactiveForm.fileUrl.value = "";
-  els.proactiveForm.uploadFile.value = "";
+  clearProactiveUpload();
   await loadProactiveTasks();
 }
 
@@ -2431,6 +2491,8 @@ els.manualReplyComposer.addEventListener("submit", (event) =>
 els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch((error) => toast(error.message))
 );
+bindProactiveUploadDropzone();
+syncProactiveUploadName();
 els.messageTypeInput?.addEventListener("change", syncMessageTypeFields);
 els.taskDateFrom.addEventListener("change", () =>
   loadProactiveTasks().catch((error) => toast(error.message))

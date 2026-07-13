@@ -1000,6 +1000,98 @@ button.danger:hover {
   display: none;
 }
 
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+
+.upload-dropzone {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  min-height: 82px;
+  padding: 14px;
+  border: 1px dashed color-mix(in srgb, var(--accent) 36%, var(--line));
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, #ffffff), #ffffff 68%);
+  cursor: pointer;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.upload-dropzone:hover,
+.upload-dropzone:focus-visible,
+.upload-dropzone.is-dragging {
+  border-color: var(--accent);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, #ffffff), #ffffff 68%);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+.upload-dropzone.is-dragging {
+  transform: translateY(-1px);
+}
+
+.upload-dropzone.has-file {
+  border-style: solid;
+  border-color: color-mix(in srgb, var(--cyan) 60%, var(--accent));
+}
+
+.upload-dropzone-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--accent), var(--cyan));
+  color: #ffffff;
+  box-shadow: 0 10px 20px rgba(42, 48, 216, 0.16);
+}
+
+.upload-dropzone-icon .icon {
+  width: 20px;
+  height: 20px;
+  flex-basis: 20px;
+}
+
+.upload-dropzone-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.upload-dropzone-copy strong,
+.upload-dropzone-copy small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-dropzone-copy strong {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.upload-dropzone-copy small {
+  color: var(--muted);
+  font-weight: 800;
+}
+
 .target-picker-head {
   display: grid;
   grid-template-columns: minmax(320px, 1fr) auto;

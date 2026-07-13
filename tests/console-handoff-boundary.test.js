@@ -151,6 +151,19 @@ test("proactive form works without a message type dropdown", () => {
   assert.match(app, /els\.messageTypeInput\?\.addEventListener\("change", syncMessageTypeFields\);/);
 });
 
+test("proactive upload uses a custom drag and click dropzone", () => {
+  const proactivePanel = sectionHtml("proactivePanel");
+
+  assert.match(proactivePanel, /class="upload-dropzone"[\s\S]*上传附件/);
+  assert.match(proactivePanel, /id="proactiveUploadFile"[\s\S]*class="visually-hidden"/);
+  assert.match(proactivePanel, /id="proactiveUploadName"[\s\S]*拖拽文件到这里，或点击选择/);
+  assert.match(app, /function syncProactiveUploadName\(\)/);
+  assert.match(app, /function bindProactiveUploadDropzone\(\)/);
+  assert.match(app, /els\.proactiveUploadDropzone\.addEventListener\("drop"/);
+  assert.match(css, /\.upload-dropzone\s*\{[\s\S]*cursor:\s*pointer/);
+  assert.match(css, /\.upload-dropzone\.is-dragging\s*\{[\s\S]*border-color:\s*var\(--accent\)/);
+});
+
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
   const aiTakeoverCardRule = cssRule(".ai-takeover-card");
 

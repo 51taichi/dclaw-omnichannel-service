@@ -94,6 +94,11 @@
         <path d="M12 5v14" />
         <path d="M5 12h14" />
       </symbol>
+      <symbol id="icon-upload" viewBox="0 0 24 24">
+        <path d="M12 16V4" />
+        <path d="m7 9 5-5 5 5" />
+        <path d="M20 16v4H4v-4" />
+      </symbol>
       <symbol id="icon-chevron" viewBox="0 0 24 24">
         <path d="m6 9 6 6 6-6" />
       </symbol>
@@ -481,9 +486,15 @@
             <textarea name="content" rows="4" placeholder="不上传文件时，将作为文本推送；上传文件时，将作为文件说明一并发送"></textarea>
           </label>
           <div class="wide proactive-field media-grid" data-message-field="media">
-            <label>
-              <span class="field-label">上传采集</span>
-              <input name="uploadFile" type="file" />
+            <label id="proactiveUploadDropzone" class="upload-dropzone" tabindex="0">
+              <input id="proactiveUploadFile" class="visually-hidden" name="uploadFile" type="file" />
+              <span class="upload-dropzone-icon">
+                <svg class="icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
+              </span>
+              <span class="upload-dropzone-copy">
+                <strong>上传附件</strong>
+                <small id="proactiveUploadName">拖拽文件到这里，或点击选择</small>
+              </span>
             </label>
             <input name="fileUrl" type="hidden" value="" />
           </div>
