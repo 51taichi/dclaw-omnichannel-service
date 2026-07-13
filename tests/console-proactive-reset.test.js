@@ -20,5 +20,7 @@ test("expired Bot sessions are cleared when a scoped request is unauthorized", (
 test("proactive URL reset uses an explicit field reference", () => {
   assert.match(html, /id="proactiveFileUrl"[^>]*name="fileUrl"/);
   assert.match(app, /proactiveFileUrl: document\.querySelector\("#proactiveFileUrl"\)/);
-  assert.doesNotMatch(app, /proactiveForm\.fileUrl/);
+  assert.match(html, /id="proactiveTitle"[^>]*name="title"/);
+  assert.match(html, /id="proactiveContent"[^>]*name="content"/);
+  assert.doesNotMatch(app, /proactiveForm\.(?:fileUrl|extraText|title|content|uploadFile)/);
 });
