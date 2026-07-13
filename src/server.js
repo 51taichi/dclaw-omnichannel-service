@@ -540,8 +540,12 @@ function enqueueAgentInvocation(task) {
   return run;
 }
 
-function getDebugReplyConfig() {
-  const config = getSetting("debug_reply", defaultDebugReplyConfig);
+function getDebugReplySettingKey(botId) {
+  return `debug_reply:${String(botId || "").trim()}`;
+}
+
+function getDebugReplyConfig(botId) {
+  const config = getSetting(getDebugReplySettingKey(botId), defaultDebugReplyConfig);
   return {
     ...defaultDebugReplyConfig,
     ...(config || {})
@@ -737,7 +741,7 @@ function commandCallbackLogFields({ botId, payload, outgoingMatched = false }) {
 }
 
 async function handleDebugPing({ botId, message, conversationKey }) {
-  const config = getDebugReplyConfig();
+  const config = getDebugReplyConfig(botId);
   if (!config.enabled) return false;
   const spoken = String(message.spoken || "").trim().toLowerCase();
   const trigger = String(config.trigger || "ping").trim().toLowerCase();
@@ -2024,24 +2028,24 @@ app.put(
 );
 
 app.get(
-  "/api/settings/debug-reply",
+  "/api/bots/:botId/settings/debug-reply",
   asyncHandler(async (req, res) => {
-    assertAdminAccess(req);
-    res.json({ ok: true, config: getDebugReplyConfig() });
+    assertAdminForBot(req, req.params.botId);
+    res.json({ ok: true, botId: req.params.botId, config: getDebugReplyConfig(req.params.botId) });
   })
 );
 
 app.put(
-  "/api/settings/debug-reply",
+  "/api/bots/:botId/settings/debug-reply",
   asyncHandler(async (req, res) => {
-    assertAdminAccess(req);
+    assertAdminForBot(req, req.params.botId);
     const body = req.body || {};
-    const config = setSetting("debug_reply", {
+    const config = setSetting(getDebugReplySettingKey(req.params.botId), {
       enabled: Boolean(body.enabled),
       trigger: String(body.trigger || "ping").trim(),
       reply: String(body.reply || "pong")
     });
-    res.json({ ok: true, config });
+    res.json({ ok: true, botId: req.params.botId, config });
   })
 );
 

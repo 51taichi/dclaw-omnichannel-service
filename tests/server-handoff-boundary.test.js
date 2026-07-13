@@ -22,6 +22,17 @@ test("human handoff is evaluated before debug auto-reply", () => {
   );
 });
 
+test("debug auto-reply is scoped to the incoming bot", () => {
+  assert.equal(serverSource.includes("function getDebugReplySettingKey(botId)"), true);
+  assert.equal(serverSource.includes("function getDebugReplyConfig(botId)"), true);
+  assert.equal(serverSource.includes("getDebugReplyConfig(botId)"), true);
+  assert.equal(
+    serverSource.includes('"/api/bots/:botId/settings/debug-reply"'),
+    true
+  );
+  assert.equal(serverSource.includes("assertAdminForBot(req, req.params.botId)"), true);
+});
+
 test("server exposes manual reply route only for human handoff", () => {
   assert.equal(serverSource.includes('"/api/flow-sessions/:conversationKey/manual-reply"'), true);
   assert.equal(serverSource.includes('handoffStatus !== "human"'), true);

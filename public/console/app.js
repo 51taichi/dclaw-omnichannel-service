@@ -1,6 +1,7 @@
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
   selectedBotId: "",
+  debugReplyLoadVersion: 0,
   selectedFlowConversationKey: "",
   currentRole: "",
   botSessions: JSON.parse(localStorage.getItem("worktool_console_bot_sessions") || "{}"),
@@ -829,8 +830,16 @@ async function loadBots() {
 }
 
 async function loadDebugReply() {
-  if (state.currentRole !== "admin") return;
-  const data = await request("/api/settings/debug-reply");
+  const botId = state.selectedBotId;
+  if (state.currentRole !== "admin" || !botId) return;
+  const requestVersion = ++state.debugReplyLoadVersion;
+  const data = await request(
+    `/api/bots/${encodeURIComponent(botId)}/settings/debug-reply`
+  );
+  if (
+    requestVersion !== state.debugReplyLoadVersion ||
+    state.selectedBotId !== botId
+  ) return;
   const config = data.config || {};
   els.debugReplyForm.enabled.checked = Boolean(config.enabled);
   els.debugReplyForm.trigger.value = config.trigger || "ping";
@@ -2084,7 +2093,11 @@ function toggleAssetsPanel() {
 
 async function saveDebugReply(event) {
   event.preventDefault();
-  await request("/api/settings/debug-reply", {
+  if (state.currentRole !== "admin" || !state.selectedBotId) {
+    toast("请先以管理员身份选择 Bot");
+    return;
+  }
+  await request(`/api/bots/${encodeURIComponent(state.selectedBotId)}/settings/debug-reply`, {
     method: "PUT",
     body: JSON.stringify({
       enabled: els.debugReplyForm.enabled.checked,

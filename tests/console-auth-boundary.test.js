@@ -100,7 +100,7 @@ test("debug auto-reply configuration is requested and saved for the selected bot
   const saveEnd = app.indexOf("async function createProactiveTask", saveStart);
   const saveBody = app.slice(saveStart, saveEnd);
 
-  assert.match(loadBody, /\/api\/bots\/\$\{encodeURIComponent\(state\.selectedBotId\)\}\/settings\/debug-reply/);
+  assert.match(loadBody, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/settings\/debug-reply/);
   assert.match(saveBody, /\/api\/bots\/\$\{encodeURIComponent\(state\.selectedBotId\)\}\/settings\/debug-reply/);
   assert.equal(loadBody.includes('"/api/settings/debug-reply"'), false);
   assert.equal(saveBody.includes('"/api/settings/debug-reply"'), false);
