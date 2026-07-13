@@ -40,6 +40,7 @@ import {
   getConversationAssets,
   getFlowMachine,
   getFlowSession,
+  getOrCreateConversationSession,
   getOrCreateFlowSession,
   getSetting,
   getProactiveTask,
@@ -323,6 +324,10 @@ function isGroupMessage(message) {
 function isPrivateMessage(message) {
   const roomType = Number(message.roomType);
   return roomType === 2 || roomType === 4;
+}
+
+function shouldRecordConversationHistory(message) {
+  return isPrivateMessage(message) || isGroupMessage(message);
 }
 
 function isPrivateConversationKey(conversationKey) {
@@ -1367,7 +1372,10 @@ async function processIncomingMessage({ botId, message }) {
     conversationKey,
     message
   });
-  if (isPrivateMessage(message)) {
+  if (isGroupMessage(message)) {
+    getOrCreateConversationSession({ botId, conversationKey });
+  }
+  if (shouldRecordConversationHistory(message)) {
     insertConversationMessage({
       botId,
       conversationKey,
@@ -1376,6 +1384,8 @@ async function processIncomingMessage({ botId, message }) {
       content: message.spoken || message.rawSpoken || "",
       rawPayload: message
     });
+  }
+  if (isPrivateMessage(message)) {
     invalidateFlowActivation({ conversationKey, reason: "customer_replied" });
   }
 
@@ -1600,7 +1610,7 @@ async function processIncomingMessage({ botId, message }) {
           agentReply: agentReply.raw
         }
       });
-    } else if (isPrivateMessage(message)) {
+    } else if (shouldRecordConversationHistory(message)) {
       insertConversationMessage({
         botId,
         conversationKey,

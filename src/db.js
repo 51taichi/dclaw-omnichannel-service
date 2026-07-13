@@ -945,6 +945,43 @@ export function getOrCreateFlowSession({ botId, conversationKey, machine }) {
   return rowToFlowSession(row);
 }
 
+export function getOrCreateConversationSession({
+  botId,
+  conversationKey,
+  currentNodeId = "__conversation__"
+}) {
+  let row = db
+    .prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?")
+    .get(conversationKey);
+  const timestamp = now();
+  if (!row) {
+    db.prepare(`
+      INSERT INTO flow_sessions (
+        bot_id, conversation_key, current_node_id, collected_data_json, status,
+        last_message_at, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+    `).run(
+      botId,
+      conversationKey,
+      currentNodeId,
+      json({}),
+      timestamp,
+      timestamp,
+      timestamp
+    );
+    row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey);
+  } else {
+    db.prepare(`
+      UPDATE flow_sessions
+      SET last_message_at = ?, updated_at = ?
+      WHERE conversation_key = ?
+    `).run(timestamp, timestamp, conversationKey);
+    row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey);
+  }
+  return rowToFlowSession(row);
+}
+
 export function listFlowSessions({ botId, limit = 100 } = {}) {
   const params = [];
   let where = "";
