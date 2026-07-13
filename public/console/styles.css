@@ -1158,27 +1158,32 @@ button.danger:hover {
 
 .proactive-attachment-list {
   grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: 8px;
 }
 
 .proactive-attachment-card {
+  position: relative;
   min-width: 0;
-  min-height: 46px;
+  width: 86px;
+  height: 86px;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) 30px;
+  grid-template-rows: minmax(0, 1fr) auto;
+  justify-items: center;
   align-items: center;
-  gap: 8px;
-  padding: 7px 8px;
+  gap: 6px;
+  padding: 10px 8px 8px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: #ffffff;
+  overflow: hidden;
 }
 
 .proactive-attachment-icon {
-  width: 34px;
-  height: 34px;
+  width: 38px;
+  height: 38px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1188,22 +1193,38 @@ button.danger:hover {
 }
 
 .proactive-attachment-icon .icon {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
 .proactive-attachment-name {
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  text-align: center;
+  font-size: 12px;
   font-weight: 800;
 }
 
 .proactive-attachment-card .icon-button {
-  width: 30px;
-  height: 30px;
-  min-height: 30px;
+  position: absolute;
+  inset: 50% auto auto 50%;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.92);
+  transition: opacity 140ms ease, transform 140ms ease;
+  box-shadow: 0 10px 22px rgba(239, 38, 37, 0.2);
+}
+
+.proactive-attachment-card:hover .icon-button,
+.proactive-attachment-card:focus-within .icon-button {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
 }
 
 .target-picker-head {
