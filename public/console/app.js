@@ -1585,6 +1585,7 @@ function renderFlowSessions() {
           const active = session.conversationKey === state.selectedFlowConversationKey;
           const sessionType = flowSessionType(session);
           const name = flowSessionDisplayName(session);
+          const avatar = sessionType === "group" ? "./assets/group.png" : "./assets/ddeer.png";
           const status = flowNodeName(session.currentNodeId);
           const assets = session.assets || {};
           const assetSummary = assets.totalCount
@@ -1603,7 +1604,7 @@ function renderFlowSessions() {
             : "";
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
-              <img class="flow-session-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
+              <img class="flow-session-avatar" src="${avatar}" alt="" aria-hidden="true" />
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
                   <strong>${escapeHtml(name)}</strong>

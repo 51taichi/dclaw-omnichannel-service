@@ -63,6 +63,8 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(app.includes("getVisibleFlowSessions"), true);
   assert.equal(app.includes("sortFlowSessions"), true);
   assert.equal(app.includes('handoffStatus === "human"'), true);
+  assert.equal(app.includes('"./assets/group.png"'), true);
+  assert.equal(app.includes('"./assets/ddeer.png"'), true);
   assert.equal(css.includes(".flow-session-filters"), true);
   assert.match(sessionsPanel, /class="flow-session-sidebar"[\s\S]*class="segmented flow-session-type-tabs"[\s\S]*id="flowSessionList"/);
   assert.equal(css.includes(".flow-session-type-tabs"), true);
