@@ -24,6 +24,10 @@ test("console stores bot scoped tokens and sends x-bot-session-token", () => {
 test("console hides config tab for bot role and exposes access-key reset for admin", () => {
   assert.equal(html.includes("accessKeyForm"), true);
   assert.equal(app.includes("syncRoleVisibility"), true);
+  assert.equal(app.includes("shouldHideConfigTab"), true);
+  assert.equal(app.includes('document.querySelector(\'[data-workspace-tab="config"]\')?.toggleAttribute("hidden", hideConfig)'), true);
+  assert.equal(app.includes('document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig)'), true);
+  assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), true);
   assert.equal(app.includes("state.currentRole === \"admin\""), true);
   assert.equal(app.includes("/access-key"), true);
   assert.equal(css.includes(".bot-card.is-locked"), true);
@@ -41,7 +45,7 @@ test("lock and reset return to unselected config context", () => {
   assert.equal(app.includes("clearBotSession(botId);"), true);
   assert.equal(app.includes("resetBotContext();"), true);
   assert.equal(app.includes('switchWorkspaceTab("config", { force: true });'), true);
-  assert.equal(app.includes('const hideConfig = hasBot && !isAdmin;'), true);
+  assert.equal(app.includes("const hideConfig = shouldHideConfigTab();"), true);
 });
 
 test("locked bot cards never show using status", () => {

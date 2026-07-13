@@ -156,11 +156,15 @@ function isWorkspaceLocked() {
   return Boolean(state.selectedBotId && !state.currentRole);
 }
 
+function shouldHideConfigTab() {
+  return Boolean(state.selectedBotId && state.currentRole !== "admin");
+}
+
 function syncRoleVisibility() {
   const isAdmin = state.currentRole === "admin";
   const hasBot = Boolean(state.selectedBotId);
   const workspaceLocked = isWorkspaceLocked();
-  const hideConfig = hasBot && !isAdmin;
+  const hideConfig = shouldHideConfigTab();
   document.body.classList.toggle("is-admin-role", isAdmin);
   document.body.classList.toggle("is-bot-role", state.currentRole === "bot");
   document.body.classList.toggle("is-workspace-locked", workspaceLocked);
