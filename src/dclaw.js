@@ -415,7 +415,15 @@ export function parseAgentReply(rawReply) {
   if (!text) return { reply: "", attachments: [], sources: [], flowDecision: null, raw: rawReply };
 
   const parsed = parseJsonObjectFromText(text);
-  if (!parsed) return { reply: text, attachments: [], sources: [], flowDecision: null, raw: rawReply };
+  if (!parsed) {
+    return {
+      reply: stripRuntimeArtifacts(text),
+      attachments: [],
+      sources: [],
+      flowDecision: null,
+      raw: rawReply
+    };
+  }
 
   const reply =
     typeof parsed.reply === "string"
@@ -426,12 +434,33 @@ export function parseAgentReply(rawReply) {
           ? parsed.content
           : "";
   return {
-    reply: reply.trim(),
+    reply: stripRuntimeArtifacts(reply),
     attachments: normalizeAgentAttachments(parsed.attachments || parsed.resources || parsed.files),
     sources: normalizeAgentSources(parsed.sources || parsed.references || parsed.evidence),
     flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
     raw: parsed
   };
+}
+
+function stripRuntimeArtifacts(value) {
+  let text = String(value || "").trim();
+  if (!text) return "";
+
+  const compactionPattern =
+    /(?:🔄\s*)?Context compaction started\.\.\.\s*Context Status:\s*[^\n\r]*?\bkeep\(\d+\)/g;
+  const completedPattern =
+    /(?:✅\s*)?Context compaction completed!\s*Context Status:\s*[^\n\r]*?\b\d+\s+msgs/g;
+
+  for (let index = 0; index < 4; index += 1) {
+    const next = text
+      .replace(compactionPattern, "")
+      .replace(completedPattern, "")
+      .trim();
+    if (next === text) break;
+    text = next;
+  }
+
+  return text;
 }
 
 function normalizeAgentSources(value) {

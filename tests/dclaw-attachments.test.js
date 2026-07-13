@@ -99,3 +99,11 @@ test("parseAgentReply tolerates raw newlines inside JSON string fields", () => {
     }
   ]);
 });
+
+test("parseAgentReply strips context compaction runtime artifacts", () => {
+  const raw = "🔄 Context compaction started... Context Status: 📝 107.0k / 131.1k (82%) 💬 77 msgs -> compact(69) + keep(8)🔄 Context compaction started... Context Status: 📝 107.0k / 131.1k (82%) 💬 77 msgs -> compact(69) + keep(8)✅ Context compaction completed! Context Status: 📝 19.7k / 131.1k (15%) 💬 8 msgs✅ Context compaction completed! Context Status: 📝 19.7k / 131.1k (15%) 💬 8 msgs老杨，确定不来吗？相信我，真的很精彩～😁";
+
+  const parsed = parseAgentReply(raw);
+
+  assert.equal(parsed.reply, "老杨，确定不来吗？相信我，真的很精彩～😁");
+});
