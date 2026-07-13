@@ -10,6 +10,8 @@ test("console has unified unlock and relock controls", () => {
   assert.equal(html.includes("unlockDialog"), true);
   assert.equal(html.includes("unlockKeyInput"), true);
   assert.equal(html.includes("lockBotButton"), true);
+  assert.equal(html.includes('id="icon-unlock"'), true);
+  assert.match(html, /id="unlockDialog"[\s\S]*?<use href="#icon-unlock"><\/use>/);
   assert.equal(app.includes("/api/public/bots"), true);
   assert.equal(app.includes("/unlock"), true);
   assert.equal(app.includes("lockCurrentBot"), true);
@@ -88,4 +90,18 @@ test("bot card quick actions let applyBotContext own form synchronization", () =
   const body = app.slice(renderStart, renderEnd);
   assert.equal(body.includes("fillForm(bot);"), false);
   assert.match(body, /await applyBotContext\(bot\)/);
+});
+
+test("debug auto-reply configuration is requested and saved for the selected bot", () => {
+  const loadStart = app.indexOf("async function loadDebugReply");
+  const loadEnd = app.indexOf("async function saveBot", loadStart);
+  const loadBody = app.slice(loadStart, loadEnd);
+  const saveStart = app.indexOf("async function saveDebugReply");
+  const saveEnd = app.indexOf("async function createProactiveTask", saveStart);
+  const saveBody = app.slice(saveStart, saveEnd);
+
+  assert.match(loadBody, /\/api\/bots\/\$\{encodeURIComponent\(state\.selectedBotId\)\}\/settings\/debug-reply/);
+  assert.match(saveBody, /\/api\/bots\/\$\{encodeURIComponent\(state\.selectedBotId\)\}\/settings\/debug-reply/);
+  assert.equal(loadBody.includes('"/api/settings/debug-reply"'), false);
+  assert.equal(saveBody.includes('"/api/settings/debug-reply"'), false);
 });
