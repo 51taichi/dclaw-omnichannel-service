@@ -93,6 +93,7 @@ import {
   sendTextMessage
 } from "./worktool.js";
 import { shouldProcessInboundForAgent } from "./message-rules.js";
+import { normalizeUploadedFilename } from "./filenames.js";
 
 const app = express();
 const port = Number(process.env.PORT || 8765);
@@ -807,7 +808,7 @@ function normalizeProactiveMessage(body) {
   if (messageType === "media") {
     const payload = {
       fileUrl: String(body.fileUrl || "").trim(),
-      objectName: String(body.objectName || "").trim(),
+      objectName: normalizeUploadedFilename(body.objectName),
       fileType: String(body.fileType || "image").trim(),
       extraText: String(body.extraText || "").trim(),
       sendType: Number(body.sendType || 0)
@@ -1793,7 +1794,7 @@ app.post(
       res.json({
         ok: true,
         file: {
-          originalName: req.file.originalname,
+          originalName: normalizeUploadedFilename(req.file.originalname),
           filename: req.file.filename,
           size: req.file.size,
           mimeType: req.file.mimetype,

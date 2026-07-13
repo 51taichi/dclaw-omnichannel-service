@@ -1,3 +1,5 @@
+import { normalizeUploadedFilename } from "./filenames.js";
+
 const DEFAULT_BASE_URL = "https://api.worktool.ymdyes.cn";
 
 function getBaseUrl() {
@@ -128,7 +130,7 @@ export function buildRawMediaCommand({
     type: 218,
     titleList: targets,
     fileUrl,
-    objectName: objectName || "",
+    objectName: normalizeUploadedFilename(objectName),
     fileType: normalizedFileType,
     extraText: extraText || "",
     sendType: Number(sendType || 0)
