@@ -1113,11 +1113,11 @@ button.danger:hover {
   inset: 0;
   z-index: 4;
   display: grid;
-  grid-template-columns: 42px minmax(0, max-content);
+  grid-template-columns: 78px minmax(0, max-content);
   align-content: center;
   justify-content: center;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 18px;
   border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
   border-radius: 8px;
@@ -1130,31 +1130,22 @@ button.danger:hover {
   display: none;
 }
 
-.upload-overlay-icon {
-  width: 42px;
-  height: 42px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--accent), var(--cyan));
-  color: #ffffff;
-  box-shadow: 0 12px 24px rgba(42, 48, 216, 0.16);
-}
-
-.upload-overlay-icon .icon {
-  width: 20px;
-  height: 20px;
+.upload-overlay-image {
+  width: 78px;
+  height: 78px;
+  object-fit: contain;
+  filter: drop-shadow(0 12px 18px rgba(239, 92, 36, 0.16));
 }
 
 .upload-overlay-copy {
   display: grid;
-  gap: 4px;
+  gap: 0;
 }
 
 .upload-overlay-copy strong {
-  font-size: 15px;
+  font-size: 18px;
   font-weight: 900;
+  color: var(--orange);
 }
 
 .upload-overlay-copy small {

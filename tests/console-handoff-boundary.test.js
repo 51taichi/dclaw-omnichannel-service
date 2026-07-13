@@ -197,6 +197,7 @@ test("proactive submit locks message fields while uploading attachments", () => 
   const proactivePanel = sectionHtml("proactivePanel");
 
   assert.match(proactivePanel, /id="proactiveMessageFields" class="wide proactive-message-fields"[\s\S]*id="proactiveUploadOverlay"/);
+  assert.match(proactivePanel, /id="proactiveUploadOverlay"[\s\S]*src="assets\/sorry\.png"[\s\S]*请您稍后，正在上传/);
   assert.match(proactivePanel, /id="proactiveSubmitButton"[\s\S]*创建并发送/);
   assert.match(app, /function setProactiveSubmitting\(submitting\)/);
   assert.match(app, /els\.proactiveSubmitButton\.disabled = submitting/);
@@ -204,6 +205,7 @@ test("proactive submit locks message fields while uploading attachments", () => 
   assert.match(app, /setProactiveSubmitting\(true\)[\s\S]*finally[\s\S]*setProactiveSubmitting\(false\)/);
   assert.match(css, /\.proactive-message-fields\.is-uploading\s*\{[\s\S]*pointer-events:\s*none/);
   assert.match(css, /\.proactive-upload-overlay\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(css, /\.upload-overlay-image\s*\{[\s\S]*object-fit:\s*contain/);
 });
 
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
