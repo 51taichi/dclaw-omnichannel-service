@@ -74,6 +74,12 @@ test("locked bot cards never show using status", () => {
   assert.equal(css.includes(".bot-card.is-locked .bot-identity-content"), true);
 });
 
+test("unselected unlocked bot cards keep their own accent color", () => {
+  assert.match(css, /\.bot-card\.is-unlocked\s*\{[\s\S]*?border-left-color: var\(--bot-accent\);/);
+  assert.match(css, /\.bot-card\.is-unlocked:not\(\.is-selected\)\s*\{[\s\S]*?background: color-mix\(in srgb, var\(--bot-accent\) 5%, #ffffff\);/);
+  assert.match(css, /\.bot-card\.is-unlocked:hover\s*\{[\s\S]*?border-color: color-mix\(in srgb, var\(--bot-accent\) 48%, var\(--line\)\);/);
+});
+
 test("admin bot context loads full binding before filling config form", () => {
   const applyStart = app.indexOf("async function applyBotContext");
   const applyEnd = app.indexOf("function openUnlockDialog", applyStart);
@@ -92,6 +98,29 @@ test("bot card quick actions let applyBotContext own form synchronization", () =
   assert.match(body, /await applyBotContext\(bot\)/);
 });
 
+test("switching bots clears old scoped content before loading the new bot", () => {
+  const applyStart = app.indexOf("async function applyBotContext");
+  const applyEnd = app.indexOf("function openUnlockDialog", applyStart);
+  const body = app.slice(applyStart, applyEnd);
+
+  assert.match(body, /const contextVersion = beginBotContext\(\);/);
+  assert.match(body, /clearBotScopedContent\(\);/);
+  assert.equal(body.indexOf("clearBotScopedContent();") < body.indexOf("const tasks = ["), true);
+  assert.match(body, /loadAddressBookTargets\(\{ contextVersion \}\)/);
+  assert.match(body, /loadProactiveTasks\(\{ contextVersion \}\)/);
+  assert.match(body, /loadFlowMachine\(\{ contextVersion \}\)/);
+  assert.match(body, /loadFlowSessions\(\{ contextVersion \}\)/);
+});
+
+test("bot scoped loaders ignore responses from a previous bot selection", () => {
+  ["loadAddressBookTargets", "loadDebugReply", "loadLogs", "loadProactiveTasks", "loadFlowMachine", "loadFlowSessions"].forEach((name) => {
+    const start = app.indexOf(`async function ${name}`);
+    const end = app.indexOf("\nasync function ", start + 1);
+    const body = app.slice(start, end === -1 ? undefined : end);
+    assert.match(body, /isCurrentBotContext\(botId, contextVersion\)/);
+  });
+});
+
 test("debug auto-reply configuration is requested and saved for the selected bot", () => {
   const loadStart = app.indexOf("async function loadDebugReply");
   const loadEnd = app.indexOf("async function saveBot", loadStart);
@@ -101,6 +130,7 @@ test("debug auto-reply configuration is requested and saved for the selected bot
   const saveBody = app.slice(saveStart, saveEnd);
 
   assert.match(loadBody, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/settings\/debug-reply/);
+  assert.match(loadBody, /isCurrentBotContext\(botId, contextVersion\)/);
   assert.match(saveBody, /\/api\/bots\/\$\{encodeURIComponent\(state\.selectedBotId\)\}\/settings\/debug-reply/);
   assert.equal(loadBody.includes('"/api/settings/debug-reply"'), false);
   assert.equal(saveBody.includes('"/api/settings/debug-reply"'), false);

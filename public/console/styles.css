@@ -385,6 +385,19 @@ h2 {
   border-left-color: var(--orange);
 }
 
+.bot-card.is-unlocked {
+  border-left-color: var(--bot-accent);
+}
+
+.bot-card.is-unlocked:not(.is-selected) {
+  background: color-mix(in srgb, var(--bot-accent) 5%, #ffffff);
+}
+
+.bot-card.is-unlocked:hover {
+  border-color: color-mix(in srgb, var(--bot-accent) 48%, var(--line));
+  box-shadow: 0 10px 22px color-mix(in srgb, var(--bot-accent) 14%, transparent);
+}
+
 .bot-card.is-locked {
   background: #f3f5fb;
 }

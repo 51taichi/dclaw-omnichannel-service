@@ -1,6 +1,7 @@
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
   selectedBotId: "",
+  botContextVersion: 0,
   debugReplyLoadVersion: 0,
   selectedFlowConversationKey: "",
   currentRole: "",
@@ -364,6 +365,45 @@ function setBindingState(bot = null) {
   renderBots(currentBots);
 }
 
+function beginBotContext() {
+  state.botContextVersion += 1;
+  return state.botContextVersion;
+}
+
+function isCurrentBotContext(botId, contextVersion) {
+  return state.selectedBotId === botId && state.botContextVersion === contextVersion;
+}
+
+function clearBotScopedContent() {
+  state.selectedFlowConversationKey = "";
+  selectedTargets.clear();
+  addressBookTargets = [];
+  currentFlowMachine = null;
+  currentFlowSessions = [];
+  currentFlowSession = null;
+  flowDraftNodes = [];
+  collapsedFlowNodes.clear();
+  syncHandoffButton(null);
+  renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
+  els.chatTitle.textContent = emptyFlowSessionTitle();
+  els.chatMessages.innerHTML = "";
+  els.flowEventsOutput.textContent = "";
+  els.flowSessionNodeFilter.innerHTML = `<option value="all">全部</option>`;
+  els.flowNodeList.innerHTML = `<div class="empty-state">正在加载当前 Bot 的任务状态机...</div>`;
+  els.botForm.reset();
+  els.botForm.enabled.checked = true;
+  els.flowMachineForm.reset();
+  els.flowMachineForm.enabled.checked = false;
+  els.debugReplyForm.reset();
+  els.debugReplyForm.trigger.value = "ping";
+  els.debugReplyForm.reply.value = "pong";
+  renderSelectedTargets();
+  renderTargetList();
+  renderProactiveTasks([]);
+  els.logsOutput.textContent = "";
+  syncFlowJsonTextarea();
+}
+
 function expandPanel(panel) {
   if (!panel) return;
   panel.classList.remove("is-collapsed");
@@ -376,27 +416,33 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
     openUnlockDialog(bot);
     return;
   }
+  const contextVersion = beginBotContext();
+  const shouldReloadLogs = Boolean(els.logsOutput.textContent.trim());
   setBindingState(bot);
+  clearBotScopedContent();
   let activeBot = bot;
   if (bot?.botId) {
-    selectedTargets.clear();
     if (state.currentRole === "admin") {
       const data = await request("/api/bots");
+      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       currentBots = data.bots || currentBots;
       activeBot = currentBots.find((item) => item.botId === bot.botId) || bot;
       renderBots(currentBots);
       fillForm(activeBot);
-      await loadDebugReply();
+      await loadDebugReply({ contextVersion });
+      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
     }
     const tasks = [
-      loadAddressBookTargets(),
-      loadProactiveTasks(),
-      loadFlowMachine(),
-      loadFlowSessions()
+      loadAddressBookTargets({ contextVersion }),
+      loadProactiveTasks({ contextVersion }),
+      loadFlowMachine({ contextVersion }),
+      loadFlowSessions({ contextVersion })
     ];
     await Promise.all(tasks);
-    if (els.logsOutput.textContent.trim()) {
-      await loadLogs();
+    if (!isCurrentBotContext(bot.botId, contextVersion)) return;
+    if (shouldReloadLogs) {
+      await loadLogs({ contextVersion });
+      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
     }
   }
   if (scrollTo) {
@@ -538,22 +584,9 @@ async function lockCurrentBot() {
 }
 
 function resetBotContext() {
-  state.selectedFlowConversationKey = "";
-  selectedTargets.clear();
-  addressBookTargets = [];
-  currentFlowMachine = null;
-  currentFlowSessions = [];
-  currentFlowSession = null;
-  syncHandoffButton(null);
-  renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
-  els.chatTitle.textContent = emptyFlowSessionTitle();
-  els.chatMessages.innerHTML = "";
-  els.botForm.reset();
-  els.botForm.enabled.checked = true;
+  beginBotContext();
   setBindingState(null);
-  renderSelectedTargets();
-  renderTargetList();
-  renderBots(currentBots);
+  clearBotScopedContent();
   switchWorkspaceTab("config", { force: true });
 }
 
@@ -797,7 +830,7 @@ function renderTargetList() {
   updateBulkActionButtons();
 }
 
-async function loadAddressBookTargets() {
+async function loadAddressBookTargets({ contextVersion = state.botContextVersion } = {}) {
   const botId = state.selectedBotId;
   if (!botId) {
     toast("请先选择 Bot");
@@ -805,6 +838,7 @@ async function loadAddressBookTargets() {
   }
   const params = new URLSearchParams({ botId, limit: "300" });
   const data = await request(`/api/proactive/targets?${params.toString()}`);
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   addressBookTargets = data.targets || [];
   for (const key of Array.from(selectedTargets.keys())) {
     if (!addressBookTargets.some((target) => targetKey(target) === key)) {
@@ -829,7 +863,7 @@ async function loadBots() {
   renderBots(currentBots);
 }
 
-async function loadDebugReply() {
+async function loadDebugReply({ contextVersion = state.botContextVersion } = {}) {
   const botId = state.selectedBotId;
   if (state.currentRole !== "admin" || !botId) return;
   const requestVersion = ++state.debugReplyLoadVersion;
@@ -838,7 +872,8 @@ async function loadDebugReply() {
   );
   if (
     requestVersion !== state.debugReplyLoadVersion ||
-    state.selectedBotId !== botId
+    state.selectedBotId !== botId ||
+    !isCurrentBotContext(botId, contextVersion)
   ) return;
   const config = data.config || {};
   els.debugReplyForm.enabled.checked = Boolean(config.enabled);
@@ -905,11 +940,13 @@ async function bindCallback(botId, type) {
   toast(type === "message-callback" ? "消息回调已绑定" : "指令回调已绑定");
 }
 
-async function loadLogs() {
+async function loadLogs({ contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
   const type = els.logType.value;
   const params = new URLSearchParams({ limit: "40" });
-  if (state.selectedBotId) params.set("botId", state.selectedBotId);
+  if (botId) params.set("botId", botId);
   const data = await request(`/api/logs/${encodeURIComponent(type)}?${params.toString()}`);
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   els.logsOutput.textContent = JSON.stringify(data.logs || [], null, 2);
 }
 
@@ -1493,11 +1530,13 @@ function renderFlowNodeEditor(entryNodeId = "") {
   });
 }
 
-async function loadFlowMachine({ useDefault = false } = {}) {
-  if (!state.selectedBotId) return;
+async function loadFlowMachine({ useDefault = false, contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (!botId) return;
   const data = await request(
-    `/api/flow-machines/${encodeURIComponent(state.selectedBotId)}${useDefault ? "?default=1" : ""}`
+    `/api/flow-machines/${encodeURIComponent(botId)}${useDefault ? "?default=1" : ""}`
   );
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   currentFlowMachine = data.machine || null;
   if (currentFlowMachine?.config) {
     els.flowMachineForm.enabled.checked = Boolean(currentFlowMachine.enabled);
@@ -1573,10 +1612,12 @@ function exportFlowMachine() {
   URL.revokeObjectURL(url);
 }
 
-async function loadFlowSessions() {
-  if (!state.selectedBotId) return;
-  const params = new URLSearchParams({ botId: state.selectedBotId, limit: "100" });
+async function loadFlowSessions({ contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (!botId) return;
+  const params = new URLSearchParams({ botId, limit: "100" });
   const data = await request(`/api/flow-sessions?${params.toString()}`);
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   currentFlowSessions = data.sessions || [];
   renderFlowSessionNodeFilter();
   renderFlowSessions();
@@ -1955,12 +1996,16 @@ function renderChatSources(value) {
 }
 
 async function openFlowSession(conversationKey) {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (!botId) return;
   state.selectedFlowConversationKey = conversationKey;
   const session = currentFlowSessions.find((item) => item.conversationKey === conversationKey);
   renderFlowSessions();
   els.chatTitle.textContent = flowSessionDisplayName(session || { conversationKey });
-  const params = new URLSearchParams({ limit: "300", botId: state.selectedBotId });
+  const params = new URLSearchParams({ limit: "300", botId });
   const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
+  if (!isCurrentBotContext(botId, contextVersion) || state.selectedFlowConversationKey !== conversationKey) return;
   currentFlowSession = data.session || session || null;
   syncHandoffButton(currentFlowSession);
   renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
@@ -2180,18 +2225,20 @@ function syncMessageTypeFields() {
   });
 }
 
-async function loadProactiveTasks() {
-  if (!state.selectedBotId) {
+async function loadProactiveTasks({ contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (!botId) {
     renderProactiveTasks([]);
     return;
   }
   const params = new URLSearchParams({ limit: "20" });
-  params.set("botId", state.selectedBotId);
+  params.set("botId", botId);
   const dateFrom = dateToLocalIsoStart(els.taskDateFrom.value);
   const dateTo = dateToLocalIsoNextDay(els.taskDateTo.value || els.taskDateFrom.value);
   if (dateFrom) params.set("dateFrom", dateFrom);
   if (dateTo) params.set("dateTo", dateTo);
   const data = await request(`/api/proactive/tasks?${params.toString()}`);
+  if (!isCurrentBotContext(botId, contextVersion)) return;
   renderProactiveTasks(data.tasks || []);
 }
 
