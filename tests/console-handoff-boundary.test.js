@@ -152,6 +152,14 @@ test("proactive targets do not render redundant selected chips", () => {
   assert.match(app, /function renderSelectedTargets\(\)\s*\{\s*updateBulkActionButtons\(\);\s*\}/);
 });
 
+test("proactive target list keeps a fixed scrollable height", () => {
+  const targetListRule = cssRule(".target-list");
+
+  assert.match(targetListRule, /height:\s*168px/);
+  assert.match(targetListRule, /overflow-y:\s*auto/);
+  assert.doesNotMatch(targetListRule, /max-height/);
+});
+
 test("proactive form works without a message type dropdown", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 

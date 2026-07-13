@@ -1312,8 +1312,10 @@ button.danger:hover {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 6px;
-  max-height: 360px;
-  overflow: auto;
+  height: 168px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
   padding: 2px;
 }
 
