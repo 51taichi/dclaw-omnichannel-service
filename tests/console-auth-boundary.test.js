@@ -57,6 +57,14 @@ test("bot cards expose four unlocked quick actions", () => {
   assert.equal(app.includes('data-action="${unlocked ? "logs" : "unlock"}'), true);
 });
 
+test("locked bot quick actions use lock icons", () => {
+  assert.equal(app.includes('icon(unlocked ? "edit" : "lock")'), true);
+  assert.equal(app.includes('icon(unlocked ? "users" : "lock")'), true);
+  assert.equal(app.includes('icon(unlocked ? "send" : "lock")'), true);
+  assert.equal(app.includes('icon(unlocked ? "eye" : "lock")'), true);
+  assert.equal(app.includes('icon(unlocked ? "edit" : "link")'), false);
+});
+
 test("lock and reset return to unselected config context", () => {
   assert.equal(app.includes("function resetBotContext()"), true);
   assert.equal(app.includes("clearBotSession(botId);"), true);

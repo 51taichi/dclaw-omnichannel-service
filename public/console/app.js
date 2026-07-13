@@ -685,10 +685,10 @@ function renderBots(bots) {
             <span class="pill ${botStatusClass}">${botStatusText}</span>
           </div>
           <div class="row-actions bot-actions">
-            <button class="secondary icon-button" data-action="${unlocked ? "tasks" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "任务配置" : "解锁"}" title="${unlocked ? "任务配置" : "解锁"}">${icon(unlocked ? "edit" : "link")}</button>
-            <button class="secondary icon-button" data-action="${unlocked ? "sessions" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "客户会话" : "解锁"}" title="${unlocked ? "客户会话" : "解锁"}">${icon(unlocked ? "users" : "link")}</button>
-            <button class="secondary icon-button" data-action="${unlocked ? "push" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "推送消息" : "解锁"}" title="${unlocked ? "推送消息" : "解锁"}">${icon(unlocked ? "send" : "link")}</button>
-            <button class="secondary icon-button" data-action="${unlocked ? "logs" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "运行日志" : "解锁"}" title="${unlocked ? "运行日志" : "解锁"}">${icon(unlocked ? "eye" : "link")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "tasks" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "任务配置" : "解锁"}" title="${unlocked ? "任务配置" : "解锁"}">${icon(unlocked ? "edit" : "lock")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "sessions" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "客户会话" : "解锁"}" title="${unlocked ? "客户会话" : "解锁"}">${icon(unlocked ? "users" : "lock")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "push" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "推送消息" : "解锁"}" title="${unlocked ? "推送消息" : "解锁"}">${icon(unlocked ? "send" : "lock")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "logs" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "运行日志" : "解锁"}" title="${unlocked ? "运行日志" : "解锁"}">${icon(unlocked ? "eye" : "lock")}</button>
           </div>
         </article>
       `;
