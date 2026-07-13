@@ -180,6 +180,7 @@ test("proactive form works without a message type dropdown", () => {
 
 test("proactive upload uses a custom drag and click dropzone", () => {
   const proactivePanel = sectionHtml("proactivePanel");
+  const uploadDropzoneRule = cssRule(".upload-dropzone");
 
   assert.match(proactivePanel, /class="proactive-attachment-row"[\s\S]*id="proactiveUploadDropzone"[\s\S]*id="proactiveAttachmentList"/);
   assert.match(proactivePanel, /class="upload-dropzone"[\s\S]*上传附件/);
@@ -193,7 +194,10 @@ test("proactive upload uses a custom drag and click dropzone", () => {
   assert.match(app, /data-remove-proactive-attachment/);
   assert.match(app, /payload\.attachments = uploadedAttachments;/);
   assert.match(css, /\.proactive-attachment-row\s*\{[\s\S]*display:\s*flex/);
-  assert.match(css, /\.upload-dropzone\s*\{[\s\S]*width:\s*86px[\s\S]*height:\s*86px[\s\S]*cursor:\s*pointer/);
+  assert.match(uploadDropzoneRule, /width:\s*86px/);
+  assert.match(uploadDropzoneRule, /height:\s*86px/);
+  assert.match(uploadDropzoneRule, /grid-template-columns:\s*1fr/);
+  assert.match(uploadDropzoneRule, /cursor:\s*pointer/);
   assert.match(css, /\.upload-dropzone-icon\s*\{[\s\S]*place-self:\s*center/);
   assert.match(css, /\.upload-dropzone-icon\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--cyan\) 14%,\s*#ffffff\)/);
   assert.match(css, /\.upload-dropzone-icon\s*\{[\s\S]*color:\s*color-mix\(in srgb,\s*var\(--accent\) 72%,\s*var\(--cyan\)\)/);
