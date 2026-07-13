@@ -1308,36 +1308,6 @@ button.danger:hover {
   width: 100%;
 }
 
-.selected-targets {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-height: 28px;
-  align-items: center;
-}
-
-.target-chip {
-  height: 26px;
-  gap: 5px;
-  padding: 0 9px;
-  border: 1px solid var(--line-strong);
-  background: var(--accent-soft);
-  color: var(--accent-dark);
-  font-size: 12px;
-  box-shadow: none;
-}
-
-.target-chip .icon {
-  width: 12px;
-  height: 12px;
-  flex-basis: 12px;
-}
-
-.target-chip small {
-  color: var(--muted);
-  font-weight: 800;
-}
-
 .target-list {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

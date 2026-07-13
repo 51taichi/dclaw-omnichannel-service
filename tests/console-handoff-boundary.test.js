@@ -142,6 +142,16 @@ test("proactive target cards use private and group avatar images", () => {
   assert.match(css, /\.target-avatar\s*\{[\s\S]*object-fit:\s*cover/);
 });
 
+test("proactive targets do not render redundant selected chips", () => {
+  const proactivePanel = sectionHtml("proactivePanel");
+
+  assert.doesNotMatch(proactivePanel, /id="selectedTargets"/);
+  assert.doesNotMatch(app, /target-chip/);
+  assert.doesNotMatch(css, /\.selected-targets/);
+  assert.doesNotMatch(css, /\.target-chip/);
+  assert.match(app, /function renderSelectedTargets\(\)\s*\{\s*updateBulkActionButtons\(\);\s*\}/);
+});
+
 test("proactive form works without a message type dropdown", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 

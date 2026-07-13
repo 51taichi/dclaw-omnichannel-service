@@ -88,7 +88,6 @@ const els = {
   clearTargetsButton: document.querySelector("#clearTargetsButton"),
   targetSearchInput: document.querySelector("#targetSearchInput"),
   targetList: document.querySelector("#targetList"),
-  selectedTargets: document.querySelector("#selectedTargets"),
   resetFormButton: document.querySelector("#resetFormButton"),
   botsTable: document.querySelector("#botsTable"),
   botCount: document.querySelector("#botCount"),
@@ -820,29 +819,7 @@ function clearSelectedTargets() {
 }
 
 function renderSelectedTargets() {
-  const targets = getSelectedTargets();
-  els.selectedTargets.innerHTML = targets.length
-    ? targets
-        .map((target) => {
-          const key = escapeHtml(targetKey(target));
-          return `
-            <button class="target-chip" data-remove-target="${key}" type="button">
-              <span>${escapeHtml(target.displayName || target.targetName)}</span>
-              <small>${escapeHtml(targetTypeLabel(target.targetType))}</small>
-              ${icon("reset")}
-            </button>
-          `;
-        })
-        .join("")
-    : `<span class="muted">请选择要推送的客户或群组</span>`;
-
-  els.selectedTargets.querySelectorAll("[data-remove-target]").forEach((button) => {
-    button.addEventListener("click", () => {
-      selectedTargets.delete(button.dataset.removeTarget);
-      renderSelectedTargets();
-      renderTargetList();
-    });
-  });
+  updateBulkActionButtons();
 }
 
 function renderTargetList() {
