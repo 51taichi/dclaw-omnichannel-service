@@ -168,6 +168,7 @@ function syncRoleVisibility() {
   document.body.classList.toggle("is-admin-role", isAdmin);
   document.body.classList.toggle("is-bot-role", state.currentRole === "bot");
   document.body.classList.toggle("is-workspace-locked", workspaceLocked);
+  els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig);
   document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", hideConfig);
   document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig);
   els.resetFormButton.hidden = !hasBot;

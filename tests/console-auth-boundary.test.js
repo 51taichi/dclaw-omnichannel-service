@@ -25,12 +25,15 @@ test("console hides config tab for bot role and exposes access-key reset for adm
   assert.equal(html.includes("accessKeyForm"), true);
   assert.equal(app.includes("syncRoleVisibility"), true);
   assert.equal(app.includes("shouldHideConfigTab"), true);
+  assert.equal(app.includes('els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig)'), true);
   assert.equal(app.includes('document.querySelector(\'[data-workspace-tab="config"]\')?.toggleAttribute("hidden", hideConfig)'), true);
   assert.equal(app.includes('document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig)'), true);
   assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), true);
   assert.equal(app.includes("state.currentRole === \"admin\""), true);
   assert.equal(app.includes("/access-key"), true);
   assert.equal(css.includes(".bot-card.is-locked"), true);
+  assert.equal(css.includes('.workspace-tabs.is-config-hidden [data-workspace-tab="config"]'), true);
+  assert.equal(css.includes("display: none !important"), true);
 });
 
 test("bot cards expose four unlocked quick actions", () => {

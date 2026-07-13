@@ -188,6 +188,11 @@ h2 {
   font-weight: 800;
 }
 
+.workspace-tabs.is-config-hidden [data-workspace-tab="config"],
+.workspace-tabs button[hidden] {
+  display: none !important;
+}
+
 .workspace-tabs button.active {
   background: linear-gradient(90deg, var(--accent), var(--cyan));
   color: #ffffff;
