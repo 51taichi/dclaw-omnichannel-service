@@ -194,6 +194,9 @@ test("proactive upload uses a custom drag and click dropzone", () => {
   assert.match(app, /payload\.attachments = uploadedAttachments;/);
   assert.match(css, /\.proactive-attachment-row\s*\{[\s\S]*display:\s*flex/);
   assert.match(css, /\.upload-dropzone\s*\{[\s\S]*width:\s*86px[\s\S]*height:\s*86px[\s\S]*cursor:\s*pointer/);
+  assert.match(css, /\.upload-dropzone-icon\s*\{[\s\S]*place-self:\s*center/);
+  assert.match(css, /\.upload-dropzone-icon\s*\{[\s\S]*background:\s*color-mix\(in srgb,\s*var\(--cyan\) 14%,\s*#ffffff\)/);
+  assert.match(css, /\.upload-dropzone-icon\s*\{[\s\S]*color:\s*color-mix\(in srgb,\s*var\(--accent\) 72%,\s*var\(--cyan\)\)/);
   assert.match(css, /\.proactive-attachment-list\s*\{/);
   assert.match(css, /\.proactive-attachment-list\s*\{[\s\S]*display:\s*flex/);
   assert.match(css, /\.proactive-attachment-card\s*\{[\s\S]*width:\s*86px[\s\S]*height:\s*86px[\s\S]*border:\s*1px solid/);
