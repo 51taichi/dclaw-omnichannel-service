@@ -93,7 +93,9 @@ import {
   getRobotInfo,
   sendRawCommand,
   sendMediaMessage,
-  sendTextMessage
+  sendTextMessage,
+  unbindCommandCallback,
+  unbindMessageCallback
 } from "./worktool.js";
 import { shouldProcessInboundForAgent } from "./message-rules.js";
 import { normalizeUploadedFilename } from "./filenames.js";
@@ -330,6 +332,19 @@ async function bindBotCallbacks(botId, { replyAll = 1 } = {}) {
     ok: true,
     messageCallbackUrl,
     commandCallbackUrl,
+    messageResult,
+    commandResult
+  };
+}
+
+async function unbindBotCallbacks(botId) {
+  const [messageResult, commandResult] = await Promise.all([
+    unbindMessageCallback({ robotId: botId }),
+    unbindCommandCallback({ robotId: botId })
+  ]);
+
+  return {
+    ok: true,
     messageResult,
     commandResult
   };
@@ -2193,6 +2208,26 @@ app.delete(
   "/api/bots/:botId",
   asyncHandler(async (req, res) => {
     assertAdminForBot(req, req.params.botId);
+    const binding = getBotBinding(req.params.botId);
+    if (!binding) {
+      res.status(404).json({ ok: false, message: "bot not found" });
+      return;
+    }
+
+    let callbackUnbinding;
+    try {
+      callbackUnbinding = await unbindBotCallbacks(req.params.botId);
+    } catch (error) {
+      callbackUnbinding = {
+        ok: false,
+        error: error.message
+      };
+      logWarn("bot.callback_unbind_failed", {
+        botId: req.params.botId,
+        error: error.message
+      });
+    }
+
     const deleted = deleteBotData(req.params.botId);
     if (!deleted) {
       res.status(404).json({ ok: false, message: "bot not found" });
@@ -2205,7 +2240,7 @@ app.delete(
       removedSessions,
       deleted: deleted.deleted
     });
-    res.json({ ok: true, deleted, removedSessions });
+    res.json({ ok: true, deleted, removedSessions, callbackUnbinding });
   })
 );
 

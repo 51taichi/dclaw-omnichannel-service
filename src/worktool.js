@@ -62,6 +62,18 @@ export async function bindMessageCallback({ robotId, callbackUrl, replyAll = 1 }
   });
 }
 
+export async function unbindMessageCallback({ robotId }) {
+  return requestWorkTool("/robot/robotInfo/update", {
+    robotId,
+    method: "POST",
+    body: JSON.stringify({
+      openCallback: 0,
+      replyAll: 0,
+      callbackUrl: ""
+    })
+  });
+}
+
 export async function bindCommandCallback({ robotId, callBackUrl }) {
   return requestWorkTool("/robot/robotInfo/callBack/bind", {
     robotId,
@@ -69,6 +81,17 @@ export async function bindCommandCallback({ robotId, callBackUrl }) {
     body: JSON.stringify({
       type: 1,
       callBackUrl
+    })
+  });
+}
+
+export async function unbindCommandCallback({ robotId }) {
+  return requestWorkTool("/robot/robotInfo/callBack/bind", {
+    robotId,
+    method: "POST",
+    body: JSON.stringify({
+      type: 0,
+      callBackUrl: ""
     })
   });
 }
