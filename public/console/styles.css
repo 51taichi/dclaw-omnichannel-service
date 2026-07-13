@@ -1143,11 +1143,51 @@ button.danger:hover {
   align-items: center;
   gap: 14px;
   padding: 18px;
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  overflow: hidden;
+  border: 1px solid transparent;
   border-radius: 8px;
-  background: color-mix(in srgb, #ffffff 84%, var(--accent-soft));
-  box-shadow: inset 0 0 0 999px rgba(255, 255, 255, 0.28);
+  background:
+    linear-gradient(
+      120deg,
+      #ffffff 0%,
+      color-mix(in srgb, var(--cyan) 10%, #ffffff) 24%,
+      color-mix(in srgb, var(--orange) 9%, #ffffff) 48%,
+      color-mix(in srgb, #26c17e 9%, #ffffff) 72%,
+      #ffffff 100%
+    ) padding-box,
+    conic-gradient(
+      from 0deg,
+      rgba(47, 74, 255, 0.16),
+      rgba(255, 108, 49, 0.62),
+      rgba(38, 193, 126, 0.42),
+      rgba(47, 74, 255, 0.16)
+    ) border-box;
+  background-size: 260% 260%;
+  animation: aiComposerSurfaceFlow 7.2s ease-in-out infinite;
+  box-shadow: 0 16px 30px rgba(35, 42, 105, 0.08);
   color: var(--text);
+}
+
+.proactive-upload-overlay::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    100deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.18) 34%,
+    rgba(255, 255, 255, 0.52) 50%,
+    rgba(255, 255, 255, 0.16) 66%,
+    transparent 100%
+  );
+  transform: translateX(-115%);
+  animation: aiTakeoverSheen 3.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.proactive-upload-overlay > * {
+  position: relative;
+  z-index: 1;
 }
 
 .proactive-upload-overlay[hidden] {
@@ -2298,6 +2338,8 @@ button.danger:hover {
 
 @media (prefers-reduced-motion: reduce) {
   .flow-session-card.is-handoff,
+  .proactive-upload-overlay,
+  .proactive-upload-overlay::before,
   .manual-reply-composer.is-ai::before,
   .manual-reply-composer.is-ai::after,
   .ai-takeover-card::before {

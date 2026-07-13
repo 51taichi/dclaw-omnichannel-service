@@ -217,6 +217,9 @@ test("proactive submit locks message fields while uploading attachments", () => 
   assert.match(app, /setProactiveSubmitting\(true\)[\s\S]*finally[\s\S]*setProactiveSubmitting\(false\)/);
   assert.match(css, /\.proactive-message-fields\.is-uploading\s*\{[\s\S]*pointer-events:\s*none/);
   assert.match(css, /\.proactive-upload-overlay\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(css, /\.proactive-upload-overlay\s*\{[\s\S]*background:\s*linear-gradient\(/);
+  assert.match(css, /\.proactive-upload-overlay\s*\{[\s\S]*box-shadow:\s*0 16px 30px rgba\(35,\s*42,\s*105,\s*0\.08\)/);
+  assert.match(css, /\.proactive-upload-overlay::before\s*\{[\s\S]*animation:\s*aiTakeoverSheen 3\.8s ease-in-out infinite/);
   assert.match(css, /\.upload-overlay-image\s*\{[\s\S]*object-fit:\s*contain/);
 });
 
