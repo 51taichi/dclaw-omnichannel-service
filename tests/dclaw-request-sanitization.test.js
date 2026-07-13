@@ -80,3 +80,29 @@ test("buildDclawActivationRequest also sends compact recent messages", () => {
   assert.doesNotMatch(request.message, /agentReply/);
   assert.doesNotMatch(request.message, /worktoolMessageIds/);
 });
+
+test("group resource requests instruct the agent to query experience and output attachments", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:group:B招商服务群" },
+    message: {
+      messageId: "",
+      spoken: "有没有产品介绍视频",
+      rawSpoken: "@客服小左 有没有产品介绍视频",
+      roomType: 1,
+      textType: 1,
+      receivedName: "魔兮",
+      groupName: "B招商服务群",
+      atMe: "true"
+    },
+    flow: null
+  });
+
+  assert.match(request.message, /群聊和私聊只在是否触发回复上不同/);
+  assert.match(request.message, /不要因为是群聊就跳过资源索取、附件发送、客服经验库或企业智库/);
+  assert.match(request.message, /资源索取优先级高于品牌实力解释/);
+  assert.match(request.message, /必须先查可发送资源并尽量输出 attachments/);
+  assert.match(request.message, /sources 中写入 experience/);
+  assert.match(request.message, /"flow": null/);
+  assert.doesNotMatch(request.message, /当前私聊会话启用了客服流程状态机/);
+});
