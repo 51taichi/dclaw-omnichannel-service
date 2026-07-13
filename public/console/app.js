@@ -66,6 +66,7 @@ const els = {
   proactiveUploadDropzone: document.querySelector("#proactiveUploadDropzone"),
   proactiveUploadFile: document.querySelector("#proactiveUploadFile"),
   proactiveUploadName: document.querySelector("#proactiveUploadName"),
+  proactiveFileUrl: document.querySelector("#proactiveFileUrl"),
   messageTypeInput: document.querySelector('select[name="messageType"]'),
   messageFields: document.querySelectorAll("[data-message-field]"),
   taskDateFrom: document.querySelector("#taskDateFrom"),
@@ -436,7 +437,7 @@ function clearBotScopedContent() {
   els.manualReplyInput.value = "";
   els.accessKeyForm.reset();
   els.proactiveForm.reset();
-  els.proactiveForm.fileUrl.value = "";
+  if (els.proactiveFileUrl) els.proactiveFileUrl.value = "";
   els.proactiveForm.extraText.value = "";
   syncMessageTypeFields();
   renderSelectedTargets();
@@ -2286,7 +2287,7 @@ async function createProactiveTask(event) {
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
   const data = new FormData(els.proactiveForm);
-  const localFile = els.proactiveForm.uploadFile.files?.[0] || state.proactiveUploadFile;
+  const localFile = els.proactiveUploadFile?.files?.[0] || state.proactiveUploadFile;
   const content = String(data.get("content") || "").trim();
   const payload = {
     botId,
@@ -2347,7 +2348,7 @@ async function createProactiveTask(event) {
   renderTargetList();
   els.proactiveForm.title.value = "";
   els.proactiveForm.content.value = "";
-  if (els.proactiveForm.fileUrl) els.proactiveForm.fileUrl.value = "";
+  if (els.proactiveFileUrl) els.proactiveFileUrl.value = "";
   clearProactiveUpload();
   await loadProactiveTasks();
 }
