@@ -1410,11 +1410,32 @@ button.danger:hover {
   font-weight: 700;
 }
 
-.target-check {
-  color: var(--accent);
-  font-size: 10px;
-  font-weight: 800;
-  white-space: nowrap;
+.target-checkbox {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  border-radius: 5px;
+  background: #ffffff;
+  color: #ffffff;
+  box-shadow: inset 0 0 0 2px #ffffff;
+}
+
+.target-checkbox .icon {
+  width: 13px;
+  height: 13px;
+  opacity: 0;
+}
+
+.target-checkbox.checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.target-checkbox.checked .icon {
+  opacity: 1;
 }
 
 .flow-node-list {

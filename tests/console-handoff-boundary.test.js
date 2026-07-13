@@ -152,6 +152,15 @@ test("proactive targets do not render redundant selected chips", () => {
   assert.match(app, /function renderSelectedTargets\(\)\s*\{\s*updateBulkActionButtons\(\);\s*\}/);
 });
 
+test("proactive target cards use checkbox indicators instead of choose text", () => {
+  assert.doesNotMatch(app, /<span class="target-check">/);
+  assert.doesNotMatch(app, /\$\{checked \? "已选" : "选择"\}/);
+  assert.match(app, /<span class="target-checkbox \$\{checked \? "checked" : ""\}" aria-hidden="true">/);
+  assert.match(app, /<use href="#icon-check"><\/use>/);
+  assert.match(css, /\.target-checkbox\s*\{[\s\S]*border:\s*1px solid/);
+  assert.match(css, /\.target-checkbox\.checked\s*\{[\s\S]*background:\s*var\(--accent\)/);
+});
+
 test("proactive target list keeps a fixed scrollable height", () => {
   const targetListRule = cssRule(".target-list");
 

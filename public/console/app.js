@@ -841,7 +841,9 @@ function renderTargetList() {
               <span class="target-main">
                 <strong>${escapeHtml(target.displayName || target.targetName)}</strong>
               </span>
-              <span class="target-check">${checked ? "已选" : "选择"}</span>
+              <span class="target-checkbox ${checked ? "checked" : ""}" aria-hidden="true">
+                <svg class="icon"><use href="#icon-check"></use></svg>
+              </span>
             </button>
           `;
         })
