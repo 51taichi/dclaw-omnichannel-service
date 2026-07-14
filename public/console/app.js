@@ -119,13 +119,39 @@ function headers(extra = {}, botId = state.selectedBotId) {
   return result;
 }
 
-function toast(message) {
-  els.toast.textContent = message;
+const TOAST_CONFIG = {
+  success: { icon: "check", type: "success" },
+  error: { icon: "alert", type: "error" },
+  info: { icon: "info", type: "info" }
+};
+
+function inferToastType(message) {
+  const text = String(message || "");
+  if (/失败|错误|不正确|异常|不可用|无权限|需要|请先|请选择|请输入|不能|最多只能|暂无/.test(text)) {
+    return "error";
+  }
+  if (/^(已|绑定已保存|Bot 已解锁|状态机已保存|主动任务已创建|JSON 已导入|模板已载入)|已(保存|加载|发送|清空|删除|修改|选择|取消|切换|恢复|上锁|导入)/.test(text)) {
+    return "success";
+  }
+  return "info";
+}
+
+function toast(message, type = inferToastType(message)) {
+  const config = TOAST_CONFIG[type] || TOAST_CONFIG.info;
+  els.toast.className = `toast toast-${config.type}`;
+  els.toast.innerHTML = `
+    <span class="toast-icon" aria-hidden="true">${icon(config.icon)}</span>
+    <span class="toast-message">${escapeHtml(message)}</span>
+  `;
   els.toast.hidden = false;
   clearTimeout(toast.timer);
   toast.timer = setTimeout(() => {
     els.toast.hidden = true;
   }, 3200);
+}
+
+function toastError(error) {
+  toast(error?.message || String(error || "操作失败"), "error");
 }
 
 function icon(name) {
@@ -1838,13 +1864,13 @@ function renderFlowSessions() {
 
   els.flowSessionList.querySelectorAll("[data-flow-session]").forEach((button) => {
     button.addEventListener("click", () =>
-      openFlowSession(button.dataset.flowSession).catch((error) => toast(error.message))
+      openFlowSession(button.dataset.flowSession).catch(toastError)
     );
   });
   els.flowSessionList.querySelectorAll("[data-flow-handoff]").forEach((button) => {
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      toggleSelectedConversationHandoff(button.dataset.flowHandoff).catch((error) => toast(error.message));
+      toggleSelectedConversationHandoff(button.dataset.flowHandoff).catch(toastError);
     });
   });
 }
@@ -2522,8 +2548,8 @@ els.saveKeyButton?.addEventListener("click", () => {
   toast("管理密钥已保存");
 });
 
-els.refreshButton?.addEventListener("click", () => loadBots().catch((error) => toast(error.message)));
-els.lockBotButton.addEventListener("click", () => lockCurrentBot().catch((error) => toast(error.message)));
+els.refreshButton?.addEventListener("click", () => loadBots().catch(toastError));
+els.lockBotButton.addEventListener("click", () => lockCurrentBot().catch(toastError));
 els.unlockCancelButton.addEventListener("click", closeUnlockDialog);
 els.unlockDialog.addEventListener("click", (event) => {
   if (event.target === els.unlockDialog) closeUnlockDialog();
@@ -2531,31 +2557,31 @@ els.unlockDialog.addEventListener("click", (event) => {
 els.unlockKeyInput.addEventListener("keydown", (event) => {
   if (event.key === "Enter") {
     event.preventDefault();
-    acceptUnlockDialog().catch((error) => toast(error.message));
+    acceptUnlockDialog().catch(toastError);
   }
 });
 els.unlockAcceptButton.addEventListener("click", () =>
-  acceptUnlockDialog().catch((error) => toast(error.message))
+  acceptUnlockDialog().catch(toastError)
 );
-els.botForm.addEventListener("submit", (event) => saveBot(event).catch((error) => toast(error.message)));
+els.botForm.addEventListener("submit", (event) => saveBot(event).catch(toastError));
 els.accessKeyForm.addEventListener("submit", (event) =>
-  saveAccessKey(event).catch((error) => toast(error.message))
+  saveAccessKey(event).catch(toastError)
 );
 els.debugReplyForm.addEventListener("submit", (event) =>
-  saveDebugReply(event).catch((error) => toast(error.message))
+  saveDebugReply(event).catch(toastError)
 );
 els.flowMachineForm.addEventListener("submit", (event) =>
-  saveFlowMachine(event).catch((error) => toast(error.message))
+  saveFlowMachine(event).catch(toastError)
 );
 els.addFlowNodeButton.addEventListener("click", addFlowNode);
 els.applyFlowJsonButton.addEventListener("click", applyFlowJsonToEditor);
 els.flowMachineForm.entryNodeId.addEventListener("change", syncFlowJsonTextarea);
 els.loadDefaultFlowButton.addEventListener("click", () =>
-  loadDefaultFlowMachine().catch((error) => toast(error.message))
+  loadDefaultFlowMachine().catch(toastError)
 );
 els.exportFlowButton.addEventListener("click", exportFlowMachine);
 els.refreshFlowSessionsButton.addEventListener("click", () =>
-  Promise.all([loadFlowMachine(), loadFlowSessions()]).catch((error) => toast(error.message))
+  Promise.all([loadFlowMachine(), loadFlowSessions()]).catch(toastError)
 );
 els.flowSessionTypeButtons.forEach((button) => {
   button.addEventListener("click", () => {
@@ -2585,27 +2611,27 @@ els.confirmDialog.addEventListener("click", (event) => {
 els.confirmAcceptButton.addEventListener("click", () =>
   resetSelectedConversation()
     .then(closeConfirmDialog)
-    .catch((error) => toast(error.message))
+    .catch(toastError)
 );
 els.assetsButton.addEventListener("click", toggleAssetsPanel);
 els.manualReplyComposer.addEventListener("submit", (event) =>
-  sendManualReply(event).catch((error) => toast(error.message))
+  sendManualReply(event).catch(toastError)
 );
 els.proactiveForm.addEventListener("submit", (event) =>
-  createProactiveTask(event).catch((error) => toast(error.message))
+  createProactiveTask(event).catch(toastError)
 );
 bindProactiveUploadDropzone();
 renderProactiveAttachments();
 els.messageTypeInput?.addEventListener("change", syncMessageTypeFields);
 els.taskDateFrom.addEventListener("change", () =>
-  loadProactiveTasks().catch((error) => toast(error.message))
+  loadProactiveTasks().catch(toastError)
 );
 els.taskDateTo.addEventListener("change", () =>
-  loadProactiveTasks().catch((error) => toast(error.message))
+  loadProactiveTasks().catch(toastError)
 );
 els.targetSearchInput.addEventListener("input", () => renderTargetList());
 els.loadTargetsButton.addEventListener("click", () =>
-  loadAddressBookTargets().catch((error) => toast(error.message))
+  loadAddressBookTargets().catch(toastError)
 );
 els.selectPrivateTargetsButton.addEventListener("click", () => toggleTargetsByType("private"));
 els.selectGroupTargetsButton.addEventListener("click", () => toggleTargetsByType("group"));
@@ -2623,12 +2649,12 @@ els.workspaceTabs.forEach((button) => {
   button.addEventListener("click", () => switchWorkspaceTab(button.dataset.workspaceTab));
 });
 els.refreshProactiveButton.addEventListener("click", () =>
-  loadProactiveTasks().catch((error) => toast(error.message))
+  loadProactiveTasks().catch(toastError)
 );
 els.resetFormButton.addEventListener("click", () => {
   resetBotContext();
 });
-els.loadLogsButton.addEventListener("click", () => loadLogs().catch((error) => toast(error.message)));
+els.loadLogsButton.addEventListener("click", () => loadLogs().catch(toastError));
 els.collapseButtons.forEach((button) => {
   const panel = document.querySelector(`#${button.dataset.collapseTarget}`);
   button.setAttribute("aria-expanded", "true");
