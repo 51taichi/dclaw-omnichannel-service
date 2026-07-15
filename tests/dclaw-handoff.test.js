@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildDclawHandoffTranscriptRequest } from "../src/dclaw.js";
+import {
+  buildDclawConversationResetRequest,
+  buildDclawHandoffTranscriptRequest,
+  parseConversationResetAcknowledgement
+} from "../src/dclaw.js";
 
 test("buildDclawHandoffTranscriptRequest creates a sync-only handoff event", () => {
   const request = buildDclawHandoffTranscriptRequest({
@@ -34,4 +38,25 @@ test("buildDclawHandoffTranscriptRequest creates a sync-only handoff event", () 
   assert.equal(request.external_session_id, "bot_1:private:张三");
   assert.match(request.message, /不要生成客户可见回复/);
   assert.match(request.message, /最终请输出空字符串/);
+});
+
+test("conversation reset request uses a bounded event and exact acknowledgement", () => {
+  const request = buildDclawConversationResetRequest({
+    binding: { botId: "bot_1", agentId: "agent_1" },
+    conversationKey: "bot_1:private:张三",
+    reason: "console_reset"
+  });
+
+  assert.equal(request.metadata.eventType, "conversation_reset");
+  assert.equal(request.metadata.worktool.eventType, "conversation_reset");
+  assert.equal(request.external_session_id, "bot_1:private:张三");
+  assert.match(request.message, /客户档案/);
+  assert.match(request.message, /conversationId/);
+  assert.deepEqual(
+    parseConversationResetAcknowledgement('{"ok":true,"eventType":"conversation_reset"}'),
+    { ok: true }
+  );
+  assert.equal(parseConversationResetAcknowledgement('{"reply":"好的"}').ok, false);
+  assert.equal(parseConversationResetAcknowledgement('```json\n{"ok":true,"eventType":"conversation_reset"}\n```').ok, false);
+  assert.equal(parseConversationResetAcknowledgement('{"ok":true,"eventType":"other"}').ok, false);
 });

@@ -181,6 +181,73 @@ export function buildDclawHandoffTranscriptRequest({
   };
 }
 
+export function buildDclawConversationResetRequest({
+  binding,
+  conversationKey,
+  reason = "console_reset"
+}) {
+  const worktoolMessage = {
+    channel: "wecom-worktool",
+    eventType: "conversation_reset",
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationId: conversationKey,
+    sessionId: conversationKey,
+    messageId: "",
+    message: "",
+    rawMessage: "",
+    roomType: null,
+    groupName: "",
+    userId: "",
+    metadata: { reason }
+  };
+
+  return {
+    external_user_id: "system",
+    external_session_id: conversationKey,
+    message: [
+      "你收到的是 WorkTool 回调服务器的内部会话清理事件。",
+      "eventType=conversation_reset，不是客户消息，绝不生成客服话术。",
+      "只读取 conversationId；不得使用调用方提供的任何文件路径或文件名。",
+      "从 conversationId 推导会话记录文件名，只允许删除 会话记录/conversations/ 目录下对应的短期记录文件。",
+      "目标文件不存在也视为成功。",
+      "绝不读取、删除或修改 客户档案/，也不要运行知识库、状态机、回复或归档技能。",
+      "最终只能输出：{\"ok\":true,\"eventType\":\"conversation_reset\"}",
+      "",
+      JSON.stringify(worktoolMessage, null, 2)
+    ].join("\n"),
+    stream: true,
+    metadata: {
+      source: "worktool",
+      eventType: "conversation_reset",
+      botId: worktoolMessage.botId,
+      agentId: worktoolMessage.agentId,
+      conversationId: conversationKey,
+      reason,
+      worktool: worktoolMessage
+    }
+  };
+}
+
+export function parseConversationResetAcknowledgement(rawReply) {
+  const text = String(rawReply || "").trim();
+  if (!text) return { ok: false };
+  try {
+    const parsed = JSON.parse(text);
+    return {
+      ok: Boolean(
+        parsed &&
+        typeof parsed === "object" &&
+        !Array.isArray(parsed) &&
+        parsed.ok === true &&
+        parsed.eventType === "conversation_reset"
+      )
+    };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export function buildDclawProactiveEventRequest({
   binding,
   conversationKey,
