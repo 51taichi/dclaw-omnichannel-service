@@ -329,7 +329,7 @@ test("unbound Bots cannot create a flow machine through the database API", () =>
   );
 });
 
-test("rebinding one Bot resets only its derived flow state", () => {
+test("rebinding one Bot keeps its conversation visible but resets derived flow state", () => {
   const botA = "bot_rebind_a";
   const botB = "bot_rebind_b";
   const agentA = "agent_rebind_a";
@@ -352,6 +352,24 @@ test("rebinding one Bot resets only its derived flow state", () => {
 
   const machineA = createMachine(botA, "node_a");
   const machineB = createMachine(botB, "node_b");
+  const newMachine = db.upsertFlowMachine({
+    agentId: agentA,
+    enabled: true,
+    config: {
+      name: "新 Agent 状态机",
+      version: "1.0.0",
+      entryNodeId: "new_node_1",
+      nodes: [{
+        id: "new_node_1",
+        name: "新起始节点",
+        goal: "重新开始",
+        completionCriteria: "完成",
+        collectFields: [],
+        conversationTips: [],
+        nextNodeId: ""
+      }]
+    }
+  });
   for (const [botId, conversationKey, name, machine] of [
     [botA, conversationA, "客户甲", machineA],
     [botB, conversationB, "客户乙", machineB]
@@ -369,6 +387,15 @@ test("rebinding one Bot resets only its derived flow state", () => {
       nextNodeId: `${machine.entryNodeId}_next`,
       reason: "测试进度"
     });
+    if (botId === botA) {
+      db.mergeFlowSessionData({ conversationKey, patch: { "手机号": "13800000000" } });
+      db.updateFlowSessionHandoff({
+        botId,
+        conversationKey,
+        handoffStatus: "human",
+        reason: "测试人工接手"
+      });
+    }
     db.insertConversationMessage({
       botId,
       conversationKey,
@@ -386,6 +413,8 @@ test("rebinding one Bot resets only its derived flow state", () => {
     });
   }
 
+  db.upsertBotBinding({ botId: botA, botName: "换绑 Bot A", agentId: agentA, enabled: true });
+
   const result = db.resetBotFlowStateForAgentRebind({
     botId: botA,
     oldAgentId: oldAgent,
@@ -394,10 +423,13 @@ test("rebinding one Bot resets only its derived flow state", () => {
 
   assert.deepEqual(result, {
     canceledActivationTasks: 1,
-    deletedFlowSessions: 1,
+    resetFlowSessions: 1,
     deletedFlowStateEvents: 1
   });
-  assert.equal(db.getFlowSessionForBot({ botId: botA, conversationKey: conversationA }), null);
+  const resetSession = db.getFlowSessionForBot({ botId: botA, conversationKey: conversationA });
+  assert.equal(resetSession.currentNodeId, newMachine.entryNodeId);
+  assert.deepEqual(resetSession.collectedData, {});
+  assert.equal(resetSession.handoffStatus, "ai");
   assert.equal(db.listConversationMessages({ botId: botA, conversationKey: conversationA }).length, 1);
   assert.equal(db.listFlowActivationTasks({ conversationKey: conversationA })[0].status, "canceled");
   assert.equal(db.listFlowActivationTasks({ conversationKey: conversationA })[0].cancelReason, "agent_rebound");

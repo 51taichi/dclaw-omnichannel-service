@@ -733,13 +733,24 @@ export function resetBotFlowStateForAgentRebind({
     const deletedFlowStateEvents = db.prepare(
       "DELETE FROM flow_state_events WHERE bot_id = ?"
     ).run(normalizedBotId).changes;
-    const deletedFlowSessions = db.prepare(
-      "DELETE FROM flow_sessions WHERE bot_id = ?"
-    ).run(normalizedBotId).changes;
+    const resetNodeId = getFlowMachineForBot(normalizedBotId)?.entryNodeId || "__conversation__";
+    const resetFlowSessions = db.prepare(`
+      UPDATE flow_sessions
+      SET current_node_id = ?,
+          collected_data_json = ?,
+          status = 'active',
+          handoff_status = 'ai',
+          handoff_at = NULL,
+          handoff_by = '',
+          handoff_reason = '',
+          activation_generation = COALESCE(activation_generation, 0) + 1,
+          updated_at = ?
+      WHERE bot_id = ?
+    `).run(resetNodeId, json({}), timestamp, normalizedBotId).changes;
     db.exec("COMMIT");
     return {
       canceledActivationTasks,
-      deletedFlowSessions,
+      resetFlowSessions,
       deletedFlowStateEvents
     };
   } catch (error) {
