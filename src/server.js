@@ -105,7 +105,11 @@ import {
   unbindCommandCallback,
   unbindMessageCallback
 } from "./worktool.js";
-import { shouldProcessInboundForAgent } from "./message-rules.js";
+import {
+  friendAddedName,
+  isFriendAddedEvent,
+  shouldProcessInboundForAgent
+} from "./message-rules.js";
 import { normalizeUploadedFilename } from "./filenames.js";
 
 const app = express();
@@ -495,7 +499,6 @@ function buildFlowContext({ botId, conversationKey, message }) {
 
 function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flow, sentAt = new Date() }) {
   if (!flow || !isPrivateConversationKey(conversationKey)) return null;
-  cancelFlowActivationTasks({ conversationKey, reason: "new_flow_reply" });
   const machine = getFlowMachineForBot(botId);
   const currentSession = getFlowSession(conversationKey) || flow.session;
   const currentNode = getFlowNode(machine, currentSession?.currentNodeId) || flow.currentNode;
@@ -505,8 +508,13 @@ function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flo
     ? currentNode
     : flow.currentNode;
   const activation = activationSourceNode === currentNode ? currentNodeActivation : replyNodeActivation;
-  if (!activation.enabled || !activation.messages.length) return null;
+  if (
+    !activation.enabled ||
+    activation.trigger !== "after_ai_reply" ||
+    !activation.messages.length
+  ) return null;
 
+  cancelFlowActivationTasks({ conversationKey, reason: "new_flow_reply" });
   const session = incrementFlowActivationGeneration({ conversationKey, reason: "flow_reply_sent" });
   const anchorAt = sentAt.toISOString();
   return scheduleFlowActivationTask({
@@ -883,6 +891,98 @@ function messageLogFields({ botId, conversationKey, message }) {
     spokenLength: String(message?.spoken || "").length,
     rawSpokenLength: String(message?.rawSpoken || message?.rawMessage || "").length
   };
+}
+
+async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
+  const friendName = friendAddedName(message);
+  logInfo("friend_added.received", {
+    ...logContext,
+    friendName,
+    eventType: message.type
+  });
+  if (!friendName) {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      reason: "missing_friend_name"
+    });
+    return "skipped";
+  }
+  if (!binding?.enabled) {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      friendName,
+      reason: "no_enabled_binding"
+    });
+    return "skipped";
+  }
+
+  const contactMessage = {
+    ...message,
+    roomType: 2,
+    receivedName: friendName,
+    groupName: friendName
+  };
+  const conversationKey = getConversationKey(botId, contactMessage);
+  upsertConversation({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    message: contactMessage
+  });
+  const machine = getFlowMachineForBot(botId);
+  if (!machine?.enabled) {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      friendName,
+      conversationKey,
+      reason: "no_enabled_flow_machine"
+    });
+    return "skipped";
+  }
+  const currentSession = getOrCreateFlowSession({ botId, conversationKey, machine });
+  const currentNode = getFlowNode(machine, currentSession.currentNodeId) ||
+    getFlowNode(machine, machine.entryNodeId);
+  const activation = normalizeActivationConfig(currentNode?.activation || {});
+  if (
+    !activation.enabled ||
+    activation.trigger !== "friend_added" ||
+    !activation.messages.length
+  ) {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      friendName,
+      conversationKey,
+      reason: "activation_not_configured"
+    });
+    return "skipped";
+  }
+
+  cancelFlowActivationTasks({ conversationKey, reason: "friend_added_restart" });
+  const session = incrementFlowActivationGeneration({
+    conversationKey,
+    reason: "friend_added"
+  });
+  const anchorAt = new Date().toISOString();
+  const task = scheduleFlowActivationTask({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    nodeId: session.currentNodeId,
+    generation: session.activationGeneration,
+    activation,
+    anchorAt,
+    dueAt: activationDueAtForAttempt(anchorAt, activation.intervalMinutes, 1),
+    attemptNumber: 1
+  });
+  logInfo("friend_added.activation.scheduled", {
+    ...logContext,
+    friendName,
+    conversationKey,
+    activationTaskId: task.id,
+    nodeId: task.nodeId,
+    dueAt: task.dueAt
+  });
+  return "scheduled";
 }
 
 function commandCallbackLogFields({ botId, payload, outgoingMatched = false }) {
@@ -1637,6 +1737,12 @@ async function processIncomingMessage({ botId, message }) {
   }
 
   insertIncomingMessage({ botId, conversationKey, payload: message });
+
+  if (isFriendAddedEvent(message)) {
+    await handleFriendAddedEvent({ botId, binding, message, logContext });
+    finishMessageProcessing({ messageKey, status: "processed" });
+    return;
+  }
 
   if (!shouldProcessInboundForAgent(message)) {
     logInfo("incoming.skipped", {
