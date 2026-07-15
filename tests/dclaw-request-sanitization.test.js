@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildDclawActivationRequest,
+  buildDclawReplyFormatRetryRequest,
   buildDclawRequest
 } from "../src/dclaw.js";
 
@@ -105,4 +106,72 @@ test("group resource requests instruct the agent to query experience and output 
   assert.match(request.message, /sources 中写入 experience/);
   assert.match(request.message, /"flow": null/);
   assert.doesNotMatch(request.message, /当前私聊会话启用了客服流程状态机/);
+});
+
+test("non-flow customer replies use the same strict JSON contract", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:魔兮" },
+    message: {
+      messageId: "m2",
+      spoken: "你好",
+      rawSpoken: "你好",
+      roomType: 2,
+      textType: 1,
+      receivedName: "魔兮",
+      atMe: "false"
+    },
+    flow: null
+  });
+
+  assert.match(request.message, /最终请只输出一个 JSON 对象/);
+  assert.match(request.message, /"reply":"发给客户的文本"/);
+  assert.doesNotMatch(request.message, /普通文本回复可以直接输出/);
+});
+
+test("format repair retries preserve the original customer request", () => {
+  const original = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:魔兮" },
+    message: {
+      messageId: "m3",
+      spoken: "你好",
+      rawSpoken: "你好",
+      roomType: 2,
+      textType: 1,
+      receivedName: "魔兮",
+      atMe: "false"
+    }
+  });
+  const repaired = buildDclawReplyFormatRetryRequest(original);
+
+  assert.equal(repaired.external_session_id, original.external_session_id);
+  assert.equal(repaired.metadata.formatRetry, true);
+  assert.match(repaired.message, /上一条输出不符合客户回复协议/);
+  assert.match(repaired.message, /只输出一个合法 JSON 对象/);
+  assert.match(repaired.message, /"message": "你好"/);
+});
+
+test("format repair retains the flow decision schema for flow conversations", () => {
+  const original = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:魔兮" },
+    message: {
+      messageId: "m4",
+      spoken: "我想了解合作",
+      rawSpoken: "我想了解合作",
+      roomType: 2,
+      textType: 1,
+      receivedName: "魔兮",
+      atMe: "false"
+    },
+    flow: {
+      currentNode: { id: "node_1", name: "收集信息" }
+    }
+  });
+  const repaired = buildDclawReplyFormatRetryRequest(original);
+  const repairInstructions = repaired.message.split("上一条输出不符合客户回复协议")[1] || "";
+
+  assert.match(repairInstructions, /"flowDecision"/);
+  assert.match(repairInstructions, /当前节点ID/);
 });

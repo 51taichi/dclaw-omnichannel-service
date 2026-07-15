@@ -27,6 +27,7 @@ test("buildDclawActivationRequest creates a flow activation event", () => {
   assert.equal(request.metadata.worktool.eventType, "flow_activation_due");
   assert.equal(request.external_session_id, "bot_1:private:张三");
   assert.match(request.message, /请结合当前会话上下文/);
-  assert.match(request.message, /只输出最终要发送给客户的激活话术/);
+  assert.match(request.message, /最终只输出一个 JSON 对象/);
+  assert.match(request.message, /"reply":"发给客户的激活话术"/);
   assert.match(request.message, /再提醒您一下/);
 });

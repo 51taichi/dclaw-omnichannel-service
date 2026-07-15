@@ -57,7 +57,8 @@ export function buildDclawRequest({
     );
   } else {
     instructions.push(
-      "普通文本回复可以直接输出要发回企微客户的最终文本；如果需要发送资源或标注来源，请只输出 JSON 对象 {\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[]}；不要输出分析过程或规则解释；如果不需要回复，请输出空字符串。"
+      "最终请只输出一个 JSON 对象，不要输出 Markdown、分析过程、规则解释、处理步骤或任何对象外文字。",
+      "JSON 格式：{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[]}。没有附件或来源时使用空数组；不需要回复时使用 {\"reply\":\"\",\"attachments\":[],\"sources\":[]}。"
     );
   }
 
@@ -86,6 +87,27 @@ export function buildDclawRequest({
       worktool: worktoolMessage,
       flow: agentFlow,
       conversationReset
+    }
+  };
+}
+
+export function buildDclawReplyFormatRetryRequest(request) {
+  const hasFlow = Boolean(request?.metadata?.flow);
+  const responseSchema = hasFlow
+    ? "{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[],\"flowDecision\":{\"currentNodeId\":\"当前节点ID\",\"nextNodeId\":\"建议下一节点ID或当前节点ID\",\"nodeCompleted\":false,\"confidence\":0.0,\"reason\":\"判断原因\",\"collectedDataPatch\":{}}}"
+    : "{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[]}";
+  return {
+    ...request,
+    message: [
+      request.message,
+      "",
+      "上一条输出不符合客户回复协议，不能发送给客户。请重新回答本条客户消息。",
+      `只输出一个合法 JSON 对象：${responseSchema}。`,
+      "禁止输出 Markdown、分析、推理、规则、处理步骤、前后说明或 JSON 对象外的任何文字。"
+    ].join("\n"),
+    metadata: {
+      ...(request.metadata || {}),
+      formatRetry: true
     }
   };
 }
@@ -257,7 +279,8 @@ export function buildDclawActivationRequest({
       "你收到的是 WorkTool 回调服务器生成的节点激活任务。",
       "eventType=flow_activation_due 表示客户在当前节点长时间未回复，需要发送一次自然的激活提醒。",
       "请结合当前会话上下文、当前节点目标和参考话术，组织成真人客服会发送的一条激活消息。",
-      "只输出最终要发送给客户的激活话术，不要输出分析过程、JSON 或 Markdown。",
+      "最终只输出一个 JSON 对象：{\"reply\":\"发给客户的激活话术\",\"attachments\":[],\"sources\":[]}。",
+      "禁止输出 Markdown、分析、推理、规则、处理步骤或 JSON 对象外文字。",
       "",
       JSON.stringify({ worktoolMessage, flow: agentFlow, recentMessages: agentRecentMessages }, null, 2)
     ].join("\n"),
@@ -412,33 +435,36 @@ function isRetryableDclawError(error) {
 
 export function parseAgentReply(rawReply) {
   const text = String(rawReply || "").trim();
-  if (!text) return { reply: "", attachments: [], sources: [], flowDecision: null, raw: rawReply };
+  if (!text) return invalidAgentReply(rawReply);
 
-  const parsed = parseJsonObjectFromText(text);
-  if (!parsed) {
-    return {
-      reply: stripRuntimeArtifacts(text),
-      attachments: [],
-      sources: [],
-      flowDecision: null,
-      raw: rawReply
-    };
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return invalidAgentReply(rawReply);
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || typeof parsed.reply !== "string") {
+    return invalidAgentReply(rawReply);
   }
 
-  const reply =
-    typeof parsed.reply === "string"
-      ? parsed.reply
-      : typeof parsed.message === "string"
-        ? parsed.message
-        : typeof parsed.content === "string"
-          ? parsed.content
-          : "";
   return {
-    reply: stripRuntimeArtifacts(reply),
+    valid: true,
+    reply: stripRuntimeArtifacts(parsed.reply),
     attachments: normalizeAgentAttachments(parsed.attachments || parsed.resources || parsed.files),
     sources: normalizeAgentSources(parsed.sources || parsed.references || parsed.evidence),
     flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
     raw: parsed
+  };
+}
+
+function invalidAgentReply(rawReply) {
+  return {
+    valid: false,
+    reply: "",
+    attachments: [],
+    sources: [],
+    flowDecision: null,
+    raw: rawReply
   };
 }
 
@@ -496,137 +522,6 @@ function normalizeAgentAttachments(value) {
       return attachment;
     })
     .filter((item) => item.url);
-}
-
-function parseJsonObjectFromText(text) {
-  try {
-    const data = parseJsonWithLooseStringNewlines(text);
-    return data && typeof data === "object" && !Array.isArray(data) ? data : null;
-  } catch {}
-
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fenced) {
-    try {
-      const data = parseJsonWithLooseStringNewlines(fenced[1]);
-      return data && typeof data === "object" && !Array.isArray(data) ? data : null;
-    } catch {}
-  }
-
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start >= 0 && end > start) {
-    try {
-      const data = parseJsonWithLooseStringNewlines(text.slice(start, end + 1));
-      return data && typeof data === "object" && !Array.isArray(data) ? data : null;
-    } catch {}
-
-    const firstObject = parseFirstJsonObject(text.slice(start));
-    if (firstObject) return firstObject;
-  }
-  return null;
-}
-
-function parseFirstJsonObject(text) {
-  let depth = 0;
-  let inString = false;
-  let escaped = false;
-
-  for (let index = 0; index < text.length; index += 1) {
-    const char = text[index];
-
-    if (inString) {
-      if (escaped) {
-        escaped = false;
-      } else if (char === "\\") {
-        escaped = true;
-      } else if (char === "\"") {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (char === "\"") {
-      inString = true;
-      continue;
-    }
-
-    if (char === "{") {
-      depth += 1;
-    } else if (char === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        try {
-          const data = parseJsonWithLooseStringNewlines(text.slice(0, index + 1));
-          return data && typeof data === "object" && !Array.isArray(data) ? data : null;
-        } catch {
-          return null;
-        }
-      }
-    }
-  }
-
-  return null;
-}
-
-function parseJsonWithLooseStringNewlines(text) {
-  try {
-    return JSON.parse(text);
-  } catch (error) {
-    const normalized = escapeControlCharactersInsideJsonStrings(text);
-    if (normalized === text) throw error;
-    return JSON.parse(normalized);
-  }
-}
-
-function escapeControlCharactersInsideJsonStrings(text) {
-  let output = "";
-  let inString = false;
-  let escaped = false;
-  let changed = false;
-
-  for (const char of String(text || "")) {
-    if (inString) {
-      if (escaped) {
-        output += char;
-        escaped = false;
-        continue;
-      }
-      if (char === "\\") {
-        output += char;
-        escaped = true;
-        continue;
-      }
-      if (char === "\"") {
-        output += char;
-        inString = false;
-        continue;
-      }
-      if (char === "\n") {
-        output += "\\n";
-        changed = true;
-        continue;
-      }
-      if (char === "\r") {
-        output += "\\r";
-        changed = true;
-        continue;
-      }
-      if (char === "\t") {
-        output += "\\t";
-        changed = true;
-        continue;
-      }
-      output += char;
-      continue;
-    }
-
-    output += char;
-    if (char === "\"") {
-      inString = true;
-    }
-  }
-
-  return changed ? output : text;
 }
 
 async function readSseText(response, signal) {

@@ -79,31 +79,43 @@ test("parseAgentReply handles adjacent JSON objects from duplicated agent output
 
   const parsed = parseAgentReply(duplicated);
 
-  assert.equal(parsed.reply, first.reply);
-  assert.deepEqual(parsed.sources, first.sources);
+  assert.equal(parsed.valid, false);
+  assert.equal(parsed.reply, "");
+  assert.deepEqual(parsed.sources, []);
 });
 
-test("parseAgentReply tolerates raw newlines inside JSON string fields", () => {
+test("parseAgentReply rejects JSON with raw newlines inside string fields", () => {
   const raw = `{"reply":"不好意思呀，我们这边目前确实没有视频方面的资料😅
 
 现在主要是文字和图片资料，比如招商方案、产品介绍这些。要不你先看看文字资料，有什么具体想了解的也可以问我～","attachments":[],"sources":[{"type":"enterprise_knowledge","name":"湘左记品牌加盟招商方案.pptx","reason":"确认是否有视频资源可用"}]}`;
 
   const parsed = parseAgentReply(raw);
 
-  assert.equal(parsed.reply, "不好意思呀，我们这边目前确实没有视频方面的资料😅\n\n现在主要是文字和图片资料，比如招商方案、产品介绍这些。要不你先看看文字资料，有什么具体想了解的也可以问我～");
-  assert.deepEqual(parsed.sources, [
-    {
-      type: "enterprise_knowledge",
-      name: "湘左记品牌加盟招商方案.pptx",
-      reason: "确认是否有视频资源可用"
-    }
-  ]);
+  assert.equal(parsed.valid, false);
+  assert.equal(parsed.reply, "");
+  assert.deepEqual(parsed.sources, []);
 });
 
 test("parseAgentReply strips context compaction runtime artifacts", () => {
-  const raw = "🔄 Context compaction started... Context Status: 📝 107.0k / 131.1k (82%) 💬 77 msgs -> compact(69) + keep(8)🔄 Context compaction started... Context Status: 📝 107.0k / 131.1k (82%) 💬 77 msgs -> compact(69) + keep(8)✅ Context compaction completed! Context Status: 📝 19.7k / 131.1k (15%) 💬 8 msgs✅ Context compaction completed! Context Status: 📝 19.7k / 131.1k (15%) 💬 8 msgs老杨，确定不来吗？相信我，真的很精彩～😁";
+  const raw = JSON.stringify({
+    reply: "🔄 Context compaction started... Context Status: 📝 107.0k / 131.1k (82%) 💬 77 msgs -> compact(69) + keep(8)🔄 Context compaction started... Context Status: 📝 107.0k / 131.1k (82%) 💬 77 msgs -> compact(69) + keep(8)✅ Context compaction completed! Context Status: 📝 19.7k / 131.1k (15%) 💬 8 msgs✅ Context compaction completed! Context Status: 📝 19.7k / 131.1k (15%) 💬 8 msgs老杨，确定不来吗？相信我，真的很精彩～😁"
+  });
 
   const parsed = parseAgentReply(raw);
 
   assert.equal(parsed.reply, "老杨，确定不来吗？相信我，真的很精彩～😁");
+});
+
+test("parseAgentReply rejects unstructured internal execution text", () => {
+  const parsed = parseAgentReply("收到，这是私聊首次添加好友的场景，我来处理。先检查会话记录和客户档案。");
+
+  assert.equal(parsed.valid, false);
+  assert.equal(parsed.reply, "");
+});
+
+test("parseAgentReply rejects text wrapped around an otherwise valid JSON reply", () => {
+  const parsed = parseAgentReply('先检查客户档案。{"reply":"你好呀，很高兴认识你"}');
+
+  assert.equal(parsed.valid, false);
+  assert.equal(parsed.reply, "");
 });

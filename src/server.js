@@ -10,6 +10,7 @@ import {
   buildDclawActivationRequest,
   buildDclawHandoffTranscriptRequest,
   buildDclawProactiveEventRequest,
+  buildDclawReplyFormatRetryRequest,
   buildDclawRequest,
   getDclawAgentMaxAttempts,
   getDclawAgentTimeoutMs,
@@ -600,6 +601,36 @@ function enqueueAgentInvocation(task) {
   const run = agentQueue.then(task, task);
   agentQueue = run.catch(() => {});
   return run;
+}
+
+async function invokeStrictAgentReply({ binding, request, onRetry, onFormatRetry }) {
+  const first = await enqueueAgentInvocation(() =>
+    invokeDclawAgentWithRetry({ binding, request, onRetry })
+  );
+  let agentReply = parseAgentReply(first.reply);
+  if (agentReply.valid) {
+    return { invocation: first, agentReply, formatAttempts: 1 };
+  }
+
+  onFormatRetry?.({ rawReplyLength: String(first.reply || "").length });
+  const formatRetryRequest = buildDclawReplyFormatRetryRequest(request);
+  const repaired = await enqueueAgentInvocation(() =>
+    invokeDclawAgentWithRetry({ binding, request: formatRetryRequest, onRetry })
+  );
+  agentReply = parseAgentReply(repaired.reply);
+  return {
+    invocation: {
+      ...repaired,
+      request,
+      response: {
+        initial: first.response,
+        formatRetry: repaired.response
+      },
+      attempts: Number(first.attempts || 1) + Number(repaired.attempts || 1)
+    },
+    agentReply,
+    formatAttempts: 2
+  };
 }
 
 function getDebugReplySettingKey(botId) {
@@ -1231,31 +1262,34 @@ async function sendActivationPolishedMessage({ task, binding }) {
     incomingMessageId: `activation:${task.id}`,
     request
   });
-  let invocation;
+  let strictInvocation;
   try {
-    invocation = await enqueueAgentInvocation(() =>
-      invokeDclawAgentWithRetry({
-        binding,
-        request,
-        onRetry: (retry) => {
-          logWarn("activation.agent.retry", {
-            activationTaskId: task.id,
-            botId: task.botId,
-            agentId: binding.agentId,
-            conversationKey: task.conversationKey,
-            invocationId,
-            attempt: retry.attempt,
-            maxAttempts: retry.maxAttempts,
-            timeoutMs: retry.timeoutMs,
-            error: retry.error.message
-          });
-        }
-      })
-    );
-    finishAgentInvocation({
-      id: invocationId,
-      response: invocation.response,
-      status: "success"
+    strictInvocation = await invokeStrictAgentReply({
+      binding,
+      request,
+      onRetry: (retry) => {
+        logWarn("activation.agent.retry", {
+          activationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          attempt: retry.attempt,
+          maxAttempts: retry.maxAttempts,
+          timeoutMs: retry.timeoutMs,
+          error: retry.error.message
+        });
+      },
+      onFormatRetry: ({ rawReplyLength }) => {
+        logWarn("activation.agent.format_retry", {
+          activationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          rawReplyLength
+        });
+      }
     });
   } catch (error) {
     finishAgentInvocation({
@@ -1266,7 +1300,30 @@ async function sendActivationPolishedMessage({ task, binding }) {
     });
     throw error;
   }
-  const agentReply = parseAgentReply(invocation.reply);
+  if (!strictInvocation.agentReply.valid) {
+    finishAgentInvocation({
+      id: invocationId,
+      response: strictInvocation.invocation.response,
+      status: "failed",
+      error: "invalid_agent_reply_format"
+    });
+    logWarn("activation.agent.invalid_format", {
+      activationTaskId: task.id,
+      botId: task.botId,
+      agentId: binding.agentId,
+      conversationKey: task.conversationKey,
+      invocationId,
+      formatAttempts: strictInvocation.formatAttempts
+    });
+    throw new Error("invalid_agent_reply_format");
+  }
+  const invocation = strictInvocation.invocation;
+  const agentReply = strictInvocation.agentReply;
+  finishAgentInvocation({
+    id: invocationId,
+    response: invocation.response,
+    status: "success"
+  });
   const reply = String(agentReply.reply || "").trim();
   if (!reply) {
     throw new Error("empty activation reply");
@@ -1670,23 +1727,48 @@ async function processIncomingMessage({ botId, message }) {
 
   let agentInvocationSucceeded = false;
   try {
-    const invocation = await enqueueAgentInvocation(() =>
-      invokeDclawAgentWithRetry({
-        binding,
-        request,
-        onRetry: (retry) => {
-          logWarn("agent.invoke.retry", {
-            ...logContext,
-            agentId: binding.agentId,
-            invocationId,
-            attempt: retry.attempt,
-            maxAttempts: retry.maxAttempts,
-            timeoutMs: retry.timeoutMs,
-            error: retry.error.message
-          });
-        }
-      })
-    );
+    const strictInvocation = await invokeStrictAgentReply({
+      binding,
+      request,
+      onRetry: (retry) => {
+        logWarn("agent.invoke.retry", {
+          ...logContext,
+          agentId: binding.agentId,
+          invocationId,
+          attempt: retry.attempt,
+          maxAttempts: retry.maxAttempts,
+          timeoutMs: retry.timeoutMs,
+          error: retry.error.message
+        });
+      },
+      onFormatRetry: ({ rawReplyLength }) => {
+        logWarn("agent.reply.format_retry", {
+          ...logContext,
+          agentId: binding.agentId,
+          invocationId,
+          rawReplyLength
+        });
+      }
+    });
+
+    if (!strictInvocation.agentReply.valid) {
+      finishAgentInvocation({
+        id: invocationId,
+        response: strictInvocation.invocation.response,
+        status: "failed",
+        error: "invalid_agent_reply_format"
+      });
+      logWarn("agent.reply.invalid_format", {
+        ...logContext,
+        agentId: binding.agentId,
+        invocationId,
+        formatAttempts: strictInvocation.formatAttempts
+      });
+      finishMessageProcessing({ messageKey, status: "invalid_reply_format", error: "invalid_agent_reply_format" });
+      return;
+    }
+
+    const invocation = strictInvocation.invocation;
 
     finishAgentInvocation({
       id: invocationId,
@@ -1698,7 +1780,7 @@ async function processIncomingMessage({ botId, message }) {
       markConversationResetHandled(conversationKey);
     }
 
-    const agentReply = parseAgentReply(invocation.reply);
+    const agentReply = strictInvocation.agentReply;
     const reply = String(agentReply.reply || "").trim();
     const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
     const sources = Array.isArray(agentReply.sources) ? agentReply.sources : [];
