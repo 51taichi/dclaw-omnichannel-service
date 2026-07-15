@@ -37,6 +37,7 @@ const els = {
   workspaceLockPanel: document.querySelector("#workspaceLockPanel"),
   bindingState: document.querySelector("#bindingState"),
   botForm: document.querySelector("#botForm"),
+  agentManagementPanel: document.querySelector("#agentManagementPanel"),
   agentForm: document.querySelector("#agentForm"),
   resetAgentFormButton: document.querySelector("#resetAgentFormButton"),
   agentCount: document.querySelector("#agentCount"),
@@ -219,10 +220,6 @@ function shouldHideConfigTab() {
   return Boolean(state.selectedBotId && state.currentRole !== "admin");
 }
 
-function isAdminWorkspaceTab(tabName) {
-  return tabName === "config" || tabName === "agents";
-}
-
 function syncRoleVisibility() {
   const isAdmin = state.currentRole === "admin";
   const hasBot = Boolean(state.selectedBotId);
@@ -234,11 +231,10 @@ function syncRoleVisibility() {
   document.body.classList.toggle("is-workspace-locked", workspaceLocked);
   els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig);
   document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", hideConfig);
-  document.querySelector('[data-workspace-tab="agents"]')?.toggleAttribute("hidden", hideConfig);
   document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig);
-  document.querySelector("#agentsTab")?.toggleAttribute("hidden", hideConfig);
   els.resetFormButton.hidden = !hasBot;
   if (els.accessKeyPanel) els.accessKeyPanel.hidden = !isAdmin;
+  if (els.agentManagementPanel) els.agentManagementPanel.hidden = !hasBot || !isAdmin;
   if (els.lockBotButton) els.lockBotButton.hidden = !hasBot || workspaceLocked;
   if (els.workspaceLockPanel) els.workspaceLockPanel.hidden = !workspaceLocked;
   if (workspaceLocked) {
@@ -246,7 +242,7 @@ function syncRoleVisibility() {
       panel.hidden = true;
       panel.classList.remove("active");
     });
-  } else if (hideConfig && isAdminWorkspaceTab(activeWorkspaceTab)) {
+  } else if (hideConfig && activeWorkspaceTab === "config") {
     switchWorkspaceTab("sessions", { force: true });
   }
 }
@@ -390,11 +386,11 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
     toast("内容区域已上锁，请先解锁当前 Bot");
     return;
   }
-  if (!force && !isAdminWorkspaceTab(tabName) && !state.selectedBotId) {
+  if (!force && tabName !== "config" && !state.selectedBotId) {
     toast("请先选择或保存一个 Bot");
     return;
   }
-  if (!force && isAdminWorkspaceTab(tabName) && state.selectedBotId && state.currentRole !== "admin") {
+  if (!force && tabName === "config" && state.selectedBotId && state.currentRole !== "admin") {
     toast("当前 Bot 未以管理员身份解锁");
     return;
   }
@@ -418,8 +414,8 @@ function updateWorkspaceTabAccess(hasBotContext) {
   els.workspaceTabs.forEach((button) => {
     const locked =
       workspaceLocked ||
-      (!isAdminWorkspaceTab(button.dataset.workspaceTab) && !hasBotContext) ||
-      (isAdminWorkspaceTab(button.dataset.workspaceTab) && hasBotContext && state.currentRole !== "admin");
+      (button.dataset.workspaceTab !== "config" && !hasBotContext) ||
+      (button.dataset.workspaceTab === "config" && hasBotContext && state.currentRole !== "admin");
     button.disabled = locked;
     button.setAttribute("aria-disabled", String(locked));
   });
