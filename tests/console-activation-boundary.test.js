@@ -36,3 +36,11 @@ test("adding an activation message keeps an editable blank draft row", () => {
   assert.equal(app.includes("activation.messages = [...activation.messages, \"\"]"), true);
   assert.equal(app.includes("activationDraftForEditor(node.activation)"), true);
 });
+
+test("activation editor supports an entry-node new-friend trigger", () => {
+  assert.equal(app.includes("activationTrigger"), true);
+  assert.equal(app.includes('data-flow-node-activation-field="trigger"'), true);
+  assert.equal(app.includes('value="friend_added"'), true);
+  assert.equal(app.includes("仅入口节点可用"), true);
+  assert.equal(app.includes('trigger: source.trigger === "friend_added"'), true);
+});

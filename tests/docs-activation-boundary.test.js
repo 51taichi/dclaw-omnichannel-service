@@ -17,3 +17,9 @@ test("activation tasks are visible in logs", () => {
   assert.equal(db.includes('"flow-activation-tasks"'), true);
   assert.equal(html.includes('value="flow-activation-tasks"'), true);
 });
+
+test("new friend activation trigger is documented", () => {
+  assert.equal(readme.includes("新增好友后"), true);
+  assert.equal(readme.includes("textType=22"), true);
+  assert.equal(readme.includes("type=105"), true);
+});
