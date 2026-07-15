@@ -1069,6 +1069,11 @@ function normalizeFlowConfig(input) {
   if (!ids.has(entryNodeId)) {
     throw new Error("entryNodeId must match a node id");
   }
+  if (normalizedNodes.some((node) =>
+    node.id !== entryNodeId && node.activation.trigger === "friend_added"
+  )) {
+    throw new Error("friend_added activation must be on the entry node");
+  }
   for (const node of normalizedNodes) {
     if (node.nextNodeId && !ids.has(node.nextNodeId)) {
       throw new Error(`nextNodeId not found: ${node.nextNodeId}`);
@@ -1470,6 +1475,8 @@ export function normalizeActivationConfig(raw = {}) {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const intervalMinutes = Math.max(1, Number.parseInt(source.intervalMinutes ?? 30, 10) || 30);
   const maxTimes = Math.max(1, Number.parseInt(source.maxTimes ?? 1, 10) || 1);
+  const rawTrigger = String(source.trigger || "after_ai_reply").trim();
+  const trigger = rawTrigger === "friend_added" ? "friend_added" : "after_ai_reply";
   const messages = Array.isArray(source.messages)
     ? source.messages.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
@@ -1478,7 +1485,8 @@ export function normalizeActivationConfig(raw = {}) {
     intervalMinutes,
     maxTimes,
     polishByAgent: source.polishByAgent !== false,
-    messages
+    messages,
+    trigger
   };
 }
 

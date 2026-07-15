@@ -8,3 +8,11 @@ export function shouldProcessInboundForAgent(message) {
   if (Number.isFinite(textType) && textType !== 1 && !spoken && !raw) return false;
   return true;
 }
+
+export function isFriendAddedEvent(message) {
+  return Number(message?.textType) === 22 && Number(message?.type) === 105;
+}
+
+export function friendAddedName(message) {
+  return String(message?.friendName || "").trim();
+}
