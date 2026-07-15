@@ -208,6 +208,22 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS agent_flow_machine_migration_sources (
+    agent_id TEXT PRIMARY KEY,
+    legacy_bot_id TEXT NOT NULL,
+    migrated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS agent_flow_machine_migration_conflicts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL,
+    legacy_bot_id TEXT NOT NULL,
+    selected_legacy_bot_id TEXT NOT NULL,
+    legacy_config_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(agent_id, legacy_bot_id)
+  );
+
   CREATE TABLE IF NOT EXISTS flow_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bot_id TEXT NOT NULL,
@@ -474,7 +490,19 @@ export function deleteAgent(agentId) {
   if (boundCount > 0) {
     throw new Error(`agent is bound by ${boundCount} bot${boundCount > 1 ? "s" : ""}`);
   }
-  db.prepare("DELETE FROM agents WHERE agent_id = ?").run(normalizedAgentId);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM agent_flow_machine_migration_conflicts WHERE agent_id = ?")
+      .run(normalizedAgentId);
+    db.prepare("DELETE FROM agent_flow_machine_migration_sources WHERE agent_id = ?")
+      .run(normalizedAgentId);
+    db.prepare("DELETE FROM agent_flow_machines WHERE agent_id = ?").run(normalizedAgentId);
+    db.prepare("DELETE FROM agents WHERE agent_id = ?").run(normalizedAgentId);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
   return agent;
 }
 
@@ -501,27 +529,59 @@ export function migrateLegacyFlowMachinesToAgents() {
       AND bab.agent_id != ''
     ORDER BY fm.id ASC
   `).all();
-  const migratedAgentIds = new Set(
-    db.prepare("SELECT agent_id FROM agent_flow_machines").all().map((row) => row.agent_id)
+  const selectedByAgent = new Map(
+    db.prepare(`
+      SELECT fm.agent_id, fm.config_json, source.legacy_bot_id
+      FROM agent_flow_machines fm
+      LEFT JOIN agent_flow_machine_migration_sources source ON source.agent_id = fm.agent_id
+    `).all().map((row) => [row.agent_id, {
+      configJson: row.config_json,
+      legacyBotId: row.legacy_bot_id || "__existing_agent_flow__"
+    }])
   );
   for (const row of legacyRows) {
-    if (migratedAgentIds.has(row.agent_id)) continue;
+    const selected = selectedByAgent.get(row.agent_id);
+    if (!selected) {
+      db.prepare(`
+        INSERT INTO agent_flow_machines (
+          agent_id, name, version, entry_node_id, config_json, enabled, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        row.agent_id,
+        row.name,
+        row.version,
+        row.entry_node_id,
+        row.config_json,
+        row.enabled,
+        row.created_at,
+        row.updated_at
+      );
+      db.prepare(`
+        INSERT INTO agent_flow_machine_migration_sources (agent_id, legacy_bot_id, migrated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(agent_id) DO NOTHING
+      `).run(row.agent_id, row.bot_id, now());
+      selectedByAgent.set(row.agent_id, {
+        configJson: row.config_json,
+        legacyBotId: row.bot_id
+      });
+      continue;
+    }
+    if (selected.legacyBotId === row.bot_id || selected.configJson === row.config_json) continue;
     db.prepare(`
-      INSERT INTO agent_flow_machines (
-        agent_id, name, version, entry_node_id, config_json, enabled, created_at, updated_at
+      INSERT INTO agent_flow_machine_migration_conflicts (
+        agent_id, legacy_bot_id, selected_legacy_bot_id, legacy_config_json, created_at
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(agent_id, legacy_bot_id) DO NOTHING
     `).run(
       row.agent_id,
-      row.name,
-      row.version,
-      row.entry_node_id,
+      row.bot_id,
+      selected.legacyBotId,
       row.config_json,
-      row.enabled,
-      row.created_at,
-      row.updated_at
+      now()
     );
-    migratedAgentIds.add(row.agent_id);
   }
 }
 
@@ -1146,12 +1206,13 @@ function resolveFlowMachineAgentId({ agentId = "", botId = "" } = {}) {
   const explicitAgentId = String(agentId || "").trim();
   if (explicitAgentId) return explicitAgentId;
   const bindingAgentId = getBotBinding(botId)?.agentId || "";
-  return String(bindingAgentId || botId || "").trim();
+  return String(bindingAgentId || "").trim();
 }
 
 export function upsertFlowMachine({ agentId = "", botId = "", config, enabled = true }) {
   const resolvedAgentId = resolveFlowMachineAgentId({ agentId, botId });
-  if (!resolvedAgentId) throw new Error("agentId is required");
+  if (!resolvedAgentId) throw new Error("agent binding is required");
+  if (!getAgent(resolvedAgentId)) throw new Error("agent not found");
   const normalized = normalizeFlowConfig(config);
   const timestamp = now();
   db.prepare(`
@@ -1192,6 +1253,7 @@ export function getFlowMachineForBot(botId) {
 
 export function listFlowMachines({ agentId = "", botId = "" } = {}) {
   const resolvedAgentId = resolveFlowMachineAgentId({ agentId, botId });
+  if ((agentId || botId) && !resolvedAgentId) return [];
   const rows = resolvedAgentId
     ? db.prepare("SELECT * FROM agent_flow_machines WHERE agent_id = ? ORDER BY updated_at DESC").all(resolvedAgentId)
     : db.prepare("SELECT * FROM agent_flow_machines ORDER BY updated_at DESC").all();

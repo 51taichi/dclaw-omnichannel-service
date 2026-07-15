@@ -9,11 +9,24 @@ process.env.DATA_DIR = dataDir;
 
 const db = await import("../src/db.js");
 
+function ensureBotAgent(botId, agentId) {
+  db.upsertAgent({
+    agentId,
+    agentName: `${agentId} 测试 Agent`,
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: agentId,
+    enabled: true
+  });
+  db.upsertBotBinding({ botId, botName: botId, agentId, enabled: true });
+}
+
 test("clearConversationForReset resets one flow conversation for a fresh agent run", () => {
   const botId = "bot_test";
+  const agentId = "agent_test";
   const conversationKey = `${botId}:private:张三`;
+  ensureBotAgent(botId, agentId);
   const machine = db.upsertFlowMachine({
-    botId,
+    agentId,
     enabled: true,
     config: {
       name: "测试状态机",
@@ -44,7 +57,7 @@ test("clearConversationForReset resets one flow conversation for a fresh agent r
 
   db.upsertConversation({
     botId,
-    agentId: "agent_test",
+    agentId,
     conversationKey,
     message: {
       roomType: 2,
@@ -91,9 +104,11 @@ test("clearConversationForReset resets one flow conversation for a fresh agent r
 
 test("getConversationAssets only exposes configured collect fields", () => {
   const botId = "bot_assets";
+  const agentId = "agent_assets";
   const conversationKey = `${botId}:private:李四`;
+  ensureBotAgent(botId, agentId);
   const machine = db.upsertFlowMachine({
-    botId,
+    agentId,
     enabled: true,
     config: {
       name: "资产状态机",
@@ -124,7 +139,7 @@ test("getConversationAssets only exposes configured collect fields", () => {
 
   db.upsertConversation({
     botId,
-    agentId: "agent_assets",
+    agentId,
     conversationKey,
     message: {
       roomType: 2,

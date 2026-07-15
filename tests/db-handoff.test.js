@@ -10,8 +10,17 @@ process.env.DATA_DIR = dataDir;
 const db = await import("../src/db.js");
 
 function createMachine(botId) {
+  const agentId = `${botId}_agent`;
+  db.upsertAgent({
+    agentId,
+    agentName: `${botId} 测试 Agent`,
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: agentId,
+    enabled: true
+  });
+  db.upsertBotBinding({ botId, botName: botId, agentId, enabled: true });
   return db.upsertFlowMachine({
-    botId,
+    agentId,
     enabled: true,
     config: {
       name: "人工接手测试",

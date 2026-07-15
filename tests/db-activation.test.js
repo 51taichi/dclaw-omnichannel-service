@@ -9,6 +9,17 @@ process.env.DATA_DIR = dataDir;
 
 const db = await import("../src/db.js");
 
+function ensureBotAgent(botId, agentId) {
+  db.upsertAgent({
+    agentId,
+    agentName: `${agentId} 测试 Agent`,
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: agentId,
+    enabled: true
+  });
+  db.upsertBotBinding({ botId, botName: botId, agentId, enabled: true });
+}
+
 test("normalizeActivationConfig defaults and filters messages", () => {
   assert.deepEqual(db.normalizeActivationConfig({}), {
     enabled: false,
@@ -35,9 +46,11 @@ test("normalizeActivationConfig defaults and filters messages", () => {
 
 test("activation tasks can be scheduled, claimed, sent, failed, and canceled", () => {
   const botId = "bot_activation";
+  const agentId = "agent_activation";
   const conversationKey = `${botId}:private:张三`;
+  ensureBotAgent(botId, agentId);
   const machine = db.upsertFlowMachine({
-    botId,
+    agentId,
     enabled: true,
     config: {
       name: "激活状态机",
@@ -51,7 +64,7 @@ test("activation tasks can be scheduled, claimed, sent, failed, and canceled", (
 
   const task = db.scheduleFlowActivationTask({
     botId,
-    agentId: "agent_activation",
+    agentId,
     conversationKey,
     nodeId: "node_1",
     generation: session.activationGeneration,
@@ -87,7 +100,7 @@ test("activation tasks can be scheduled, claimed, sent, failed, and canceled", (
 
   db.scheduleFlowActivationTask({
     botId,
-    agentId: "agent_activation",
+    agentId,
     conversationKey,
     nodeId: "node_1",
     generation: session.activationGeneration,
@@ -102,9 +115,11 @@ test("activation tasks can be scheduled, claimed, sent, failed, and canceled", (
 
 test("incrementFlowActivationGeneration invalidates old generations", () => {
   const botId = "bot_generation";
+  const agentId = "agent_generation";
   const conversationKey = `${botId}:private:李四`;
+  ensureBotAgent(botId, agentId);
   const machine = db.upsertFlowMachine({
-    botId,
+    agentId,
     enabled: true,
     config: {
       name: "代际状态机",

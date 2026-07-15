@@ -11,8 +11,20 @@ process.env.DATA_DIR = dataDir;
 const db = await import("../src/db.js");
 
 function createMachine(botId, nodeId) {
+  let binding = db.getBotBinding(botId);
+  if (!binding) {
+    const agentId = `${botId}_test_agent`;
+    db.upsertAgent({
+      agentId,
+      agentName: `${botId} 测试 Agent`,
+      dclawBaseUrl: "https://dclaw.example.com",
+      dclawPublicId: agentId,
+      enabled: true
+    });
+    binding = db.upsertBotBinding({ botId, botName: botId, agentId, enabled: true });
+  }
   return db.upsertFlowMachine({
-    botId,
+    agentId: binding.agentId,
     enabled: true,
     config: {
       name: `${botId} 状态机`,
@@ -213,6 +225,7 @@ test("bots bound to one agent resolve the same agent-owned flow machine", () => 
 
 test("legacy Bot-owned flow machines migrate to the bound Agent", () => {
   const botId = "bot_legacy_flow";
+  const conflictBotId = "bot_legacy_flow_conflict";
   const agentId = "agent_legacy_flow";
   db.upsertAgent({
     agentId,
@@ -222,6 +235,7 @@ test("legacy Bot-owned flow machines migrate to the bound Agent", () => {
     enabled: true
   });
   db.upsertBotBinding({ botId, botName: "旧 Bot", agentId, enabled: true });
+  db.upsertBotBinding({ botId: conflictBotId, botName: "冲突旧 Bot", agentId, enabled: true });
 
   const rawDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
   const timestamp = new Date().toISOString();
@@ -253,6 +267,34 @@ test("legacy Bot-owned flow machines migrate to the bound Agent", () => {
     timestamp,
     timestamp
   );
+  rawDb.prepare(`
+    INSERT INTO flow_machines (
+      bot_id, name, version, entry_node_id, config_json, enabled, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    conflictBotId,
+    "冲突旧版状态机",
+    "1.0.0",
+    "conflict_node_1",
+    JSON.stringify({
+      name: "冲突旧版状态机",
+      version: "1.0.0",
+      entryNodeId: "conflict_node_1",
+      nodes: [{
+        id: "conflict_node_1",
+        name: "冲突旧节点",
+        goal: "冲突迁移测试",
+        completionCriteria: "已迁移",
+        collectFields: [],
+        conversationTips: [],
+        nextNodeId: ""
+      }]
+    }),
+    1,
+    timestamp,
+    timestamp
+  );
   rawDb.close();
 
   db.migrateLegacyFlowMachinesToAgents();
@@ -260,6 +302,31 @@ test("legacy Bot-owned flow machines migrate to the bound Agent", () => {
   const machine = db.getFlowMachineForBot(botId);
   assert.equal(machine.agentId, agentId);
   assert.equal(machine.config.entryNodeId, "legacy_node_1");
+  const conflictDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const conflict = conflictDb.prepare(`
+    SELECT agent_id, legacy_bot_id, selected_legacy_bot_id
+    FROM agent_flow_machine_migration_conflicts
+    WHERE agent_id = ?
+  `).get(agentId);
+  conflictDb.close();
+  assert.equal(conflict.agent_id, agentId);
+  assert.equal(conflict.legacy_bot_id, conflictBotId);
+  assert.equal(conflict.selected_legacy_bot_id, botId);
+});
+
+test("unbound Bots cannot create a flow machine through the database API", () => {
+  assert.throws(
+    () => db.upsertFlowMachine({
+      botId: "bot_without_agent_binding",
+      config: {
+        name: "非法状态机",
+        version: "1.0.0",
+        entryNodeId: "node_1",
+        nodes: []
+      }
+    }),
+    /agent binding is required/
+  );
 });
 
 test("rebinding one Bot resets only its derived flow state", () => {
@@ -357,6 +424,24 @@ test("deleteAgent removes only unbound agents", () => {
     agentApiKey: "secret",
     enabled: true
   });
+  db.upsertFlowMachine({
+    agentId: "agent_unbound_delete",
+    enabled: true,
+    config: {
+      name: "待删除状态机",
+      version: "1.0.0",
+      entryNodeId: "node_1",
+      nodes: [{
+        id: "node_1",
+        name: "起始节点",
+        goal: "测试",
+        completionCriteria: "完成",
+        collectFields: [],
+        conversationTips: [],
+        nextNodeId: ""
+      }]
+    }
+  });
   db.upsertBotBinding({
     botId: "bot_bound_agent_delete",
     botName: "绑定删除测试 Bot",
@@ -368,6 +453,7 @@ test("deleteAgent removes only unbound agents", () => {
 
   assert.equal(deleted.agentId, "agent_unbound_delete");
   assert.equal(db.getAgent("agent_unbound_delete"), null);
+  assert.equal(db.getFlowMachine("agent_unbound_delete"), null);
   assert.throws(
     () => db.deleteAgent("agent_bound_delete"),
     /agent is bound by 1 bot/
