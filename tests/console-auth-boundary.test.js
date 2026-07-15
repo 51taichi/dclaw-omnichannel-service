@@ -23,6 +23,14 @@ test("console stores bot scoped tokens and sends x-bot-session-token", () => {
   assert.equal(app.includes("state.currentRole"), true);
 });
 
+test("console header actions do not show the current bot status label", () => {
+  assert.equal(html.includes("bindingState"), false);
+  assert.equal(html.includes("当前Bot："), false);
+  assert.equal(app.includes("bindingState"), false);
+  assert.equal(app.includes("当前Bot："), false);
+  assert.equal(css.includes(".binding-state"), false);
+});
+
 test("console hides config tab for bot role and exposes access-key reset for admin", () => {
   assert.equal(html.includes("accessKeyForm"), true);
   assert.equal(html.includes('data-workspace-tab="agents"'), false);

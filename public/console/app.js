@@ -35,7 +35,6 @@ const els = {
   workspaceTabs: document.querySelectorAll("[data-workspace-tab]"),
   tabPanels: document.querySelectorAll("[data-tab-panel]"),
   workspaceLockPanel: document.querySelector("#workspaceLockPanel"),
-  bindingState: document.querySelector("#bindingState"),
   botForm: document.querySelector("#botForm"),
   agentManagementPanel: document.querySelector("#agentManagementPanel"),
   agentForm: document.querySelector("#agentForm"),
@@ -441,15 +440,10 @@ function setBindingState(bot = null) {
   syncRoleVisibility();
   els.workspaceTabBar?.classList.toggle("is-bound", Boolean(bot));
   els.workspaceTabBar?.style.setProperty("--bot-accent", accent);
-  els.bindingState?.classList.toggle("is-bound", Boolean(bot));
-  els.bindingState?.style.setProperty("--bot-accent", accent);
   els.botContextPanels.forEach((panel) => {
     panel.classList.toggle("is-bound", Boolean(bot));
     panel.style.setProperty("--bot-accent", accent);
   });
-  els.bindingState.textContent = bot
-    ? `当前Bot：${bot.botName || bot.dclawPublicId || "当前 Bot"} · ${state.currentRole === "admin" ? "管理员" : state.currentRole ? "已解锁" : "已上锁"}`
-    : "新增模式";
   renderBots(currentBots);
 }
 
