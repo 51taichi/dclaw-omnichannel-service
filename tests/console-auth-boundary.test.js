@@ -29,6 +29,8 @@ test("console hides config tab for bot role and exposes access-key reset for adm
   assert.equal(html.includes("agentForm"), true);
   assert.equal(html.includes("agentsList"), true);
   assert.match(html, /id="configTab"[\s\S]*id="agentManagementPanel"[\s\S]*id="flowTab"/);
+  assert.match(html, /id="agentManagementPanel" class="panel bot-context-panel collapsible-panel"/);
+  assert.match(html, /id="agentManagementPanel"[\s\S]*data-collapse-target="agentManagementPanel"/);
   assert.equal(app.includes("syncRoleVisibility"), true);
   assert.equal(app.includes("shouldHideConfigTab"), true);
   assert.equal(app.includes("isAdminWorkspaceTab"), false);

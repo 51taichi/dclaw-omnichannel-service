@@ -292,11 +292,14 @@
         </div>
       </section>
 
-      <section id="agentManagementPanel" class="panel">
+      <section id="agentManagementPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head binding-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>Agent 管理</h2>
           <div class="section-actions">
             <span id="agentCount" class="muted"></span>
+            <button class="collapse-button" data-collapse-target="agentManagementPanel" type="button" aria-label="收起 Agent 管理">
+              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+            </button>
           </div>
         </div>
         <div class="collapsible-content">
