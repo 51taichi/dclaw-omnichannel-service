@@ -74,6 +74,14 @@ test("bot binding form selects a saved agent instead of storing agent credential
   assert.match(app, /class="danger" data-agent-delete/);
 });
 
+test("agent cards hide base url and enabled status tag", () => {
+  assert.equal(app.includes('Public ID：${escapeHtml(agent.dclawPublicId || "-")}'), true);
+  assert.equal(app.includes("已绑定 Bot：${boundCount}"), true);
+  assert.equal(app.includes('escapeHtml(agent.dclawBaseUrl || "-")'), false);
+  assert.equal(app.includes('${agent.enabled ? "启用" : "停用"}'), false);
+  assert.doesNotMatch(app, /class="pill \$\{agent\.enabled \? "ok" : "off"\}/);
+});
+
 test("config saves can request admin password on demand", () => {
   assert.equal(html.includes("unlockKeyLabel"), true);
   assert.equal(app.includes("openAdminKeyDialog"), true);

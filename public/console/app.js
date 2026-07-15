@@ -760,10 +760,8 @@ function renderAgents(agents) {
               <strong>${escapeHtml(agent.agentName || agent.agentId)}</strong>
               <small>${escapeHtml(agent.agentId)}</small>
             </span>
-            <span class="pill ${agent.enabled ? "ok" : "off"}">${agent.enabled ? "启用" : "停用"}</span>
           </div>
           <div class="agent-meta">
-            <span>${escapeHtml(agent.dclawBaseUrl || "-")}</span>
             <span>Public ID：${escapeHtml(agent.dclawPublicId || "-")}</span>
             <span>已绑定 Bot：${boundCount}</span>
           </div>
