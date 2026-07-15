@@ -501,7 +501,7 @@ function isRetryableDclawError(error) {
 }
 
 export function parseAgentReply(rawReply) {
-  const text = String(rawReply || "").trim();
+  const text = unwrapIsolatedJsonFence(rawReply);
   if (!text) return invalidAgentReply(rawReply);
 
   let parsed;
@@ -522,6 +522,12 @@ export function parseAgentReply(rawReply) {
     flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
     raw: parsed
   };
+}
+
+function unwrapIsolatedJsonFence(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i);
+  return match ? match[1].trim() : text;
 }
 
 function invalidAgentReply(rawReply) {

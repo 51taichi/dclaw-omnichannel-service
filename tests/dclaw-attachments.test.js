@@ -34,6 +34,18 @@ test("parseAgentReply preserves structured attachments from agent JSON", () => {
   ]);
 });
 
+test("parseAgentReply accepts an isolated JSON markdown fence", () => {
+  const parsed = parseAgentReply(`\`\`\`json
+{
+  "reply": "您好呀，欢迎咨询湘左记招商 😄",
+  "attachments": []
+}
+\`\`\``);
+
+  assert.equal(parsed.valid, true);
+  assert.equal(parsed.reply, "您好呀，欢迎咨询湘左记招商 😄");
+});
+
 test("parseAgentReply preserves only structured sources returned by the agent", () => {
   const parsed = parseAgentReply(JSON.stringify({
     reply: "有的，我把工厂视频发你",
