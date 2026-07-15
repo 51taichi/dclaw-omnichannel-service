@@ -521,12 +521,10 @@ h2 {
 .agent-avatar {
   width: 38px;
   height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   border-radius: 8px;
-  background: var(--accent-soft);
-  color: var(--accent);
+  object-fit: cover;
+  object-position: center;
+  box-shadow: 0 4px 10px rgba(239, 85, 32, 0.16);
 }
 
 .agent-summary {
@@ -713,6 +711,10 @@ h2 {
   gap: 13px;
   min-width: 0;
   margin-top: 14px;
+}
+
+#botForm.form-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .flow-name-row {
@@ -3151,6 +3153,7 @@ td .muted {
   .workspace-head,
   .section-head,
   .form-grid,
+  #botForm.form-grid,
   .compact-form {
     grid-template-columns: 1fr;
   }

@@ -29,6 +29,12 @@ test("bot save validates a reusable agent binding", () => {
   assert.equal(serverSource.includes("agentId is required"), true);
 });
 
+test("server exposes guarded agent deletion", () => {
+  assert.equal(serverSource.includes('"/api/agents/:agentId"'), true);
+  assert.equal(serverSource.includes("deleteAgent(req.params.agentId)"), true);
+  assert.equal(serverSource.includes("agent is bound"), true);
+});
+
 test("business routes are not protected only by global admin key", () => {
   const businessRouteChecks = [
     { route: '"/api/flow-machines/:botId"', guard: "assertBotAccess(req, req.params.botId)" },

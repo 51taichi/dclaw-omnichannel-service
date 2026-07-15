@@ -171,6 +171,41 @@ test("multiple bots can reuse an independently saved agent config", () => {
   assert.equal(botA.agentApiKey, "secret-v2");
 });
 
+test("deleteAgent removes only unbound agents", () => {
+  db.upsertAgent({
+    agentId: "agent_unbound_delete",
+    agentName: "可删除 Agent",
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: "delete_public",
+    agentApiKey: "secret",
+    enabled: true
+  });
+  db.upsertAgent({
+    agentId: "agent_bound_delete",
+    agentName: "已绑定 Agent",
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: "bound_public",
+    agentApiKey: "secret",
+    enabled: true
+  });
+  db.upsertBotBinding({
+    botId: "bot_bound_agent_delete",
+    botName: "绑定删除测试 Bot",
+    agentId: "agent_bound_delete",
+    enabled: true
+  });
+
+  const deleted = db.deleteAgent("agent_unbound_delete");
+
+  assert.equal(deleted.agentId, "agent_unbound_delete");
+  assert.equal(db.getAgent("agent_unbound_delete"), null);
+  assert.throws(
+    () => db.deleteAgent("agent_bound_delete"),
+    /agent is bound by 1 bot/
+  );
+  assert.ok(db.getAgent("agent_bound_delete"));
+});
+
 test("deleteBotData removes the bot binding and bot scoped records", () => {
   const botId = "bot_delete_me";
   const otherBotId = "bot_keep_me";

@@ -34,6 +34,7 @@ import {
   claimNextProactiveTarget,
   clearConversationForReset,
   createProactiveTask,
+  deleteAgent,
   deleteBotData,
   finishAgentInvocation,
   finishMessageProcessing,
@@ -2276,6 +2277,28 @@ app.put(
       agentApiKey: body.agentApiKey || "",
       enabled: body.enabled !== false
     });
+    res.json({ ok: true, agent });
+  })
+);
+
+app.delete(
+  "/api/agents/:agentId",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    let agent;
+    try {
+      agent = deleteAgent(req.params.agentId);
+    } catch (error) {
+      if (String(error.message || "").includes("agent is bound")) {
+        res.status(409).json({ ok: false, message: error.message });
+        return;
+      }
+      throw error;
+    }
+    if (!agent) {
+      res.status(404).json({ ok: false, message: "agent not found" });
+      return;
+    }
     res.json({ ok: true, agent });
   })
 );

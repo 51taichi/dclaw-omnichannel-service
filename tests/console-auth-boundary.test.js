@@ -57,6 +57,12 @@ test("bot binding form selects a saved agent instead of storing agent credential
   assert.equal(app.includes("/api/agents"), true);
   assert.equal(app.includes("renderAgents"), true);
   assert.equal(app.includes("renderAgentOptions"), true);
+  assert.equal(app.includes("`${agent.agentName} (${agent.agentId})`"), false);
+  assert.equal(css.includes("#botForm.form-grid"), true);
+  assert.equal(app.includes("data-agent-delete"), true);
+  assert.equal(app.includes("deleteAgent(agent)"), true);
+  assert.equal(app.includes("删除 Agent 需要管理员密码"), true);
+  assert.match(app, /class="danger" data-agent-delete/);
 });
 
 test("config saves can request admin password on demand", () => {

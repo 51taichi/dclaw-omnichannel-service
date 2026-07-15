@@ -451,6 +451,21 @@ export function listAgents() {
     .map(rowToAgent);
 }
 
+export function deleteAgent(agentId) {
+  const normalizedAgentId = String(agentId || "").trim();
+  if (!normalizedAgentId) throw new Error("agentId is required");
+  const agent = getAgent(normalizedAgentId);
+  if (!agent) return null;
+  const boundCount = db
+    .prepare("SELECT COUNT(*) AS count FROM bot_agent_bindings WHERE agent_id = ?")
+    .get(normalizedAgentId)?.count || 0;
+  if (boundCount > 0) {
+    throw new Error(`agent is bound by ${boundCount} bot${boundCount > 1 ? "s" : ""}`);
+  }
+  db.prepare("DELETE FROM agents WHERE agent_id = ?").run(normalizedAgentId);
+  return agent;
+}
+
 function backfillAgentsFromLegacyBindings() {
   const rows = db
     .prepare("SELECT * FROM bot_agent_bindings WHERE agent_id IS NOT NULL AND agent_id != ''")

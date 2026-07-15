@@ -716,7 +716,7 @@ function renderAgentOptions(selectedAgentId = els.botForm.agentId?.value || "") 
   select.innerHTML = [
     `<option value="">选择 Agent</option>`,
     ...currentAgents.map((agent) => {
-      const label = agent.agentName ? `${agent.agentName} (${agent.agentId})` : agent.agentId;
+      const label = agent.agentName || agent.agentId;
       return `<option value="${escapeHtml(agent.agentId)}">${escapeHtml(label)}</option>`;
     })
   ].join("");
@@ -764,7 +764,7 @@ function renderAgents(agents) {
       return `
         <article class="agent-card ${agent.enabled ? "is-enabled" : "is-disabled"}" data-agent="${safeAgent}">
           <div class="agent-card-head">
-            <span class="agent-avatar">${icon("user")}</span>
+            <img class="agent-avatar" src="./assets/bot-avatar.png" alt="" aria-hidden="true" />
             <span class="agent-summary">
               <strong>${escapeHtml(agent.agentName || agent.agentId)}</strong>
               <small>${escapeHtml(agent.agentId)}</small>
@@ -778,6 +778,7 @@ function renderAgents(agents) {
           </div>
           <div class="row-actions">
             <button class="secondary" data-agent-edit="${safeAgent}" type="button">${icon("edit")}编辑</button>
+            <button class="danger" data-agent-delete="${safeAgent}" type="button">${icon("reset")}删除</button>
           </div>
         </article>
       `;
@@ -790,6 +791,14 @@ function renderAgents(agents) {
       if (!agent) return;
       fillAgentForm(agent);
       els.agentForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
+  els.agentsList.querySelectorAll("[data-agent-delete]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const agentId = decodeURIComponent(button.dataset.agentDelete || "");
+      const agent = currentAgents.find((item) => item.agentId === agentId);
+      if (!agent) return;
+      await deleteAgent(agent);
     });
   });
 }
@@ -1122,6 +1131,24 @@ async function saveAgent(event) {
   await loadAgents({ headers: adminHeaders });
   renderAgentOptions(result.agent?.agentId || agent.agentId);
   toast("Agent 已保存");
+}
+
+async function deleteAgent(agent) {
+  const agentId = agent?.agentId || "";
+  if (!agentId) return;
+  const agentName = agent.agentName || agentId;
+  const adminKey = await openAdminKeyDialog(`删除 Agent 需要管理员密码。确认删除 ${agentName}？已绑定 Bot 的 Agent 不允许删除。`);
+  if (!adminKey) return;
+  await request(`/api/agents/${encodeURIComponent(agentId)}`, {
+    method: "DELETE",
+    botId: "",
+    headers: { "x-api-key": adminKey }
+  });
+  if (els.agentForm.agentId.value === agentId) {
+    resetAgentForm();
+  }
+  await loadAgents({ headers: { "x-api-key": adminKey } });
+  toast("Agent 已删除");
 }
 
 async function saveAccessKey(event) {
