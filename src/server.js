@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
 import {
   buildDclawActivationRequest,
+  buildDclawConversationResetRequest,
   buildDclawHandoffTranscriptRequest,
   buildDclawProactiveEventRequest,
   buildDclawReplyFormatRetryRequest,
@@ -15,6 +16,7 @@ import {
   getDclawAgentMaxAttempts,
   getDclawAgentTimeoutMs,
   invokeDclawAgentWithRetry,
+  parseConversationResetAcknowledgement,
   parseAgentReply
 } from "./dclaw.js";
 import { logError, logInfo, logWarn } from "./logger.js";
@@ -606,6 +608,70 @@ function enqueueAgentInvocation(task) {
   const run = agentQueue.then(task, task);
   agentQueue = run.catch(() => {});
   return run;
+}
+
+export async function syncConversationResetToAgent({
+  binding,
+  conversationKey,
+  reason = "console_reset",
+  invoke = null
+}) {
+  if (!binding?.enabled) {
+    return { status: "skipped" };
+  }
+
+  const request = buildDclawConversationResetRequest({
+    binding,
+    conversationKey,
+    reason
+  });
+  const invocationId = insertAgentInvocationStart({
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationKey,
+    incomingMessageId: `conversation_reset:${Date.now()}`,
+    request
+  });
+  const startedAt = Date.now();
+
+  try {
+    const invocation = invoke
+      ? await invoke({ binding, request })
+      : await enqueueAgentInvocation(() => invokeDclawAgentWithRetry({ binding, request }));
+    if (!parseConversationResetAcknowledgement(invocation?.reply).ok) {
+      throw new Error("invalid conversation reset acknowledgement");
+    }
+    finishAgentInvocation({
+      id: invocationId,
+      response: invocation.response || null,
+      status: "success"
+    });
+    markConversationResetHandled(conversationKey);
+    logInfo("agent.conversation_reset.success", {
+      botId: binding.botId,
+      agentId: binding.agentId,
+      conversationKey,
+      invocationId,
+      durationMs: Date.now() - startedAt
+    });
+    return { status: "synced" };
+  } catch (error) {
+    finishAgentInvocation({
+      id: invocationId,
+      response: null,
+      status: "failed",
+      error: error.message
+    });
+    logWarn("agent.conversation_reset.failed", {
+      botId: binding.botId,
+      agentId: binding.agentId,
+      conversationKey,
+      invocationId,
+      durationMs: Date.now() - startedAt,
+      error: error.message
+    });
+    return { status: "pending" };
+  }
 }
 
 async function invokeStrictAgentReply({ binding, request, onRetry, onFormatRetry }) {
@@ -2719,8 +2785,13 @@ app.post(
       reason: body.reason || "控制台清空会话"
     });
     invalidateFlowActivation({ conversationKey, reason: "conversation_reset" });
+    const agentSync = await syncConversationResetToAgent({
+      binding: getBotBinding(botId),
+      conversationKey,
+      reason: "console_reset"
+    });
     logInfo("flow_session.reset", { botId, conversationKey });
-    res.json({ ok: true, session });
+    res.json({ ok: true, session, agentSync });
   })
 );
 
