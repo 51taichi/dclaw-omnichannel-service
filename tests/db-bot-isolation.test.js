@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-bot-isolation-test-"));
@@ -169,6 +170,96 @@ test("multiple bots can reuse an independently saved agent config", () => {
   assert.equal(botA.dclawBaseUrl, "https://dclaw-new.example.com");
   assert.equal(botB.dclawPublicId, "shared_public_v2");
   assert.equal(botA.agentApiKey, "secret-v2");
+});
+
+test("bots bound to one agent resolve the same agent-owned flow machine", () => {
+  const agentId = "agent_shared_flow";
+  db.upsertAgent({
+    agentId,
+    agentName: "共享状态机 Agent",
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: "shared_flow",
+    enabled: true
+  });
+  db.upsertBotBinding({ botId: "bot_shared_flow_a", botName: "共享 A", agentId, enabled: true });
+  db.upsertBotBinding({ botId: "bot_shared_flow_b", botName: "共享 B", agentId, enabled: true });
+
+  db.upsertFlowMachine({
+    agentId,
+    enabled: true,
+    config: {
+      name: "共享招商状态机",
+      version: "1.0.0",
+      entryNodeId: "shared_node_1",
+      nodes: [{
+        id: "shared_node_1",
+        name: "起始节点",
+        goal: "开始咨询",
+        completionCriteria: "已开始",
+        collectFields: ["手机号"],
+        conversationTips: [],
+        nextNodeId: ""
+      }]
+    }
+  });
+
+  const machineA = db.getFlowMachineForBot("bot_shared_flow_a");
+  const machineB = db.getFlowMachineForBot("bot_shared_flow_b");
+
+  assert.equal(machineA.agentId, agentId);
+  assert.equal(machineB.agentId, agentId);
+  assert.equal(machineB.config.entryNodeId, "shared_node_1");
+});
+
+test("legacy Bot-owned flow machines migrate to the bound Agent", () => {
+  const botId = "bot_legacy_flow";
+  const agentId = "agent_legacy_flow";
+  db.upsertAgent({
+    agentId,
+    agentName: "旧状态机迁移 Agent",
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: "legacy_flow",
+    enabled: true
+  });
+  db.upsertBotBinding({ botId, botName: "旧 Bot", agentId, enabled: true });
+
+  const rawDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const timestamp = new Date().toISOString();
+  rawDb.prepare(`
+    INSERT INTO flow_machines (
+      bot_id, name, version, entry_node_id, config_json, enabled, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    botId,
+    "旧版状态机",
+    "1.0.0",
+    "legacy_node_1",
+    JSON.stringify({
+      name: "旧版状态机",
+      version: "1.0.0",
+      entryNodeId: "legacy_node_1",
+      nodes: [{
+        id: "legacy_node_1",
+        name: "旧节点",
+        goal: "迁移测试",
+        completionCriteria: "已迁移",
+        collectFields: [],
+        conversationTips: [],
+        nextNodeId: ""
+      }]
+    }),
+    1,
+    timestamp,
+    timestamp
+  );
+  rawDb.close();
+
+  db.migrateLegacyFlowMachinesToAgents();
+
+  const machine = db.getFlowMachineForBot(botId);
+  assert.equal(machine.agentId, agentId);
+  assert.equal(machine.config.entryNodeId, "legacy_node_1");
 });
 
 test("deleteAgent removes only unbound agents", () => {

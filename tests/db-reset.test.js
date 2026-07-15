@@ -153,3 +153,35 @@ test("getConversationAssets only exposes configured collect fields", () => {
   assert.equal(assets.totalCount, 3);
   assert.equal(assets.collectedCount, 1);
 });
+
+test("clearConversationForReset clears a normal conversation without a flow machine", () => {
+  const botId = "bot_without_flow";
+  const conversationKey = `${botId}:private:王五`;
+
+  db.upsertConversation({
+    botId,
+    agentId: "agent_without_flow",
+    conversationKey,
+    message: {
+      roomType: 2,
+      receivedName: "王五",
+      groupName: "王五"
+    }
+  });
+  db.updateConversationSession(conversationKey, "dclaw-session-old");
+  db.insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: "王五",
+    content: "你好",
+    rawPayload: { spoken: "你好" }
+  });
+
+  const result = db.clearConversationForReset({ botId, conversationKey });
+
+  assert.equal(result.conversationKey, conversationKey);
+  assert.equal(db.listConversationMessages({ botId, conversationKey }).length, 0);
+  assert.equal(db.getConversation(conversationKey).dclawSessionId, null);
+  assert.equal(db.getConversationResetPending(conversationKey), true);
+});

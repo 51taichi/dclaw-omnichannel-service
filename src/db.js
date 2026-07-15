@@ -196,6 +196,18 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS agent_flow_machines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    version TEXT,
+    entry_node_id TEXT NOT NULL,
+    config_json TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS flow_sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bot_id TEXT NOT NULL,
@@ -479,6 +491,41 @@ function backfillAgentsFromLegacyBindings() {
 }
 
 backfillAgentsFromLegacyBindings();
+
+export function migrateLegacyFlowMachinesToAgents() {
+  const legacyRows = db.prepare(`
+    SELECT fm.*, bab.agent_id
+    FROM flow_machines fm
+    JOIN bot_agent_bindings bab ON bab.bot_id = fm.bot_id
+    WHERE bab.agent_id IS NOT NULL
+      AND bab.agent_id != ''
+    ORDER BY fm.id ASC
+  `).all();
+  const migratedAgentIds = new Set(
+    db.prepare("SELECT agent_id FROM agent_flow_machines").all().map((row) => row.agent_id)
+  );
+  for (const row of legacyRows) {
+    if (migratedAgentIds.has(row.agent_id)) continue;
+    db.prepare(`
+      INSERT INTO agent_flow_machines (
+        agent_id, name, version, entry_node_id, config_json, enabled, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      row.agent_id,
+      row.name,
+      row.version,
+      row.entry_node_id,
+      row.config_json,
+      row.enabled,
+      row.created_at,
+      row.updated_at
+    );
+    migratedAgentIds.add(row.agent_id);
+  }
+}
+
+migrateLegacyFlowMachinesToAgents();
 
 export function upsertBotBinding(binding) {
   const timestamp = now();
@@ -931,7 +978,8 @@ function rowToFlowMachine(row) {
   const config = parseJson(row.config_json) || {};
   return {
     id: row.id,
-    botId: row.bot_id,
+    agentId: row.agent_id || "",
+    botId: row.bot_id || "",
     name: row.name,
     version: row.version,
     entryNodeId: row.entry_node_id,
@@ -1033,7 +1081,7 @@ function getFlowCollectFields(machine) {
 }
 
 export function getConversationAssets({ botId, conversationKey }) {
-  const machine = getFlowMachine(botId);
+  const machine = getFlowMachineForBot(botId);
   const session = rowToFlowSession(
     db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ? AND bot_id = ?")
       .get(conversationKey, botId)
@@ -1056,15 +1104,24 @@ export function getConversationAssets({ botId, conversationKey }) {
   };
 }
 
-export function upsertFlowMachine({ botId, config, enabled = true }) {
+function resolveFlowMachineAgentId({ agentId = "", botId = "" } = {}) {
+  const explicitAgentId = String(agentId || "").trim();
+  if (explicitAgentId) return explicitAgentId;
+  const bindingAgentId = getBotBinding(botId)?.agentId || "";
+  return String(bindingAgentId || botId || "").trim();
+}
+
+export function upsertFlowMachine({ agentId = "", botId = "", config, enabled = true }) {
+  const resolvedAgentId = resolveFlowMachineAgentId({ agentId, botId });
+  if (!resolvedAgentId) throw new Error("agentId is required");
   const normalized = normalizeFlowConfig(config);
   const timestamp = now();
   db.prepare(`
-    INSERT INTO flow_machines (
-      bot_id, name, version, entry_node_id, config_json, enabled, created_at, updated_at
+    INSERT INTO agent_flow_machines (
+      agent_id, name, version, entry_node_id, config_json, enabled, created_at, updated_at
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(bot_id) DO UPDATE SET
+    ON CONFLICT(agent_id) DO UPDATE SET
       name = excluded.name,
       version = excluded.version,
       entry_node_id = excluded.entry_node_id,
@@ -1072,7 +1129,7 @@ export function upsertFlowMachine({ botId, config, enabled = true }) {
       enabled = excluded.enabled,
       updated_at = excluded.updated_at
   `).run(
-    botId,
+    resolvedAgentId,
     normalized.name,
     normalized.version,
     normalized.entryNodeId,
@@ -1081,19 +1138,25 @@ export function upsertFlowMachine({ botId, config, enabled = true }) {
     timestamp,
     timestamp
   );
-  return getFlowMachine(botId);
+  return getFlowMachine(resolvedAgentId);
 }
 
-export function getFlowMachine(botId) {
+export function getFlowMachine(agentId) {
   return rowToFlowMachine(
-    db.prepare("SELECT * FROM flow_machines WHERE bot_id = ?").get(botId)
+    db.prepare("SELECT * FROM agent_flow_machines WHERE agent_id = ?").get(agentId)
   );
 }
 
-export function listFlowMachines({ botId = "" } = {}) {
-  const rows = botId
-    ? db.prepare("SELECT * FROM flow_machines WHERE bot_id = ? ORDER BY updated_at DESC").all(botId)
-    : db.prepare("SELECT * FROM flow_machines ORDER BY updated_at DESC").all();
+export function getFlowMachineForBot(botId) {
+  const agentId = resolveFlowMachineAgentId({ botId });
+  return agentId ? getFlowMachine(agentId) : null;
+}
+
+export function listFlowMachines({ agentId = "", botId = "" } = {}) {
+  const resolvedAgentId = resolveFlowMachineAgentId({ agentId, botId });
+  const rows = resolvedAgentId
+    ? db.prepare("SELECT * FROM agent_flow_machines WHERE agent_id = ? ORDER BY updated_at DESC").all(resolvedAgentId)
+    : db.prepare("SELECT * FROM agent_flow_machines ORDER BY updated_at DESC").all();
   return rows.map(rowToFlowMachine);
 }
 
@@ -1179,7 +1242,8 @@ export function listFlowSessions({ botId, limit = 100 } = {}) {
       fm.name AS flow_name
     FROM flow_sessions fs
     LEFT JOIN conversations c ON c.conversation_key = fs.conversation_key
-    LEFT JOIN flow_machines fm ON fm.bot_id = fs.bot_id
+    LEFT JOIN bot_agent_bindings bab ON bab.bot_id = fs.bot_id
+    LEFT JOIN agent_flow_machines fm ON fm.agent_id = bab.agent_id
     ${where}
     ORDER BY fs.last_message_at DESC
     LIMIT ?
@@ -1534,26 +1598,39 @@ export function listFlowStateEvents({ botId = "", conversationKey, limit = 100 }
 }
 
 export function clearConversationForReset({ botId, conversationKey, reason = "控制台清空会话" }) {
-  const machine = getFlowMachine(botId);
-  if (!machine) throw new Error("flow machine not found");
+  const machine = getFlowMachineForBot(botId);
   const timestamp = now();
   const session = getFlowSessionForBot({ botId, conversationKey });
-  if (!session) throw new Error("flow session not found");
+  const conversation = getConversation(conversationKey);
+  if (!conversation || conversation.botId !== botId) throw new Error("flow session not found");
 
   db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ? AND bot_id = ?")
     .run(conversationKey, botId);
   db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
     .run(conversationKey, botId);
-  db.prepare(`
-    UPDATE flow_sessions
-    SET current_node_id = ?,
-        collected_data_json = ?,
-        status = 'active',
-        last_message_at = ?,
-        updated_at = ?
-    WHERE conversation_key = ?
-      AND bot_id = ?
-  `).run(machine.entryNodeId, json({}), timestamp, timestamp, conversationKey, botId);
+  const resetNodeId = machine?.entryNodeId || "__conversation__";
+  if (session) {
+    db.prepare(`
+      UPDATE flow_sessions
+      SET current_node_id = ?,
+          collected_data_json = ?,
+          status = 'active',
+          handoff_status = 'ai',
+          handoff_at = NULL,
+          handoff_by = '',
+          handoff_reason = '',
+          last_message_at = ?,
+          updated_at = ?
+      WHERE conversation_key = ?
+        AND bot_id = ?
+    `).run(resetNodeId, json({}), timestamp, timestamp, conversationKey, botId);
+  } else {
+    getOrCreateConversationSession({
+      botId,
+      conversationKey,
+      currentNodeId: resetNodeId
+    });
+  }
   db.prepare(`
     UPDATE conversations
     SET dclaw_session_id = NULL,

@@ -43,7 +43,7 @@ import {
   getConversationKey,
   getConversationResetPending,
   getConversationAssets,
-  getFlowMachine,
+  getFlowMachineForBot,
   getFlowSession,
   getFlowSessionForBot,
   getOrCreateConversationSession,
@@ -471,7 +471,7 @@ function getFlowNode(machine, nodeId) {
 
 function buildFlowContext({ botId, conversationKey, message }) {
   if (!isPrivateMessage(message)) return null;
-  const machine = getFlowMachine(botId);
+  const machine = getFlowMachineForBot(botId);
   if (!machine || !machine.enabled) return null;
   const session = getOrCreateFlowSession({ botId, conversationKey, machine });
   const currentNode = getFlowNode(machine, session.currentNodeId) ||
@@ -493,7 +493,7 @@ function buildFlowContext({ botId, conversationKey, message }) {
 function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flow, sentAt = new Date() }) {
   if (!flow || !isPrivateConversationKey(conversationKey)) return null;
   cancelFlowActivationTasks({ conversationKey, reason: "new_flow_reply" });
-  const machine = getFlowMachine(botId);
+  const machine = getFlowMachineForBot(botId);
   const currentSession = getFlowSession(conversationKey) || flow.session;
   const currentNode = getFlowNode(machine, currentSession?.currentNodeId) || flow.currentNode;
   const currentNodeActivation = normalizeActivationConfig(currentNode?.activation || {});
@@ -1230,7 +1230,7 @@ async function sendActivationRawMessages({ task, binding }) {
 async function sendActivationPolishedMessage({ task, binding }) {
   const target = privateTargetNameFromConversationKey(task.conversationKey);
   if (!target) throw new Error("missing activation target");
-  const machine = getFlowMachine(task.botId);
+  const machine = getFlowMachineForBot(task.botId);
   const session = getFlowSession(task.conversationKey);
   const flow = machine && session
     ? {
@@ -1476,7 +1476,7 @@ async function processNextProactiveTarget() {
       const conversationKey = getProactiveConversationKey(target);
       const binding = getBotBinding(target.botId);
       if (binding) {
-        const flowMachine = getFlowMachine(target.botId);
+        const flowMachine = getFlowMachineForBot(target.botId);
         upsertConversation({
           botId: target.botId,
           agentId: binding.agentId,
@@ -2489,7 +2489,7 @@ app.get(
   "/api/flow-machines/:botId",
   asyncHandler(async (req, res) => {
     assertBotAccess(req, req.params.botId);
-    let machine = getFlowMachine(req.params.botId);
+    let machine = getFlowMachineForBot(req.params.botId);
     if (!machine && req.query.default === "1") {
       const binding = getBotBinding(req.params.botId);
       machine = {
@@ -2508,8 +2508,10 @@ app.put(
     assertBotAccess(req, req.params.botId);
     const body = req.body || {};
     const config = typeof body.config === "string" ? JSON.parse(body.config) : body.config;
+    const binding = getBotBinding(req.params.botId);
+    if (!binding) throw new Error("bot binding not found");
     const machine = upsertFlowMachine({
-      botId: req.params.botId,
+      agentId: binding.agentId,
       config,
       enabled: body.enabled !== false
     });
@@ -2672,7 +2674,7 @@ app.put(
     assertBotAccess(req, botId);
     const nextNodeId = String(body.nextNodeId || "").trim();
     if (!botId || !nextNodeId) throw new Error("botId and nextNodeId are required");
-    const machine = getFlowMachine(botId);
+    const machine = getFlowMachineForBot(botId);
     if (!machine || !machine.config.nodes.some((node) => node.id === nextNodeId)) {
       throw new Error("nextNodeId is not valid for this bot");
     }
