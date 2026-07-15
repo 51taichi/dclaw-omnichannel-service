@@ -57,6 +57,7 @@ import {
   insertIncomingMessage,
   insertOutgoingMessage,
   insertMockProactiveTargets,
+  resetBotFlowStateForAgentRebind,
   listConversationMessages,
   listFlowMachines,
   listFlowSessions,
@@ -2307,6 +2308,7 @@ app.put(
   "/api/bots/:botId",
   asyncHandler(async (req, res) => {
     assertAdminForBot(req, req.params.botId);
+    const previousBinding = getBotBinding(req.params.botId);
     const body = req.body || {};
     const agentId = String(body.agentId || "").trim();
     if (!agentId) {
@@ -2334,6 +2336,20 @@ app.put(
       agentId,
       enabled: body.enabled !== false
     });
+    let rebindReset = null;
+    if (previousBinding && previousBinding.agentId !== binding.agentId) {
+      rebindReset = resetBotFlowStateForAgentRebind({
+        botId: binding.botId,
+        oldAgentId: previousBinding.agentId,
+        newAgentId: binding.agentId
+      });
+      logInfo("bot.agent_rebound", {
+        botId: binding.botId,
+        oldAgentId: previousBinding.agentId,
+        newAgentId: binding.agentId,
+        ...rebindReset
+      });
+    }
     let callbackBinding;
     try {
       callbackBinding = await bindBotCallbacks(req.params.botId, {
@@ -2349,7 +2365,7 @@ app.put(
         error: error.message
       });
     }
-    res.json({ ok: true, binding, callbackBinding });
+    res.json({ ok: true, binding, callbackBinding, rebindReset });
   })
 );
 

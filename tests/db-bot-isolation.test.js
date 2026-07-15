@@ -262,6 +262,84 @@ test("legacy Bot-owned flow machines migrate to the bound Agent", () => {
   assert.equal(machine.config.entryNodeId, "legacy_node_1");
 });
 
+test("rebinding one Bot resets only its derived flow state", () => {
+  const botA = "bot_rebind_a";
+  const botB = "bot_rebind_b";
+  const agentA = "agent_rebind_a";
+  const agentB = "agent_rebind_b";
+  const oldAgent = "agent_rebind_old";
+  const conversationA = `${botA}:private:客户甲`;
+  const conversationB = `${botB}:private:客户乙`;
+
+  for (const [agentId, agentName] of [[oldAgent, "旧 Agent"], [agentA, "新 Agent A"], [agentB, "保留 Agent B"]]) {
+    db.upsertAgent({
+      agentId,
+      agentName,
+      dclawBaseUrl: "https://dclaw.example.com",
+      dclawPublicId: agentId,
+      enabled: true
+    });
+  }
+  db.upsertBotBinding({ botId: botA, botName: "换绑 Bot A", agentId: oldAgent, enabled: true });
+  db.upsertBotBinding({ botId: botB, botName: "保留 Bot B", agentId: agentB, enabled: true });
+
+  const machineA = createMachine(botA, "node_a");
+  const machineB = createMachine(botB, "node_b");
+  for (const [botId, conversationKey, name, machine] of [
+    [botA, conversationA, "客户甲", machineA],
+    [botB, conversationB, "客户乙", machineB]
+  ]) {
+    db.upsertConversation({
+      botId,
+      agentId: botId === botA ? oldAgent : agentB,
+      conversationKey,
+      message: { roomType: 2, receivedName: name, groupName: name }
+    });
+    db.getOrCreateFlowSession({ botId, conversationKey, machine });
+    db.updateFlowSessionNode({
+      botId,
+      conversationKey,
+      nextNodeId: `${machine.entryNodeId}_next`,
+      reason: "测试进度"
+    });
+    db.insertConversationMessage({
+      botId,
+      conversationKey,
+      direction: "inbound",
+      senderName: name,
+      content: "保留的聊天记录",
+      rawPayload: {}
+    });
+    db.scheduleFlowActivationTask({
+      botId,
+      agentId: botId === botA ? oldAgent : agentB,
+      conversationKey,
+      nodeId: machine.entryNodeId,
+      activation: { enabled: true, messages: ["激活话术"] }
+    });
+  }
+
+  const result = db.resetBotFlowStateForAgentRebind({
+    botId: botA,
+    oldAgentId: oldAgent,
+    newAgentId: agentA
+  });
+
+  assert.deepEqual(result, {
+    canceledActivationTasks: 1,
+    deletedFlowSessions: 1,
+    deletedFlowStateEvents: 1
+  });
+  assert.equal(db.getFlowSessionForBot({ botId: botA, conversationKey: conversationA }), null);
+  assert.equal(db.listConversationMessages({ botId: botA, conversationKey: conversationA }).length, 1);
+  assert.equal(db.listFlowActivationTasks({ conversationKey: conversationA })[0].status, "canceled");
+  assert.equal(db.listFlowActivationTasks({ conversationKey: conversationA })[0].cancelReason, "agent_rebound");
+
+  assert.ok(db.getFlowSessionForBot({ botId: botB, conversationKey: conversationB }));
+  assert.equal(db.listConversationMessages({ botId: botB, conversationKey: conversationB }).length, 1);
+  assert.equal(db.listFlowActivationTasks({ conversationKey: conversationB })[0].status, "pending");
+});
+
 test("deleteAgent removes only unbound agents", () => {
   db.upsertAgent({
     agentId: "agent_unbound_delete",

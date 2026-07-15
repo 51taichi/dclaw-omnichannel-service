@@ -650,6 +650,44 @@ export function deleteBotData(botId) {
   }
 }
 
+export function resetBotFlowStateForAgentRebind({
+  botId,
+  oldAgentId = "",
+  newAgentId = ""
+}) {
+  const normalizedBotId = String(botId || "").trim();
+  if (!normalizedBotId) throw new Error("botId is required");
+  const timestamp = now();
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const canceledActivationTasks = db.prepare(`
+      UPDATE flow_activation_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = 'agent_rebound',
+          updated_at = ?
+      WHERE bot_id = ?
+        AND status IN ('pending', 'processing')
+    `).run(timestamp, timestamp, normalizedBotId).changes;
+    const deletedFlowStateEvents = db.prepare(
+      "DELETE FROM flow_state_events WHERE bot_id = ?"
+    ).run(normalizedBotId).changes;
+    const deletedFlowSessions = db.prepare(
+      "DELETE FROM flow_sessions WHERE bot_id = ?"
+    ).run(normalizedBotId).changes;
+    db.exec("COMMIT");
+    return {
+      canceledActivationTasks,
+      deletedFlowSessions,
+      deletedFlowStateEvents
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function getSetting(key, defaultValue = null) {
   const row = db.prepare("SELECT value_json FROM app_settings WHERE key = ?").get(key);
   return row ? parseJson(row.value_json) : defaultValue;
