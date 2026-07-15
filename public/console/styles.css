@@ -142,9 +142,9 @@ h2 {
 
 .workspace-tabs {
   display: inline-grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
-  width: min(520px, 100%);
+  width: min(640px, 100%);
   padding: 5px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -189,6 +189,7 @@ h2 {
 }
 
 .workspace-tabs.is-config-hidden [data-workspace-tab="config"],
+.workspace-tabs.is-config-hidden [data-workspace-tab="agents"],
 .workspace-tabs button[hidden] {
   display: none !important;
 }
@@ -484,6 +485,74 @@ h2 {
 
 .bot-card.is-locked .bot-lock-mask {
   display: inline-flex;
+}
+
+.agent-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+  min-width: 0;
+}
+
+.agent-card {
+  display: grid;
+  gap: 12px;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--cyan);
+  border-radius: 8px;
+  background: #fbfcff;
+}
+
+.agent-card.is-disabled {
+  border-left-color: var(--orange);
+  background: #f8f9fc;
+}
+
+.agent-card-head {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.agent-avatar {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.agent-summary {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.agent-summary strong,
+.agent-summary small,
+.agent-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-summary small,
+.agent-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.agent-meta {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
 }
 
 .bot-avatar {

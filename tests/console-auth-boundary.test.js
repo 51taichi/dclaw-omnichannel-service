@@ -25,17 +25,38 @@ test("console stores bot scoped tokens and sends x-bot-session-token", () => {
 
 test("console hides config tab for bot role and exposes access-key reset for admin", () => {
   assert.equal(html.includes("accessKeyForm"), true);
+  assert.equal(html.includes('data-workspace-tab="agents"'), true);
+  assert.equal(html.includes("agentForm"), true);
+  assert.equal(html.includes("agentsList"), true);
   assert.equal(app.includes("syncRoleVisibility"), true);
   assert.equal(app.includes("shouldHideConfigTab"), true);
+  assert.equal(app.includes("isAdminWorkspaceTab"), true);
   assert.equal(app.includes('els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig)'), true);
   assert.equal(app.includes('document.querySelector(\'[data-workspace-tab="config"]\')?.toggleAttribute("hidden", hideConfig)'), true);
+  assert.equal(app.includes('document.querySelector(\'[data-workspace-tab="agents"]\')?.toggleAttribute("hidden", hideConfig)'), true);
   assert.equal(app.includes('document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig)'), true);
+  assert.equal(app.includes('document.querySelector("#agentsTab")?.toggleAttribute("hidden", hideConfig)'), true);
   assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), true);
   assert.equal(app.includes("state.currentRole === \"admin\""), true);
   assert.equal(app.includes("/access-key"), true);
   assert.equal(css.includes(".bot-card.is-locked"), true);
   assert.equal(css.includes('.workspace-tabs.is-config-hidden [data-workspace-tab="config"]'), true);
+  assert.equal(css.includes('.workspace-tabs.is-config-hidden [data-workspace-tab="agents"]'), true);
   assert.equal(css.includes("display: none !important"), true);
+});
+
+test("bot binding form selects a saved agent instead of storing agent credentials", () => {
+  const botFormStart = html.indexOf('<form id="botForm"');
+  const botFormEnd = html.indexOf("</form>", botFormStart);
+  const botForm = html.slice(botFormStart, botFormEnd);
+
+  assert.match(botForm, /<select name="agentId" required>/);
+  assert.equal(botForm.includes('name="dclawBaseUrl"'), false);
+  assert.equal(botForm.includes('name="dclawPublicId"'), false);
+  assert.equal(botForm.includes('name="agentApiKey"'), false);
+  assert.equal(app.includes("/api/agents"), true);
+  assert.equal(app.includes("renderAgents"), true);
+  assert.equal(app.includes("renderAgentOptions"), true);
 });
 
 test("config saves can request admin password on demand", () => {

@@ -6,6 +6,7 @@ const serverSource = fs.readFileSync(new URL("../src/server.js", import.meta.url
 
 test("server exposes public bot list and unified unlock routes", () => {
   assert.equal(serverSource.includes('"/api/public/bots"'), true);
+  assert.equal(serverSource.includes('"/api/agents"'), true);
   assert.equal(serverSource.includes('"/api/bots/:botId/unlock"'), true);
   assert.equal(serverSource.includes('"/api/bots/:botId/access-key"'), true);
   assert.equal(serverSource.includes('"/api/bots/:botId"'), true);
@@ -19,6 +20,13 @@ test("server supports bot scoped session authorization", () => {
   assert.equal(serverSource.includes("x-bot-session-token"), true);
   assert.equal(serverSource.includes("assertBotAccess"), true);
   assert.equal(serverSource.includes("assertAdminForBot"), true);
+});
+
+test("bot save validates a reusable agent binding", () => {
+  assert.equal(serverSource.includes("getAgent(agentId)"), true);
+  assert.equal(serverSource.includes("agent not found"), true);
+  assert.equal(serverSource.includes("upsertAgent({"), true);
+  assert.equal(serverSource.includes("agentId is required"), true);
 });
 
 test("business routes are not protected only by global admin key", () => {

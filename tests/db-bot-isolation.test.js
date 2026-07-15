@@ -127,6 +127,50 @@ test("command callbacks only update delivery rows owned by the callback Bot", ()
   assert.equal(botBRow.callback_error_code, null);
 });
 
+test("multiple bots can reuse an independently saved agent config", () => {
+  db.upsertAgent({
+    agentId: "agent_shared",
+    agentName: "共享 Agent",
+    dclawBaseUrl: "https://dclaw.example.com",
+    dclawPublicId: "shared_public",
+    agentApiKey: "secret-v1",
+    enabled: true
+  });
+  db.upsertBotBinding({
+    botId: "bot_shared_a",
+    botName: "测试 Bot A",
+    agentId: "agent_shared",
+    enabled: true
+  });
+  db.upsertBotBinding({
+    botId: "bot_shared_b",
+    botName: "测试 Bot B",
+    agentId: "agent_shared",
+    enabled: true
+  });
+
+  db.upsertAgent({
+    agentId: "agent_shared",
+    agentName: "共享 Agent 更新",
+    dclawBaseUrl: "https://dclaw-new.example.com/",
+    dclawPublicId: "shared_public_v2",
+    agentApiKey: "secret-v2",
+    enabled: true
+  });
+
+  const agent = db.getAgent("agent_shared");
+  const botA = db.getBotBinding("bot_shared_a");
+  const botB = db.getBotBinding("bot_shared_b");
+
+  assert.equal(db.listAgents().some((item) => item.agentId === "agent_shared"), true);
+  assert.equal(agent.agentName, "共享 Agent 更新");
+  assert.equal(botA.agentName, "共享 Agent 更新");
+  assert.equal(botB.agentName, "共享 Agent 更新");
+  assert.equal(botA.dclawBaseUrl, "https://dclaw-new.example.com");
+  assert.equal(botB.dclawPublicId, "shared_public_v2");
+  assert.equal(botA.agentApiKey, "secret-v2");
+});
+
 test("deleteBotData removes the bot binding and bot scoped records", () => {
   const botId = "bot_delete_me";
   const otherBotId = "bot_keep_me";

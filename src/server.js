@@ -37,6 +37,7 @@ import {
   deleteBotData,
   finishAgentInvocation,
   finishMessageProcessing,
+  getAgent,
   getBotBinding,
   getConversationKey,
   getConversationResetPending,
@@ -62,6 +63,7 @@ import {
   listProactiveAddressBookTargets,
   listProactiveTasks,
   listProactiveTaskTargets,
+  listAgents,
   listBotBindings,
   listRecords,
   markFlowActivationTaskFailed,
@@ -81,6 +83,7 @@ import {
   updateFlowSessionNode,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
+  upsertAgent,
   upsertFlowMachine,
   upsertProactiveAddressBookTarget,
   upsertBotBinding,
@@ -2252,19 +2255,60 @@ app.get(
   })
 );
 
+app.get(
+  "/api/agents",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    res.json({ ok: true, agents: listAgents() });
+  })
+);
+
+app.put(
+  "/api/agents/:agentId",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const body = req.body || {};
+    const agent = upsertAgent({
+      agentId: req.params.agentId,
+      agentName: body.agentName || body.name || "",
+      dclawBaseUrl: body.dclawBaseUrl || "",
+      dclawPublicId: body.dclawPublicId || body.agentId || req.params.agentId,
+      agentApiKey: body.agentApiKey || "",
+      enabled: body.enabled !== false
+    });
+    res.json({ ok: true, agent });
+  })
+);
+
 app.put(
   "/api/bots/:botId",
   asyncHandler(async (req, res) => {
     assertAdminForBot(req, req.params.botId);
     const body = req.body || {};
+    const agentId = String(body.agentId || "").trim();
+    if (!agentId) {
+      res.status(400).json({ ok: false, message: "agentId is required" });
+      return;
+    }
+    if (!getAgent(agentId)) {
+      if (body.dclawBaseUrl || body.dclawPublicId || body.agentApiKey || body.agentName) {
+        upsertAgent({
+          agentId,
+          agentName: body.agentName || "",
+          dclawBaseUrl: body.dclawBaseUrl || "",
+          dclawPublicId: body.dclawPublicId || agentId,
+          agentApiKey: body.agentApiKey || "",
+          enabled: true
+        });
+      } else {
+        res.status(400).json({ ok: false, message: "agent not found" });
+        return;
+      }
+    }
     const binding = upsertBotBinding({
       botId: req.params.botId,
       botName: body.botName || body.name || "",
-      agentId: body.agentId,
-      agentName: body.agentName || "",
-      dclawBaseUrl: body.dclawBaseUrl || "",
-      dclawPublicId: body.dclawPublicId || body.agentId,
-      agentApiKey: body.agentApiKey || "",
+      agentId,
       enabled: body.enabled !== false
     });
     let callbackBinding;

@@ -37,6 +37,10 @@ const els = {
   workspaceLockPanel: document.querySelector("#workspaceLockPanel"),
   bindingState: document.querySelector("#bindingState"),
   botForm: document.querySelector("#botForm"),
+  agentForm: document.querySelector("#agentForm"),
+  resetAgentFormButton: document.querySelector("#resetAgentFormButton"),
+  agentCount: document.querySelector("#agentCount"),
+  agentsList: document.querySelector("#agentsList"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
   flowMachineForm: document.querySelector("#flowMachineForm"),
   addFlowNodeButton: document.querySelector("#addFlowNodeButton"),
@@ -215,17 +219,24 @@ function shouldHideConfigTab() {
   return Boolean(state.selectedBotId && state.currentRole !== "admin");
 }
 
+function isAdminWorkspaceTab(tabName) {
+  return tabName === "config" || tabName === "agents";
+}
+
 function syncRoleVisibility() {
   const isAdmin = state.currentRole === "admin";
   const hasBot = Boolean(state.selectedBotId);
   const workspaceLocked = isWorkspaceLocked();
   const hideConfig = shouldHideConfigTab();
+  const activeWorkspaceTab = document.querySelector(".workspace-tabs button.active")?.dataset.workspaceTab || "";
   document.body.classList.toggle("is-admin-role", isAdmin);
   document.body.classList.toggle("is-bot-role", state.currentRole === "bot");
   document.body.classList.toggle("is-workspace-locked", workspaceLocked);
   els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig);
   document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", hideConfig);
+  document.querySelector('[data-workspace-tab="agents"]')?.toggleAttribute("hidden", hideConfig);
   document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig);
+  document.querySelector("#agentsTab")?.toggleAttribute("hidden", hideConfig);
   els.resetFormButton.hidden = !hasBot;
   if (els.accessKeyPanel) els.accessKeyPanel.hidden = !isAdmin;
   if (els.lockBotButton) els.lockBotButton.hidden = !hasBot || workspaceLocked;
@@ -235,7 +246,7 @@ function syncRoleVisibility() {
       panel.hidden = true;
       panel.classList.remove("active");
     });
-  } else if (hideConfig && document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")) {
+  } else if (hideConfig && isAdminWorkspaceTab(activeWorkspaceTab)) {
     switchWorkspaceTab("sessions", { force: true });
   }
 }
@@ -334,6 +345,14 @@ function formData() {
     botId: String(data.get("botId") || "").trim(),
     botName: String(data.get("botName") || "").trim(),
     agentId: String(data.get("agentId") || "").trim(),
+    enabled: data.get("enabled") === "on"
+  };
+}
+
+function agentFormData() {
+  const data = new FormData(els.agentForm);
+  return {
+    agentId: String(data.get("agentId") || "").trim(),
     agentName: String(data.get("agentName") || "").trim(),
     dclawBaseUrl: String(data.get("dclawBaseUrl") || "").trim(),
     dclawPublicId: String(data.get("dclawPublicId") || "").trim(),
@@ -371,11 +390,11 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
     toast("内容区域已上锁，请先解锁当前 Bot");
     return;
   }
-  if (!force && tabName !== "config" && !state.selectedBotId) {
+  if (!force && !isAdminWorkspaceTab(tabName) && !state.selectedBotId) {
     toast("请先选择或保存一个 Bot");
     return;
   }
-  if (!force && tabName === "config" && state.selectedBotId && state.currentRole !== "admin") {
+  if (!force && isAdminWorkspaceTab(tabName) && state.selectedBotId && state.currentRole !== "admin") {
     toast("当前 Bot 未以管理员身份解锁");
     return;
   }
@@ -399,8 +418,8 @@ function updateWorkspaceTabAccess(hasBotContext) {
   els.workspaceTabs.forEach((button) => {
     const locked =
       workspaceLocked ||
-      (button.dataset.workspaceTab !== "config" && !hasBotContext) ||
-      (button.dataset.workspaceTab === "config" && hasBotContext && state.currentRole !== "admin");
+      (!isAdminWorkspaceTab(button.dataset.workspaceTab) && !hasBotContext) ||
+      (isAdminWorkspaceTab(button.dataset.workspaceTab) && hasBotContext && state.currentRole !== "admin");
     button.disabled = locked;
     button.setAttribute("aria-disabled", String(locked));
   });
@@ -479,6 +498,7 @@ function clearBotScopedContent() {
   renderTargetList();
   renderProactiveTasks([]);
   els.logsOutput.textContent = "";
+  renderAgentOptions();
   syncFlowJsonTextarea();
 }
 
@@ -686,16 +706,92 @@ function resetBotContext() {
   switchWorkspaceTab("config", { force: true });
 }
 
+function renderAgentOptions(selectedAgentId = els.botForm.agentId?.value || "") {
+  const select = els.botForm.agentId;
+  if (!select) return;
+  if (!currentAgents.length) {
+    select.innerHTML = `<option value="">请先在 Agents 中创建 Agent</option>`;
+    return;
+  }
+  select.innerHTML = [
+    `<option value="">选择 Agent</option>`,
+    ...currentAgents.map((agent) => {
+      const label = agent.agentName ? `${agent.agentName} (${agent.agentId})` : agent.agentId;
+      return `<option value="${escapeHtml(agent.agentId)}">${escapeHtml(label)}</option>`;
+    })
+  ].join("");
+  if (selectedAgentId && currentAgents.some((agent) => agent.agentId === selectedAgentId)) {
+    select.value = selectedAgentId;
+  } else if (!selectedAgentId && currentAgents.length === 1) {
+    select.value = currentAgents[0].agentId;
+  }
+}
+
 function fillForm(bot) {
   els.botForm.botId.value = bot.botId || "";
   els.botForm.botName.value = bot.botName || "";
-  els.botForm.agentId.value = bot.agentId || "";
-  els.botForm.agentName.value = bot.agentName || "";
-  els.botForm.dclawBaseUrl.value = bot.dclawBaseUrl || "";
-  els.botForm.dclawPublicId.value = bot.dclawPublicId || bot.agentId || "";
-  els.botForm.agentApiKey.value = bot.agentApiKey || "";
+  renderAgentOptions(bot.agentId || "");
   els.botForm.enabled.checked = Boolean(bot.enabled);
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function fillAgentForm(agent) {
+  els.agentForm.agentId.value = agent?.agentId || "";
+  els.agentForm.agentName.value = agent?.agentName || "";
+  els.agentForm.dclawBaseUrl.value = agent?.dclawBaseUrl || "";
+  els.agentForm.dclawPublicId.value = agent?.dclawPublicId || agent?.agentId || "";
+  els.agentForm.agentApiKey.value = agent?.agentApiKey || "";
+  els.agentForm.enabled.checked = agent?.enabled !== false;
+}
+
+function resetAgentForm() {
+  els.agentForm.reset();
+  els.agentForm.enabled.checked = true;
+}
+
+function renderAgents(agents) {
+  if (els.agentCount) els.agentCount.textContent = `${agents.length} 个`;
+  renderAgentOptions();
+  if (!els.agentsList) return;
+  if (!agents.length) {
+    els.agentsList.innerHTML = `<div class="empty-state">暂无 Agent，请先创建一个 Agent</div>`;
+    return;
+  }
+  els.agentsList.innerHTML = agents
+    .map((agent) => {
+      const boundCount = currentBots.filter((bot) => bot.agentId === agent.agentId).length;
+      const safeAgent = encodeURIComponent(agent.agentId);
+      return `
+        <article class="agent-card ${agent.enabled ? "is-enabled" : "is-disabled"}" data-agent="${safeAgent}">
+          <div class="agent-card-head">
+            <span class="agent-avatar">${icon("user")}</span>
+            <span class="agent-summary">
+              <strong>${escapeHtml(agent.agentName || agent.agentId)}</strong>
+              <small>${escapeHtml(agent.agentId)}</small>
+            </span>
+            <span class="pill ${agent.enabled ? "ok" : "off"}">${agent.enabled ? "启用" : "停用"}</span>
+          </div>
+          <div class="agent-meta">
+            <span>${escapeHtml(agent.dclawBaseUrl || "-")}</span>
+            <span>Public ID：${escapeHtml(agent.dclawPublicId || "-")}</span>
+            <span>已绑定 Bot：${boundCount}</span>
+          </div>
+          <div class="row-actions">
+            <button class="secondary" data-agent-edit="${safeAgent}" type="button">${icon("edit")}编辑</button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+  els.agentsList.querySelectorAll("[data-agent-edit]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const agentId = decodeURIComponent(button.dataset.agentEdit || "");
+      const agent = currentAgents.find((item) => item.agentId === agentId);
+      if (!agent) return;
+      fillAgentForm(agent);
+      els.agentForm.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  });
 }
 
 function renderBots(bots) {
@@ -792,6 +888,7 @@ function renderBots(bots) {
 }
 
 let currentBots = [];
+let currentAgents = [];
 let targetFilter = "all";
 let addressBookTargets = [];
 let currentFlowMachine = null;
@@ -940,6 +1037,7 @@ async function loadAddressBookTargets({ contextVersion = state.botContextVersion
 async function loadBots() {
   const data = await request("/api/public/bots");
   currentBots = data.bots || [];
+  await loadAgents({ silent: true });
   if (state.selectedBotId && !currentBots.some((bot) => bot.botId === state.selectedBotId)) {
     setBindingState(null);
     return;
@@ -948,6 +1046,20 @@ async function loadBots() {
     updateWorkspaceTabAccess(false);
   }
   renderBots(currentBots);
+}
+
+async function loadAgents({ silent = false, headers: requestHeaders = {} } = {}) {
+  try {
+    const data = await request("/api/agents", {
+      botId: "",
+      headers: requestHeaders
+    });
+    currentAgents = data.agents || [];
+    renderAgents(currentAgents);
+  } catch (error) {
+    if (!silent) throw error;
+    renderAgentOptions();
+  }
 }
 
 async function loadDebugReply({ contextVersion = state.botContextVersion } = {}) {
@@ -973,8 +1085,8 @@ async function saveBot(event) {
   const adminHeaders = await promptAdminHeaders("保存 Bot 配置需要管理员密码。");
   if (!adminHeaders) return;
   const bot = formData();
-  if (!bot.botId || !bot.agentId || !bot.dclawBaseUrl || !bot.dclawPublicId) {
-    toast("请填写 Bot ID、Agent ID、DClaw Base URL 和 Public ID");
+  if (!bot.botId || !bot.agentId) {
+    toast("请填写 Bot ID，并选择 Agent");
     return;
   }
   const result = await request(`/api/bots/${encodeURIComponent(bot.botId)}`, {
@@ -990,6 +1102,26 @@ async function saveBot(event) {
   const savedBot = currentBots.find((item) => item.botId === bot.botId) || unlockedBot || result.binding;
   if (savedBot && unlockedBot) Object.assign(savedBot, unlockedBot);
   if (savedBot) await applyBotContext(savedBot);
+}
+
+async function saveAgent(event) {
+  event.preventDefault();
+  const adminHeaders = await promptAdminHeaders("保存 Agent 配置需要管理员密码。");
+  if (!adminHeaders) return;
+  const agent = agentFormData();
+  if (!agent.agentId || !agent.dclawBaseUrl || !agent.dclawPublicId) {
+    toast("请填写 Agent ID、DClaw Base URL 和 Public ID");
+    return;
+  }
+  const result = await request(`/api/agents/${encodeURIComponent(agent.agentId)}`, {
+    method: "PUT",
+    botId: "",
+    headers: adminHeaders,
+    body: JSON.stringify(agent)
+  });
+  await loadAgents({ headers: adminHeaders });
+  renderAgentOptions(result.agent?.agentId || agent.agentId);
+  toast("Agent 已保存");
 }
 
 async function saveAccessKey(event) {
@@ -2564,6 +2696,8 @@ els.unlockAcceptButton.addEventListener("click", () =>
   acceptUnlockDialog().catch(toastError)
 );
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch(toastError));
+els.agentForm?.addEventListener("submit", (event) => saveAgent(event).catch(toastError));
+els.resetAgentFormButton?.addEventListener("click", resetAgentForm);
 els.accessKeyForm.addEventListener("submit", (event) =>
   saveAccessKey(event).catch(toastError)
 );

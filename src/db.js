@@ -25,6 +25,18 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS agents (
+    agent_id TEXT PRIMARY KEY,
+    agent_name TEXT,
+    dclaw_base_url TEXT NOT NULL,
+    dclaw_public_id TEXT NOT NULL,
+    agent_api_url TEXT NOT NULL,
+    agent_api_key TEXT,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS conversations (
     conversation_key TEXT PRIMARY KEY,
     bot_id TEXT NOT NULL,
@@ -334,40 +346,143 @@ export function finishMessageProcessing({ messageKey, status, error }) {
   `).run(status, error || "", now(), now(), messageKey);
 }
 
-function rowToBinding(row) {
+function buildAgentApiUrl(dclawBaseUrl, dclawPublicId, fallback = "") {
+  const baseUrl = String(dclawBaseUrl || "").replace(/\/$/, "");
+  const publicId = String(dclawPublicId || "").trim();
+  if (baseUrl && publicId) {
+    return `${baseUrl}/api/open/v1/targets/${encodeURIComponent(publicId)}/messages`;
+  }
+  return fallback || "";
+}
+
+function rowToAgent(row) {
   if (!row) return null;
   const dclawBaseUrl = (row.dclaw_base_url || "").replace(/\/$/, "");
   const dclawPublicId = row.dclaw_public_id || row.agent_id;
-  const agentApiUrl =
-    dclawBaseUrl && dclawPublicId
-      ? `${dclawBaseUrl}/api/open/v1/targets/${encodeURIComponent(dclawPublicId)}/messages`
-      : row.agent_api_url;
 
   return {
-    botId: row.bot_id,
-    botName: row.bot_name,
     agentId: row.agent_id,
-    agentName: row.agent_name,
+    agentName: row.agent_name || "",
     dclawBaseUrl,
     dclawPublicId,
-    agentApiUrl,
-    agentApiKey: row.agent_api_key,
-    accessKeyHash: row.access_key_hash || "",
-    accessKeyUpdatedAt: row.access_key_updated_at || "",
+    agentApiUrl: buildAgentApiUrl(dclawBaseUrl, dclawPublicId, row.agent_api_url),
+    agentApiKey: row.agent_api_key || "",
     enabled: Boolean(row.enabled),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
 }
 
+function rowToBinding(row) {
+  if (!row) return null;
+  const agent = getAgent(row.agent_id);
+  const legacyAgent = rowToAgent(row);
+  const agentConfig = agent || legacyAgent;
+
+  return {
+    botId: row.bot_id,
+    botName: row.bot_name,
+    agentId: row.agent_id,
+    agentName: agentConfig?.agentName || "",
+    dclawBaseUrl: agentConfig?.dclawBaseUrl || "",
+    dclawPublicId: agentConfig?.dclawPublicId || "",
+    agentApiUrl: agentConfig?.agentApiUrl || "",
+    agentApiKey: agentConfig?.agentApiKey || "",
+    accessKeyHash: row.access_key_hash || "",
+    accessKeyUpdatedAt: row.access_key_updated_at || "",
+    enabled: Boolean(row.enabled) && agentConfig?.enabled !== false,
+    botEnabled: Boolean(row.enabled),
+    agentEnabled: agentConfig?.enabled !== false,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function upsertAgent(agent) {
+  const timestamp = now();
+  const agentId = String(agent.agentId || "").trim();
+  if (!agentId) throw new Error("agentId is required");
+  const dclawBaseUrl = (agent.dclawBaseUrl || "").replace(/\/$/, "");
+  const dclawPublicId = agent.dclawPublicId || agentId;
+  const agentApiUrl = buildAgentApiUrl(dclawBaseUrl, dclawPublicId, agent.agentApiUrl);
+  if (!dclawBaseUrl) throw new Error("dclawBaseUrl is required");
+  if (!dclawPublicId) throw new Error("dclawPublicId is required");
+
+  db.prepare(`
+    INSERT INTO agents (
+      agent_id, agent_name, dclaw_base_url, dclaw_public_id, agent_api_url, agent_api_key,
+      enabled, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(agent_id) DO UPDATE SET
+      agent_name = excluded.agent_name,
+      dclaw_base_url = excluded.dclaw_base_url,
+      dclaw_public_id = excluded.dclaw_public_id,
+      agent_api_url = excluded.agent_api_url,
+      agent_api_key = excluded.agent_api_key,
+      enabled = excluded.enabled,
+      updated_at = excluded.updated_at
+  `).run(
+    agentId,
+    agent.agentName || "",
+    dclawBaseUrl,
+    dclawPublicId,
+    agentApiUrl,
+    agent.agentApiKey || "",
+    agent.enabled === false ? 0 : 1,
+    timestamp,
+    timestamp
+  );
+  return getAgent(agentId);
+}
+
+export function getAgent(agentId) {
+  const normalizedAgentId = String(agentId || "").trim();
+  if (!normalizedAgentId) return null;
+  return rowToAgent(
+    db.prepare("SELECT * FROM agents WHERE agent_id = ?").get(normalizedAgentId)
+  );
+}
+
+export function listAgents() {
+  return db
+    .prepare("SELECT * FROM agents ORDER BY updated_at DESC")
+    .all()
+    .map(rowToAgent);
+}
+
+function backfillAgentsFromLegacyBindings() {
+  const rows = db
+    .prepare("SELECT * FROM bot_agent_bindings WHERE agent_id IS NOT NULL AND agent_id != ''")
+    .all();
+  for (const row of rows) {
+    if (getAgent(row.agent_id)) continue;
+    const legacyAgent = rowToAgent(row);
+    if (!legacyAgent?.dclawBaseUrl || !legacyAgent?.dclawPublicId) continue;
+    upsertAgent(legacyAgent);
+  }
+}
+
+backfillAgentsFromLegacyBindings();
+
 export function upsertBotBinding(binding) {
   const timestamp = now();
-  const dclawBaseUrl = (binding.dclawBaseUrl || "").replace(/\/$/, "");
-  const dclawPublicId = binding.dclawPublicId || binding.agentId;
-  const agentApiUrl =
-    dclawBaseUrl && dclawPublicId
-      ? `${dclawBaseUrl}/api/open/v1/targets/${encodeURIComponent(dclawPublicId)}/messages`
-      : "";
+  const agentId = String(binding.agentId || "").trim();
+  if (!agentId) throw new Error("agentId is required");
+  if ((binding.dclawBaseUrl || binding.dclawPublicId || binding.agentApiKey || binding.agentName) && !getAgent(agentId)) {
+    upsertAgent({
+      agentId,
+      agentName: binding.agentName || "",
+      dclawBaseUrl: binding.dclawBaseUrl || "",
+      dclawPublicId: binding.dclawPublicId || agentId,
+      agentApiKey: binding.agentApiKey || "",
+      enabled: true
+    });
+  }
+  const agent = getAgent(agentId);
+  const dclawBaseUrl = agent?.dclawBaseUrl || "";
+  const dclawPublicId = agent?.dclawPublicId || agentId;
+  const agentApiUrl = buildAgentApiUrl(dclawBaseUrl, dclawPublicId, agent?.agentApiUrl || "");
 
   db.prepare(`
     INSERT INTO bot_agent_bindings (
@@ -388,12 +503,12 @@ export function upsertBotBinding(binding) {
   `).run(
     binding.botId,
     binding.botName || "",
-    binding.agentId,
-    binding.agentName || "",
+    agentId,
+    agent?.agentName || binding.agentName || "",
     dclawBaseUrl,
     dclawPublicId,
     agentApiUrl,
-    binding.agentApiKey || "",
+    agent?.agentApiKey || binding.agentApiKey || "",
     binding.enabled === false ? 0 : 1,
     timestamp,
     timestamp

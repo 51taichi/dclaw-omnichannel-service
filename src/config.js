@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { getBotBinding, upsertBotBinding } from "./db.js";
+import { getBotBinding, upsertAgent, upsertBotBinding } from "./db.js";
 
 function normalizeBinding(binding) {
   return {
@@ -60,6 +60,14 @@ export async function loadBotBindingsFromConfig() {
     if (existing && !forceSync) {
       return existing;
     }
+    upsertAgent({
+      agentId: binding.agentId,
+      agentName: binding.agentName,
+      dclawBaseUrl: binding.dclawBaseUrl,
+      dclawPublicId: binding.dclawPublicId,
+      agentApiKey: binding.agentApiKey,
+      enabled: binding.enabled
+    });
     return upsertBotBinding(binding);
   });
 }

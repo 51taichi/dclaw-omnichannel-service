@@ -160,6 +160,10 @@
               <svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>
               配置
             </button>
+            <button data-workspace-tab="agents" type="button" role="tab" aria-selected="false">
+              <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
+              Agents
+            </button>
             <button data-workspace-tab="sessions" type="button" role="tab" aria-selected="false">
               <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
               会话
@@ -218,25 +222,11 @@
             <span class="field-label">Bot 名称</span>
             <input name="botName" placeholder="A部门机器人" />
           </label>
-          <label>
-            <span class="field-label">Agent ID</span>
-            <input name="agentId" required placeholder="例如 xzj_business_manager" />
-          </label>
-          <label>
-            <span class="field-label">Agent 名称</span>
-            <input name="agentName" placeholder="A部门客服" />
-          </label>
-          <label>
-            <span class="field-label">DClaw Base URL</span>
-            <input name="dclawBaseUrl" required placeholder="https://dclaw.deepmega.cn" />
-          </label>
-          <label>
-            <span class="field-label">OpenAPI Public ID</span>
-            <input name="dclawPublicId" required placeholder="例如 xzj_zsjl" />
-          </label>
           <label class="wide">
-            <span class="field-label">OpenAPI API Key</span>
-            <input name="agentApiKey" type="password" placeholder="可选" autocomplete="off" />
+            <span class="field-label">绑定 Agent</span>
+            <select name="agentId" required>
+              <option value="">请先在 Agents 中创建 Agent</option>
+            </select>
           </label>
           <div class="actions">
             <label class="toggle action-toggle">
@@ -303,6 +293,59 @@
               </button>
             </div>
           </form>
+        </div>
+      </section>
+      </div>
+
+      <div id="agentsTab" class="tab-panel" data-tab-panel="agents" hidden>
+      <section id="agentManagementPanel" class="panel collapsible-panel">
+        <div class="section-head binding-head">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>Agent 管理</h2>
+          <div class="section-actions">
+            <span id="agentCount" class="muted"></span>
+            <button class="collapse-button" data-collapse-target="agentManagementPanel" type="button" aria-label="收起 Agent 管理">
+              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+            </button>
+          </div>
+        </div>
+        <div class="collapsible-content">
+          <form id="agentForm" class="form-grid">
+            <label>
+              <span class="field-label">Agent ID</span>
+              <input name="agentId" required placeholder="例如 xzj_business_manager" />
+            </label>
+            <label>
+              <span class="field-label">Agent 名称</span>
+              <input name="agentName" placeholder="业务经理 Agent" />
+            </label>
+            <label>
+              <span class="field-label">DClaw Base URL</span>
+              <input name="dclawBaseUrl" required placeholder="https://dclaw.deepmega.cn" />
+            </label>
+            <label>
+              <span class="field-label">OpenAPI Public ID</span>
+              <input name="dclawPublicId" required placeholder="例如 xzj_zsjl" />
+            </label>
+            <label class="wide">
+              <span class="field-label">OpenAPI API Key</span>
+              <input name="agentApiKey" type="password" placeholder="可选" autocomplete="off" />
+            </label>
+            <div class="actions">
+              <label class="toggle action-toggle">
+                <input name="enabled" type="checkbox" checked />
+                启用
+              </label>
+              <button class="secondary" id="resetAgentFormButton" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                新增 Agent
+              </button>
+              <button class="primary" type="submit">
+                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+                保存 Agent
+              </button>
+            </div>
+          </form>
+          <div id="agentsList" class="agent-card-grid"></div>
         </div>
       </section>
       </div>
