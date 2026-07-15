@@ -227,6 +227,16 @@ test("proactive submit locks message fields while uploading attachments", () => 
   assert.match(css, /\.upload-overlay-image\s*\{[\s\S]*object-fit:\s*contain/);
 });
 
+test("conversation reset shows a non-dismissible loading dialog while Agent memory sync runs", () => {
+  assert.match(html, /id="conversationResetLoadingDialog"[\s\S]*src="assets\/sorry\.png"[\s\S]*正在清空会话并同步 Agent 记录/);
+  assert.match(app, /function setConversationResetSubmitting\(submitting\)/);
+  assert.match(app, /els\.conversationResetLoadingDialog\.hidden = !submitting/);
+  assert.match(app, /setConversationResetSubmitting\(true\)[\s\S]*finally[\s\S]*setConversationResetSubmitting\(false\)/);
+  assert.doesNotMatch(app, /conversationResetLoadingDialog[\s\S]*event\.target === els\.conversationResetLoadingDialog/);
+  assert.match(css, /\.conversation-reset-loading-dialog\s*\{[\s\S]*grid-template-columns:\s*78px minmax\(0, max-content\)/);
+  assert.match(css, /\.conversation-reset-loading-dialog::before\s*\{[\s\S]*animation:\s*aiTakeoverSheen 3\.8s ease-in-out infinite/);
+});
+
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
   const aiTakeoverCardRule = cssRule(".ai-takeover-card");
 

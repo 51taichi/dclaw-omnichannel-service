@@ -70,6 +70,7 @@ const els = {
   confirmDialog: document.querySelector("#confirmDialog"),
   confirmCancelButton: document.querySelector("#confirmCancelButton"),
   confirmAcceptButton: document.querySelector("#confirmAcceptButton"),
+  conversationResetLoadingDialog: document.querySelector("#conversationResetLoadingDialog"),
   proactiveForm: document.querySelector("#proactiveForm"),
   proactiveUploadDropzone: document.querySelector("#proactiveUploadDropzone"),
   proactiveUploadFile: document.querySelector("#proactiveUploadFile"),
@@ -2369,18 +2370,31 @@ async function resetSelectedConversation() {
     toast("请先选择会话");
     return;
   }
-  await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/reset`, {
-    method: "POST",
-    botId,
-    body: JSON.stringify({
+  closeConfirmDialog();
+  setConversationResetSubmitting(true);
+  try {
+    await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/reset`, {
+      method: "POST",
       botId,
-      reason: "控制台清空会话"
-    })
-  });
-  if (!isCurrentBotContext(botId, contextVersion)) return;
-  toast("会话已清空");
-  await loadFlowSessions();
-  await openFlowSession(conversationKey);
+      body: JSON.stringify({
+        botId,
+        reason: "控制台清空会话"
+      })
+    });
+    if (!isCurrentBotContext(botId, contextVersion)) return;
+    toast("会话已清空");
+    await loadFlowSessions();
+    await openFlowSession(conversationKey);
+  } finally {
+    setConversationResetSubmitting(false);
+  }
+}
+
+function setConversationResetSubmitting(submitting) {
+  els.conversationResetLoadingDialog.hidden = !submitting;
+  els.resetConversationButton.disabled = submitting;
+  els.confirmAcceptButton.disabled = submitting;
+  els.confirmCancelButton.disabled = submitting;
 }
 
 function openConfirmDialog() {
@@ -2767,7 +2781,6 @@ els.confirmDialog.addEventListener("click", (event) => {
 });
 els.confirmAcceptButton.addEventListener("click", () =>
   resetSelectedConversation()
-    .then(closeConfirmDialog)
     .catch(toastError)
 );
 els.assetsButton.addEventListener("click", toggleAssetsPanel);
