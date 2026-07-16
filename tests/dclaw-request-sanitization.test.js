@@ -108,6 +108,27 @@ test("group resource requests instruct the agent to query experience and output 
   assert.doesNotMatch(request.message, /当前私聊会话启用了客服流程状态机/);
 });
 
+test("explicit experience-library questions require experience sources", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:魔兮" },
+    message: {
+      messageId: "m-exp",
+      spoken: "经验库里以前同事遇到这种家长是怎么沟通的？",
+      rawSpoken: "经验库里以前同事遇到这种家长是怎么沟通的？",
+      roomType: 2,
+      textType: 1,
+      receivedName: "魔兮",
+      atMe: "false"
+    },
+    flow: null
+  });
+
+  assert.match(request.message, /客户明确提到经验库、同事怎么答、历史沟通案例或优秀话术时/);
+  assert.match(request.message, /必须查询客服经验库/);
+  assert.match(request.message, /sources 中写入 experience/);
+});
+
 test("non-flow customer replies use the same strict JSON contract", () => {
   const request = buildDclawRequest({
     binding,
