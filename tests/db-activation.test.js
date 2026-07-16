@@ -243,14 +243,16 @@ test("activation progress advances sequential messages and rejects stale generat
     sentCount: 0
   });
 
+  const progressBeforeStaleAttempt = db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" });
   assert.equal(db.advanceFlowActivationProgress({
     conversationKey,
     nodeId: "node_1",
     generation: session.activationGeneration - 1,
-    messageIndex: 1,
+    messageIndex: 0,
     attemptNumber: 1,
     messages: oneSendMessages
   }), null);
+  assert.deepEqual(db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }), progressBeforeStaleAttempt);
 
   db.updateFlowSessionNode({ botId, conversationKey, nextNodeId: "node_2", reason: "transition" });
   db.updateFlowSessionNode({ botId, conversationKey, nextNodeId: "node_1", reason: "transition back" });
