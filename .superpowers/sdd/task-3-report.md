@@ -16,11 +16,11 @@
 1. Updated `tests/console-activation-boundary.test.js` and `tests/docs-activation-boundary.test.js` before implementation.
 2. Ran `node --test tests/console-activation-boundary.test.js tests/docs-activation-boundary.test.js` before implementation: 5 passing, 3 failing. The failures were the expected missing per-script markup, default message object insertion, and README wording.
 3. Implemented the scoped console, CSS, and README changes.
-4. Re-ran the focused command: 8 passing, 0 failing.
+4. After the initial implementation, re-ran the focused command: 8 passing, 0 failing.
 
 ## Verification
 
-- `node --test tests/console-activation-boundary.test.js tests/docs-activation-boundary.test.js`: 8 passing, 0 failing.
+- Latest `node --test tests/console-activation-boundary.test.js tests/docs-activation-boundary.test.js`: 10 passing, 0 failing.
 - `git diff --check`: passed with no whitespace errors.
 - `npm test`: 155 passing, 1 failing. The remaining failure is in the server-only `tests/server-activation-worker-boundary.test.js` outside Task 3's write scope.
 
