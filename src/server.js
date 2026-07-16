@@ -30,6 +30,7 @@ import {
 } from "./auth.js";
 import {
   beginMessageProcessing,
+  advanceFlowActivationProgress,
   buildMessageKey,
   cancelFlowActivationTasks,
   claimDueFlowActivationTasks,
@@ -46,6 +47,7 @@ import {
   getConversationResetPending,
   getConversationAssets,
   getFlowMachineForBot,
+  getFlowActivationProgress,
   getFlowSession,
   getFlowSessionForBot,
   isFlowActivationTaskProcessing,
@@ -498,6 +500,28 @@ function buildFlowContext({ botId, conversationKey, message }) {
   };
 }
 
+function scheduleCurrentActivation({ botId, binding, conversationKey, machine, session, anchorAt }) {
+  const node = getFlowNode(machine, session?.currentNodeId);
+  const activation = normalizeActivationConfig(node?.activation || {});
+  const progress = getFlowActivationProgress({ conversationKey, nodeId: node?.id });
+  const activationMessage = activation.messages[progress.messageIndex];
+  if (!activation.enabled || !activationMessage) return null;
+
+  const attemptNumber = progress.sentCount + 1;
+  return scheduleFlowActivationTask({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    nodeId: node.id,
+    generation: session.activationGeneration,
+    activation,
+    anchorAt,
+    dueAt: activationDueAtForAttempt(anchorAt, activationMessage.intervalMinutes, attemptNumber),
+    attemptNumber,
+    messageIndex: progress.messageIndex
+  });
+}
+
 function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flow, sentAt = new Date() }) {
   if (!flow || !isPrivateConversationKey(conversationKey)) return null;
   const machine = getFlowMachineForBot(botId);
@@ -507,21 +531,14 @@ function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flo
     conversationKey,
     reason: "flow_reply_sent"
   });
-  const currentNode = getFlowNode(machine, session?.currentNodeId);
-  const activation = normalizeActivationConfig(currentNode?.activation || {});
-  if (!activation.enabled || !activation.messages.length) return null;
-
   const anchorAt = sentAt.toISOString();
-  return scheduleFlowActivationTask({
+  return scheduleCurrentActivation({
     botId,
-    agentId: binding.agentId,
+    binding,
     conversationKey,
-    nodeId: session.currentNodeId,
-    generation: session.activationGeneration,
-    activation,
-    anchorAt,
-    dueAt: activationDueAtForAttempt(anchorAt, activation.intervalMinutes, 1),
-    attemptNumber: 1
+    machine,
+    session,
+    anchorAt
   });
 }
 
@@ -935,8 +952,45 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     return "skipped";
   }
   const existingSession = getFlowSession(conversationKey);
-  const session = existingSession || getOrCreateFlowSession({ botId, conversationKey, machine });
-  if (existingSession && session.currentNodeId !== machine.entryNodeId) {
+  if (!existingSession) {
+    const session = getOrCreateFlowSession({ botId, conversationKey, machine });
+    const entryNode = getFlowNode(machine, machine.entryNodeId);
+    const activation = normalizeActivationConfig(entryNode?.activation || {});
+    if (!activation.enabled || !activation.messages.length) {
+      logInfo("friend_added.skipped", {
+        ...logContext,
+        friendName,
+        conversationKey,
+        reason: "entry_activation_not_configured"
+      });
+      return "skipped";
+    }
+
+    const refreshedSession = incrementFlowActivationGeneration({
+      conversationKey,
+      reason: "friend_added"
+    });
+    const anchorAt = new Date().toISOString();
+    const task = scheduleCurrentActivation({
+      botId,
+      binding,
+      conversationKey,
+      machine,
+      session: refreshedSession,
+      anchorAt
+    });
+    logInfo("friend_added.activation.scheduled", {
+      ...logContext,
+      friendName,
+      conversationKey,
+      activationTaskId: task?.id || "",
+      nodeId: task?.nodeId || session.currentNodeId,
+      dueAt: task?.dueAt || ""
+    });
+    return task ? "scheduled" : "skipped";
+  }
+
+  if (existingSession.currentNodeId !== machine.entryNodeId) {
     logInfo("friend_added.skipped", {
       ...logContext,
       friendName,
@@ -945,43 +999,13 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     });
     return "skipped";
   }
-  const entryNode = getFlowNode(machine, machine.entryNodeId);
-  const activation = normalizeActivationConfig(entryNode?.activation || {});
-  if (!activation.enabled || !activation.messages.length) {
-    logInfo("friend_added.skipped", {
-      ...logContext,
-      friendName,
-      conversationKey,
-      reason: "entry_activation_not_configured"
-    });
-    return "skipped";
-  }
-
-  const refreshedSession = incrementFlowActivationGeneration({
-    conversationKey,
-    reason: "friend_added"
-  });
-  const anchorAt = new Date().toISOString();
-  const task = scheduleFlowActivationTask({
-    botId,
-    agentId: binding.agentId,
-    conversationKey,
-    nodeId: machine.entryNodeId,
-    generation: refreshedSession.activationGeneration,
-    activation,
-    anchorAt,
-    dueAt: activationDueAtForAttempt(anchorAt, activation.intervalMinutes, 1),
-    attemptNumber: 1
-  });
-  logInfo("friend_added.activation.scheduled", {
+  logInfo("friend_added.skipped", {
     ...logContext,
     friendName,
     conversationKey,
-    activationTaskId: task.id,
-    nodeId: task.nodeId,
-    dueAt: task.dueAt
+    reason: "existing_entry_session"
   });
-  return "scheduled";
+  return "skipped";
 }
 
 function commandCallbackLogFields({ botId, payload, outgoingMatched = false }) {
@@ -1380,7 +1404,7 @@ function recordActivationOutbound({ task, binding, target, content, result, rawP
 async function sendActivationRawMessages({ task, binding }) {
   const target = privateTargetNameFromConversationKey(task.conversationKey);
   if (!target) throw new Error("missing activation target");
-  const content = activationMessageForAttempt(task);
+  const content = String(task.messageContent || "").trim();
   if (!content) throw new Error("empty activation message");
   assertActivationTaskStillSendable(task);
   const result = await sendTextMessage({
@@ -1396,7 +1420,7 @@ async function sendActivationRawMessages({ task, binding }) {
     result,
     rawPayload: {
       polishByAgent: false,
-      activationMessageIndex: Math.min(task.attemptNumber - 1, task.messages.length - 1)
+      activationMessageIndex: task.messageIndex
     }
   });
   return [result.data || ""].filter(Boolean);
@@ -1405,6 +1429,8 @@ async function sendActivationRawMessages({ task, binding }) {
 async function sendActivationPolishedMessage({ task, binding }) {
   const target = privateTargetNameFromConversationKey(task.conversationKey);
   if (!target) throw new Error("missing activation target");
+  const activationMessage = String(task.messageContent || "").trim();
+  if (!activationMessage) throw new Error("empty activation message");
   const machine = getFlowMachineForBot(task.botId);
   const session = getFlowSession(task.conversationKey);
   const flow = machine && session
@@ -1429,7 +1455,7 @@ async function sendActivationPolishedMessage({ task, binding }) {
     conversationKey: task.conversationKey,
     task: {
       ...task,
-      messages: [activationMessageForAttempt(task)].filter(Boolean)
+      messages: [activationMessage]
     },
     flow,
     recentMessages
@@ -1521,33 +1547,11 @@ async function sendActivationPolishedMessage({ task, binding }) {
     result,
     rawPayload: {
       polishByAgent: true,
-      flowActivationMessages: [activationMessageForAttempt(task)].filter(Boolean),
+      flowActivationMessages: [activationMessage],
       agentReply: agentReply.raw
     }
   });
   return [result.data || ""].filter(Boolean);
-}
-
-function scheduleNextActivationAttempt(task) {
-  if (task.attemptNumber >= task.maxTimes) return null;
-  const nextAttemptNumber = task.attemptNumber + 1;
-  return scheduleFlowActivationTask({
-    botId: task.botId,
-    agentId: task.agentId,
-    conversationKey: task.conversationKey,
-    nodeId: task.nodeId,
-    generation: task.generation,
-    activation: {
-      enabled: true,
-      intervalMinutes: task.intervalMinutes,
-      maxTimes: task.maxTimes,
-      polishByAgent: task.polishByAgent,
-      messages: task.messages
-    },
-    anchorAt: task.anchorAt,
-    dueAt: activationDueAtForAttempt(task.anchorAt, task.intervalMinutes, nextAttemptNumber),
-    attemptNumber: nextAttemptNumber
-  });
 }
 
 async function processFlowActivationTask(task) {
@@ -1584,7 +1588,27 @@ async function processFlowActivationTask(task) {
       });
       return;
     }
-    const nextTask = scheduleNextActivationAttempt(task);
+    const progress = advanceFlowActivationProgress({
+      conversationKey: task.conversationKey,
+      nodeId: task.nodeId,
+      generation: task.generation,
+      messageIndex: task.messageIndex,
+      attemptNumber: task.attemptNumber,
+      messages: task.messages
+    });
+    const session = getFlowSession(task.conversationKey);
+    const nextTask = progress &&
+      session?.currentNodeId === task.nodeId &&
+      Number(session.activationGeneration || 0) === Number(task.generation || 0)
+      ? scheduleCurrentActivation({
+          botId: task.botId,
+          binding,
+          conversationKey: task.conversationKey,
+          machine: getFlowMachineForBot(task.botId),
+          session,
+          anchorAt: sentTask.sentAt
+        })
+      : null;
     logInfo("activation.sent", {
       activationTaskId: task.id,
       nextActivationTaskId: nextTask?.id || "",

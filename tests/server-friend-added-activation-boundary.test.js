@@ -17,7 +17,7 @@ test("friend-added activation never invokes DClaw or sends a welcome message", (
   const start = source.indexOf("async function handleFriendAddedEvent");
   const end = source.indexOf("\nfunction commandCallbackLogFields", start);
   const handler = source.slice(start, end);
-  assert.equal(handler.includes("scheduleFlowActivationTask"), true);
+  assert.equal(handler.includes("scheduleCurrentActivation"), true);
   assert.equal(handler.includes("invokeDclaw"), false);
   assert.equal(handler.includes("sendTextMessage"), false);
 });
@@ -27,8 +27,7 @@ test("normal reply activation does not depend on a trigger field", () => {
   const end = source.indexOf("function isValidFlowNode", start);
   const scheduler = source.slice(start, end);
   assert.equal(scheduler.includes("activation.trigger"), false);
-  assert.equal(scheduler.includes("!activation.enabled"), true);
-  assert.equal(scheduler.includes("!activation.messages.length"), true);
+  assert.equal(scheduler.includes("scheduleCurrentActivation"), true);
 });
 
 test("friend-added activation reads only the flow entry node", () => {
@@ -39,10 +38,20 @@ test("friend-added activation reads only the flow entry node", () => {
   assert.equal(handler.includes("activation.trigger"), false);
 });
 
+test("friend-added activation schedules only index zero for a new entry session", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+
+  assert.equal(handler.includes("!existingSession"), true);
+  assert.equal(handler.includes("scheduleCurrentActivation({"), true);
+  assert.equal(handler.includes("messageIndex: 0"), false);
+});
+
 test("friend-added callback does not reset an existing non-entry flow session", () => {
   const start = source.indexOf("async function handleFriendAddedEvent");
   const end = source.indexOf("\nfunction commandCallbackLogFields", start);
   const handler = source.slice(start, end);
   assert.equal(handler.includes("existing_session_not_at_entry"), true);
-  assert.equal(handler.includes("session.currentNodeId !== machine.entryNodeId"), true);
+  assert.equal(handler.includes("existingSession.currentNodeId !== machine.entryNodeId"), true);
 });
