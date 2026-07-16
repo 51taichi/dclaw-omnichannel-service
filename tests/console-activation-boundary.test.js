@@ -18,11 +18,17 @@ test("flow node editor supports activation settings", () => {
   assert.equal(app.includes("data-add-activation-message"), true);
   assert.equal(app.includes("data-remove-activation-message"), true);
   assert.equal(app.includes("activation-help-icon"), true);
-  assert.equal(app.includes("每条话术独立设置间隔和次数"), true);
+  assert.equal(app.includes("例：10 分钟后发第 1 条"), true);
+  assert.equal(app.includes("activation-message-control"), true);
+  assert.equal(app.includes("activation-message-unit"), true);
+  assert.equal(app.includes(">分钟<"), true);
+  assert.equal(app.includes(">次<"), true);
   assert.equal(css.includes(".activation-editor"), true);
   assert.equal(css.includes(".activation-toolbar"), true);
   assert.equal(css.includes(".activation-help-icon::after"), true);
   assert.equal(css.includes(".activation-message-card {"), true);
+  assert.equal(css.includes(".activation-message-actions"), true);
+  assert.equal(css.includes(".activation-message-control"), true);
   assert.equal(css.includes("border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));"), true);
 });
 
@@ -49,7 +55,8 @@ test("new flow nodes persist one default activation script", () => {
 });
 
 test("activation help explains the effective outbound-message timing anchor", () => {
-  assert.equal(app.includes("后续计时以最后一条有效机器人消息的发送时间为准"), true);
+  assert.equal(app.includes("例：10 分钟后发第 1 条"), true);
+  assert.equal(app.includes("Agent 组织语言会先润色话术"), true);
 });
 
 test("activation editor hides trigger choice and does not preserve legacy trigger", () => {

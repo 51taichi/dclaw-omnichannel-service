@@ -1659,17 +1659,19 @@ function renderFlowNodeEditor(entryNodeId = "") {
           </div>
           <section class="activation-editor ${activationEnabled ? "is-active" : ""}" aria-label="客户激活设置">
             <div class="activation-toolbar">
-              <label class="toggle activation-toggle">
-                <input data-flow-node-activation-field="enabled" type="checkbox" ${activationEnabled ? "checked" : ""} />
-                <span>${icon("send")}启用客户激活</span>
-              </label>
-              <label class="toggle activation-toggle">
-                <input data-flow-node-activation-field="polishByAgent" type="checkbox" ${activationPolishByAgent ? "checked" : ""} />
-                <span>${icon("terminal")}Agent 组织语言</span>
-              </label>
-              <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("启用：客户未回复时触发提醒；入口节点首次在新增好友后计时，后续计时以最后一条有效机器人消息的发送时间为准；其他节点只在 AI 回复后计时；美化：由 Agent 结合上下文润色；每条话术独立设置间隔和次数，按顺序推进；同一条话术第 2 次等待间隔*2、第 3 次等待间隔*4。")}">
-                ${icon("info")}
-              </span>
+              <div class="activation-toolbar-main">
+                <label class="toggle activation-toggle">
+                  <input data-flow-node-activation-field="enabled" type="checkbox" ${activationEnabled ? "checked" : ""} />
+                  <span>${icon("send")}启用客户激活</span>
+                </label>
+                <label class="toggle activation-toggle activation-polish-toggle">
+                  <input data-flow-node-activation-field="polishByAgent" type="checkbox" ${activationPolishByAgent ? "checked" : ""} />
+                  <span>${icon("terminal")}Agent 组织语言</span>
+                </label>
+                <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("例：10 分钟后发第 1 条；还没回复，第 2 次按更长间隔继续提醒。Agent 组织语言会先润色话术。")}">
+                  ${icon("info")}
+                </span>
+              </div>
               <button class="secondary icon-button activation-add-button" data-add-activation-message="${index}" type="button" aria-label="新增话术" title="新增话术">
                 ${icon("plus")}
               </button>
@@ -1679,15 +1681,19 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 .map((activationMessage, messageIndex) => `
                   <div class="activation-message-card">
                     <textarea data-activation-message-index="${messageIndex}" data-activation-message-content rows="2" placeholder="激活话术，例如：再提醒您一下，看到后回我一句就行">${escapeHtml(activationMessage.content)}</textarea>
-                    <label>
-                      <span class="field-label">${icon("clock")}间隔（分钟）</span>
-                      <input data-activation-message-index="${messageIndex}" data-activation-message-interval type="number" min="1" value="${escapeHtml(activationMessage.intervalMinutes)}" />
-                    </label>
-                    <label>
-                      <span class="field-label">${icon("refresh")}发送次数</span>
-                      <input data-activation-message-index="${messageIndex}" data-activation-message-max-times type="number" min="1" value="${escapeHtml(activationMessage.maxTimes)}" />
-                    </label>
-                    <button class="danger icon-button" data-remove-activation-message="${index}:${messageIndex}" type="button" aria-label="删除激活话术" title="删除激活话术">${icon("reset")}</button>
+                    <div class="activation-message-actions">
+                      <label class="activation-message-control" title="间隔（分钟）">
+                        ${icon("clock")}
+                        <input data-activation-message-index="${messageIndex}" data-activation-message-interval type="number" min="1" value="${escapeHtml(activationMessage.intervalMinutes)}" aria-label="间隔（分钟）" />
+                        <span class="activation-message-unit">分钟</span>
+                      </label>
+                      <label class="activation-message-control" title="发送次数">
+                        ${icon("refresh")}
+                        <input data-activation-message-index="${messageIndex}" data-activation-message-max-times type="number" min="1" value="${escapeHtml(activationMessage.maxTimes)}" aria-label="发送次数" />
+                        <span class="activation-message-unit">次</span>
+                      </label>
+                      <button class="danger icon-button activation-remove-button" data-remove-activation-message="${index}:${messageIndex}" type="button" aria-label="删除激活话术" title="删除激活话术">${icon("reset")}</button>
+                    </div>
                   </div>
                 `)
                 .join("")}

@@ -1747,10 +1747,18 @@ button.danger:hover {
 }
 
 .activation-toolbar {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) minmax(170px, 1fr) minmax(190px, 1.05fr) minmax(130px, 0.8fr) 34px 40px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.activation-toolbar-main {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   align-items: center;
+  min-width: 0;
 }
 
 .activation-toolbar > label:not(.activation-toggle) {
@@ -1807,7 +1815,7 @@ button.danger:hover {
   display: inline-grid;
   place-items: center;
   align-self: center;
-  justify-self: end;
+  flex: 0 0 auto;
   width: 34px;
   height: 34px;
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
@@ -1820,11 +1828,11 @@ button.danger:hover {
 .activation-help-icon::after {
   content: attr(data-tooltip);
   position: absolute;
-  right: -48px;
+  left: 0;
   bottom: calc(100% + 10px);
   z-index: 30;
-  width: 320px;
-  max-width: min(320px, calc(100vw - 40px));
+  width: 260px;
+  max-width: min(260px, calc(100vw - 40px));
   padding: 10px 12px;
   border-radius: 8px;
   background: #211614;
@@ -1858,9 +1866,9 @@ button.danger:hover {
 
 .activation-message-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 11rem 9rem auto;
-  gap: 8px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 10px;
+  align-items: center;
   padding: 8px;
   border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
   border-radius: 8px;
@@ -1877,31 +1885,89 @@ button.danger:hover {
   min-height: 58px;
 }
 
-.activation-message-card > label {
-  display: grid;
+.activation-message-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
   min-width: 0;
-  gap: 5px;
 }
 
-.activation-message-card .field-label {
+.activation-message-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 38px;
+  padding: 0 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--muted);
+}
+
+.activation-message-control .icon {
+  flex: 0 0 auto;
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+
+.activation-message-control input {
+  width: 52px;
+  min-width: 52px;
+  height: 30px;
+  padding: 0 2px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+  text-align: center;
+}
+
+.activation-message-control input::-webkit-outer-spin-button,
+.activation-message-control input::-webkit-inner-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.activation-message-control input[type="number"] {
+  appearance: textfield;
+}
+
+.activation-message-unit {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
   white-space: nowrap;
+}
+
+.activation-remove-button {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  padding: 0;
 }
 
 @media (max-width: 900px) {
   .activation-message-card {
-    grid-template-columns: 1fr 1fr auto;
+    grid-template-columns: 1fr;
   }
 
-  .activation-message-card textarea {
-    grid-column: 1 / -1;
+  .activation-message-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
   }
 }
 
 .activation-add-button {
   align-self: center;
   justify-self: end;
-  width: 40px;
-  height: 40px;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
   padding: 0;
 }
 
