@@ -1856,9 +1856,9 @@ button.danger:hover {
   gap: 8px;
 }
 
-.activation-message-row {
+.activation-message-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: minmax(0, 1fr) 11rem 9rem auto;
   gap: 8px;
   align-items: start;
   padding: 8px;
@@ -1867,14 +1867,34 @@ button.danger:hover {
   background: color-mix(in srgb, var(--accent) 3%, #ffffff);
 }
 
-.activation-message-row:hover,
-.activation-message-row:focus-within {
+.activation-message-card:hover,
+.activation-message-card:focus-within {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
   box-shadow: 0 8px 18px rgba(42, 48, 216, 0.08);
 }
 
-.activation-message-row textarea {
+.activation-message-card textarea {
   min-height: 58px;
+}
+
+.activation-message-card > label {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.activation-message-card .field-label {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .activation-message-card {
+    grid-template-columns: 1fr 1fr auto;
+  }
+
+  .activation-message-card textarea {
+    grid-column: 1 / -1;
+  }
 }
 
 .activation-add-button {

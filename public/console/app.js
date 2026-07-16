@@ -1213,23 +1213,31 @@ function joinLines(value) {
 function defaultActivationConfig() {
   return {
     enabled: false,
-    intervalMinutes: 30,
-    maxTimes: 1,
     polishByAgent: true,
     messages: []
   };
 }
 
+function defaultActivationMessage() {
+  return { content: "", intervalMinutes: 30, maxTimes: 1 };
+}
+
+function normalizeActivationMessageDraft(value = {}) {
+  const source = typeof value === "string" ? { content: value } : value || {};
+  return {
+    content: String(source.content || ""),
+    intervalMinutes: Math.max(1, Number(source.intervalMinutes || 30)),
+    maxTimes: Math.max(1, Number(source.maxTimes || 1))
+  };
+}
+
 function normalizeActivationDraft(value = {}) {
-  const defaults = defaultActivationConfig();
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const messages = Array.isArray(source.messages)
-    ? source.messages.map((item) => String(item || "").trim()).filter(Boolean)
+    ? source.messages.map((item) => normalizeActivationMessageDraft(item))
     : [];
   return {
     enabled: Boolean(source.enabled),
-    intervalMinutes: Math.max(1, Number(source.intervalMinutes || defaults.intervalMinutes)),
-    maxTimes: Math.max(1, Number(source.maxTimes || defaults.maxTimes)),
     polishByAgent: source.polishByAgent !== false,
     messages
   };
@@ -1241,7 +1249,7 @@ function activationDraftForEditor(value = {}) {
   return {
     ...normalized,
     messages: Array.isArray(source.messages)
-      ? source.messages.map((item) => String(item || ""))
+      ? source.messages.map((item) => normalizeActivationMessageDraft(item))
       : []
   };
 }
@@ -1358,8 +1366,6 @@ function updateDraftNodeActivationFromInput(input) {
   const field = input.dataset.flowNodeActivationField;
   if (field === "enabled" || field === "polishByAgent") {
     activation[field] = input.checked;
-  } else if (field === "intervalMinutes" || field === "maxTimes") {
-    activation[field] = Math.max(1, Number(input.value || activation[field] || 1));
   }
   node.activation = {
     ...activation,
@@ -1379,7 +1385,15 @@ function updateDraftNodeActivationMessage(input) {
   const node = flowDraftNodes[nodeIndex];
   if (!node) return;
   const activation = activationDraftForEditor(node.activation);
-  activation.messages[messageIndex] = input.value;
+  const message = normalizeActivationMessageDraft(activation.messages[messageIndex]);
+  if (input.dataset.activationMessageInterval !== undefined) {
+    message.intervalMinutes = Math.max(1, Number(input.value || message.intervalMinutes || 1));
+  } else if (input.dataset.activationMessageMaxTimes !== undefined) {
+    message.maxTimes = Math.max(1, Number(input.value || message.maxTimes || 1));
+  } else {
+    message.content = input.value;
+  }
+  activation.messages[messageIndex] = message;
   node.activation = activation;
   syncFlowJsonTextarea();
 }
@@ -1388,12 +1402,12 @@ function addActivationMessage(index) {
   const node = flowDraftNodes[index];
   if (!node) return;
   const activation = activationDraftForEditor(node.activation);
-  activation.messages = [...activation.messages, ""];
+  activation.messages = [...activation.messages, defaultActivationMessage()];
   node.activation = activation;
   renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
   requestAnimationFrame(() => {
     const card = els.flowNodeList.querySelector(`[data-flow-node-index="${index}"]`);
-    const inputs = card?.querySelectorAll("[data-activation-message-index]");
+    const inputs = card?.querySelectorAll("[data-activation-message-content]");
     inputs?.[inputs.length - 1]?.focus();
   });
 }
@@ -1416,7 +1430,7 @@ function splitPastedActivationMessages(event, nodeIndex, messageIndex) {
   const node = flowDraftNodes[nodeIndex];
   if (!node) return;
   const activation = activationDraftForEditor(node.activation);
-  activation.messages.splice(messageIndex, 1, ...lines);
+  activation.messages.splice(messageIndex, 1, ...lines.map((content) => ({ ...defaultActivationMessage(), content })));
   node.activation = activation;
   renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
   syncFlowJsonTextarea();
@@ -1607,10 +1621,8 @@ function renderFlowNodeEditor(entryNodeId = "") {
       ].join("");
       const activation = activationDraftForEditor(node.activation || defaultActivationConfig());
       const activationEnabled = activation.enabled;
-      const activationIntervalMinutes = activation.intervalMinutes;
-      const activationMaxTimes = activation.maxTimes;
       const activationPolishByAgent = activation.polishByAgent;
-      const activationMessages = activation.messages.length ? activation.messages : [""];
+      const activationMessages = activation.messages.length ? activation.messages : [defaultActivationMessage()];
       return `
         <article class="flow-node-card ${isCollapsed ? "is-collapsed" : ""}" data-flow-node-index="${index}" data-flow-node-collapse-key="${escapeHtml(collapseKey)}">
           <div class="flow-node-card-head">
@@ -1658,15 +1670,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 <input data-flow-node-activation-field="polishByAgent" type="checkbox" ${activationPolishByAgent ? "checked" : ""} />
                 <span>${icon("terminal")}Agent 组织语言</span>
               </label>
-              <label>
-                <span class="field-label">${icon("clock")}激活间隔（分钟）</span>
-                <input data-flow-node-activation-field="intervalMinutes" type="number" min="1" value="${escapeHtml(activationIntervalMinutes)}" />
-              </label>
-              <label>
-                <span class="field-label">${icon("refresh")}激活次数</span>
-                <input data-flow-node-activation-field="maxTimes" type="number" min="1" value="${escapeHtml(activationMaxTimes)}" />
-              </label>
-              <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("启用：客户未回复时触发提醒；入口节点在新增好友后和 AI 回复后都会计时，其他节点只在 AI 回复后计时；美化：由 Agent 结合上下文润色；间隔：第1次按间隔发送，第2次按间隔*2，第3次按间隔*4；次数：达到次数后停止；话术：第 N 次激活发送第 N 条话术，不够时复用最后一条。")}">
+              <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("启用：客户未回复时触发提醒；入口节点在新增好友后和 AI 回复后都会计时，其他节点只在 AI 回复后计时；美化：由 Agent 结合上下文润色；每条话术独立设置间隔和次数，按顺序推进；同一条话术第 2 次等待间隔*2、第 3 次等待间隔*4。")}">
                 ${icon("info")}
               </span>
               <button class="secondary icon-button activation-add-button" data-add-activation-message="${index}" type="button" aria-label="新增话术" title="新增话术">
@@ -1675,9 +1679,17 @@ function renderFlowNodeEditor(entryNodeId = "") {
             </div>
             <div class="activation-messages">
               ${activationMessages
-                .map((message, messageIndex) => `
-                  <div class="activation-message-row">
-                    <textarea data-activation-message-index="${messageIndex}" rows="2" placeholder="激活话术，例如：再提醒您一下，看到后回我一句就行">${escapeHtml(message)}</textarea>
+                .map((activationMessage, messageIndex) => `
+                  <div class="activation-message-card">
+                    <textarea data-activation-message-index="${messageIndex}" data-activation-message-content rows="2" placeholder="激活话术，例如：再提醒您一下，看到后回我一句就行">${escapeHtml(activationMessage.content)}</textarea>
+                    <label>
+                      <span class="field-label">${icon("clock")}间隔（分钟）</span>
+                      <input data-activation-message-index="${messageIndex}" data-activation-message-interval type="number" min="1" value="${escapeHtml(activationMessage.intervalMinutes)}" />
+                    </label>
+                    <label>
+                      <span class="field-label">${icon("refresh")}发送次数</span>
+                      <input data-activation-message-index="${messageIndex}" data-activation-message-max-times type="number" min="1" value="${escapeHtml(activationMessage.maxTimes)}" />
+                    </label>
                     <button class="danger icon-button" data-remove-activation-message="${index}:${messageIndex}" type="button" aria-label="删除激活话术" title="删除激活话术">${icon("reset")}</button>
                   </div>
                 `)

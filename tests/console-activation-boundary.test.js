@@ -10,18 +10,19 @@ test("flow node editor supports activation settings", () => {
   assert.equal(app.includes("defaultActivationConfig"), true);
   assert.equal(app.includes("activationDraftForEditor"), true);
   assert.equal(app.includes("activationEnabled"), true);
-  assert.equal(app.includes("activationIntervalMinutes"), true);
-  assert.equal(app.includes("activationMaxTimes"), true);
   assert.equal(app.includes("activationPolishByAgent"), true);
   assert.equal(app.includes("activationMessages"), true);
+  assert.equal(app.includes("activationMessage.content"), true);
+  assert.equal(app.includes("data-activation-message-interval"), true);
+  assert.equal(app.includes("data-activation-message-max-times"), true);
   assert.equal(app.includes("data-add-activation-message"), true);
   assert.equal(app.includes("data-remove-activation-message"), true);
   assert.equal(app.includes("activation-help-icon"), true);
-  assert.equal(app.includes("第 N 次激活发送第 N 条话术"), true);
+  assert.equal(app.includes("每条话术独立设置间隔和次数"), true);
   assert.equal(css.includes(".activation-editor"), true);
   assert.equal(css.includes(".activation-toolbar"), true);
   assert.equal(css.includes(".activation-help-icon::after"), true);
-  assert.equal(css.includes(".activation-message-row {"), true);
+  assert.equal(css.includes(".activation-message-card {"), true);
   assert.equal(css.includes("border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));"), true);
 });
 
@@ -32,8 +33,8 @@ test("flow config preserves node activation JSON through console and server norm
 });
 
 test("adding an activation message keeps an editable blank draft row", () => {
-  assert.equal(app.includes("activation.messages.push(\"\")"), false);
-  assert.equal(app.includes("activation.messages = [...activation.messages, \"\"]"), true);
+  assert.equal(app.includes("defaultActivationMessage()"), true);
+  assert.equal(app.includes("activation.messages = [...activation.messages, defaultActivationMessage()]"), true);
   assert.equal(app.includes("activationDraftForEditor(node.activation)"), true);
 });
 

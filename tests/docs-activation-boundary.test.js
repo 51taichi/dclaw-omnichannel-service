@@ -25,4 +25,6 @@ test("automatic activation scope is documented", () => {
   assert.equal(readme.includes("新增好友后和 AI 回复后都会计时"), false);
   assert.equal(readme.includes("textType=22"), true);
   assert.equal(readme.includes("type=105"), true);
+  assert.equal(readme.includes("每条话术独立设置间隔和次数"), true);
+  assert.equal(readme.includes("节点变化会作废旧节点进度"), true);
 });
