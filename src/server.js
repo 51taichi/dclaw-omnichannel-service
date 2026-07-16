@@ -48,6 +48,7 @@ import {
   getFlowMachineForBot,
   getFlowSession,
   getFlowSessionForBot,
+  isFlowActivationTaskProcessing,
   getOrCreateConversationSession,
   getOrCreateFlowSession,
   getSetting,
@@ -500,18 +501,16 @@ function buildFlowContext({ botId, conversationKey, message }) {
 function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flow, sentAt = new Date() }) {
   if (!flow || !isPrivateConversationKey(conversationKey)) return null;
   const machine = getFlowMachineForBot(botId);
-  const currentSession = getFlowSession(conversationKey) || flow.session;
-  const currentNode = getFlowNode(machine, currentSession?.currentNodeId) || flow.currentNode;
-  const currentNodeActivation = normalizeActivationConfig(currentNode?.activation || {});
-  const replyNodeActivation = normalizeActivationConfig(flow.currentNode?.activation || {});
-  const activationSourceNode = currentNodeActivation.enabled && currentNodeActivation.messages.length
-    ? currentNode
-    : flow.currentNode;
-  const activation = activationSourceNode === currentNode ? currentNodeActivation : replyNodeActivation;
+  // A successful reply supersedes every earlier reminder, even if the current
+  // node does not have activation enabled.
+  const session = incrementFlowActivationGeneration({
+    conversationKey,
+    reason: "flow_reply_sent"
+  });
+  const currentNode = getFlowNode(machine, session?.currentNodeId);
+  const activation = normalizeActivationConfig(currentNode?.activation || {});
   if (!activation.enabled || !activation.messages.length) return null;
 
-  cancelFlowActivationTasks({ conversationKey, reason: "new_flow_reply" });
-  const session = incrementFlowActivationGeneration({ conversationKey, reason: "flow_reply_sent" });
   const anchorAt = sentAt.toISOString();
   return scheduleFlowActivationTask({
     botId,
@@ -935,7 +934,17 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     });
     return "skipped";
   }
-  getOrCreateFlowSession({ botId, conversationKey, machine });
+  const existingSession = getFlowSession(conversationKey);
+  const session = existingSession || getOrCreateFlowSession({ botId, conversationKey, machine });
+  if (existingSession && session.currentNodeId !== machine.entryNodeId) {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      friendName,
+      conversationKey,
+      reason: "existing_session_not_at_entry"
+    });
+    return "skipped";
+  }
   const entryNode = getFlowNode(machine, machine.entryNodeId);
   const activation = normalizeActivationConfig(entryNode?.activation || {});
   if (!activation.enabled || !activation.messages.length) {
@@ -948,8 +957,7 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     return "skipped";
   }
 
-  cancelFlowActivationTasks({ conversationKey, reason: "friend_added_restart" });
-  const session = incrementFlowActivationGeneration({
+  const refreshedSession = incrementFlowActivationGeneration({
     conversationKey,
     reason: "friend_added"
   });
@@ -959,7 +967,7 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     agentId: binding.agentId,
     conversationKey,
     nodeId: machine.entryNodeId,
-    generation: session.activationGeneration,
+    generation: refreshedSession.activationGeneration,
     activation,
     anchorAt,
     dueAt: activationDueAtForAttempt(anchorAt, activation.intervalMinutes, 1),
@@ -1328,6 +1336,14 @@ function isStaleActivationTask(task) {
   );
 }
 
+function assertActivationTaskStillSendable(task) {
+  if (!isFlowActivationTaskProcessing({ id: task.id }) || isStaleActivationTask(task)) {
+    const error = new Error("stale_activation_task");
+    error.code = "STALE_ACTIVATION_TASK";
+    throw error;
+  }
+}
+
 function recordActivationOutbound({ task, binding, target, content, result, rawPayload = {} }) {
   insertConversationMessage({
     botId: task.botId,
@@ -1366,6 +1382,7 @@ async function sendActivationRawMessages({ task, binding }) {
   if (!target) throw new Error("missing activation target");
   const content = activationMessageForAttempt(task);
   if (!content) throw new Error("empty activation message");
+  assertActivationTaskStillSendable(task);
   const result = await sendTextMessage({
     robotId: task.botId,
     targets: [target],
@@ -1490,6 +1507,7 @@ async function sendActivationPolishedMessage({ task, binding }) {
   if (!reply) {
     throw new Error("empty activation reply");
   }
+  assertActivationTaskStillSendable(task);
   const result = await sendTextMessage({
     robotId: task.botId,
     targets: [target],
@@ -1554,7 +1572,18 @@ async function processFlowActivationTask(task) {
     const worktoolMessageIds = task.polishByAgent
       ? await sendActivationPolishedMessage({ task, binding })
       : await sendActivationRawMessages({ task, binding });
-    markFlowActivationTaskSent({ id: task.id, worktoolMessageIds });
+    const sentTask = markFlowActivationTaskSent({ id: task.id, worktoolMessageIds });
+    if (!sentTask) {
+      logInfo("activation.stale_skipped", {
+        activationTaskId: task.id,
+        botId: task.botId,
+        conversationKey: task.conversationKey,
+        nodeId: task.nodeId,
+        generation: task.generation,
+        reason: "task_no_longer_processing_after_send"
+      });
+      return;
+    }
     const nextTask = scheduleNextActivationAttempt(task);
     logInfo("activation.sent", {
       activationTaskId: task.id,
@@ -1569,7 +1598,18 @@ async function processFlowActivationTask(task) {
       worktoolMessageIds
     });
   } catch (error) {
-    markFlowActivationTaskFailed({ id: task.id, error: error.message });
+    const failedTask = markFlowActivationTaskFailed({ id: task.id, error: error.message });
+    if (error.code === "STALE_ACTIVATION_TASK" || !failedTask) {
+      logInfo("activation.stale_skipped", {
+        activationTaskId: task.id,
+        botId: task.botId,
+        conversationKey: task.conversationKey,
+        nodeId: task.nodeId,
+        generation: task.generation,
+        reason: error.code === "STALE_ACTIVATION_TASK" ? "stale_before_send" : "task_no_longer_processing"
+      });
+      return;
+    }
     logWarn("activation.failed", {
       activationTaskId: task.id,
       botId: task.botId,

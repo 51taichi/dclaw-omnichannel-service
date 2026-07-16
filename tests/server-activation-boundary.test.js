@@ -8,8 +8,9 @@ const dbSource = fs.readFileSync(new URL("../src/db.js", import.meta.url), "utf8
 test("server schedules activation after successful private flow replies", () => {
   assert.equal(source.includes("scheduleActivationAfterFlowReply"), true);
   assert.equal(source.includes("scheduleFlowActivationTask"), true);
-  assert.equal(source.includes("activationSourceNode"), true);
-  assert.equal(source.includes("flow.currentNode?.activation"), true);
+  assert.equal(source.includes('reason: "flow_reply_sent"'), true);
+  assert.equal(source.includes("const currentNode = getFlowNode(machine, session?.currentNodeId);"), true);
+  assert.equal(source.includes("activationSourceNode"), false);
   assert.equal(
     source.slice(source.indexOf("worktool.send.success")).includes("scheduleActivationAfterFlowReply({"),
     true
@@ -28,4 +29,11 @@ test("entry activation schedules after both new friends and AI replies", () => {
   assert.equal(source.includes("handleFriendAddedEvent"), true);
   assert.equal(source.includes("scheduleActivationAfterFlowReply({"), true);
   assert.equal(source.includes('reason: "customer_replied"'), true);
+});
+
+test("activation worker rechecks cancellation immediately before send", () => {
+  assert.equal(source.includes("isFlowActivationTaskProcessing"), true);
+  assert.equal(source.includes("function assertActivationTaskStillSendable(task)"), true);
+  assert.equal(source.includes("assertActivationTaskStillSendable(task);"), true);
+  assert.equal(source.includes('reason: "task_no_longer_processing_after_send"'), true);
 });

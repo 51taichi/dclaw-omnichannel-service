@@ -38,3 +38,11 @@ test("friend-added activation reads only the flow entry node", () => {
   assert.equal(handler.includes("getFlowNode(machine, machine.entryNodeId)"), true);
   assert.equal(handler.includes("activation.trigger"), false);
 });
+
+test("friend-added callback does not reset an existing non-entry flow session", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+  assert.equal(handler.includes("existing_session_not_at_entry"), true);
+  assert.equal(handler.includes("session.currentNodeId !== machine.entryNodeId"), true);
+});
