@@ -1273,7 +1273,7 @@ function createBlankFlowNode(index = flowDraftNodes.length + 1) {
     completionCriteria: "",
     collectFields: [],
     conversationTips: [],
-    activation: defaultActivationConfig(),
+    activation: { ...defaultActivationConfig(), messages: [defaultActivationMessage()] },
     nextNodeId: "",
     transitions: []
   };
@@ -1670,7 +1670,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 <input data-flow-node-activation-field="polishByAgent" type="checkbox" ${activationPolishByAgent ? "checked" : ""} />
                 <span>${icon("terminal")}Agent 组织语言</span>
               </label>
-              <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("启用：客户未回复时触发提醒；入口节点在新增好友后和 AI 回复后都会计时，其他节点只在 AI 回复后计时；美化：由 Agent 结合上下文润色；每条话术独立设置间隔和次数，按顺序推进；同一条话术第 2 次等待间隔*2、第 3 次等待间隔*4。")}">
+              <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("启用：客户未回复时触发提醒；入口节点首次在新增好友后计时，后续计时以最后一条有效机器人消息的发送时间为准；其他节点只在 AI 回复后计时；美化：由 Agent 结合上下文润色；每条话术独立设置间隔和次数，按顺序推进；同一条话术第 2 次等待间隔*2、第 3 次等待间隔*4。")}">
                 ${icon("info")}
               </span>
               <button class="secondary icon-button activation-add-button" data-add-activation-message="${index}" type="button" aria-label="新增话术" title="新增话术">
