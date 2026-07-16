@@ -24,5 +24,5 @@ test("activation worker sends one script per attempt with exponential schedule",
   assert.equal(source.includes("activationDueAtForAttempt"), true);
   assert.equal(source.includes("Math.min(task.attemptNumber - 1, task.messages.length - 1)"), true);
   assert.equal(source.includes("2 ** Math.max(0, attemptNumber - 1)"), true);
-  assert.equal(source.includes("anchorAt: task.anchorAt"), true);
+  assert.equal(source.includes("anchorAt: sentTask.sentAt"), true);
 });

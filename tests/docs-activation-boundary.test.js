@@ -27,4 +27,5 @@ test("automatic activation scope is documented", () => {
   assert.equal(readme.includes("type=105"), true);
   assert.equal(readme.includes("每条话术独立设置间隔和次数"), true);
   assert.equal(readme.includes("节点变化会作废旧节点进度"), true);
+  assert.equal(readme.includes("后续计时以最后一条有效机器人消息的发送时间为准"), true);
 });

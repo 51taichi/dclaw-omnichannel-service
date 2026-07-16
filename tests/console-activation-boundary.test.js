@@ -38,6 +38,14 @@ test("adding an activation message keeps an editable blank draft row", () => {
   assert.equal(app.includes("activationDraftForEditor(node.activation)"), true);
 });
 
+test("new flow nodes persist one default activation script", () => {
+  assert.equal(app.includes("activation: { ...defaultActivationConfig(), messages: [defaultActivationMessage()] }"), true);
+});
+
+test("activation help explains the effective outbound-message timing anchor", () => {
+  assert.equal(app.includes("后续计时以最后一条有效机器人消息的发送时间为准"), true);
+});
+
 test("activation editor hides trigger choice and does not preserve legacy trigger", () => {
   assert.equal(app.includes('data-flow-node-activation-field="trigger"'), false);
   assert.equal(app.includes('value="friend_added"'), false);
