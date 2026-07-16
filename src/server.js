@@ -1775,6 +1775,12 @@ async function processIncomingMessage({ botId, message }) {
     return;
   }
 
+  // A private customer interaction cancels pending reminders even when the
+  // payload cannot be passed to the Agent (for example an unsupported image).
+  if (isPrivateMessage(message)) {
+    invalidateFlowActivation({ conversationKey, reason: "customer_replied" });
+  }
+
   if (!shouldProcessInboundForAgent(message)) {
     logInfo("incoming.skipped", {
       ...logContext,
@@ -1821,10 +1827,6 @@ async function processIncomingMessage({ botId, message }) {
       rawPayload: message
     });
   }
-  if (isPrivateMessage(message)) {
-    invalidateFlowActivation({ conversationKey, reason: "customer_replied" });
-  }
-
   const flow = buildFlowContext({ botId, conversationKey, message });
   const conversationReset = getConversationResetPending(conversationKey);
   if (isPrivateMessage(message) && flow?.session?.handoffStatus === "human") {

@@ -25,6 +25,16 @@ test("server cancels activation on inbound messages, handoff, reset, and node tr
   assert.equal(dbSource.includes("incrementFlowActivationGeneration"), true);
 });
 
+test("private non-text customer interactions cancel activation before agent filtering", () => {
+  const start = source.indexOf("async function processIncomingMessage");
+  const handler = source.slice(start);
+  assert.equal(
+    handler.indexOf('invalidateFlowActivation({ conversationKey, reason: "customer_replied" })') <
+      handler.indexOf("if (!shouldProcessInboundForAgent(message))"),
+    true
+  );
+});
+
 test("entry activation schedules after both new friends and AI replies", () => {
   assert.equal(source.includes("handleFriendAddedEvent"), true);
   assert.equal(source.includes("scheduleActivationAfterFlowReply({"), true);
