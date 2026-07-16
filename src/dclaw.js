@@ -35,24 +35,23 @@ export function buildDclawRequest({
     "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
     "WorkTool 房间类型约定：roomType=2/4 表示私聊，必须默认回复；roomType=1/3 表示群聊，只有被 @ 时才回复。",
     "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
-    "群聊和私聊只在是否触发回复上不同；一旦触发回复，客户意图识别、资源索取、企业智库、客服经验库、附件输出、事实边界和 human_reply_style 润色必须完全一致。",
-    "不要因为是群聊就跳过资源索取、附件发送、客服经验库或企业智库，也不要改用另一套回答逻辑。",
-    "企业智库负责事实边界，客服经验库负责表达策略和资源线索；客户出现品牌信任异议、资源索取、价格/投入/合同/售后顾虑时，必须同时查询客服经验库。",
-    "状态机、企业智库、客服经验库必须三方合议：状态机只负责推进当前节点目标，状态机不能独占回答；企业智库负责事实边界，客服经验库负责表达策略、历史话术、风险提醒和资源线索。",
-    "当前任务节点相关咨询属于客服经验库强制参与场景，例如客户询问当前节点正在推进的资料、活动、直播、试听、邀约、服务内容、价值、流程、怎么领取或下一步动作。",
-    "客户明确提到经验库、同事怎么答、历史沟通案例或优秀话术时，必须查询客服经验库；如果经验库命中或用于本轮回复，请在 sources 中写入 experience。",
+    "群聊和私聊只在是否触发回复上不同；一旦触发回复，客户意图识别、资源索取、企业智库、附件输出、事实边界和 human_reply_style 润色必须完全一致。",
+    "不要因为是群聊就跳过资源索取、附件发送或企业智库，也不要改用另一套回答逻辑。",
+    "企业智库负责业务事实和公开资源边界；状态机只负责推进当前节点目标，不能独占回答或替代事实检索。",
+    "当前任务节点相关咨询不能只用状态机回答；客户询问资料、活动、直播、试听、邀约、服务内容、价值、流程、怎么领取或下一步动作时，先判断是否需要企业智库或公开资源。",
+    "客户明确提到以前同事怎么答、历史沟通案例或优秀话术时，只能结合当前会话、状态机交流技巧和 human_reply_style 组织表达；不要声称查询内部目录。",
     "资源索取优先级高于品牌实力解释；客户索要视频、图片、资料、文件、链接、工厂视频、产品视频、基地视频，或说有没有视频证明实力时，必须先查可发送资源并尽量输出 attachments。",
-    "客户说没听过、不熟、靠谱吗、真的假的、小品牌，或索要视频、图片、资料、文件、链接、工厂视频、产品视频时，不能只用企业智库直接回答；如果经验库实际参与，请在 sources 中写入 experience。",
+    "客户说没听过、不熟、靠谱吗、真的假的、小品牌，或索要视频、图片、资料、文件、链接、工厂视频、产品视频时，先查企业智库和可发送公开资源；没有明确资源时不要编造 attachments。",
     "最终回复的人设、真人感、长度、表情和节奏由 Agent 的 human_reply_style 统一处理。",
     "如果需要发送图片、文件、视频或音频，请在最终 JSON 中增加 attachments 数组，格式为 {\"type\":\"image|file|video|audio|link\",\"url\":\"https://...\",\"name\":\"文件名\",\"title\":\"标题\"}。",
     "attachments 中 type=image/file/video/audio 会由服务器调用 WorkTool 媒体接口发送；其他类型或未知链接会作为普通 URL 文本发送。",
-    "如果回复实际命中或参考了企业智库、客服经验库、任务节点、会话上下文、客户档案或大模型兜底，请在最终 JSON 中增加 sources 数组，格式为 {\"type\":\"enterprise_knowledge|experience|flow_node|conversation|profile|llm_fallback\",\"name\":\"来源名称\",\"reason\":\"为什么用于本次回复\"}；未命中的来源不要写入 sources。",
+    "如果回复实际命中或参考了企业智库、任务节点、控制台配置资源、控制台上传资源、会话上下文、客户档案或大模型兜底，请在最终 JSON 中增加 sources 数组，格式为 {\"type\":\"enterprise_knowledge|flow_node|configured_resource|console_upload|conversation|profile|llm_fallback\",\"name\":\"来源名称\",\"reason\":\"为什么用于本次回复\"}；未命中的来源不要写入 sources。",
     "需要连续发送 2-3 条短回复时，请用空行分隔每段。"
   ];
   if (flow) {
     instructions.push(
       "当前私聊会话启用了客服流程状态机。你必须围绕 flow.currentNode 的 goal、completionCriteria、collectFields 和 conversationTips 推进对话。",
-      "即使 flow.currentNode 已经能回答客户问题，也不能只用状态机回答；必须按企业智库和客服经验库规则先查事实与经验，再整合当前节点推进目标。",
+      "即使 flow.currentNode 已经能回答客户问题，也不能只用状态机回答；必须先按企业智库和客户当下问题核对事实与资源，再整合当前节点推进目标。",
       "如果 conversationReset=true，表示控制台刚清空了当前会话记录；请忽略旧会话文件，重建或清空当前 conversationId 对应的短期会话记录。",
       "不要机械追问；先回应客户当前表达，再自然推进当前节点目标。",
       "最终请只输出一个 JSON 对象，不要输出 Markdown 或分析过程。",
@@ -112,6 +111,34 @@ export function buildDclawReplyFormatRetryRequest(request) {
     metadata: {
       ...(request.metadata || {}),
       formatRetry: true
+    }
+  };
+}
+
+export function buildDclawAttachmentSourceRetryRequest(request, issue = {}) {
+  const hasFlow = Boolean(request?.metadata?.flow);
+  const responseSchema = hasFlow
+    ? "{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[],\"flowDecision\":{\"currentNodeId\":\"当前节点ID\",\"nextNodeId\":\"建议下一节点ID或当前节点ID\",\"nodeCompleted\":false,\"confidence\":0.0,\"reason\":\"判断原因\",\"collectedDataPatch\":{}}}"
+    : "{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[]}";
+  const urls = Array.isArray(issue.attachmentUrls)
+    ? issue.attachmentUrls.filter(Boolean)
+    : [];
+  return {
+    ...request,
+    message: [
+      request.message,
+      "",
+      "上一条输出包含附件，但附件没有可信来源，不能发送给客户。",
+      "整条回复必须重新生成：如果没有企业智库、任务节点或平台配置明确提供可公开访问的资源 URL，就不要放入 attachments，也不要继续说“我发给您”“我把二维码发您”“资料见附件”等依赖附件的话。",
+      "请重新组织一条即使没有附件也完整自洽的客户可见回复；可以说明资料暂时没有确认到，或需要稍后核实。",
+      urls.length ? `本次被拒绝的附件 URL：${urls.join("、")}` : "",
+      `只输出一个合法 JSON 对象：${responseSchema}。`,
+      "禁止输出 Markdown、分析、推理、规则、处理步骤、前后说明或 JSON 对象外的任何文字。"
+    ].filter(Boolean).join("\n"),
+    metadata: {
+      ...(request.metadata || {}),
+      attachmentSourceRetry: true,
+      invalidAttachmentUrls: urls
     }
   };
 }
@@ -554,6 +581,44 @@ export function degradeAgentReply(rawReply) {
     flowDecision: null,
     raw: rawReply,
     degraded: true
+  };
+}
+
+const trustedAttachmentSourceTypes = new Set([
+  "enterprise_knowledge",
+  "flow_node",
+  "configured_resource",
+  "console_upload"
+]);
+
+const attachmentTypesRequiringTrustedSource = new Set([
+  "image",
+  "file",
+  "video",
+  "audio"
+]);
+
+export function getAgentReplySendabilityIssue(agentReply) {
+  if (!agentReply?.valid) return null;
+  const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
+  const mediaAttachments = attachments.filter((attachment) =>
+    attachment &&
+    attachment.url &&
+    attachmentTypesRequiringTrustedSource.has(String(attachment.type || "").toLowerCase())
+  );
+  if (!mediaAttachments.length) return null;
+
+  const sources = Array.isArray(agentReply.sources) ? agentReply.sources : [];
+  const hasTrustedSource = sources.some((source) =>
+    source &&
+    trustedAttachmentSourceTypes.has(String(source.type || "").toLowerCase())
+  );
+  if (hasTrustedSource) return null;
+
+  return {
+    code: "untrusted_attachment_source",
+    message: "media attachments require an enterprise knowledge, flow node, configured resource, or console upload source",
+    attachmentUrls: mediaAttachments.map((attachment) => attachment.url).filter(Boolean)
   };
 }
 

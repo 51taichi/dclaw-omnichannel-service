@@ -22,7 +22,7 @@ const heavyHistoryMessage = {
     agentReply: {
       reply: "我发您看下",
       attachments: [{ type: "video", url: "https://cdn.example.com/demo.mp4" }],
-      sources: [{ type: "experience", name: "视频资料索取与实力背书回应" }],
+      sources: [{ type: "enterprise_knowledge", name: "视频资料索取与实力背书回应" }],
       flowDecision: { currentNodeId: "node_1" }
     },
     worktoolMessageIds: ["2076219836125294592"],
@@ -82,7 +82,7 @@ test("buildDclawActivationRequest also sends compact recent messages", () => {
   assert.doesNotMatch(request.message, /worktoolMessageIds/);
 });
 
-test("group resource requests instruct the agent to query experience and output attachments", () => {
+test("group resource requests instruct the agent to query knowledge and output attachments", () => {
   const request = buildDclawRequest({
     binding,
     conversation: { conversationKey: "bot_1:group:B招商服务群" },
@@ -100,22 +100,24 @@ test("group resource requests instruct the agent to query experience and output 
   });
 
   assert.match(request.message, /群聊和私聊只在是否触发回复上不同/);
-  assert.match(request.message, /不要因为是群聊就跳过资源索取、附件发送、客服经验库或企业智库/);
+  assert.match(request.message, /不要因为是群聊就跳过资源索取、附件发送或企业智库/);
   assert.match(request.message, /资源索取优先级高于品牌实力解释/);
   assert.match(request.message, /必须先查可发送资源并尽量输出 attachments/);
-  assert.match(request.message, /sources 中写入 experience/);
+  assert.match(request.message, /企业智库和可发送公开资源/);
+  assert.doesNotMatch(request.message, /experience/);
+  assert.doesNotMatch(request.message, /客服经验库/);
   assert.match(request.message, /"flow": null/);
   assert.doesNotMatch(request.message, /当前私聊会话启用了客服流程状态机/);
 });
 
-test("explicit experience-library questions require experience sources", () => {
+test("historical wording questions do not request local experience sources", () => {
   const request = buildDclawRequest({
     binding,
     conversation: { conversationKey: "bot_1:private:魔兮" },
     message: {
       messageId: "m-exp",
-      spoken: "经验库里以前同事遇到这种家长是怎么沟通的？",
-      rawSpoken: "经验库里以前同事遇到这种家长是怎么沟通的？",
+      spoken: "以前同事遇到这种家长是怎么沟通的？",
+      rawSpoken: "以前同事遇到这种家长是怎么沟通的？",
       roomType: 2,
       textType: 1,
       receivedName: "魔兮",
@@ -124,12 +126,13 @@ test("explicit experience-library questions require experience sources", () => {
     flow: null
   });
 
-  assert.match(request.message, /客户明确提到经验库、同事怎么答、历史沟通案例或优秀话术时/);
-  assert.match(request.message, /必须查询客服经验库/);
-  assert.match(request.message, /sources 中写入 experience/);
+  assert.match(request.message, /以前同事怎么答、历史沟通案例或优秀话术/);
+  assert.match(request.message, /不要声称查询内部目录/);
+  assert.doesNotMatch(request.message, /客服经验库/);
+  assert.doesNotMatch(request.message, /experience/);
 });
 
-test("flow conversations still require knowledge and experience synthesis", () => {
+test("flow conversations still require knowledge before state-machine synthesis", () => {
   const request = buildDclawRequest({
     binding,
     conversation: { conversationKey: "bot_1:private:魔兮" },
@@ -152,12 +155,13 @@ test("flow conversations still require knowledge and experience synthesis", () =
     }
   });
 
-  assert.match(request.message, /状态机、企业智库、客服经验库必须三方合议/);
-  assert.match(request.message, /状态机不能独占回答/);
+  assert.match(request.message, /状态机只负责推进当前节点目标/);
+  assert.match(request.message, /不能独占回答或替代事实检索/);
   assert.match(request.message, /当前任务节点相关咨询/);
   assert.match(request.message, /不能只用状态机回答/);
   assert.match(request.message, /enterprise_knowledge/);
-  assert.match(request.message, /experience/);
+  assert.doesNotMatch(request.message, /experience/);
+  assert.doesNotMatch(request.message, /客服经验库/);
   assert.match(request.message, /flow_node/);
 });
 

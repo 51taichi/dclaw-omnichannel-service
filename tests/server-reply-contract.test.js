@@ -18,3 +18,10 @@ test("server retries malformed agent replies once and never forwards the raw res
   assert.match(serverSource, /activation\.agent\.degraded/);
   assert.match(serverSource, /activation\.agent\.invalid_format/);
 });
+
+test("server retries agent replies when media attachments do not have trusted sources", () => {
+  assert.match(serverSource, /buildDclawAttachmentSourceRetryRequest\(request,\s*sendabilityIssue\)/);
+  assert.match(serverSource, /getAgentReplySendabilityIssue\(agentReply\)/);
+  assert.match(serverSource, /agent\.reply\.attachment_source_retry/);
+  assert.match(serverSource, /agent\.reply\.invalid_attachment_source/);
+});

@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { loadBotBindingsFromConfig } from "./config.js";
 import {
   buildDclawActivationRequest,
+  buildDclawAttachmentSourceRetryRequest,
   buildDclawConversationResetRequest,
   buildDclawHandoffTranscriptRequest,
   buildDclawProactiveEventRequest,
@@ -17,6 +18,7 @@ import {
   getDclawAgentMaxAttempts,
   getDclawFormatRetryTimeoutMs,
   getDclawAgentTimeoutMs,
+  getAgentReplySendabilityIssue,
   invokeDclawAgentWithRetry,
   parseConversationResetAcknowledgement,
   parseAgentReply
@@ -796,13 +798,82 @@ export async function syncConversationResetToAgent({
   }
 }
 
-async function invokeStrictAgentReply({ binding, request, onRetry, onFormatRetry, onDegrade }) {
+function invalidSendabilityAgentReply(rawReply, sendabilityIssue) {
+  return {
+    valid: false,
+    reply: "",
+    attachments: [],
+    sources: [],
+    flowDecision: null,
+    raw: rawReply,
+    sendabilityIssue
+  };
+}
+
+async function invokeStrictAgentReply({
+  binding,
+  request,
+  onRetry,
+  onFormatRetry,
+  onAttachmentSourceRetry,
+  onInvalidAttachmentSource,
+  onDegrade
+}) {
   const first = await enqueueAgentInvocation(() =>
     invokeDclawAgentWithRetry({ binding, request, onRetry })
   );
   let agentReply = parseAgentReply(first.reply);
   if (agentReply.valid) {
-    return { invocation: first, agentReply, formatAttempts: 1 };
+    const sendabilityIssue = getAgentReplySendabilityIssue(agentReply);
+    if (!sendabilityIssue) {
+      return { invocation: first, agentReply, formatAttempts: 1, attachmentSourceAttempts: 1 };
+    }
+    onAttachmentSourceRetry?.({
+      rawReplyLength: String(first.reply || "").length,
+      issue: sendabilityIssue
+    });
+    const attachmentRetryRequest = buildDclawAttachmentSourceRetryRequest(request, sendabilityIssue);
+    const retried = await enqueueAgentInvocation(() =>
+      invokeDclawAgentWithRetry({
+        binding,
+        request: attachmentRetryRequest,
+        timeoutMs: getDclawFormatRetryTimeoutMs(),
+        onRetry
+      })
+    );
+    agentReply = parseAgentReply(retried.reply);
+    if (!agentReply.valid) {
+      const degraded = degradeAgentReply(retried.reply);
+      if (degraded.valid) {
+        onDegrade?.({
+          rawReplyLength: String(retried.reply || "").length,
+          reason: "attachment_source_retry_invalid"
+        });
+        agentReply = degraded;
+      }
+    }
+    const retryIssue = getAgentReplySendabilityIssue(agentReply);
+    if (retryIssue) {
+      onInvalidAttachmentSource?.({
+        rawReplyLength: String(retried.reply || "").length,
+        issue: retryIssue
+      });
+      agentReply = invalidSendabilityAgentReply(retried.reply, retryIssue);
+    }
+    return {
+      invocation: {
+        ...retried,
+        request,
+        response: {
+          initial: first.response,
+          attachmentSourceRetry: retried.response
+        },
+        attempts: Number(first.attempts || 1) + Number(retried.attempts || 1)
+      },
+      agentReply,
+      formatAttempts: 1,
+      attachmentSourceAttempts: 2
+    };
   }
 
   onFormatRetry?.({ rawReplyLength: String(first.reply || "").length });
@@ -852,6 +923,59 @@ async function invokeStrictAgentReply({ binding, request, onRetry, onFormatRetry
       agentReply = degraded;
     }
   }
+  const sendabilityIssue = getAgentReplySendabilityIssue(agentReply);
+  if (sendabilityIssue) {
+    onAttachmentSourceRetry?.({
+      rawReplyLength: String(repaired.reply || "").length,
+      issue: sendabilityIssue
+    });
+    const attachmentRetryRequest = buildDclawAttachmentSourceRetryRequest(request, sendabilityIssue);
+    const retried = await enqueueAgentInvocation(() =>
+      invokeDclawAgentWithRetry({
+        binding,
+        request: attachmentRetryRequest,
+        timeoutMs: getDclawFormatRetryTimeoutMs(),
+        onRetry
+      })
+    );
+    agentReply = parseAgentReply(retried.reply);
+    if (!agentReply.valid) {
+      const degraded = degradeAgentReply(retried.reply);
+      if (degraded.valid) {
+        onDegrade?.({
+          rawReplyLength: String(retried.reply || "").length,
+          reason: "attachment_source_retry_invalid"
+        });
+        agentReply = degraded;
+      }
+    }
+    const retryIssue = getAgentReplySendabilityIssue(agentReply);
+    if (retryIssue) {
+      onInvalidAttachmentSource?.({
+        rawReplyLength: String(retried.reply || "").length,
+        issue: retryIssue
+      });
+      agentReply = invalidSendabilityAgentReply(retried.reply, retryIssue);
+    }
+    return {
+      invocation: {
+        ...retried,
+        request,
+        response: {
+          initial: first.response,
+          formatRetry: repaired.response,
+          attachmentSourceRetry: retried.response
+        },
+        attempts:
+          Number(first.attempts || 1) +
+          Number(repaired.attempts || 1) +
+          Number(retried.attempts || 1)
+      },
+      agentReply,
+      formatAttempts: 2,
+      attachmentSourceAttempts: 2
+    };
+  }
   return {
     invocation: {
       ...repaired,
@@ -863,7 +987,8 @@ async function invokeStrictAgentReply({ binding, request, onRetry, onFormatRetry
       attempts: Number(first.attempts || 1) + Number(repaired.attempts || 1)
     },
     agentReply,
-    formatAttempts: 2
+    formatAttempts: 2,
+    attachmentSourceAttempts: 1
   };
 }
 
@@ -1633,6 +1758,30 @@ async function sendActivationPolishedMessage({ task, binding }) {
           rawReplyLength
         });
       },
+      onAttachmentSourceRetry: ({ rawReplyLength, issue }) => {
+        logWarn("activation.agent.attachment_source_retry", {
+          activationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          rawReplyLength,
+          issueCode: issue?.code || "",
+          attachmentUrls: issue?.attachmentUrls || []
+        });
+      },
+      onInvalidAttachmentSource: ({ rawReplyLength, issue }) => {
+        logWarn("activation.agent.invalid_attachment_source", {
+          activationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          rawReplyLength,
+          issueCode: issue?.code || "",
+          attachmentUrls: issue?.attachmentUrls || []
+        });
+      },
       onDegrade: ({ rawReplyLength, reason, error }) => {
         logWarn("activation.agent.degraded", {
           activationTaskId: task.id,
@@ -1656,21 +1805,26 @@ async function sendActivationPolishedMessage({ task, binding }) {
     throw error;
   }
   if (!strictInvocation.agentReply.valid) {
+    const sendabilityIssue = strictInvocation.agentReply.sendabilityIssue;
+    const errorCode = sendabilityIssue ? "invalid_agent_attachment_source" : "invalid_agent_reply_format";
     finishAgentInvocation({
       id: invocationId,
       response: strictInvocation.invocation.response,
       status: "failed",
-      error: "invalid_agent_reply_format"
+      error: errorCode
     });
-    logWarn("activation.agent.invalid_format", {
+    logWarn(sendabilityIssue ? "activation.agent.invalid_attachment_source" : "activation.agent.invalid_format", {
       activationTaskId: task.id,
       botId: task.botId,
       agentId: binding.agentId,
       conversationKey: task.conversationKey,
       invocationId,
-      formatAttempts: strictInvocation.formatAttempts
+      formatAttempts: strictInvocation.formatAttempts,
+      attachmentSourceAttempts: strictInvocation.attachmentSourceAttempts,
+      issueCode: sendabilityIssue?.code || "",
+      attachmentUrls: sendabilityIssue?.attachmentUrls || []
     });
-    throw new Error("invalid_agent_reply_format");
+    throw new Error(errorCode);
   }
   const invocation = strictInvocation.invocation;
   const agentReply = strictInvocation.agentReply;
@@ -2127,6 +2281,26 @@ async function processIncomingMessage({ botId, message }) {
           rawReplyLength
         });
       },
+      onAttachmentSourceRetry: ({ rawReplyLength, issue }) => {
+        logWarn("agent.reply.attachment_source_retry", {
+          ...logContext,
+          agentId: binding.agentId,
+          invocationId,
+          rawReplyLength,
+          issueCode: issue?.code || "",
+          attachmentUrls: issue?.attachmentUrls || []
+        });
+      },
+      onInvalidAttachmentSource: ({ rawReplyLength, issue }) => {
+        logWarn("agent.reply.invalid_attachment_source", {
+          ...logContext,
+          agentId: binding.agentId,
+          invocationId,
+          rawReplyLength,
+          issueCode: issue?.code || "",
+          attachmentUrls: issue?.attachmentUrls || []
+        });
+      },
       onDegrade: ({ rawReplyLength, reason, error }) => {
         logWarn("agent.reply.degraded", {
           ...logContext,
@@ -2140,19 +2314,24 @@ async function processIncomingMessage({ botId, message }) {
     });
 
     if (!strictInvocation.agentReply.valid) {
+      const sendabilityIssue = strictInvocation.agentReply.sendabilityIssue;
+      const errorCode = sendabilityIssue ? "invalid_agent_attachment_source" : "invalid_agent_reply_format";
       finishAgentInvocation({
         id: invocationId,
         response: strictInvocation.invocation.response,
         status: "failed",
-        error: "invalid_agent_reply_format"
+        error: errorCode
       });
-      logWarn("agent.reply.invalid_format", {
+      logWarn(sendabilityIssue ? "agent.reply.invalid_attachment_source" : "agent.reply.invalid_format", {
         ...logContext,
         agentId: binding.agentId,
         invocationId,
-        formatAttempts: strictInvocation.formatAttempts
+        formatAttempts: strictInvocation.formatAttempts,
+        attachmentSourceAttempts: strictInvocation.attachmentSourceAttempts,
+        issueCode: sendabilityIssue?.code || "",
+        attachmentUrls: sendabilityIssue?.attachmentUrls || []
       });
-      finishMessageProcessing({ messageKey, status: "invalid_reply_format", error: "invalid_agent_reply_format" });
+      finishMessageProcessing({ messageKey, status: sendabilityIssue ? "invalid_attachment_source" : "invalid_reply_format", error: errorCode });
       return;
     }
 

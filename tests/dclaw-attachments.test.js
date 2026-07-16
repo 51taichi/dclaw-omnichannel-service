@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { degradeAgentReply, parseAgentReply } from "../src/dclaw.js";
+import {
+  buildDclawAttachmentSourceRetryRequest,
+  degradeAgentReply,
+  getAgentReplySendabilityIssue,
+  parseAgentReply
+} from "../src/dclaw.js";
 
 test("parseAgentReply preserves structured attachments from agent JSON", () => {
   const parsed = parseAgentReply(JSON.stringify({
@@ -34,6 +39,69 @@ test("parseAgentReply preserves structured attachments from agent JSON", () => {
   ]);
 });
 
+test("getAgentReplySendabilityIssue rejects media attachments without a trusted source", () => {
+  const parsed = parseAgentReply(JSON.stringify({
+    reply: "我把客服二维码发给您",
+    attachments: [
+      {
+        type: "image",
+        url: "https://static.shenting666.com/customer_service_qrcode.jpg",
+        name: "客服微信二维码"
+      }
+    ],
+    sources: []
+  }));
+
+  const issue = getAgentReplySendabilityIssue(parsed);
+
+  assert.equal(issue?.code, "untrusted_attachment_source");
+  assert.deepEqual(issue.attachmentUrls, [
+    "https://static.shenting666.com/customer_service_qrcode.jpg"
+  ]);
+});
+
+test("getAgentReplySendabilityIssue accepts attachments backed by trusted sources", () => {
+  const parsed = parseAgentReply(JSON.stringify({
+    reply: "我把资料发您",
+    attachments: [
+      {
+        type: "video",
+        url: "https://static.shenting666.com/factory.mp4",
+        name: "工厂视频.mp4"
+      }
+    ],
+    sources: [
+      {
+        type: "enterprise_knowledge",
+        name: "工厂视频资料",
+        reason: "命中可发送视频 URL"
+      }
+    ]
+  }));
+
+  assert.equal(getAgentReplySendabilityIssue(parsed), null);
+});
+
+test("buildDclawAttachmentSourceRetryRequest asks agent to regenerate a self-contained reply", () => {
+  const original = {
+    message: "客户说：可以发客服微信吗？",
+    metadata: { source: "worktool" }
+  };
+
+  const retry = buildDclawAttachmentSourceRetryRequest(original, {
+    code: "untrusted_attachment_source",
+    attachmentUrls: ["https://static.shenting666.com/customer_service_qrcode.jpg"]
+  });
+
+  assert.match(retry.message, /附件没有可信来源/);
+  assert.match(retry.message, /整条回复必须重新生成/);
+  assert.match(retry.message, /不要继续说“我发给您”/);
+  assert.equal(retry.metadata.attachmentSourceRetry, true);
+  assert.deepEqual(retry.metadata.invalidAttachmentUrls, [
+    "https://static.shenting666.com/customer_service_qrcode.jpg"
+  ]);
+});
+
 test("parseAgentReply accepts an isolated JSON markdown fence", () => {
   const parsed = parseAgentReply(`\`\`\`json
 {
@@ -51,7 +119,7 @@ test("parseAgentReply preserves only structured sources returned by the agent", 
     reply: "有的，我把工厂视频发你",
     sources: [
       {
-        type: "experience",
+        type: "enterprise_knowledge",
         name: "视频资料索取与实力背书回应",
         reason: "命中工厂视频 URL"
       },
@@ -65,7 +133,7 @@ test("parseAgentReply preserves only structured sources returned by the agent", 
 
   assert.deepEqual(parsed.sources, [
     {
-      type: "experience",
+      type: "enterprise_knowledge",
       name: "视频资料索取与实力背书回应",
       reason: "命中工厂视频 URL"
     }
