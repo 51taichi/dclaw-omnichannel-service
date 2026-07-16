@@ -1665,7 +1665,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
               </label>
               <label class="toggle activation-toggle">
                 <input data-flow-node-activation-field="polishByAgent" type="checkbox" ${activationPolishByAgent ? "checked" : ""} />
-                <span>${icon("terminal")}Agent 美化话术</span>
+                <span>${icon("terminal")}Agent 组织语言</span>
               </label>
               <label>
                 <span class="field-label">${icon("clock")}激活间隔（分钟）</span>
