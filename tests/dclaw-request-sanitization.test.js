@@ -129,6 +129,38 @@ test("explicit experience-library questions require experience sources", () => {
   assert.match(request.message, /sources 中写入 experience/);
 });
 
+test("flow conversations still require knowledge and experience synthesis", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:魔兮" },
+    message: {
+      messageId: "m-flow-knowledge",
+      spoken: "晚上直播具体讲什么",
+      rawSpoken: "晚上直播具体讲什么",
+      roomType: 2,
+      textType: 1,
+      receivedName: "魔兮",
+      atMe: "false"
+    },
+    flow: {
+      currentNode: {
+        id: "node_2",
+        name: "邀约直播课",
+        goal: "邀请客户参加今晚直播课",
+        completionCriteria: "客户明确答复是否参加"
+      }
+    }
+  });
+
+  assert.match(request.message, /状态机、企业智库、客服经验库必须三方合议/);
+  assert.match(request.message, /状态机不能独占回答/);
+  assert.match(request.message, /当前任务节点相关咨询/);
+  assert.match(request.message, /不能只用状态机回答/);
+  assert.match(request.message, /enterprise_knowledge/);
+  assert.match(request.message, /experience/);
+  assert.match(request.message, /flow_node/);
+});
+
 test("non-flow customer replies use the same strict JSON contract", () => {
   const request = buildDclawRequest({
     binding,
