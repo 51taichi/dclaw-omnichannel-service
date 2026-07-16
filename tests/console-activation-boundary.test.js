@@ -43,3 +43,10 @@ test("activation editor hides trigger choice and does not preserve legacy trigge
   assert.equal(app.includes("触发时机"), false);
   assert.equal(app.includes('trigger: source.trigger === "friend_added"'), false);
 });
+
+test("flow editor preserves a configured entry node that is not the first node", () => {
+  assert.equal(app.includes("const configuredEntryNodeId = String(config.entryNodeId || \"\").trim();"), true);
+  assert.equal(app.includes("renderFlowNodeEditor(configuredEntryNodeId);"), true);
+  assert.equal(app.includes("const selectedEntryNodeId = String(els.flowMachineForm.entryNodeId.value || \"\").trim();"), true);
+  assert.equal(app.includes("entryNodeId: nodes.some((node) => node.id === selectedEntryNodeId)"), true);
+});

@@ -1301,7 +1301,8 @@ function setFlowEditorFromConfig(config = {}) {
     : [createBlankFlowNode(1)];
   collapsedFlowNodes.clear();
   flowDraftNodes.forEach((node, index) => collapsedFlowNodes.add(flowNodeCollapseKey(node, index)));
-  renderFlowNodeEditor(flowDraftNodes[0]?.id || "");
+  const configuredEntryNodeId = String(config.entryNodeId || "").trim();
+  renderFlowNodeEditor(configuredEntryNodeId);
   syncFlowJsonTextarea();
 }
 
@@ -1317,10 +1318,13 @@ function buildFlowConfigFromEditor() {
     nextNodeId: String(node.nextNodeId || "").trim(),
     transitions: Array.isArray(node.transitions) ? node.transitions : []
   }));
+  const selectedEntryNodeId = String(els.flowMachineForm.entryNodeId.value || "").trim();
   return {
     name: String(els.flowMachineForm.flowName.value || "客服状态机").trim(),
     version: String(els.flowMachineForm.flowVersion.value || "1.0.0").trim(),
-    entryNodeId: nodes[0]?.id || "",
+    entryNodeId: nodes.some((node) => node.id === selectedEntryNodeId)
+      ? selectedEntryNodeId
+      : nodes[0]?.id || "",
     nodes
   };
 }
