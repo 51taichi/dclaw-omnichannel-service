@@ -2236,9 +2236,14 @@ function sourceTypeShortLabel(type) {
   }[String(type || "").trim()] || "来源";
 }
 
+function shouldShowChatSource(source) {
+  const type = String(source?.type || "").trim();
+  return type !== "conversation";
+}
+
 function renderChatSources(value) {
   const sources = Array.isArray(value)
-    ? value.filter((source) => source && typeof source === "object" && source.type && source.name)
+    ? value.filter((source) => source && typeof source === "object" && source.type && source.name && shouldShowChatSource(source))
     : [];
   if (!sources.length) return "";
   return `
