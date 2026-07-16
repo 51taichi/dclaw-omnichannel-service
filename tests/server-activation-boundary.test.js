@@ -23,3 +23,9 @@ test("server cancels activation on inbound messages, handoff, reset, and node tr
   assert.equal(source.includes('reason: "node_transition"'), true);
   assert.equal(dbSource.includes("incrementFlowActivationGeneration"), true);
 });
+
+test("entry activation schedules after both new friends and AI replies", () => {
+  assert.equal(source.includes("handleFriendAddedEvent"), true);
+  assert.equal(source.includes("scheduleActivationAfterFlowReply({"), true);
+  assert.equal(source.includes('reason: "customer_replied"'), true);
+});

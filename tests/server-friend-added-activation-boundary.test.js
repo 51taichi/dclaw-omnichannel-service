@@ -22,8 +22,19 @@ test("friend-added activation never invokes DClaw or sends a welcome message", (
   assert.equal(handler.includes("sendTextMessage"), false);
 });
 
-test("normal reply activation only accepts after_ai_reply triggers", () => {
+test("normal reply activation does not depend on a trigger field", () => {
   const start = source.indexOf("function scheduleActivationAfterFlowReply");
   const end = source.indexOf("function isValidFlowNode", start);
-  assert.match(source.slice(start, end), /trigger !== "after_ai_reply"/);
+  const scheduler = source.slice(start, end);
+  assert.equal(scheduler.includes("activation.trigger"), false);
+  assert.equal(scheduler.includes("!activation.enabled"), true);
+  assert.equal(scheduler.includes("!activation.messages.length"), true);
+});
+
+test("friend-added activation reads only the flow entry node", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+  assert.equal(handler.includes("getFlowNode(machine, machine.entryNodeId)"), true);
+  assert.equal(handler.includes("activation.trigger"), false);
 });

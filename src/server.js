@@ -508,11 +508,7 @@ function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flo
     ? currentNode
     : flow.currentNode;
   const activation = activationSourceNode === currentNode ? currentNodeActivation : replyNodeActivation;
-  if (
-    !activation.enabled ||
-    activation.trigger !== "after_ai_reply" ||
-    !activation.messages.length
-  ) return null;
+  if (!activation.enabled || !activation.messages.length) return null;
 
   cancelFlowActivationTasks({ conversationKey, reason: "new_flow_reply" });
   const session = incrementFlowActivationGeneration({ conversationKey, reason: "flow_reply_sent" });
@@ -939,20 +935,15 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     });
     return "skipped";
   }
-  const currentSession = getOrCreateFlowSession({ botId, conversationKey, machine });
-  const currentNode = getFlowNode(machine, currentSession.currentNodeId) ||
-    getFlowNode(machine, machine.entryNodeId);
-  const activation = normalizeActivationConfig(currentNode?.activation || {});
-  if (
-    !activation.enabled ||
-    activation.trigger !== "friend_added" ||
-    !activation.messages.length
-  ) {
+  getOrCreateFlowSession({ botId, conversationKey, machine });
+  const entryNode = getFlowNode(machine, machine.entryNodeId);
+  const activation = normalizeActivationConfig(entryNode?.activation || {});
+  if (!activation.enabled || !activation.messages.length) {
     logInfo("friend_added.skipped", {
       ...logContext,
       friendName,
       conversationKey,
-      reason: "activation_not_configured"
+      reason: "entry_activation_not_configured"
     });
     return "skipped";
   }
@@ -967,7 +958,7 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     botId,
     agentId: binding.agentId,
     conversationKey,
-    nodeId: session.currentNodeId,
+    nodeId: machine.entryNodeId,
     generation: session.activationGeneration,
     activation,
     anchorAt,
