@@ -23,8 +23,6 @@ function ensureBotAgent(botId, agentId) {
 test("normalizeActivationConfig defaults and filters messages", () => {
   assert.deepEqual(db.normalizeActivationConfig({}), {
     enabled: false,
-    intervalMinutes: 30,
-    maxTimes: 1,
     polishByAgent: true,
     messages: []
   });
@@ -37,11 +35,18 @@ test("normalizeActivationConfig defaults and filters messages", () => {
     messages: ["  第一条  ", "", "第二条"]
   }), {
     enabled: true,
-    intervalMinutes: 15,
-    maxTimes: 2,
     polishByAgent: false,
-    messages: ["第一条", "第二条"]
+    messages: [
+      { content: "第一条", intervalMinutes: 15, maxTimes: 2 },
+      { content: "第二条", intervalMinutes: 15, maxTimes: 2 }
+    ]
   });
+
+  assert.deepEqual(db.normalizeActivationConfig({
+    intervalMinutes: 30,
+    maxTimes: 2,
+    messages: ["第一条"]
+  }).messages, [{ content: "第一条", intervalMinutes: 30, maxTimes: 2 }]);
 });
 
 test("activation normalization ignores legacy trigger values", () => {
@@ -98,7 +103,12 @@ test("activation tasks can be scheduled, claimed, sent, failed, and canceled", (
   });
   assert.equal(claimed.length, 1);
   assert.equal(claimed[0].status, "processing");
-  assert.deepEqual(claimed[0].messages, ["提醒一", "提醒二"]);
+  assert.equal(claimed[0].messageIndex, 0);
+  assert.equal(claimed[0].messageContent, "提醒一");
+  assert.deepEqual(claimed[0].messages, [
+    { content: "提醒一", intervalMinutes: 30, maxTimes: 2 },
+    { content: "提醒二", intervalMinutes: 30, maxTimes: 2 }
+  ]);
 
   const sent = db.markFlowActivationTaskSent({
     id: claimed[0].id,
@@ -185,4 +195,89 @@ test("incrementFlowActivationGeneration invalidates old generations", () => {
   db.getOrCreateFlowSession({ botId, conversationKey, machine });
   const next = db.incrementFlowActivationGeneration({ conversationKey, reason: "customer_replied" });
   assert.equal(next.activationGeneration, 1);
+});
+
+test("activation progress advances sequential messages and rejects stale generations", () => {
+  const botId = "bot_activation_progress";
+  const agentId = "agent_activation_progress";
+  const conversationKey = `${botId}:private:赵六`;
+  ensureBotAgent(botId, agentId);
+  const machine = db.upsertFlowMachine({
+    agentId,
+    enabled: true,
+    config: {
+      name: "进度状态机",
+      version: "1.0.0",
+      entryNodeId: "node_1",
+      nodes: [
+        { id: "node_1", name: "节点一", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "" },
+        { id: "node_2", name: "节点二", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "" }
+      ]
+    }
+  });
+  const session = db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "赵六", groupName: "" }
+  });
+
+  assert.deepEqual(db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }), {
+    nodeId: "node_1",
+    messageIndex: 0,
+    sentCount: 0
+  });
+
+  const oneSendMessages = [{ content: "第一条", intervalMinutes: 30, maxTimes: 1 }];
+  assert.deepEqual(db.advanceFlowActivationProgress({
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    messageIndex: 0,
+    attemptNumber: 1,
+    messages: oneSendMessages
+  }), {
+    nodeId: "node_1",
+    messageIndex: 1,
+    sentCount: 0
+  });
+
+  assert.equal(db.advanceFlowActivationProgress({
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration - 1,
+    messageIndex: 1,
+    attemptNumber: 1,
+    messages: oneSendMessages
+  }), null);
+
+  db.updateFlowSessionNode({ botId, conversationKey, nextNodeId: "node_2", reason: "transition" });
+  db.updateFlowSessionNode({ botId, conversationKey, nextNodeId: "node_1", reason: "transition back" });
+  assert.deepEqual(db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }), {
+    nodeId: "node_1",
+    messageIndex: 0,
+    sentCount: 0
+  });
+
+  const twoSendMessages = [{ content: "第二条", intervalMinutes: 30, maxTimes: 2 }];
+  assert.deepEqual(db.advanceFlowActivationProgress({
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    messageIndex: 0,
+    attemptNumber: 1,
+    messages: twoSendMessages
+  }), {
+    nodeId: "node_1",
+    messageIndex: 0,
+    sentCount: 1
+  });
+
+  db.clearConversationForReset({ botId, conversationKey });
+  assert.deepEqual(db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }), {
+    nodeId: "node_1",
+    messageIndex: 0,
+    sentCount: 0
+  });
 });

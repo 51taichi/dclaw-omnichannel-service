@@ -319,7 +319,10 @@ ensureColumn("flow_sessions", "handoff_at", "TEXT");
 ensureColumn("flow_sessions", "handoff_by", "TEXT");
 ensureColumn("flow_sessions", "handoff_reason", "TEXT");
 ensureColumn("flow_sessions", "activation_generation", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("flow_sessions", "activation_state_json", "TEXT");
 ensureColumn("flow_activation_tasks", "anchor_at", "TEXT");
+ensureColumn("flow_activation_tasks", "message_index", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("flow_activation_tasks", "message_content", "TEXT");
 
 function now() {
   return new Date().toISOString();
@@ -744,6 +747,7 @@ export function resetBotFlowStateForAgentRebind({
           handoff_by = '',
           handoff_reason = '',
           activation_generation = COALESCE(activation_generation, 0) + 1,
+          activation_state_json = NULL,
           updated_at = ?
       WHERE bot_id = ?
     `).run(resetNodeId, json({}), timestamp, normalizedBotId).changes;
@@ -1113,6 +1117,7 @@ function rowToFlowSession(row) {
     handoffBy: row.handoff_by || "",
     handoffReason: row.handoff_reason || "",
     activationGeneration: Number(row.activation_generation || 0),
+    activationState: parseJson(row.activation_state_json),
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -1129,6 +1134,8 @@ function rowToFlowActivationTask(row) {
     nodeId: row.node_id,
     generation: Number(row.generation || 0),
     attemptNumber: Number(row.attempt_number || 1),
+    messageIndex: Number(row.message_index || 0),
+    messageContent: row.message_content || "",
     maxTimes: Number(row.max_times || 1),
     intervalMinutes: Number(row.interval_minutes || 30),
     polishByAgent: Boolean(row.polish_by_agent),
@@ -1377,7 +1384,10 @@ export function updateFlowSessionNode({ botId, conversationKey, nextNodeId, reas
   const timestamp = now();
   db.prepare(`
     UPDATE flow_sessions
-    SET current_node_id = ?, updated_at = ?, last_message_at = ?
+    SET current_node_id = ?,
+        activation_state_json = NULL,
+        updated_at = ?,
+        last_message_at = ?
     WHERE conversation_key = ?
       AND bot_id = ?
   `).run(nextNodeId, timestamp, timestamp, conversationKey, botId);
@@ -1466,17 +1476,28 @@ export function mergeFlowSessionData({ conversationKey, patch = {} }) {
   );
 }
 
+function normalizeActivationMessage(raw, defaults) {
+  const source = typeof raw === "string" ? { content: raw } : raw || {};
+  const content = String(source.content || "").trim();
+  if (!content) return null;
+  return {
+    content,
+    intervalMinutes: Math.max(1, Number.parseInt(source.intervalMinutes ?? defaults.intervalMinutes, 10) || defaults.intervalMinutes),
+    maxTimes: Math.max(1, Number.parseInt(source.maxTimes ?? defaults.maxTimes, 10) || defaults.maxTimes)
+  };
+}
+
 export function normalizeActivationConfig(raw = {}) {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
   const intervalMinutes = Math.max(1, Number.parseInt(source.intervalMinutes ?? 30, 10) || 30);
   const maxTimes = Math.max(1, Number.parseInt(source.maxTimes ?? 1, 10) || 1);
   const messages = Array.isArray(source.messages)
-    ? source.messages.map((item) => String(item || "").trim()).filter(Boolean)
+    ? source.messages
+      .map((item) => normalizeActivationMessage(item, { intervalMinutes, maxTimes }))
+      .filter(Boolean)
     : [];
   return {
     enabled: Boolean(source.enabled),
-    intervalMinutes,
-    maxTimes,
     polishByAgent: source.polishByAgent !== false,
     messages
   };
@@ -1491,11 +1512,14 @@ export function scheduleFlowActivationTask({
   activation,
   anchorAt,
   dueAt,
-  attemptNumber = 1
+  attemptNumber = 1,
+  messageIndex = 0
 }) {
   const config = normalizeActivationConfig(activation);
   const timestamp = now();
   const taskAnchorAt = anchorAt || timestamp;
+  const normalizedMessageIndex = Math.max(0, Number.parseInt(messageIndex, 10) || 0);
+  const message = config.messages[normalizedMessageIndex] || null;
   const result = db.prepare(`
     INSERT INTO flow_activation_tasks (
       bot_id,
@@ -1504,6 +1528,8 @@ export function scheduleFlowActivationTask({
       node_id,
       generation,
       attempt_number,
+      message_index,
+      message_content,
       max_times,
       interval_minutes,
       polish_by_agent,
@@ -1514,7 +1540,7 @@ export function scheduleFlowActivationTask({
       created_at,
       updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
   `).run(
     botId,
     agentId,
@@ -1522,8 +1548,10 @@ export function scheduleFlowActivationTask({
     nodeId,
     Number(generation || 0),
     Math.max(1, Number.parseInt(attemptNumber, 10) || 1),
-    config.maxTimes,
-    config.intervalMinutes,
+    normalizedMessageIndex,
+    message?.content || "",
+    message?.maxTimes || 1,
+    message?.intervalMinutes || 30,
     config.polishByAgent ? 1 : 0,
     json(config.messages),
     taskAnchorAt,
@@ -1648,6 +1676,82 @@ export function incrementFlowActivationGeneration({ conversationKey, reason = ""
   return getFlowSession(conversationKey);
 }
 
+export function getFlowActivationProgress({ conversationKey, nodeId }) {
+  const normalizedNodeId = String(nodeId || "").trim();
+  const defaultProgress = {
+    nodeId: normalizedNodeId,
+    messageIndex: 0,
+    sentCount: 0
+  };
+  const row = db.prepare(`
+    SELECT current_node_id, activation_state_json
+    FROM flow_sessions
+    WHERE conversation_key = ?
+  `).get(conversationKey);
+  const state = parseJson(row?.activation_state_json);
+  if (!row || row.current_node_id !== normalizedNodeId || !state || state.nodeId !== normalizedNodeId) {
+    return defaultProgress;
+  }
+  return {
+    nodeId: normalizedNodeId,
+    messageIndex: Math.max(0, Number.parseInt(state.messageIndex, 10) || 0),
+    sentCount: Math.max(0, Number.parseInt(state.sentCount, 10) || 0)
+  };
+}
+
+export function advanceFlowActivationProgress({
+  conversationKey,
+  nodeId,
+  generation,
+  messageIndex,
+  attemptNumber,
+  messages
+}) {
+  const normalizedNodeId = String(nodeId || "").trim();
+  const normalizedMessageIndex = Math.max(0, Number.parseInt(messageIndex, 10) || 0);
+  const normalizedAttemptNumber = Math.max(1, Number.parseInt(attemptNumber, 10) || 1);
+  const normalizedMessages = Array.isArray(messages)
+    ? messages
+      .map((message) => normalizeActivationMessage(message, { intervalMinutes: 30, maxTimes: 1 }))
+      .filter(Boolean)
+    : [];
+  const message = normalizedMessages[normalizedMessageIndex];
+  if (!message) return null;
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const session = db.prepare(`
+      SELECT current_node_id, activation_generation
+      FROM flow_sessions
+      WHERE conversation_key = ?
+    `).get(conversationKey);
+    if (
+      !session ||
+      session.current_node_id !== normalizedNodeId ||
+      Number(session.activation_generation || 0) !== Number(generation || 0)
+    ) {
+      db.exec("ROLLBACK");
+      return null;
+    }
+
+    const progress = normalizedAttemptNumber >= message.maxTimes
+      ? { nodeId: normalizedNodeId, messageIndex: normalizedMessageIndex + 1, sentCount: 0 }
+      : { nodeId: normalizedNodeId, messageIndex: normalizedMessageIndex, sentCount: normalizedAttemptNumber };
+    db.prepare(`
+      UPDATE flow_sessions
+      SET activation_state_json = ?, updated_at = ?
+      WHERE conversation_key = ?
+        AND current_node_id = ?
+        AND COALESCE(activation_generation, 0) = ?
+    `).run(json(progress), now(), conversationKey, normalizedNodeId, Number(generation || 0));
+    db.exec("COMMIT");
+    return progress;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function listFlowActivationTasks({ conversationKey = "", limit = 100 } = {}) {
   const normalizedLimit = Math.max(1, Number.parseInt(limit, 10) || 100);
   const rows = conversationKey
@@ -1743,6 +1847,7 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
           handoff_at = NULL,
           handoff_by = '',
           handoff_reason = '',
+          activation_state_json = NULL,
           last_message_at = ?,
           updated_at = ?
       WHERE conversation_key = ?
