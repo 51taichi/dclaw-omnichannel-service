@@ -1591,9 +1591,18 @@ export function cancelFlowActivationTasks({ conversationKey, reason = "" }) {
   return result.changes;
 }
 
+export function isFlowActivationTaskProcessing({ id }) {
+  return Boolean(db.prepare(`
+    SELECT 1
+    FROM flow_activation_tasks
+    WHERE id = ?
+      AND status = 'processing'
+  `).get(id));
+}
+
 export function markFlowActivationTaskSent({ id, worktoolMessageIds = [] }) {
   const timestamp = now();
-  db.prepare(`
+  const result = db.prepare(`
     UPDATE flow_activation_tasks
     SET status = 'sent',
         sent_at = ?,
@@ -1601,7 +1610,9 @@ export function markFlowActivationTaskSent({ id, worktoolMessageIds = [] }) {
         worktool_message_ids_json = ?,
         updated_at = ?
     WHERE id = ?
+      AND status = 'processing'
   `).run(timestamp, json(worktoolMessageIds), timestamp, id);
+  if (result.changes === 0) return null;
   return rowToFlowActivationTask(
     db.prepare("SELECT * FROM flow_activation_tasks WHERE id = ?").get(id)
   );
@@ -1609,13 +1620,15 @@ export function markFlowActivationTaskSent({ id, worktoolMessageIds = [] }) {
 
 export function markFlowActivationTaskFailed({ id, error = "" }) {
   const timestamp = now();
-  db.prepare(`
+  const result = db.prepare(`
     UPDATE flow_activation_tasks
     SET status = 'failed',
         error_message = ?,
         updated_at = ?
     WHERE id = ?
+      AND status = 'processing'
   `).run(String(error || ""), timestamp, id);
+  if (result.changes === 0) return null;
   return rowToFlowActivationTask(
     db.prepare("SELECT * FROM flow_activation_tasks WHERE id = ?").get(id)
   );

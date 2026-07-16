@@ -122,6 +122,51 @@ test("activation tasks can be scheduled, claimed, sent, failed, and canceled", (
   assert.equal(db.listFlowActivationTasks({ conversationKey }).at(-1).status, "canceled");
 });
 
+test("canceled processing activation tasks cannot be marked sent or failed", () => {
+  const botId = "bot_activation_canceled";
+  const agentId = "agent_activation_canceled";
+  const conversationKey = `${botId}:private:王五`;
+  ensureBotAgent(botId, agentId);
+  const machine = db.upsertFlowMachine({
+    agentId,
+    enabled: true,
+    config: {
+      name: "取消保护状态机",
+      version: "1.0.0",
+      entryNodeId: "node_1",
+      nodes: [{ id: "node_1", name: "节点", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "" }]
+    }
+  });
+  const session = db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  const createTask = () => db.scheduleFlowActivationTask({
+    botId,
+    agentId,
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    activation: { enabled: true, intervalMinutes: 1, maxTimes: 1, polishByAgent: false, messages: ["提醒"] },
+    dueAt: "2026-07-11T10:00:00.000Z"
+  });
+
+  const sentTask = createTask();
+  const failedTask = createTask();
+  const claimed = db.claimDueFlowActivationTasks({
+    limit: 20,
+    nowIso: "2026-07-11T10:00:01.000Z"
+  });
+  assert.equal(claimed.length, 2);
+  assert.equal(db.isFlowActivationTaskProcessing({ id: sentTask.id }), true);
+  assert.equal(db.cancelFlowActivationTasks({ conversationKey, reason: "customer_replied" }), 2);
+
+  assert.equal(db.isFlowActivationTaskProcessing({ id: sentTask.id }), false);
+  assert.equal(db.markFlowActivationTaskSent({ id: sentTask.id }), null);
+  assert.equal(db.markFlowActivationTaskFailed({ id: failedTask.id, error: "late worker" }), null);
+
+  const tasks = db.listFlowActivationTasks({ conversationKey });
+  assert.equal(tasks.find((task) => task.id === sentTask.id).status, "canceled");
+  assert.equal(tasks.find((task) => task.id === failedTask.id).status, "canceled");
+});
+
 test("incrementFlowActivationGeneration invalidates old generations", () => {
   const botId = "bot_generation";
   const agentId = "agent_generation";
