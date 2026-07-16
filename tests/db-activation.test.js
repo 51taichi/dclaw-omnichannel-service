@@ -26,8 +26,7 @@ test("normalizeActivationConfig defaults and filters messages", () => {
     intervalMinutes: 30,
     maxTimes: 1,
     polishByAgent: true,
-    messages: [],
-    trigger: "after_ai_reply"
+    messages: []
   });
 
   assert.deepEqual(db.normalizeActivationConfig({
@@ -41,33 +40,17 @@ test("normalizeActivationConfig defaults and filters messages", () => {
     intervalMinutes: 15,
     maxTimes: 2,
     polishByAgent: false,
-    messages: ["第一条", "第二条"],
-    trigger: "after_ai_reply"
+    messages: ["第一条", "第二条"]
   });
-
-  assert.equal(
-    db.normalizeActivationConfig({ trigger: "friend_added" }).trigger,
-    "friend_added"
-  );
 });
 
-test("friend-added activation is restricted to the entry node", () => {
-  const botId = "bot_friend_added_validation";
-  const agentId = "agent_friend_added_validation";
-  ensureBotAgent(botId, agentId);
-
-  assert.throws(() => db.upsertFlowMachine({
-    agentId,
+test("activation normalization ignores legacy trigger values", () => {
+  const normalized = db.normalizeActivationConfig({
     enabled: true,
-    config: {
-      name: "校验状态机",
-      entryNodeId: "node_1",
-      nodes: [
-        { id: "node_1", name: "入口", activation: {} },
-        { id: "node_2", name: "后续", activation: { trigger: "friend_added" } }
-      ]
-    }
-  }), /friend_added activation must be on the entry node/);
+    trigger: "friend_added",
+    messages: ["提醒"]
+  });
+  assert.equal("trigger" in normalized, false);
 });
 
 test("activation tasks can be scheduled, claimed, sent, failed, and canceled", () => {

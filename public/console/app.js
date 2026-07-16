@@ -1216,8 +1216,7 @@ function defaultActivationConfig() {
     intervalMinutes: 30,
     maxTimes: 1,
     polishByAgent: true,
-    messages: [],
-    trigger: "after_ai_reply"
+    messages: []
   };
 }
 
@@ -1232,8 +1231,7 @@ function normalizeActivationDraft(value = {}) {
     intervalMinutes: Math.max(1, Number(source.intervalMinutes || defaults.intervalMinutes)),
     maxTimes: Math.max(1, Number(source.maxTimes || defaults.maxTimes)),
     polishByAgent: source.polishByAgent !== false,
-    messages,
-    trigger: source.trigger === "friend_added" ? "friend_added" : "after_ai_reply"
+    messages
   };
 }
 
@@ -1358,8 +1356,6 @@ function updateDraftNodeActivationFromInput(input) {
     activation[field] = input.checked;
   } else if (field === "intervalMinutes" || field === "maxTimes") {
     activation[field] = Math.max(1, Number(input.value || activation[field] || 1));
-  } else if (field === "trigger") {
-    activation.trigger = input.value === "friend_added" ? "friend_added" : "after_ai_reply";
   }
   node.activation = {
     ...activation,
@@ -1610,8 +1606,6 @@ function renderFlowNodeEditor(entryNodeId = "") {
       const activationIntervalMinutes = activation.intervalMinutes;
       const activationMaxTimes = activation.maxTimes;
       const activationPolishByAgent = activation.polishByAgent;
-      const activationTrigger = activation.trigger;
-      const canTriggerOnFriendAdded = node.id === validEntry;
       const activationMessages = activation.messages.length ? activation.messages : [""];
       return `
         <article class="flow-node-card ${isCollapsed ? "is-collapsed" : ""}" data-flow-node-index="${index}" data-flow-node-collapse-key="${escapeHtml(collapseKey)}">
@@ -1656,13 +1650,6 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 <input data-flow-node-activation-field="enabled" type="checkbox" ${activationEnabled ? "checked" : ""} />
                 <span>${icon("send")}启用客户激活</span>
               </label>
-              <label>
-                <span class="field-label">触发时机</span>
-                <select data-flow-node-activation-field="trigger">
-                  <option value="after_ai_reply" ${activationTrigger === "after_ai_reply" ? "selected" : ""}>AI 回复后</option>
-                  <option value="friend_added" ${activationTrigger === "friend_added" && canTriggerOnFriendAdded ? "selected" : ""} ${canTriggerOnFriendAdded ? "" : "disabled"}>新增好友后${canTriggerOnFriendAdded ? "" : "（仅入口节点可用）"}</option>
-                </select>
-              </label>
               <label class="toggle activation-toggle">
                 <input data-flow-node-activation-field="polishByAgent" type="checkbox" ${activationPolishByAgent ? "checked" : ""} />
                 <span>${icon("terminal")}Agent 组织语言</span>
@@ -1675,7 +1662,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 <span class="field-label">${icon("refresh")}激活次数</span>
                 <input data-flow-node-activation-field="maxTimes" type="number" min="1" value="${escapeHtml(activationMaxTimes)}" />
               </label>
-              <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("启用：客户未回复时触发提醒；触发时机：AI 回复后按本次回复计时，新增好友后按企业微信新增好友事件计时（仅入口节点可用）；美化：由 Agent 结合上下文润色；间隔：第1次按间隔发送，第2次按间隔*2，第3次按间隔*4；次数：达到次数后停止；话术：第 N 次激活发送第 N 条话术，不够时复用最后一条。")}">
+              <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("启用：客户未回复时触发提醒；入口节点在新增好友后和 AI 回复后都会计时，其他节点只在 AI 回复后计时；美化：由 Agent 结合上下文润色；间隔：第1次按间隔发送，第2次按间隔*2，第3次按间隔*4；次数：达到次数后停止；话术：第 N 次激活发送第 N 条话术，不够时复用最后一条。")}">
                 ${icon("info")}
               </span>
               <button class="secondary icon-button activation-add-button" data-add-activation-message="${index}" type="button" aria-label="新增话术" title="新增话术">
