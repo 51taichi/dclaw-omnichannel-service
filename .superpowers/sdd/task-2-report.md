@@ -20,3 +20,12 @@
 ## Scope
 
 Modified only the assigned server and boundary-test files, plus this requested report. Other concurrent worktree changes were left untouched.
+
+## Fix
+
+- Root cause: the console node-change endpoint called `updateFlowSessionNode`, which resets activation progress, but did not call `invalidateFlowActivation`. Pending old-node tasks therefore remained active and the activation generation was unchanged.
+- Tests:
+  - `node --test tests/server-activation-boundary.test.js` (RED): 7 passed, 1 failed at `manual console node changes immediately invalidate prior activation work` because the invalidation call was absent.
+  - `node --test tests/server-activation-boundary.test.js tests/server-friend-added-activation-boundary.test.js tests/server-activation-worker-boundary.test.js` (GREEN): 17 passed, 0 failed.
+- Commit: `fix: invalidate activation on manual node changes`.
+- Scope: `src/server.js`, `tests/server-activation-boundary.test.js`, and this report only; existing console, docs, and worker-test worktree changes were left untouched.

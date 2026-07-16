@@ -27,6 +27,23 @@ test("server cancels activation on inbound messages, handoff, reset, and node tr
   assert.equal(dbSource.includes("incrementFlowActivationGeneration"), true);
 });
 
+test("manual console node changes immediately invalidate prior activation work", () => {
+  const start = source.indexOf('app.put(\n  "/api/flow-sessions/:conversationKey/node"');
+  const end = source.indexOf('\napp.post(\n  "/api/flow-sessions/:conversationKey/reset"', start);
+  const handler = source.slice(start, end);
+
+  assert.equal(handler.includes("updateFlowSessionNode({"), true);
+  assert.equal(
+    handler.includes('invalidateFlowActivation({ conversationKey, reason: "console_node_change" })'),
+    true
+  );
+  assert.equal(
+    handler.indexOf("updateFlowSessionNode({") <
+      handler.indexOf('invalidateFlowActivation({ conversationKey, reason: "console_node_change" })'),
+    true
+  );
+});
+
 test("private non-text customer interactions cancel activation before agent filtering", () => {
   const start = source.indexOf("async function processIncomingMessage");
   const handler = source.slice(start);

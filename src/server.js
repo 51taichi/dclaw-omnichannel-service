@@ -2923,13 +2923,14 @@ app.put(
     if (!machine || !machine.config.nodes.some((node) => node.id === nextNodeId)) {
       throw new Error("nextNodeId is not valid for this bot");
     }
-    const session = updateFlowSessionNode({
+    updateFlowSessionNode({
       botId,
       conversationKey,
       nextNodeId,
       reason: body.reason || "控制台手动修改",
       decision: { source: "console", reason: body.reason || "" }
     });
+    const session = invalidateFlowActivation({ conversationKey, reason: "console_node_change" });
     res.json({ ok: true, session });
   })
 );
