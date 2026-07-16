@@ -391,10 +391,19 @@ function compactRecentMessages(messages) {
 
 const defaultDclawTimeoutMs = 25000;
 const defaultDclawMaxAttempts = 2;
+const defaultDclawFormatRetryTimeoutMs = 30000;
 
 export function getDclawAgentTimeoutMs() {
   const configured = Number(process.env.DCLAW_AGENT_TIMEOUT_MS || defaultDclawTimeoutMs);
   return Number.isFinite(configured) && configured > 0 ? configured : defaultDclawTimeoutMs;
+}
+
+export function getDclawFormatRetryTimeoutMs() {
+  const configured = Number(process.env.DCLAW_AGENT_FORMAT_RETRY_TIMEOUT_MS || "");
+  if (Number.isFinite(configured) && configured > 0) {
+    return configured;
+  }
+  return Math.min(getDclawAgentTimeoutMs(), defaultDclawFormatRetryTimeoutMs);
 }
 
 export function getDclawAgentMaxAttempts() {
@@ -512,7 +521,8 @@ export function parseAgentReply(rawReply) {
   try {
     parsed = JSON.parse(text);
   } catch {
-    return invalidAgentReply(rawReply);
+    parsed = parseSingleEmbeddedJsonObject(text);
+    if (!parsed) return invalidAgentReply(rawReply);
   }
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed) || typeof parsed.reply !== "string") {
     return invalidAgentReply(rawReply);
@@ -528,10 +538,91 @@ export function parseAgentReply(rawReply) {
   };
 }
 
+export function degradeAgentReply(rawReply) {
+  const text = String(rawReply || "").trim();
+  if (!text || text.length > 1200 || /[{}]/.test(text)) {
+    return invalidAgentReply(rawReply);
+  }
+  if (looksLikeInternalAgentText(text)) {
+    return invalidAgentReply(rawReply);
+  }
+  return {
+    valid: true,
+    reply: stripRuntimeArtifacts(text),
+    attachments: [],
+    sources: [],
+    flowDecision: null,
+    raw: rawReply,
+    degraded: true
+  };
+}
+
 function unwrapIsolatedJsonFence(value) {
   const text = String(value || "").trim();
   const match = text.match(/^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i);
   return match ? match[1].trim() : text;
+}
+
+function parseSingleEmbeddedJsonObject(text) {
+  const candidates = extractJsonObjectCandidates(text);
+  if (candidates.length !== 1) return null;
+  try {
+    return JSON.parse(candidates[0]);
+  } catch {
+    return null;
+  }
+}
+
+function extractJsonObjectCandidates(text) {
+  const candidates = [];
+  let index = 0;
+  while (index < text.length) {
+    if (text[index] !== "{") {
+      index += 1;
+      continue;
+    }
+    const end = findJsonObjectEnd(text, index);
+    if (end === -1) {
+      index += 1;
+      continue;
+    }
+    candidates.push(text.slice(index, end + 1));
+    index = end + 1;
+  }
+  return candidates;
+}
+
+function findJsonObjectEnd(text, startIndex) {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{") depth += 1;
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+function looksLikeInternalAgentText(text) {
+  return /先检查|我来处理|让我|根据规则|处理步骤|工具|调用|会话记录|客户档案|知识库|JSON|flowDecision|sources|attachments|不能发送给客户/.test(text);
 }
 
 function invalidAgentReply(rawReply) {

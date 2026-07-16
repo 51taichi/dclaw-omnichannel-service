@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseAgentReply } from "../src/dclaw.js";
+import { degradeAgentReply, parseAgentReply } from "../src/dclaw.js";
 
 test("parseAgentReply preserves structured attachments from agent JSON", () => {
   const parsed = parseAgentReply(JSON.stringify({
@@ -125,9 +125,26 @@ test("parseAgentReply rejects unstructured internal execution text", () => {
   assert.equal(parsed.reply, "");
 });
 
-test("parseAgentReply rejects text wrapped around an otherwise valid JSON reply", () => {
+test("parseAgentReply extracts a single valid JSON reply wrapped by prose", () => {
   const parsed = parseAgentReply('先检查客户档案。{"reply":"你好呀，很高兴认识你"}');
 
-  assert.equal(parsed.valid, false);
-  assert.equal(parsed.reply, "");
+  assert.equal(parsed.valid, true);
+  assert.equal(parsed.reply, "你好呀，很高兴认识你");
+});
+
+test("degradeAgentReply accepts plain customer-facing text as a last-resort reply", () => {
+  const parsed = degradeAgentReply("您好呀，湘左记这边可以帮您了解加盟流程。");
+
+  assert.equal(parsed.valid, true);
+  assert.equal(parsed.reply, "您好呀，湘左记这边可以帮您了解加盟流程。");
+});
+
+test("degradeAgentReply rejects internal execution text and malformed JSON-looking text", () => {
+  const internal = degradeAgentReply("收到，这是私聊首次添加好友的场景，我来处理。先检查会话记录和客户档案。");
+  const malformedJson = degradeAgentReply('{"reply":"你好呀"');
+
+  assert.equal(internal.valid, false);
+  assert.equal(internal.reply, "");
+  assert.equal(malformedJson.valid, false);
+  assert.equal(malformedJson.reply, "");
 });

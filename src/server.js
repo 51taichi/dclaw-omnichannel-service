@@ -13,7 +13,9 @@ import {
   buildDclawProactiveEventRequest,
   buildDclawReplyFormatRetryRequest,
   buildDclawRequest,
+  degradeAgentReply,
   getDclawAgentMaxAttempts,
+  getDclawFormatRetryTimeoutMs,
   getDclawAgentTimeoutMs,
   invokeDclawAgentWithRetry,
   parseConversationResetAcknowledgement,
@@ -698,7 +700,7 @@ export async function syncConversationResetToAgent({
   }
 }
 
-async function invokeStrictAgentReply({ binding, request, onRetry, onFormatRetry }) {
+async function invokeStrictAgentReply({ binding, request, onRetry, onFormatRetry, onDegrade }) {
   const first = await enqueueAgentInvocation(() =>
     invokeDclawAgentWithRetry({ binding, request, onRetry })
   );
@@ -709,10 +711,51 @@ async function invokeStrictAgentReply({ binding, request, onRetry, onFormatRetry
 
   onFormatRetry?.({ rawReplyLength: String(first.reply || "").length });
   const formatRetryRequest = buildDclawReplyFormatRetryRequest(request);
-  const repaired = await enqueueAgentInvocation(() =>
-    invokeDclawAgentWithRetry({ binding, request: formatRetryRequest, onRetry })
-  );
+  let repaired;
+  try {
+    repaired = await enqueueAgentInvocation(() =>
+      invokeDclawAgentWithRetry({
+        binding,
+        request: formatRetryRequest,
+        timeoutMs: getDclawFormatRetryTimeoutMs(),
+        onRetry
+      })
+    );
+  } catch (error) {
+    const degraded = degradeAgentReply(first.reply);
+    if (degraded.valid) {
+      onDegrade?.({
+        rawReplyLength: String(first.reply || "").length,
+        reason: "format_retry_failed",
+        error: error.message
+      });
+      return {
+        invocation: {
+          ...first,
+          request,
+          response: {
+            initial: first.response,
+            formatRetryError: error.message
+          },
+          attempts: Number(first.attempts || 1) + 1
+        },
+        agentReply: degraded,
+        formatAttempts: 2
+      };
+    }
+    throw error;
+  }
   agentReply = parseAgentReply(repaired.reply);
+  if (!agentReply.valid) {
+    const degraded = degradeAgentReply(repaired.reply);
+    if (degraded.valid) {
+      onDegrade?.({
+        rawReplyLength: String(repaired.reply || "").length,
+        reason: "format_retry_invalid"
+      });
+      agentReply = degraded;
+    }
+  }
   return {
     invocation: {
       ...repaired,
@@ -1493,6 +1536,18 @@ async function sendActivationPolishedMessage({ task, binding }) {
           invocationId,
           rawReplyLength
         });
+      },
+      onDegrade: ({ rawReplyLength, reason, error }) => {
+        logWarn("activation.agent.degraded", {
+          activationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          rawReplyLength,
+          reason,
+          error: error || ""
+        });
       }
     });
   } catch (error) {
@@ -1974,6 +2029,16 @@ async function processIncomingMessage({ botId, message }) {
           agentId: binding.agentId,
           invocationId,
           rawReplyLength
+        });
+      },
+      onDegrade: ({ rawReplyLength, reason, error }) => {
+        logWarn("agent.reply.degraded", {
+          ...logContext,
+          agentId: binding.agentId,
+          invocationId,
+          rawReplyLength,
+          reason,
+          error: error || ""
         });
       }
     });
