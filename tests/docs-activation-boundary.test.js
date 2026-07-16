@@ -18,9 +18,11 @@ test("activation tasks are visible in logs", () => {
   assert.equal(html.includes('value="flow-activation-tasks"'), true);
 });
 
-test("automatic entry activation is documented", () => {
+test("automatic activation scope is documented", () => {
   assert.equal(readme.includes("无需选择触发时机"), true);
-  assert.equal(readme.includes("新增好友后和 AI 回复后"), true);
+  assert.equal(readme.includes("入口节点在新增好友后计时"), true);
+  assert.equal(readme.includes("所有启用激活且有话术的私聊节点在 AI 成功回复后计时"), true);
+  assert.equal(readme.includes("新增好友后和 AI 回复后都会计时"), false);
   assert.equal(readme.includes("textType=22"), true);
   assert.equal(readme.includes("type=105"), true);
 });
