@@ -17,7 +17,8 @@ test("friend-added activation never invokes DClaw or sends a welcome message", (
   const start = source.indexOf("async function handleFriendAddedEvent");
   const end = source.indexOf("\nfunction commandCallbackLogFields", start);
   const handler = source.slice(start, end);
-  assert.equal(handler.includes("scheduleCurrentActivation"), true);
+  assert.equal(handler.includes("scheduleCurrentActivation"), false);
+  assert.equal(handler.includes("activationDueAtForAttempt"), true);
   assert.equal(handler.includes("invokeDclaw"), false);
   assert.equal(handler.includes("sendTextMessage"), false);
 });
@@ -38,20 +39,41 @@ test("friend-added activation reads only the flow entry node", () => {
   assert.equal(handler.includes("activation.trigger"), false);
 });
 
-test("friend-added activation schedules only index zero for a new entry session", () => {
+test("friend-added activation uses durable re-entry and reports cooldown skips", () => {
   const start = source.indexOf("async function handleFriendAddedEvent");
   const end = source.indexOf("\nfunction commandCallbackLogFields", start);
   const handler = source.slice(start, end);
 
-  assert.equal(handler.includes("!existingSession"), true);
-  assert.equal(handler.includes("scheduleCurrentActivation({"), true);
+  assert.equal(handler.includes("beginFriendAddedFlowEntry"), true);
+  assert.equal(handler.includes('reason: "friend_added_cooldown"'), true);
+  assert.equal(handler.includes("existing_entry_session"), false);
+});
+
+test("friend-added re-entry happens even when the entry node has no activation script", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+
+  assert.equal(
+    handler.indexOf("beginFriendAddedFlowEntry") < handler.indexOf('reason: "entry_activation_not_configured"'),
+    true
+  );
+});
+
+test("friend-added activation uses the task atomically created by durable re-entry", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+
+  assert.equal(handler.includes("entryResult.session"), true);
+  assert.equal(handler.includes("const task = entryResult.task"), true);
   assert.equal(handler.includes("messageIndex: 0"), false);
 });
 
-test("friend-added callback does not reset an existing non-entry flow session", () => {
+test("friend-added callback delegates existing session handling to the durable re-entry helper", () => {
   const start = source.indexOf("async function handleFriendAddedEvent");
   const end = source.indexOf("\nfunction commandCallbackLogFields", start);
   const handler = source.slice(start, end);
-  assert.equal(handler.includes("existing_session_not_at_entry"), true);
-  assert.equal(handler.includes("existingSession.currentNodeId !== machine.entryNodeId"), true);
+  assert.equal(handler.includes("existing_session_not_at_entry"), false);
+  assert.equal(handler.includes("getFlowSession(conversationKey)"), false);
 });

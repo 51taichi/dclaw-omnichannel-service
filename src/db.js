@@ -320,6 +320,7 @@ ensureColumn("flow_sessions", "handoff_by", "TEXT");
 ensureColumn("flow_sessions", "handoff_reason", "TEXT");
 ensureColumn("flow_sessions", "activation_generation", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("flow_sessions", "activation_state_json", "TEXT");
+ensureColumn("flow_sessions", "last_friend_added_at", "TEXT");
 ensureColumn("flow_activation_tasks", "anchor_at", "TEXT");
 ensureColumn("flow_activation_tasks", "message_index", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("flow_activation_tasks", "message_content", "TEXT");
@@ -336,20 +337,36 @@ function parseJson(value) {
   return value ? JSON.parse(value) : null;
 }
 
-export function buildMessageKey({ botId, conversationKey, message }) {
+export function buildMessageKey({ botId, conversationKey, message, nowMs = Date.now() }) {
   const messageId = String(message?.messageId || "").trim();
-  if (messageId) {
+  const isFriendAdded = Number(message?.textType) === 22 && Number(message?.type) === 105;
+  if (messageId && !isFriendAdded) {
     return `${botId}:message:${messageId}`;
   }
 
   const roomType = message?.roomType ?? "";
   const receivedName = message?.receivedName || "";
   const groupName = message?.groupName || "";
+  const friendName = isFriendAdded ? String(message?.friendName || "").trim() : "";
+  const friendRemark = isFriendAdded ? String(message?.friendRemark || "").trim() : "";
   const raw = message?.rawSpoken || message?.rawMessage || message?.spoken || "";
-  const bucket = Math.floor(Date.now() / 10000);
+  const bucket = Math.floor((Number(nowMs) || Date.now()) / 10000);
   const digest = crypto
     .createHash("sha256")
-    .update(JSON.stringify({ botId, conversationKey, roomType, receivedName, groupName, raw, bucket }))
+    .update(JSON.stringify({
+      botId,
+      conversationKey,
+      roomType,
+      receivedName,
+      groupName,
+      textType: message?.textType ?? "",
+      eventType: message?.type ?? "",
+      messageId: isFriendAdded ? messageId : "",
+      friendName,
+      friendRemark,
+      raw,
+      bucket
+    }))
     .digest("hex")
     .slice(0, 24);
   return `${botId}:synthetic:${digest}`;
@@ -1118,6 +1135,7 @@ function rowToFlowSession(row) {
     handoffReason: row.handoff_reason || "",
     activationGeneration: Number(row.activation_generation || 0),
     activationState: parseJson(row.activation_state_json),
+    lastFriendAddedAt: row.last_friend_added_at || "",
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -1332,6 +1350,141 @@ export function getOrCreateFlowSession({ botId, conversationKey, machine }) {
   const session = rowToFlowSession(row);
   if (session?.botId !== botId) throw new Error("flow session not found");
   return session;
+}
+
+export function beginFriendAddedFlowEntry({
+  botId,
+  conversationKey,
+  machine,
+  cooldownMs = 10 * 60 * 1000,
+  occurredAt = now(),
+  activationTask = null
+}) {
+  const normalizedBotId = String(botId || "").trim();
+  const normalizedConversationKey = String(conversationKey || "").trim();
+  const entryNodeId = String(machine?.entryNodeId || "").trim();
+  if (!normalizedBotId || !normalizedConversationKey || !entryNodeId) {
+    throw new Error("botId, conversationKey, and entryNodeId are required");
+  }
+
+  const occurredAtMs = Date.parse(occurredAt);
+  const timestamp = Number.isFinite(occurredAtMs) ? new Date(occurredAtMs).toISOString() : now();
+  const timestampMs = Date.parse(timestamp);
+  const normalizedCooldownMs = Math.max(0, Number(cooldownMs) || 0);
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    let row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?")
+      .get(normalizedConversationKey);
+    if (!row) {
+      db.prepare(`
+        INSERT INTO flow_sessions (
+          bot_id, conversation_key, current_node_id, collected_data_json, status,
+          handoff_status, activation_generation, activation_state_json, last_friend_added_at,
+          last_message_at, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, 'active', 'ai', 1, NULL, ?, ?, ?, ?)
+      `).run(
+        normalizedBotId,
+        normalizedConversationKey,
+        entryNodeId,
+        json({}),
+        timestamp,
+        timestamp,
+        timestamp,
+        timestamp
+      );
+      row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?")
+        .get(normalizedConversationKey);
+      const session = rowToFlowSession(row);
+      const task = activationTask
+        ? scheduleFlowActivationTask({
+            ...activationTask,
+            botId: normalizedBotId,
+            conversationKey: normalizedConversationKey,
+            nodeId: entryNodeId,
+            generation: session.activationGeneration
+          })
+        : null;
+      db.exec("COMMIT");
+      return { status: "created", session, task };
+    }
+    if (row.bot_id !== normalizedBotId) throw new Error("flow session not found");
+
+    const lastFriendAddedAtMs = Date.parse(row.last_friend_added_at || "");
+    if (
+      Number.isFinite(lastFriendAddedAtMs) &&
+      timestampMs - lastFriendAddedAtMs >= 0 &&
+      timestampMs - lastFriendAddedAtMs < normalizedCooldownMs
+    ) {
+      db.exec("COMMIT");
+      return { status: "cooldown", session: rowToFlowSession(row), task: null };
+    }
+
+    db.prepare(`
+      UPDATE flow_activation_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = 'friend_added_reentry',
+          updated_at = ?
+      WHERE conversation_key = ?
+        AND status IN ('pending', 'processing')
+    `).run(timestamp, timestamp, normalizedConversationKey);
+
+    db.prepare(`
+      UPDATE flow_sessions
+      SET current_node_id = ?,
+          status = 'active',
+          handoff_status = 'ai',
+          handoff_at = NULL,
+          handoff_by = '',
+          handoff_reason = '',
+          activation_generation = COALESCE(activation_generation, 0) + 1,
+          activation_state_json = NULL,
+          last_friend_added_at = ?,
+          last_message_at = ?,
+          updated_at = ?
+      WHERE conversation_key = ?
+        AND bot_id = ?
+    `).run(
+      entryNodeId,
+      timestamp,
+      timestamp,
+      timestamp,
+      normalizedConversationKey,
+      normalizedBotId
+    );
+    db.prepare(`
+      INSERT INTO flow_state_events (
+        bot_id, conversation_key, from_node_id, to_node_id, reason, agent_decision_json, created_at
+      )
+      VALUES (?, ?, ?, ?, 'friend_added_reentry', ?, ?)
+    `).run(
+      normalizedBotId,
+      normalizedConversationKey,
+      row.current_node_id,
+      entryNodeId,
+      json(null),
+      timestamp
+    );
+    row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?")
+      .get(normalizedConversationKey);
+    const session = rowToFlowSession(row);
+    const task = activationTask
+      ? scheduleFlowActivationTask({
+          ...activationTask,
+          botId: normalizedBotId,
+          conversationKey: normalizedConversationKey,
+          nodeId: entryNodeId,
+          generation: session.activationGeneration
+        })
+      : null;
+    db.exec("COMMIT");
+    return { status: "reentered", session, task };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function getOrCreateConversationSession({
@@ -1741,6 +1894,37 @@ export function advanceFlowActivationProgress({
   messages,
   allowStaleGeneration = false
 }) {
+  const input = createActivationProgressInput({
+    conversationKey,
+    nodeId,
+    generation,
+    messageIndex,
+    attemptNumber,
+    messages,
+    allowStaleGeneration
+  });
+  if (!input) return null;
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const progress = advanceFlowActivationProgressInTransaction(input);
+    db.exec("COMMIT");
+    return progress;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function createActivationProgressInput({
+  conversationKey,
+  nodeId,
+  generation,
+  messageIndex,
+  attemptNumber,
+  messages,
+  allowStaleGeneration = false
+}) {
   const normalizedNodeId = String(nodeId || "").trim();
   const normalizedMessageIndex = Math.max(0, Number.parseInt(messageIndex, 10) || 0);
   const normalizedAttemptNumber = Math.max(1, Number.parseInt(attemptNumber, 10) || 1);
@@ -1752,62 +1936,99 @@ export function advanceFlowActivationProgress({
   const message = normalizedMessages[normalizedMessageIndex];
   if (!message) return null;
 
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const session = db.prepare(`
+  return {
+    conversationKey,
+    normalizedNodeId,
+    generation,
+    normalizedMessageIndex,
+    normalizedAttemptNumber,
+    normalizedMessages,
+    message,
+    allowStaleGeneration
+  };
+}
+
+function advanceFlowActivationProgressInTransaction({
+  conversationKey,
+  normalizedNodeId,
+  generation,
+  normalizedMessageIndex,
+  normalizedAttemptNumber,
+  message,
+  allowStaleGeneration
+}) {
+  const session = db.prepare(`
       SELECT current_node_id, activation_generation, activation_state_json
       FROM flow_sessions
       WHERE conversation_key = ?
-    `).get(conversationKey);
-    if (
-      !session ||
-      session.current_node_id !== normalizedNodeId ||
-      (!allowStaleGeneration && Number(session.activation_generation || 0) !== Number(generation || 0))
-    ) {
-      db.exec("ROLLBACK");
-      return null;
-    }
+  `).get(conversationKey);
+  if (
+    !session ||
+    session.current_node_id !== normalizedNodeId ||
+    (!allowStaleGeneration && Number(session.activation_generation || 0) !== Number(generation || 0))
+  ) {
+    return null;
+  }
 
-    const currentProgress = getActivationProgressFromState({
-      nodeId: normalizedNodeId,
-      state: parseJson(session.activation_state_json)
-    });
-    const progress = normalizedAttemptNumber >= message.maxTimes
-      ? { nodeId: normalizedNodeId, messageIndex: normalizedMessageIndex + 1, sentCount: 0 }
-      : { nodeId: normalizedNodeId, messageIndex: normalizedMessageIndex, sentCount: normalizedAttemptNumber };
-    const expectedProgress = {
-      nodeId: normalizedNodeId,
-      messageIndex: normalizedMessageIndex,
-      sentCount: normalizedAttemptNumber - 1
-    };
-    if (compareActivationProgress(currentProgress, progress) >= 0) {
-      db.exec("COMMIT");
-      return currentProgress;
-    }
-    if (compareActivationProgress(currentProgress, expectedProgress) !== 0) {
-      db.exec("COMMIT");
-      return currentProgress;
-    }
-    const updateResult = allowStaleGeneration
-      ? db.prepare(`
+  const currentProgress = getActivationProgressFromState({
+    nodeId: normalizedNodeId,
+    state: parseJson(session.activation_state_json)
+  });
+  const progress = normalizedAttemptNumber >= message.maxTimes
+    ? { nodeId: normalizedNodeId, messageIndex: normalizedMessageIndex + 1, sentCount: 0 }
+    : { nodeId: normalizedNodeId, messageIndex: normalizedMessageIndex, sentCount: normalizedAttemptNumber };
+  const expectedProgress = {
+    nodeId: normalizedNodeId,
+    messageIndex: normalizedMessageIndex,
+    sentCount: normalizedAttemptNumber - 1
+  };
+  if (compareActivationProgress(currentProgress, progress) >= 0) {
+    return currentProgress;
+  }
+  if (compareActivationProgress(currentProgress, expectedProgress) !== 0) {
+    return currentProgress;
+  }
+  const updateResult = allowStaleGeneration
+    ? db.prepare(`
           UPDATE flow_sessions
           SET activation_state_json = ?, updated_at = ?
           WHERE conversation_key = ?
             AND current_node_id = ?
         `).run(json(progress), now(), conversationKey, normalizedNodeId)
-      : db.prepare(`
+    : db.prepare(`
           UPDATE flow_sessions
           SET activation_state_json = ?, updated_at = ?
           WHERE conversation_key = ?
             AND current_node_id = ?
             AND COALESCE(activation_generation, 0) = ?
         `).run(json(progress), now(), conversationKey, normalizedNodeId, Number(generation || 0));
-    if (updateResult.changes === 0) {
+  if (updateResult.changes === 0) {
+    return null;
+  }
+  return progress;
+}
+
+export function finalizeFlowActivationTaskDelivery({ id, worktoolMessageIds = [] }) {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const task = markFlowActivationTaskSent({ id, worktoolMessageIds });
+    if (!task) {
       db.exec("ROLLBACK");
       return null;
     }
+    const progressInput = createActivationProgressInput({
+      conversationKey: task.conversationKey,
+      nodeId: task.nodeId,
+      generation: task.generation,
+      messageIndex: task.messageIndex,
+      attemptNumber: task.attemptNumber,
+      messages: task.messages
+    });
+    const progress = task.wasCanceled || !progressInput
+      ? null
+      : advanceFlowActivationProgressInTransaction(progressInput);
     db.exec("COMMIT");
-    return progress;
+    return { task, progress };
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;

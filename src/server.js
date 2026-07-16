@@ -30,7 +30,7 @@ import {
 } from "./auth.js";
 import {
   beginMessageProcessing,
-  advanceFlowActivationProgress,
+  beginFriendAddedFlowEntry,
   buildMessageKey,
   cancelFlowActivationTasks,
   claimDueFlowActivationTasks,
@@ -72,9 +72,9 @@ import {
   listProactiveTaskTargets,
   listAgents,
   listBotBindings,
+  finalizeFlowActivationTaskDelivery,
   listRecords,
   markFlowActivationTaskFailed,
-  markFlowActivationTaskSent,
   markConversationResetHandled,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
@@ -606,6 +606,10 @@ const activationWorkerConfig = {
   sendDelayMs: Number(process.env.ACTIVATION_SEND_DELAY_MS || 500),
   maxConcurrentAgentCalls: Number(process.env.ACTIVATION_MAX_CONCURRENT_AGENT_CALLS || 2)
 };
+const friendAddedReentryCooldownMs = Math.max(
+  0,
+  Number(process.env.FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES || 10) * 60 * 1000
+);
 
 const configuredReplyMaxParts = Number(process.env.WORKTOOL_REPLY_MAX_PARTS || 3);
 const configuredReplyPartDelayMs = Number(process.env.WORKTOOL_REPLY_PART_DELAY_MS || 1000);
@@ -951,61 +955,56 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     });
     return "skipped";
   }
-  const existingSession = getFlowSession(conversationKey);
-  if (!existingSession) {
-    const session = getOrCreateFlowSession({ botId, conversationKey, machine });
-    const entryNode = getFlowNode(machine, machine.entryNodeId);
-    const activation = normalizeActivationConfig(entryNode?.activation || {});
-    if (!activation.enabled || !activation.messages.length) {
-      logInfo("friend_added.skipped", {
-        ...logContext,
-        friendName,
-        conversationKey,
-        reason: "entry_activation_not_configured"
-      });
-      return "skipped";
-    }
-
-    const refreshedSession = incrementFlowActivationGeneration({
-      conversationKey,
-      reason: "friend_added"
-    });
-    const anchorAt = new Date().toISOString();
-    const task = scheduleCurrentActivation({
-      botId,
-      binding,
-      conversationKey,
-      machine,
-      session: refreshedSession,
-      anchorAt
-    });
-    logInfo("friend_added.activation.scheduled", {
-      ...logContext,
-      friendName,
-      conversationKey,
-      activationTaskId: task?.id || "",
-      nodeId: task?.nodeId || session.currentNodeId,
-      dueAt: task?.dueAt || ""
-    });
-    return task ? "scheduled" : "skipped";
-  }
-
-  if (existingSession.currentNodeId !== machine.entryNodeId) {
+  const entryNode = getFlowNode(machine, machine.entryNodeId);
+  const activation = normalizeActivationConfig(entryNode?.activation || {});
+  const canScheduleActivation = activation.enabled && activation.messages.length > 0;
+  const entryAnchorAt = new Date().toISOString();
+  const entryResult = beginFriendAddedFlowEntry({
+    botId,
+    conversationKey,
+    machine,
+    cooldownMs: friendAddedReentryCooldownMs,
+    occurredAt: entryAnchorAt,
+    activationTask: canScheduleActivation
+      ? {
+          agentId: binding.agentId,
+          activation,
+          anchorAt: entryAnchorAt,
+          dueAt: activationDueAtForAttempt(entryAnchorAt, activation.messages[0].intervalMinutes, 1)
+        }
+      : null
+  });
+  if (entryResult.status === "cooldown") {
     logInfo("friend_added.skipped", {
       ...logContext,
       friendName,
       conversationKey,
-      reason: "existing_session_not_at_entry"
+      reason: "friend_added_cooldown"
     });
     return "skipped";
   }
-  logInfo("friend_added.skipped", {
+  if (!canScheduleActivation) {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      friendName,
+      conversationKey,
+      entryStatus: entryResult.status,
+      reason: "entry_activation_not_configured"
+    });
+    return entryResult.status;
+  }
+
+  const task = entryResult.task;
+  logInfo("friend_added.activation.scheduled", {
     ...logContext,
     friendName,
     conversationKey,
-    reason: "existing_entry_session"
+    entryStatus: entryResult.status,
+    activationTaskId: task?.id || "",
+    nodeId: task?.nodeId || entryResult.session.currentNodeId,
+    dueAt: task?.dueAt || ""
   });
-  return "skipped";
+  return task ? "scheduled" : "skipped";
 }
 
 function commandCallbackLogFields({ botId, payload, outgoingMatched = false }) {
@@ -1576,8 +1575,8 @@ async function processFlowActivationTask(task) {
     const worktoolMessageIds = task.polishByAgent
       ? await sendActivationPolishedMessage({ task, binding })
       : await sendActivationRawMessages({ task, binding });
-    const sentTask = markFlowActivationTaskSent({ id: task.id, worktoolMessageIds });
-    if (!sentTask) {
+    const delivery = finalizeFlowActivationTaskDelivery({ id: task.id, worktoolMessageIds });
+    if (!delivery) {
       logInfo("activation.stale_skipped", {
         activationTaskId: task.id,
         botId: task.botId,
@@ -1588,26 +1587,7 @@ async function processFlowActivationTask(task) {
       });
       return;
     }
-    const canAdvanceCanceledDelivery = sentTask.wasCanceled && ![
-      "flow_machine_saved",
-      "agent_rebound",
-      "conversation_reset"
-    ].includes(sentTask.cancelReason);
-    const progress = advanceFlowActivationProgress({
-      conversationKey: task.conversationKey,
-      nodeId: task.nodeId,
-      generation: task.generation,
-      messageIndex: task.messageIndex,
-      attemptNumber: task.attemptNumber,
-      messages: task.messages,
-      allowStaleGeneration: sentTask.wasCanceled && canAdvanceCanceledDelivery
-    });
-    if (sentTask.wasCanceled && canAdvanceCanceledDelivery && progress) {
-      incrementFlowActivationGeneration({
-        conversationKey: task.conversationKey,
-        reason: "canceled_task_delivered"
-      });
-    }
+    const { task: sentTask, progress } = delivery;
     const session = getFlowSession(task.conversationKey);
     const nextTask = progress &&
       !sentTask.wasCanceled &&

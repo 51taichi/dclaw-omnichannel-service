@@ -11,7 +11,7 @@ test("server schedules activation after successful private flow replies", () => 
   assert.equal(source.includes("scheduleFlowActivationTask"), true);
   assert.equal(source.includes("getFlowActivationProgress"), true);
   assert.equal(source.includes('reason: "flow_reply_sent"'), true);
-  assert.equal(source.includes("advanceFlowActivationProgress"), true);
+  assert.equal(dbSource.includes("advanceFlowActivationProgress"), true);
   assert.equal(source.includes("activationSourceNode"), false);
   assert.equal(
     source.slice(source.indexOf("worktool.send.success")).includes("scheduleActivationAfterFlowReply({"),
@@ -91,20 +91,29 @@ test("activation sends its immutable message snapshot then advances before sched
   assert.equal(rawSender.includes("task.messageContent"), true);
   assert.equal(rawSender.includes("activationMessageForAttempt"), false);
   assert.equal(polishedSender.includes("task.messageContent"), true);
-  assert.equal(processor.includes("advanceFlowActivationProgress"), true);
-  assert.equal(processor.indexOf("markFlowActivationTaskSent") < processor.indexOf("advanceFlowActivationProgress"), true);
-  assert.equal(processor.indexOf("advanceFlowActivationProgress") < processor.indexOf("scheduleCurrentActivation"), true);
+  assert.equal(processor.includes("finalizeFlowActivationTaskDelivery"), true);
+  assert.equal(processor.indexOf("finalizeFlowActivationTaskDelivery") < processor.indexOf("scheduleCurrentActivation"), true);
   assert.equal(processor.includes("anchorAt: sentTask.sentAt"), true);
 });
 
-test("canceled in-flight delivery records progress without scheduling a successor", () => {
+test("canceled in-flight delivery records send outcome without touching activation progress", () => {
   const processStart = source.indexOf("async function processFlowActivationTask");
   const batchStart = source.indexOf("async function processFlowActivationBatch", processStart);
   const processor = source.slice(processStart, batchStart);
 
-  assert.equal(processor.includes("allowStaleGeneration: sentTask.wasCanceled"), true);
+  assert.equal(processor.includes("finalizeFlowActivationTaskDelivery"), true);
+  assert.equal(processor.includes("allowStaleGeneration"), false);
   assert.equal(processor.includes("!sentTask.wasCanceled"), true);
-  assert.equal(processor.includes('reason: "canceled_task_delivered"'), true);
+  assert.equal(processor.includes('reason: "canceled_task_delivered"'), false);
+});
+
+test("friend-added re-entry never lets a canceled old task advance new activation state", () => {
+  const processStart = source.indexOf("async function processFlowActivationTask");
+  const batchStart = source.indexOf("async function processFlowActivationBatch", processStart);
+  const processor = source.slice(processStart, batchStart);
+
+  assert.equal(processor.includes("finalizeFlowActivationTaskDelivery"), true);
+  assert.equal(dbSource.includes("finalizeFlowActivationTaskDelivery"), true);
 });
 
 test("saving a flow machine resets activation work for every bot bound to its agent", () => {
