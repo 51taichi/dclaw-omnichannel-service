@@ -105,6 +105,7 @@ import {
   getCallbackConfig,
   getRobotInfo,
   sendRawCommand,
+  sendFriendInfoUpdate,
   sendMediaMessage,
   sendTextMessage,
   unbindCommandCallback,
@@ -549,11 +550,106 @@ function isValidFlowNode(machine, nodeId) {
   return Boolean(nodes.some((node) => node.id === nodeId));
 }
 
-function applyFlowDecision({ botId, conversationKey, flow, decision }) {
+const customerNameKeys = ["姓名", "名字", "客户姓名", "联系人", "name", "customerName"];
+const customerPhoneKeys = ["手机号", "手机", "电话", "联系电话", "phone", "mobile", "tel"];
+
+function valueForFirstKey(data, keys) {
+  for (const key of keys) {
+    const value = data?.[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
+function normalizePhoneForRemark(phone) {
+  return String(phone || "").replace(/[^\d+]/g, "").trim();
+}
+
+function extractCustomerProfileForRemarkSync(collectedData = {}) {
+  const name = valueForFirstKey(collectedData, customerNameKeys);
+  const phone = normalizePhoneForRemark(valueForFirstKey(collectedData, customerPhoneKeys));
+  if (!name && !phone) return null;
+  return { name, phone };
+}
+
+function patchContainsCustomerProfileField(patch = {}) {
+  const keys = Object.keys(patch || {});
+  return keys.some((key) => [...customerNameKeys, ...customerPhoneKeys].includes(String(key || "").trim()));
+}
+
+function formatFriendRemarkName(profile) {
+  return [profile?.name, profile?.phone].filter(Boolean).join("-");
+}
+
+function formatFriendRemarkExtra(collectedData = {}) {
+  return Object.entries(collectedData)
+    .map(([key, value]) => [String(key || "").trim(), String(value ?? "").trim()])
+    .filter(([key, value]) => key && value)
+    .map(([key, value]) => `${key}=${value}`)
+    .join("; ");
+}
+
+async function maybeSyncFriendRemarkFromFlowData({
+  botId,
+  binding,
+  conversationKey,
+  message,
+  collectedData
+}) {
+  if (!isPrivateMessage(message)) return null;
+  const profile = extractCustomerProfileForRemarkSync(collectedData);
+  const markName = formatFriendRemarkName(profile);
+  if (!profile || !markName) return null;
+  const friendName = message.receivedName || conversationKey.split(":private:").pop() || "";
+  try {
+    const result = await sendFriendInfoUpdate({
+      robotId: botId,
+      phone: profile.phone,
+      name: friendName,
+      markName,
+      markExtra: formatFriendRemarkExtra(collectedData),
+      tagList: ["已留资"]
+    });
+    logInfo("friend_remark.sync.success", {
+      botId,
+      agentId: binding?.agentId || "",
+      conversationKey,
+      friendName,
+      markName,
+      worktoolCode: result?.code ?? null,
+      worktoolMessage: result?.message || ""
+    });
+    return result;
+  } catch (error) {
+    logWarn("friend_remark.sync.failed", {
+      botId,
+      agentId: binding?.agentId || "",
+      conversationKey,
+      friendName,
+      markName,
+      error: error.message
+    });
+    return null;
+  }
+}
+
+async function applyFlowDecision({ botId, binding, conversationKey, message, flow, decision }) {
   if (!flow || !decision || typeof decision !== "object") return;
   const patch = decision.collectedDataPatch || decision.collectedFields || decision.dataPatch || {};
+  let updatedSession = null;
   if (patch && typeof patch === "object" && !Array.isArray(patch)) {
-    mergeFlowSessionData({ conversationKey, patch });
+    updatedSession = mergeFlowSessionData({ conversationKey, patch });
+    if (patchContainsCustomerProfileField(patch)) {
+      await maybeSyncFriendRemarkFromFlowData({
+        botId,
+        binding,
+        conversationKey,
+        message,
+        collectedData: updatedSession?.collectedData || {}
+      });
+    }
   }
 
   const nextNodeId = String(decision.nextNodeId || "").trim();
@@ -2134,9 +2230,11 @@ async function processIncomingMessage({ botId, message }) {
     const attachmentMessageIds = sentAttachments.map((part) => part.result?.data || "").filter(Boolean);
     const worktoolMessageIds = [...textMessageIds, ...attachmentMessageIds].filter(Boolean);
     if (flow) {
-      applyFlowDecision({
+      await applyFlowDecision({
         botId,
+        binding,
         conversationKey,
+        message,
         flow,
         decision: agentReply.flowDecision
       });

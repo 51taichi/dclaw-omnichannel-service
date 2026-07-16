@@ -9,3 +9,16 @@ test("server does not alter agent replies with emoji fallbacks", () => {
   assert.equal(source.includes("WORKTOOL_ENSURE_REPLY_EMOJI"), false);
   assert.equal(source.includes("WORKTOOL_REPLY_DEFAULT_EMOJI"), false);
 });
+
+test("server syncs collected private customer profile to WorkTool friend remarks", () => {
+  const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+
+  assert.equal(source.includes("sendFriendInfoUpdate"), true);
+  assert.equal(source.includes("extractCustomerProfileForRemarkSync"), true);
+  assert.equal(source.includes("patchContainsCustomerProfileField"), true);
+  assert.equal(source.includes("formatFriendRemarkName"), true);
+  assert.equal(source.includes("maybeSyncFriendRemarkFromFlowData({"), true);
+  assert.equal(source.includes("friend_remark.sync.success"), true);
+  assert.equal(source.includes("friend_remark.sync.failed"), true);
+  assert.match(source, /applyFlowDecision\(\{[\s\S]*message[\s\S]*binding/);
+});
