@@ -1222,19 +1222,23 @@ function defaultActivationMessage() {
   return { content: "", intervalMinutes: 30, maxTimes: 1 };
 }
 
-function normalizeActivationMessageDraft(value = {}) {
+function normalizeActivationMessageDraft(value = {}, defaults = defaultActivationMessage()) {
   const source = typeof value === "string" ? { content: value } : value || {};
   return {
     content: String(source.content || ""),
-    intervalMinutes: Math.max(1, Number(source.intervalMinutes || 30)),
-    maxTimes: Math.max(1, Number(source.maxTimes || 1))
+    intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? defaults.intervalMinutes)),
+    maxTimes: Math.max(1, Number(source.maxTimes ?? defaults.maxTimes))
   };
 }
 
 function normalizeActivationDraft(value = {}) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const defaults = {
+    intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? 30)),
+    maxTimes: Math.max(1, Number(source.maxTimes ?? 1))
+  };
   const messages = Array.isArray(source.messages)
-    ? source.messages.map((item) => normalizeActivationMessageDraft(item))
+    ? source.messages.map((item) => normalizeActivationMessageDraft(item, defaults))
     : [];
   return {
     enabled: Boolean(source.enabled),
@@ -1244,14 +1248,7 @@ function normalizeActivationDraft(value = {}) {
 }
 
 function activationDraftForEditor(value = {}) {
-  const normalized = normalizeActivationDraft(value);
-  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  return {
-    ...normalized,
-    messages: Array.isArray(source.messages)
-      ? source.messages.map((item) => normalizeActivationMessageDraft(item))
-      : []
-  };
+  return normalizeActivationDraft(value);
 }
 
 function flowNodeCollapseKey(node, index) {

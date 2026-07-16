@@ -96,3 +96,19 @@ test("activation sends its immutable message snapshot then advances before sched
   assert.equal(processor.indexOf("advanceFlowActivationProgress") < processor.indexOf("scheduleCurrentActivation"), true);
   assert.equal(processor.includes("anchorAt: sentTask.sentAt"), true);
 });
+
+test("canceled in-flight delivery records progress without scheduling a successor", () => {
+  const processStart = source.indexOf("async function processFlowActivationTask");
+  const batchStart = source.indexOf("async function processFlowActivationBatch", processStart);
+  const processor = source.slice(processStart, batchStart);
+
+  assert.equal(processor.includes("allowStaleGeneration: sentTask.wasCanceled"), true);
+  assert.equal(processor.includes("!sentTask.wasCanceled"), true);
+  assert.equal(processor.includes('reason: "canceled_task_delivered"'), true);
+});
+
+test("saving a flow machine resets activation work for every bot bound to its agent", () => {
+  assert.equal(dbSource.includes("resetAgentFlowActivationState"), true);
+  assert.equal(dbSource.includes("flow_machine_saved"), true);
+  assert.equal(dbSource.includes("activation_state_json = NULL"), true);
+});

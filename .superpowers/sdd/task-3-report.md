@@ -39,3 +39,7 @@ Task 3 changes are limited to `public/console/app.js`, `public/console/styles.cs
   - `git diff --check` -> passed with no whitespace errors.
 - Commit: `fix: persist activation defaults and clarify timing`.
 - Scope: `public/console/app.js`, `README.md`, and this report only. Existing test and server-test changes were preserved and not staged.
+
+## Final Review Fix
+
+- Legacy string activation messages now inherit their containing node's saved `intervalMinutes` and `maxTimes` in the console, so opening and saving an existing state machine does not silently rewrite its timing.

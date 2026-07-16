@@ -21,6 +21,12 @@
 
 Modified only the assigned server and boundary-test files, plus this requested report. Other concurrent worktree changes were left untouched.
 
+## Final Review Fixes
+
+- Saving an Agent-owned flow machine now cancels pending and processing activation tasks, clears activation progress, and advances the activation generation for every Bot currently bound to that Agent. It preserves the current node.
+- A WorkTool delivery that succeeds after cancellation is recorded as sent. Its progress can advance only on the same active node, is monotonic, and never schedules a successor from the canceled delivery.
+- Verification: `node --test tests/db-activation.test.js tests/server-activation-boundary.test.js tests/server-friend-added-activation-boundary.test.js tests/server-activation-worker-boundary.test.js tests/console-activation-boundary.test.js tests/docs-activation-boundary.test.js` passed 39/39; `npm test` passed 166/166; `git diff --check` passed.
+
 ## Fix
 
 - Root cause: the console node-change endpoint called `updateFlowSessionNode`, which resets activation progress, but did not call `invalidateFlowActivation`. Pending old-node tasks therefore remained active and the activation generation was unchanged.

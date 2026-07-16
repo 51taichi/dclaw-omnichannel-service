@@ -32,6 +32,12 @@ test("flow config preserves node activation JSON through console and server norm
   assert.equal(db.includes("activation: normalizeActivationConfig(node.activation)"), true);
 });
 
+test("legacy console string scripts inherit their activation timing defaults", () => {
+  assert.equal(app.includes("normalizeActivationMessageDraft(item, defaults)"), true);
+  assert.equal(app.includes("intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? defaults.intervalMinutes))"), true);
+  assert.equal(app.includes("maxTimes: Math.max(1, Number(source.maxTimes ?? defaults.maxTimes))"), true);
+});
+
 test("adding an activation message keeps an editable blank draft row", () => {
   assert.equal(app.includes("defaultActivationMessage()"), true);
   assert.equal(app.includes("activation.messages = [...activation.messages, defaultActivationMessage()]"), true);

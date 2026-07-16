@@ -1588,16 +1588,29 @@ async function processFlowActivationTask(task) {
       });
       return;
     }
+    const canAdvanceCanceledDelivery = sentTask.wasCanceled && ![
+      "flow_machine_saved",
+      "agent_rebound",
+      "conversation_reset"
+    ].includes(sentTask.cancelReason);
     const progress = advanceFlowActivationProgress({
       conversationKey: task.conversationKey,
       nodeId: task.nodeId,
       generation: task.generation,
       messageIndex: task.messageIndex,
       attemptNumber: task.attemptNumber,
-      messages: task.messages
+      messages: task.messages,
+      allowStaleGeneration: sentTask.wasCanceled && canAdvanceCanceledDelivery
     });
+    if (sentTask.wasCanceled && canAdvanceCanceledDelivery && progress) {
+      incrementFlowActivationGeneration({
+        conversationKey: task.conversationKey,
+        reason: "canceled_task_delivered"
+      });
+    }
     const session = getFlowSession(task.conversationKey);
     const nextTask = progress &&
+      !sentTask.wasCanceled &&
       session?.currentNodeId === task.nodeId &&
       Number(session.activationGeneration || 0) === Number(task.generation || 0)
       ? scheduleCurrentActivation({

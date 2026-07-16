@@ -49,6 +49,17 @@ test("normalizeActivationConfig defaults and filters messages", () => {
   }).messages, [{ content: "第一条", intervalMinutes: 30, maxTimes: 2 }]);
 });
 
+test("legacy string messages retain the containing activation timing defaults", () => {
+  assert.deepEqual(db.normalizeActivationConfig({
+    intervalMinutes: 17,
+    maxTimes: 3,
+    messages: ["旧版第一条", "旧版第二条"]
+  }).messages, [
+    { content: "旧版第一条", intervalMinutes: 17, maxTimes: 3 },
+    { content: "旧版第二条", intervalMinutes: 17, maxTimes: 3 }
+  ]);
+});
+
 test("activation normalization ignores legacy trigger values", () => {
   const normalized = db.normalizeActivationConfig({
     enabled: true,
@@ -132,7 +143,7 @@ test("activation tasks can be scheduled, claimed, sent, failed, and canceled", (
   assert.equal(db.listFlowActivationTasks({ conversationKey }).at(-1).status, "canceled");
 });
 
-test("canceled processing activation tasks cannot be marked sent or failed", () => {
+test("canceled processing activation tasks persist completed delivery", () => {
   const botId = "bot_activation_canceled";
   const agentId = "agent_activation_canceled";
   const conversationKey = `${botId}:private:王五`;
@@ -169,12 +180,127 @@ test("canceled processing activation tasks cannot be marked sent or failed", () 
   assert.equal(db.cancelFlowActivationTasks({ conversationKey, reason: "customer_replied" }), 2);
 
   assert.equal(db.isFlowActivationTaskProcessing({ id: sentTask.id }), false);
-  assert.equal(db.markFlowActivationTaskSent({ id: sentTask.id }), null);
+  const delivered = db.markFlowActivationTaskSent({
+    id: sentTask.id,
+    worktoolMessageIds: ["wt_delivered_after_cancel"]
+  });
+  assert.equal(delivered.status, "sent");
+  assert.equal(delivered.wasCanceled, true);
+  assert.deepEqual(delivered.worktoolMessageIds, ["wt_delivered_after_cancel"]);
   assert.equal(db.markFlowActivationTaskFailed({ id: failedTask.id, error: "late worker" }), null);
 
   const tasks = db.listFlowActivationTasks({ conversationKey });
-  assert.equal(tasks.find((task) => task.id === sentTask.id).status, "canceled");
+  assert.equal(tasks.find((task) => task.id === sentTask.id).status, "sent");
   assert.equal(tasks.find((task) => task.id === failedTask.id).status, "canceled");
+});
+
+test("saving an agent flow machine invalidates activation work without changing session nodes", () => {
+  const agentId = "agent_machine_save";
+  const botIds = ["bot_machine_save_one", "bot_machine_save_two"];
+  const machineConfig = {
+    name: "保存状态机",
+    version: "1.0.0",
+    entryNodeId: "node_1",
+    nodes: [
+      { id: "node_1", name: "节点一", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "node_2" },
+      { id: "node_2", name: "节点二", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "" }
+    ]
+  };
+  for (const botId of botIds) ensureBotAgent(botId, agentId);
+  const machine = db.upsertFlowMachine({ agentId, enabled: true, config: machineConfig });
+  const sessions = botIds.map((botId, index) => {
+    const conversationKey = `${botId}:private:保存客户${index}`;
+    const session = db.getOrCreateFlowSession({ botId, conversationKey, machine });
+    db.updateFlowSessionNode({ botId, conversationKey, nextNodeId: "node_2", reason: "test" });
+    db.advanceFlowActivationProgress({
+      conversationKey,
+      nodeId: "node_2",
+      generation: session.activationGeneration,
+      messageIndex: 0,
+      attemptNumber: 1,
+      messages: [{ content: "提醒", intervalMinutes: 1, maxTimes: 2 }]
+    });
+    const current = db.getFlowSessionForBot({ botId, conversationKey });
+    const task = db.scheduleFlowActivationTask({
+      botId,
+      agentId,
+      conversationKey,
+      nodeId: "node_2",
+      generation: current.activationGeneration,
+      activation: { enabled: true, messages: [{ content: "提醒", intervalMinutes: 1, maxTimes: 2 }] },
+      dueAt: "2026-07-11T10:00:00.000Z"
+    });
+    return { botId, conversationKey, task, generation: current.activationGeneration };
+  });
+  db.claimDueFlowActivationTasks({ limit: 20, nowIso: "2026-07-11T10:00:01.000Z" });
+
+  db.upsertFlowMachine({ agentId, enabled: true, config: { ...machineConfig, version: "1.0.1" } });
+
+  for (const session of sessions) {
+    const current = db.getFlowSessionForBot(session);
+    assert.equal(current.currentNodeId, "node_2");
+    assert.equal(current.activationGeneration, session.generation + 1);
+    assert.equal(current.activationState, null);
+    assert.equal(db.listFlowActivationTasks({ conversationKey: session.conversationKey })[0].status, "canceled");
+  }
+});
+
+test("canceled delivery advances only the same node and never regresses activation progress", () => {
+  const botId = "bot_canceled_delivery_progress";
+  const agentId = "agent_canceled_delivery_progress";
+  const conversationKey = `${botId}:private:延迟送达客户`;
+  ensureBotAgent(botId, agentId);
+  const machine = db.upsertFlowMachine({
+    agentId,
+    enabled: true,
+    config: {
+      name: "延迟送达状态机",
+      version: "1.0.0",
+      entryNodeId: "node_1",
+      nodes: [
+        { id: "node_1", name: "节点一", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "node_2" },
+        { id: "node_2", name: "节点二", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "" }
+      ]
+    }
+  });
+  const session = db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  const messages = [{ content: "第一条", intervalMinutes: 1, maxTimes: 2 }];
+
+  db.incrementFlowActivationGeneration({ conversationKey, reason: "customer_replied" });
+  assert.deepEqual(db.advanceFlowActivationProgress({
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    messageIndex: 0,
+    attemptNumber: 1,
+    messages,
+    allowStaleGeneration: true
+  }), { nodeId: "node_1", messageIndex: 0, sentCount: 1 });
+  assert.deepEqual(
+    db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }),
+    { nodeId: "node_1", messageIndex: 0, sentCount: 1 }
+  );
+
+  assert.deepEqual(db.advanceFlowActivationProgress({
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    messageIndex: 0,
+    attemptNumber: 1,
+    messages,
+    allowStaleGeneration: true
+  }), { nodeId: "node_1", messageIndex: 0, sentCount: 1 });
+
+  db.updateFlowSessionNode({ botId, conversationKey, nextNodeId: "node_2", reason: "test" });
+  assert.equal(db.advanceFlowActivationProgress({
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    messageIndex: 0,
+    attemptNumber: 2,
+    messages,
+    allowStaleGeneration: true
+  }), null);
 });
 
 test("incrementFlowActivationGeneration invalidates old generations", () => {
