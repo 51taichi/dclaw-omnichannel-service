@@ -536,6 +536,15 @@
             </div>
             <div id="assetsPanel" class="assets-panel" hidden></div>
             <div id="chatMessages" class="chat-messages"></div>
+            <button id="handoffSwitch" class="handoff-switch" type="button" hidden aria-pressed="false" aria-label="切换 AI/人工">
+              <span class="handoff-switch-option is-ai" aria-hidden="true">
+                <svg class="icon"><use href="#icon-robot"></use></svg>
+              </span>
+              <span class="handoff-switch-option is-human" aria-hidden="true">
+                <svg class="icon"><use href="#icon-user"></use></svg>
+              </span>
+              <span class="handoff-switch-thumb" aria-hidden="true"></span>
+            </button>
             <form id="manualReplyComposer" class="manual-reply-composer is-ai" hidden>
               <div class="ai-takeover-card">
                 <img src="./assets/ai-chatting.png" alt="" aria-hidden="true" />

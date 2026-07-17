@@ -2758,40 +2758,78 @@ button.danger:hover {
   height: 15px;
 }
 
-.handoff-button {
-  display: inline-flex;
+.handoff-switch {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 12;
+  display: inline-grid;
+  grid-template-columns: 34px 34px;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  min-width: 28px;
-  height: 28px;
-  min-height: 28px;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  width: 74px;
+  height: 38px;
+  padding: 2px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
   border-radius: 999px;
-  background: #ffffff;
+  background: rgba(255, 255, 255, 0.94);
   color: var(--accent);
-  font-size: 0;
-  font-weight: 900;
+  box-shadow: 0 12px 28px rgba(42, 48, 216, 0.16);
   cursor: pointer;
-  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease;
 }
 
-.handoff-button:hover {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
-  transform: translateY(-1px);
+.handoff-switch[hidden] {
+  display: none;
 }
 
-.handoff-button.is-active {
-  border-color: color-mix(in srgb, #f59e0b 60%, var(--line));
-  color: #92400e;
-  background: color-mix(in srgb, #f59e0b 12%, #ffffff);
+.handoff-switch-option,
+.handoff-switch-thumb {
+  grid-row: 1;
 }
 
-.handoff-button .icon {
-  width: 14px;
-  height: 14px;
+.handoff-switch-option {
+  position: relative;
+  z-index: 2;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: color-mix(in srgb, var(--muted) 72%, var(--accent));
+  transition: color 0.16s ease;
+}
+
+.handoff-switch-option.is-ai {
+  grid-column: 1;
+}
+
+.handoff-switch-option.is-human {
+  grid-column: 2;
+}
+
+.handoff-switch-thumb {
+  grid-column: 1;
+  z-index: 1;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, var(--accent), var(--cyan));
+  box-shadow: 0 8px 18px rgba(42, 48, 216, 0.22);
+  transform: translateX(0);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.handoff-switch.is-human .handoff-switch-thumb {
+  background: linear-gradient(135deg, #f59e0b, #fbbf24);
+  transform: translateX(34px);
+}
+
+.handoff-switch:not(.is-human) .handoff-switch-option.is-ai,
+.handoff-switch.is-human .handoff-switch-option.is-human {
+  color: #ffffff;
+}
+
+.handoff-switch .icon {
+  width: 16px;
+  height: 16px;
 }
 
 @media (prefers-reduced-motion: reduce) {

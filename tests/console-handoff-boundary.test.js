@@ -30,12 +30,19 @@ test("console shell keeps the bot rail fixed while giving more width to content"
   assert.match(shellRule, /grid-template-columns:\s*300px minmax\(0,\s*1fr\)/);
 });
 
-test("console exposes handoff toggles on session cards without the old status banner", () => {
+test("console exposes a fixed handoff switch without per-session handoff buttons", () => {
   assert.equal(html.includes('id="handoffStatusBanner"'), false);
+  assert.equal(html.includes('id="handoffSwitch"'), true);
+  assert.match(html, /id="handoffSwitch"[\s\S]*href="#icon-robot"[\s\S]*href="#icon-user"/);
   assert.equal(app.includes("toggleSelectedConversationHandoff"), true);
-  assert.equal(app.includes("data-flow-handoff"), true);
+  assert.equal(app.includes("data-flow-handoff"), false);
+  assert.equal(app.includes("handoffControl"), false);
+  assert.equal(app.includes("els.handoffSwitch"), true);
   assert.equal(app.includes("/handoff"), true);
   assert.equal(app.includes("handoffStatus"), true);
+  assert.equal(css.includes(".handoff-button"), false);
+  assert.match(css, /\.handoff-switch\s*\{[\s\S]*position:\s*absolute[\s\S]*right:\s*14px[\s\S]*bottom:\s*14px/);
+  assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(34px\)/);
 });
 
 test("flow session cards use compact icon metadata for task, assets, time, and handoff", () => {
@@ -55,7 +62,6 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
   assert.equal(app.includes("flow-session-status"), true);
   assert.equal(css.includes(".flow-session-icons"), true);
   assert.equal(css.includes(".session-icon::after"), true);
-  assert.equal(css.includes(".handoff-button"), true);
   assert.match(css, /:is\(\.flow-session-status, \.chat-status-badge\) \.icon\s*\{[\s\S]*width:\s*13px[\s\S]*height:\s*13px/);
 });
 

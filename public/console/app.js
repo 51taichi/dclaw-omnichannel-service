@@ -60,6 +60,7 @@ const els = {
   chatStatusBadge: document.querySelector("#chatStatusBadge"),
   chatTagList: document.querySelector("#chatTagList"),
   chatMessages: document.querySelector("#chatMessages"),
+  handoffSwitch: document.querySelector("#handoffSwitch"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
   assetsButton: document.querySelector("#assetsButton"),
   assetsCount: document.querySelector("#assetsCount"),
@@ -2478,16 +2479,11 @@ function renderFlowSessions() {
             ? `${assets.collectedCount || 0}/${assets.totalCount}`
             : "0/0";
           const lastMessageAt = session.lastMessageAt || "暂无";
-          const isHandoff = session.handoffStatus === "human";
           const taskTooltip = `当前任务：${status}`;
           const assetTooltip = `资产：${assetSummary}`;
           const timeTooltip = `最近消息：${lastMessageAt}`;
           const statusMeta = sessionStatusMeta(session);
-          const handoffControl = sessionType === "private"
-            ? `<span class="handoff-button ${isHandoff ? "is-active" : ""}" data-flow-handoff="${escapeHtml(session.conversationKey)}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
-                ${icon(isHandoff ? "refresh" : "users")}
-              </span>`
-            : "";
+          const isHandoff = session.handoffStatus === "human";
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
@@ -2503,7 +2499,6 @@ function renderFlowSessions() {
                     <span class="session-icon" title="${escapeHtml(assetTooltip)}" data-tooltip="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
                     <span class="session-icon" title="${escapeHtml(timeTooltip)}" data-tooltip="${escapeHtml(timeTooltip)}" aria-label="${escapeHtml(timeTooltip)}">${icon("clock")}</span>
                   </small>
-                  ${handoffControl}
                 </span>
               </span>
             </button>
@@ -2516,12 +2511,6 @@ function renderFlowSessions() {
     button.addEventListener("click", () =>
       openFlowSession(button.dataset.flowSession).catch(toastError)
     );
-  });
-  els.flowSessionList.querySelectorAll("[data-flow-handoff]").forEach((button) => {
-    button.addEventListener("click", (event) => {
-      event.stopPropagation();
-      toggleSelectedConversationHandoff(button.dataset.flowHandoff).catch(toastError);
-    });
   });
 }
 
@@ -2607,17 +2596,27 @@ function syncHandoffButton(session = currentFlowSession) {
   const hasSession = Boolean(currentFlowSession && state.selectedFlowConversationKey);
   if (!hasSession) {
     if (els.chatStatusBadge) els.chatStatusBadge.hidden = true;
+    if (els.handoffSwitch) els.handoffSwitch.hidden = true;
     renderManualReplyComposer(null);
     return;
   }
 
   const isHandoff = currentFlowSession.handoffStatus === "human";
+  const isPrivateSession = flowSessionType(currentFlowSession) === "private";
   const statusMeta = sessionStatusMeta(currentFlowSession);
   if (els.chatStatusBadge) {
     els.chatStatusBadge.hidden = false;
     els.chatStatusBadge.innerHTML = statusBadgeHtml(statusMeta);
     els.chatStatusBadge.classList.toggle("is-ai", !isHandoff);
     els.chatStatusBadge.classList.toggle("is-human", isHandoff);
+  }
+  if (els.handoffSwitch) {
+    els.handoffSwitch.hidden = !isPrivateSession;
+    els.handoffSwitch.disabled = !isPrivateSession;
+    els.handoffSwitch.classList.toggle("is-human", isHandoff);
+    els.handoffSwitch.setAttribute("aria-pressed", String(isHandoff));
+    els.handoffSwitch.setAttribute("aria-label", isHandoff ? "恢复 AI 接手" : "切换为人工接手");
+    els.handoffSwitch.title = isHandoff ? "恢复 AI 接手" : "切换为人工接手";
   }
   renderManualReplyComposer(currentFlowSession);
 }
@@ -3308,6 +3307,9 @@ els.confirmAcceptButton.addEventListener("click", () =>
     .catch(toastError)
 );
 els.assetsButton.addEventListener("click", toggleAssetsPanel);
+els.handoffSwitch?.addEventListener("click", () =>
+  toggleSelectedConversationHandoff().catch(toastError)
+);
 els.manualReplyComposer.addEventListener("submit", (event) =>
   sendManualReply(event).catch(toastError)
 );
