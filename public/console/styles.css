@@ -2047,6 +2047,104 @@ button.danger:hover {
   font-weight: 800;
 }
 
+.tag-schema-editor {
+  display: grid;
+  gap: 14px;
+}
+
+.tag-schema-toolbar,
+.tag-group-head,
+.tag-row-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.tag-schema-toolbar {
+  justify-content: space-between;
+}
+
+.tag-group-list {
+  display: grid;
+  gap: 14px;
+}
+
+.tag-group-card,
+.tag-row-card {
+  border: 1px solid rgba(47, 64, 229, 0.18);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 8px 22px rgba(40, 48, 124, 0.06);
+}
+
+.tag-group-card {
+  display: grid;
+  gap: 12px;
+}
+
+.tag-row-list {
+  display: grid;
+  gap: 10px;
+}
+
+.tag-row-card {
+  display: grid;
+  gap: 10px;
+}
+
+.tag-row-card .wide {
+  width: 100%;
+}
+
+.tag-name-field {
+  flex: 1 1 240px;
+  min-width: 220px;
+}
+
+.tag-activation-editor {
+  margin-top: 0;
+}
+
+.conversation-tags {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 120px;
+  padding: 2px 8px;
+  border: 1px solid rgba(47, 64, 229, 0.35);
+  border-radius: 999px;
+  color: #2436ce;
+  background: rgba(47, 64, 229, 0.08);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tag-chip.is-date {
+  color: #c8501b;
+  border-color: rgba(255, 86, 34, 0.4);
+  background: rgba(255, 86, 34, 0.08);
+}
+
+.chat-tag-list {
+  min-width: 0;
+}
+
+.chat-tag-list .conversation-tags {
+  max-width: 360px;
+}
+
 .danger-text {
   color: var(--danger);
 }
@@ -2095,7 +2193,7 @@ button.danger:hover {
 
 .flow-session-filters {
   display: grid;
-  grid-template-columns: minmax(320px, 2fr) minmax(150px, 1fr) minmax(150px, 1fr);
+  grid-template-columns: minmax(280px, 2fr) repeat(3, minmax(132px, 1fr));
   gap: 10px;
   align-items: center;
   min-width: 0;
@@ -2215,7 +2313,7 @@ button.danger:hover {
 
 .flow-session-main {
   display: grid;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
 }
 

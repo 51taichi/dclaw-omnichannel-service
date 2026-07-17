@@ -176,6 +176,10 @@
               <svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>
               任务
             </button>
+            <button data-workspace-tab="tags" type="button" role="tab" aria-selected="false">
+              <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
+              标签
+            </button>
             <button data-workspace-tab="push" type="button" role="tab" aria-selected="false">
               <svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>
               推送
@@ -402,6 +406,42 @@
       </section>
       </div>
 
+      <div id="tagsTab" class="tab-panel" data-tab-panel="tags" hidden>
+      <section id="tagSchemaPanel" class="panel bot-context-panel collapsible-panel">
+        <div class="section-head">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>客户标签</h2>
+          <div class="section-actions">
+            <button id="importTagsButton" class="secondary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
+              导入
+            </button>
+            <button id="exportTagsButton" class="secondary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+              导出
+            </button>
+            <button id="saveTagsButton" class="primary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+              保存标签
+            </button>
+          </div>
+        </div>
+        <div class="collapsible-content tag-schema-editor">
+          <div class="tag-schema-toolbar">
+            <label class="toggle">
+              <input id="dateTagEnabled" type="checkbox" />
+              启用日期标签
+            </label>
+            <button id="addTagGroupButton" class="secondary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+              新增标签组
+            </button>
+          </div>
+          <div id="tagGroupList" class="tag-group-list"></div>
+          <input id="importTagsFile" type="file" accept="application/json,.json" hidden />
+        </div>
+      </section>
+      </div>
+
       <div id="sessionsTab" class="tab-panel" data-tab-panel="sessions" hidden>
       <section id="flowSessionsPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head flow-session-head">
@@ -421,6 +461,12 @@
             <label>
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>任务状态</span>
               <select id="flowSessionNodeFilter">
+                <option value="all">全部</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>标签</span>
+              <select id="flowSessionTagFilter">
                 <option value="all">全部</option>
               </select>
             </label>
@@ -456,6 +502,7 @@
                 <img class="chat-title-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" />
                 <strong id="chatTitle">请选择一个私聊会话</strong>
                 <span id="chatStatusBadge" class="chat-status-badge" hidden>AI接待中</span>
+                <span id="chatTagList" class="chat-tag-list"></span>
               </div>
               <div class="chat-head-actions">
                 <button id="assetsButton" class="secondary asset-button" type="button" hidden>

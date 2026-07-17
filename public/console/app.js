@@ -12,7 +12,8 @@ const state = {
   unlockMode: "bot",
   pendingAdminKeyResolve: null,
   proactiveSubmitting: false,
-  proactiveUploadFiles: []
+  proactiveUploadFiles: [],
+  tagSchema: { dateTag: { enabled: false }, groups: [] }
 };
 
 const els = {
@@ -54,8 +55,10 @@ const els = {
   flowSessionSearchInput: document.querySelector("#flowSessionSearchInput"),
   flowSessionAssetFilter: document.querySelector("#flowSessionAssetFilter"),
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
+  flowSessionTagFilter: document.querySelector("#flowSessionTagFilter"),
   chatTitle: document.querySelector("#chatTitle"),
   chatStatusBadge: document.querySelector("#chatStatusBadge"),
+  chatTagList: document.querySelector("#chatTagList"),
   chatMessages: document.querySelector("#chatMessages"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
   assetsButton: document.querySelector("#assetsButton"),
@@ -100,6 +103,13 @@ const els = {
   logType: document.querySelector("#logType"),
   loadLogsButton: document.querySelector("#loadLogsButton"),
   logsOutput: document.querySelector("#logsOutput"),
+  tagGroupList: document.querySelector("#tagGroupList"),
+  dateTagEnabled: document.querySelector("#dateTagEnabled"),
+  addTagGroupButton: document.querySelector("#addTagGroupButton"),
+  saveTagsButton: document.querySelector("#saveTagsButton"),
+  importTagsButton: document.querySelector("#importTagsButton"),
+  exportTagsButton: document.querySelector("#exportTagsButton"),
+  importTagsFile: document.querySelector("#importTagsFile"),
   toast: document.querySelector("#toast"),
   botContextPanels: document.querySelectorAll(".bot-context-panel"),
   collapseButtons: document.querySelectorAll("[data-collapse-target]")
@@ -464,13 +474,18 @@ function clearBotScopedContent() {
   currentFlowSessions = [];
   currentFlowSession = null;
   flowDraftNodes = [];
+  state.tagSchema = defaultTagSchema();
   collapsedFlowNodes.clear();
   syncHandoffButton(null);
   renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
   els.chatTitle.textContent = emptyFlowSessionTitle();
+  if (els.chatTagList) els.chatTagList.innerHTML = "";
   els.chatMessages.innerHTML = "";
   els.flowEventsOutput.textContent = "";
   els.flowSessionNodeFilter.innerHTML = `<option value="all">全部</option>`;
+  if (els.flowSessionTagFilter) els.flowSessionTagFilter.innerHTML = `<option value="all">全部</option>`;
+  if (els.tagGroupList) els.tagGroupList.innerHTML = "";
+  if (els.dateTagEnabled) els.dateTagEnabled.checked = false;
   els.flowNodeList.innerHTML = `<div class="empty-state">正在加载当前 Bot 的任务状态机...</div>`;
   els.botForm.reset();
   els.botForm.enabled.checked = true;
@@ -525,6 +540,7 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
       loadAddressBookTargets({ contextVersion }),
       loadProactiveTasks({ contextVersion }),
       loadFlowMachine({ contextVersion }),
+      loadTagSchema({ contextVersion }),
       loadFlowSessions({ contextVersion })
     ];
     await Promise.all(tasks);
@@ -1247,6 +1263,54 @@ function normalizeActivationDraft(value = {}) {
   };
 }
 
+function defaultTagSchema() {
+  return { dateTag: { enabled: false }, groups: [] };
+}
+
+function defaultTagGroup(index = state.tagSchema.groups.length + 1) {
+  return {
+    id: `group_${index}`,
+    name: `标签组 ${index}`,
+    enabled: true,
+    exclusive: true,
+    oneWay: false,
+    tags: []
+  };
+}
+
+function defaultTag(index = 1) {
+  return {
+    id: `tag_${index}`,
+    name: `标签 ${index}`,
+    condition: "",
+    activation: { ...defaultActivationConfig(), messages: [defaultActivationMessage()] }
+  };
+}
+
+function normalizeTagSchemaDraft(schema = {}) {
+  const source = schema && typeof schema === "object" && !Array.isArray(schema) ? schema : {};
+  return {
+    dateTag: { enabled: Boolean(source.dateTag?.enabled) },
+    groups: Array.isArray(source.groups)
+      ? source.groups.map((group, groupIndex) => ({
+          id: String(group.id || `group_${groupIndex + 1}`).trim() || `group_${groupIndex + 1}`,
+          name: String(group.name || `标签组 ${groupIndex + 1}`).trim() || `标签组 ${groupIndex + 1}`,
+          enabled: group.enabled !== false,
+          exclusive: group.exclusive !== false,
+          oneWay: Boolean(group.oneWay),
+          tags: Array.isArray(group.tags)
+            ? group.tags.map((tag, tagIndex) => ({
+                id: String(tag.id || `tag_${tagIndex + 1}`).trim() || `tag_${tagIndex + 1}`,
+                name: String(tag.name || `标签 ${tagIndex + 1}`).trim() || `标签 ${tagIndex + 1}`,
+                condition: String(tag.condition || ""),
+                activation: normalizeActivationDraft(tag.activation || defaultActivationConfig())
+              }))
+            : []
+        }))
+      : []
+  };
+}
+
 function activationDraftForEditor(value = {}) {
   return normalizeActivationDraft(value);
 }
@@ -1431,6 +1495,338 @@ function splitPastedActivationMessages(event, nodeIndex, messageIndex) {
   node.activation = activation;
   renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
   syncFlowJsonTextarea();
+}
+
+function tagFilterKey(tag) {
+  if (!tag) return "";
+  return tag.tagType === "date" ? `date:${tag.tagId}` : `${tag.groupId}:${tag.tagId}`;
+}
+
+function renderConversationTags(tags = []) {
+  const visibleTags = Array.isArray(tags) ? tags.filter(Boolean) : [];
+  if (!visibleTags.length) return "";
+  return `
+    <span class="conversation-tags">
+      ${visibleTags
+        .map((tag) => {
+          const label = tag.tagType === "date" ? tag.tagName : `${tag.groupName || "标签"}：${tag.tagName}`;
+          const title = [label, tag.reason].filter(Boolean).join("\n");
+          return `<span class="tag-chip ${tag.tagType === "date" ? "is-date" : ""}" title="${escapeHtml(title)}">${escapeHtml(tag.tagName || "-")}</span>`;
+        })
+        .join("")}
+    </span>
+  `;
+}
+
+function nextTagGroupId(start = state.tagSchema.groups.length + 1) {
+  let index = Math.max(1, start);
+  const used = new Set((state.tagSchema.groups || []).map((group) => group.id));
+  while (used.has(`group_${index}`)) index += 1;
+  return `group_${index}`;
+}
+
+function nextTagId(group, start = (group?.tags || []).length + 1) {
+  let index = Math.max(1, start);
+  const used = new Set((group?.tags || []).map((tag) => tag.id));
+  while (used.has(`tag_${index}`)) index += 1;
+  return `tag_${index}`;
+}
+
+function renderTagSchemaEditor() {
+  state.tagSchema = normalizeTagSchemaDraft(state.tagSchema);
+  if (els.dateTagEnabled) els.dateTagEnabled.checked = Boolean(state.tagSchema.dateTag?.enabled);
+  if (!els.tagGroupList) return;
+  const groups = state.tagSchema.groups || [];
+  els.tagGroupList.innerHTML = groups.length
+    ? groups
+        .map((group, groupIndex) => `
+          <article class="tag-group-card" data-tag-group-index="${groupIndex}">
+            <div class="tag-group-head">
+              <label class="tag-name-field">
+                <span class="field-label">${icon("info")}标签组</span>
+                <input data-tag-group-field="name" value="${escapeHtml(group.name)}" placeholder="例如：意向等级" />
+              </label>
+              <label class="toggle">
+                <input data-tag-group-field="enabled" type="checkbox" ${group.enabled ? "checked" : ""} />
+                启用
+              </label>
+              <label class="toggle">
+                <input data-tag-group-field="exclusive" type="checkbox" ${group.exclusive ? "checked" : ""} />
+                组内互斥
+              </label>
+              <label class="toggle">
+                <input data-tag-group-field="oneWay" type="checkbox" ${group.oneWay ? "checked" : ""} />
+                单向变更
+              </label>
+              <button class="secondary icon-button" data-add-tag="${groupIndex}" type="button" aria-label="新增标签" title="新增标签">${icon("plus")}</button>
+              <button class="danger icon-button" data-remove-tag-group="${groupIndex}" type="button" aria-label="删除标签组" title="删除标签组">${icon("reset")}</button>
+            </div>
+            <div class="tag-row-list">
+              ${(group.tags || [])
+                .map((tag, tagIndex) => {
+                  const activation = activationDraftForEditor(tag.activation || defaultActivationConfig());
+                  const activationMessages = activation.messages.length ? activation.messages : [defaultActivationMessage()];
+                  return `
+                    <article class="tag-row-card" data-tag-index="${tagIndex}">
+                      <div class="tag-row-head">
+                        <label class="tag-name-field">
+                          <span class="field-label">${icon("check")}标签</span>
+                          <input data-tag-field="name" value="${escapeHtml(tag.name)}" placeholder="例如：A类" />
+                        </label>
+                        <button class="danger icon-button" data-remove-tag="${groupIndex}:${tagIndex}" type="button" aria-label="删除标签" title="删除标签">${icon("reset")}</button>
+                      </div>
+                      <label class="wide">
+                        <span class="field-label">${icon("terminal")}达标条件</span>
+                        <textarea data-tag-field="condition" rows="2" placeholder="例如：客户明确表示愿意合作或留下联系方式">${escapeHtml(tag.condition)}</textarea>
+                      </label>
+                      <section class="activation-editor tag-activation-editor ${activation.enabled ? "is-active" : ""}" aria-label="标签触发任务">
+                        <div class="activation-toolbar">
+                          <div class="activation-toolbar-main">
+                            <label class="toggle activation-toggle">
+                              <input data-tag-activation-field="enabled" type="checkbox" ${activation.enabled ? "checked" : ""} />
+                              <span>${icon("send")}启用触发任务</span>
+                            </label>
+                            <label class="toggle activation-toggle activation-polish-toggle">
+                              <input data-tag-activation-field="polishByAgent" type="checkbox" ${activation.polishByAgent ? "checked" : ""} />
+                              <span>${icon("terminal")}Agent 组织语言</span>
+                            </label>
+                          </div>
+                          <button class="secondary icon-button activation-add-button" data-add-tag-activation-message="${groupIndex}:${tagIndex}" type="button" aria-label="新增话术" title="新增话术">${icon("plus")}</button>
+                        </div>
+                        <div class="activation-messages">
+                          ${activationMessages
+                            .map((message, messageIndex) => `
+                              <div class="activation-message-card">
+                                <textarea data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-content rows="2" placeholder="贴上这个标签后要提醒客户的话术">${escapeHtml(message.content)}</textarea>
+                                <div class="activation-message-actions">
+                                  <label class="activation-message-control" title="间隔（分钟）">
+                                    ${icon("clock")}
+                                    <input data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-interval type="number" min="1" value="${escapeHtml(message.intervalMinutes)}" aria-label="间隔（分钟）" />
+                                    <span class="activation-message-unit">分钟</span>
+                                  </label>
+                                  <label class="activation-message-control" title="发送次数">
+                                    ${icon("refresh")}
+                                    <input data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-max-times type="number" min="1" value="${escapeHtml(message.maxTimes)}" aria-label="发送次数" />
+                                    <span class="activation-message-unit">次</span>
+                                  </label>
+                                  <button class="danger icon-button activation-remove-button" data-remove-tag-activation-message="${groupIndex}:${tagIndex}:${messageIndex}" type="button" aria-label="删除触发话术" title="删除触发话术">${icon("reset")}</button>
+                                </div>
+                              </div>
+                            `)
+                            .join("")}
+                        </div>
+                      </section>
+                    </article>
+                  `;
+                })
+                .join("")}
+            </div>
+          </article>
+        `)
+        .join("")
+    : `<div class="empty-state">暂无标签组。可以先新增一个标签组，例如“意向等级”。</div>`;
+
+  bindTagSchemaEditorEvents();
+}
+
+function bindTagSchemaEditorEvents() {
+  els.tagGroupList.querySelectorAll("[data-tag-group-field]").forEach((input) => {
+    input.addEventListener("input", () => updateTagGroupDraft(input));
+    input.addEventListener("change", () => updateTagGroupDraft(input));
+  });
+  els.tagGroupList.querySelectorAll("[data-tag-field]").forEach((input) => {
+    input.addEventListener("input", () => updateTagDraft(input));
+    input.addEventListener("change", () => updateTagDraft(input));
+  });
+  els.tagGroupList.querySelectorAll("[data-tag-activation-field]").forEach((input) => {
+    input.addEventListener("input", () => updateTagActivationDraft(input));
+    input.addEventListener("change", () => updateTagActivationDraft(input));
+  });
+  els.tagGroupList.querySelectorAll("[data-tag-activation-message-index]").forEach((input) => {
+    input.addEventListener("input", () => updateTagActivationMessageDraft(input));
+  });
+  els.tagGroupList.querySelectorAll("[data-add-tag]").forEach((button) => {
+    button.addEventListener("click", () => addTag(Number(button.dataset.addTag)));
+  });
+  els.tagGroupList.querySelectorAll("[data-remove-tag-group]").forEach((button) => {
+    button.addEventListener("click", () => removeTagGroup(Number(button.dataset.removeTagGroup)));
+  });
+  els.tagGroupList.querySelectorAll("[data-remove-tag]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [groupIndex, tagIndex] = button.dataset.removeTag.split(":").map(Number);
+      removeTag(groupIndex, tagIndex);
+    });
+  });
+  els.tagGroupList.querySelectorAll("[data-add-tag-activation-message]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [groupIndex, tagIndex] = button.dataset.addTagActivationMessage.split(":").map(Number);
+      addTagActivationMessage(groupIndex, tagIndex);
+    });
+  });
+  els.tagGroupList.querySelectorAll("[data-remove-tag-activation-message]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [groupIndex, tagIndex, messageIndex] = button.dataset.removeTagActivationMessage.split(":").map(Number);
+      removeTagActivationMessage(groupIndex, tagIndex, messageIndex);
+    });
+  });
+}
+
+function tagGroupForInput(input) {
+  const groupIndex = Number(input.closest("[data-tag-group-index]")?.dataset.tagGroupIndex);
+  return state.tagSchema.groups[groupIndex];
+}
+
+function tagForInput(input) {
+  const group = tagGroupForInput(input);
+  const tagIndex = Number(input.closest("[data-tag-index]")?.dataset.tagIndex);
+  return group?.tags?.[tagIndex];
+}
+
+function updateTagGroupDraft(input) {
+  const group = tagGroupForInput(input);
+  if (!group) return;
+  const field = input.dataset.tagGroupField;
+  if (["enabled", "exclusive", "oneWay"].includes(field)) {
+    group[field] = input.checked;
+  } else if (field === "name") {
+    group.name = input.value;
+  }
+}
+
+function updateTagDraft(input) {
+  const tag = tagForInput(input);
+  if (!tag) return;
+  tag[input.dataset.tagField] = input.value;
+}
+
+function updateTagActivationDraft(input) {
+  const tag = tagForInput(input);
+  if (!tag) return;
+  const activation = activationDraftForEditor(tag.activation);
+  const field = input.dataset.tagActivationField;
+  if (field === "enabled" || field === "polishByAgent") {
+    activation[field] = input.checked;
+  }
+  tag.activation = activation;
+  if (field === "enabled") {
+    input.closest(".activation-editor")?.classList.toggle("is-active", Boolean(input.checked));
+  }
+}
+
+function updateTagActivationMessageDraft(input) {
+  const tag = tagForInput(input);
+  if (!tag) return;
+  const activation = activationDraftForEditor(tag.activation);
+  const messageIndex = Number(input.dataset.tagActivationMessageIndex);
+  const message = normalizeActivationMessageDraft(activation.messages[messageIndex]);
+  if (input.dataset.tagActivationMessageInterval !== undefined) {
+    message.intervalMinutes = Math.max(1, Number(input.value || message.intervalMinutes || 1));
+  } else if (input.dataset.tagActivationMessageMaxTimes !== undefined) {
+    message.maxTimes = Math.max(1, Number(input.value || message.maxTimes || 1));
+  } else {
+    message.content = input.value;
+  }
+  activation.messages[messageIndex] = message;
+  tag.activation = activation;
+}
+
+function addTagGroup() {
+  const index = state.tagSchema.groups.length + 1;
+  state.tagSchema.groups.push({ ...defaultTagGroup(index), id: nextTagGroupId(index) });
+  renderTagSchemaEditor();
+}
+
+function removeTagGroup(index) {
+  state.tagSchema.groups.splice(index, 1);
+  renderTagSchemaEditor();
+}
+
+function addTag(groupIndex) {
+  const group = state.tagSchema.groups[groupIndex];
+  if (!group) return;
+  const index = (group.tags || []).length + 1;
+  group.tags = [...(group.tags || []), { ...defaultTag(index), id: nextTagId(group, index) }];
+  renderTagSchemaEditor();
+}
+
+function removeTag(groupIndex, tagIndex) {
+  const group = state.tagSchema.groups[groupIndex];
+  if (!group) return;
+  group.tags.splice(tagIndex, 1);
+  renderTagSchemaEditor();
+}
+
+function addTagActivationMessage(groupIndex, tagIndex) {
+  const tag = state.tagSchema.groups[groupIndex]?.tags?.[tagIndex];
+  if (!tag) return;
+  const activation = activationDraftForEditor(tag.activation);
+  activation.messages = [...activation.messages, defaultActivationMessage()];
+  tag.activation = activation;
+  renderTagSchemaEditor();
+}
+
+function removeTagActivationMessage(groupIndex, tagIndex, messageIndex) {
+  const tag = state.tagSchema.groups[groupIndex]?.tags?.[tagIndex];
+  if (!tag) return;
+  const activation = activationDraftForEditor(tag.activation);
+  activation.messages.splice(messageIndex, 1);
+  tag.activation = activation;
+  renderTagSchemaEditor();
+}
+
+async function loadTagSchema({ contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (!botId) return;
+  const data = await request(`/api/tag-schemas/${encodeURIComponent(botId)}`);
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  state.tagSchema = normalizeTagSchemaDraft(data.schema || defaultTagSchema());
+  renderTagSchemaEditor();
+  renderFlowSessionTagFilter();
+}
+
+async function saveTagSchema() {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (!botId) {
+    toast("请选择 Bot");
+    return;
+  }
+  state.tagSchema = normalizeTagSchemaDraft({
+    ...state.tagSchema,
+    dateTag: { enabled: Boolean(els.dateTagEnabled?.checked) }
+  });
+  const data = await request(`/api/tag-schemas/${encodeURIComponent(botId)}`, {
+    method: "PUT",
+    botId,
+    body: JSON.stringify({ schema: state.tagSchema })
+  });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  state.tagSchema = normalizeTagSchemaDraft(data.schema || state.tagSchema);
+  renderTagSchemaEditor();
+  toast("标签配置已保存");
+}
+
+function exportTagSchema() {
+  const schema = normalizeTagSchemaDraft({
+    ...state.tagSchema,
+    dateTag: { enabled: Boolean(els.dateTagEnabled?.checked) }
+  });
+  const blob = new Blob([JSON.stringify(schema, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "customer-tags.json";
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importTagSchemaFile(file) {
+  if (!file) return;
+  const schema = JSON.parse(await file.text());
+  state.tagSchema = normalizeTagSchemaDraft(schema);
+  renderTagSchemaEditor();
+  renderFlowSessionTagFilter();
+  toast("标签 JSON 已导入，保存后生效");
 }
 
 const flowNodeFieldDefinitions = [
@@ -1882,6 +2278,7 @@ async function loadFlowSessions({ contextVersion = state.botContextVersion } = {
   if (!isCurrentBotContext(botId, contextVersion)) return;
   currentFlowSessions = data.sessions || [];
   renderFlowSessionNodeFilter();
+  renderFlowSessionTagFilter();
   renderFlowSessions();
 }
 
@@ -1934,6 +2331,7 @@ function getVisibleFlowSessions() {
   const normalizedSessionSearch = String(els.flowSessionSearchInput.value || "").trim().toLowerCase();
   const assetFilter = els.flowSessionAssetFilter.value;
   const nodeFilter = els.flowSessionNodeFilter.value;
+  const tagFilter = els.flowSessionTagFilter?.value || "all";
 
   return sortFlowSessions(currentFlowSessions.filter((session) => {
     if (typeFilter !== "all" && flowSessionType(session) !== typeFilter) return false;
@@ -1947,6 +2345,7 @@ function getVisibleFlowSessions() {
       if (!searchableText.includes(normalizedSessionSearch)) return false;
     }
     if (appliesFlowFilters && nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
+    if (tagFilter !== "all" && !(session.tags || []).some((tag) => tagFilterKey(tag) === tagFilter)) return false;
 
     const assets = session.assets || {};
     const totalCount = Number(assets.totalCount || 0);
@@ -1965,6 +2364,26 @@ function renderFlowSessionNodeFilter() {
     ...nodes.map((node) => `<option value="${escapeHtml(node.id)}">${escapeHtml(node.name || node.id)}</option>`)
   ].join("");
   els.flowSessionNodeFilter.value = nodes.some((node) => node.id === current) ? current : "all";
+}
+
+function renderFlowSessionTagFilter() {
+  if (!els.flowSessionTagFilter) return;
+  const current = els.flowSessionTagFilter.value || "all";
+  const options = new Map([["all", "全部"]]);
+  for (const session of currentFlowSessions) {
+    for (const tag of session.tags || []) {
+      const key = tagFilterKey(tag);
+      if (!key) continue;
+      const label = tag.tagType === "date"
+        ? `日期：${tag.tagName}`
+        : `${tag.groupName || "标签"}：${tag.tagName}`;
+      options.set(key, label);
+    }
+  }
+  els.flowSessionTagFilter.innerHTML = [...options]
+    .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+    .join("");
+  els.flowSessionTagFilter.value = options.has(current) ? current : "all";
 }
 
 function sessionStatusMeta(session) {
@@ -2014,6 +2433,7 @@ function renderFlowSessions() {
                   <strong>${escapeHtml(name)}</strong>
                   <em class="flow-session-status ${escapeHtml(statusMeta.className)}" title="${escapeHtml(statusMeta.label)}">${escapeHtml(statusMeta.label)}</em>
                 </span>
+                ${renderConversationTags(session.tags || [])}
                 <span class="flow-session-tools">
                   <small class="flow-session-icons">
                     <span class="session-icon" title="${escapeHtml(taskTooltip)}" data-tooltip="${escapeHtml(taskTooltip)}" aria-label="${escapeHtml(taskTooltip)}">${icon("edit")}</span>
@@ -2274,6 +2694,13 @@ async function openFlowSession(conversationKey) {
   const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
   if (!isCurrentBotContext(botId, contextVersion) || state.selectedFlowConversationKey !== conversationKey) return;
   currentFlowSession = data.session || session || null;
+  const currentTags = data.tags || session?.tags || [];
+  currentFlowSession = { ...(currentFlowSession || {}), tags: currentTags };
+  currentFlowSessions = currentFlowSessions.map((item) =>
+    item.conversationKey === conversationKey ? { ...item, tags: currentTags } : item
+  );
+  if (els.chatTagList) els.chatTagList.innerHTML = renderConversationTags(currentTags);
+  renderFlowSessionTagFilter();
   syncHandoffButton(currentFlowSession);
   renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
   renderChatMessages(data.messages || []);
@@ -2785,11 +3212,29 @@ els.flowSessionTypeButtons.forEach((button) => {
 });
 [
   els.flowSessionAssetFilter,
-  els.flowSessionNodeFilter
+  els.flowSessionNodeFilter,
+  els.flowSessionTagFilter
 ].forEach((control) => {
-  control.addEventListener("change", renderFlowSessions);
+  control?.addEventListener("change", renderFlowSessions);
 });
 els.flowSessionSearchInput.addEventListener("input", renderFlowSessions);
+els.dateTagEnabled?.addEventListener("change", () => {
+  state.tagSchema = normalizeTagSchemaDraft({
+    ...state.tagSchema,
+    dateTag: { enabled: els.dateTagEnabled.checked }
+  });
+});
+els.addTagGroupButton?.addEventListener("click", addTagGroup);
+els.saveTagsButton?.addEventListener("click", () => saveTagSchema().catch(toastError));
+els.exportTagsButton?.addEventListener("click", exportTagSchema);
+els.importTagsButton?.addEventListener("click", () => els.importTagsFile?.click());
+els.importTagsFile?.addEventListener("change", () =>
+  importTagSchemaFile(els.importTagsFile.files?.[0])
+    .catch(toastError)
+    .finally(() => {
+      if (els.importTagsFile) els.importTagsFile.value = "";
+    })
+);
 els.resetConversationButton.addEventListener("click", openConfirmDialog);
 els.confirmCancelButton.addEventListener("click", closeConfirmDialog);
 els.confirmDialog.addEventListener("click", (event) => {
