@@ -126,6 +126,19 @@ test("human handoff session cards have a clear pulsing highlight", () => {
   assert.equal(css.includes(".handoff-switch.is-human .handoff-switch-thumb"), true);
 });
 
+test("handoff reordering animates cards from their previous position", () => {
+  assert.match(app, /function captureFlowSessionPositions\(\)/);
+  assert.match(app, /getBoundingClientRect\(\)\.top/);
+  assert.match(app, /function animateFlowSessionReorder\(previousPositions\)/);
+  assert.match(app, /prefers-reduced-motion:\s*reduce/);
+  assert.match(app, /card\.animate\(/);
+  assert.match(app, /duration:\s*320/);
+  assert.match(app, /cubic-bezier\(0\.22,\s*1,\s*0\.36,\s*1\)/);
+  assert.match(app, /const previousPositions = captureFlowSessionPositions\(\)/);
+  assert.match(app, /renderFlowSessions\(\{ animateFrom: previousPositions \}\)/);
+  assert.match(css, /\.flow-session-card\.is-reordering\s*\{[\s\S]*will-change:\s*transform/);
+});
+
 test("conversation assets open as a popover without affecting chat layout", () => {
   assert.match(css, /\.chat-view\s*\{[\s\S]*position:\s*relative/);
   assert.match(css, /\.assets-panel\s*\{[\s\S]*position:\s*absolute/);

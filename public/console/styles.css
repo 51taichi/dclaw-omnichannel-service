@@ -2437,6 +2437,11 @@ button.danger:hover {
   box-shadow: 0 10px 22px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 
+.flow-session-card.is-reordering {
+  z-index: 3;
+  will-change: transform;
+}
+
 .flow-session-card.is-handoff {
   position: relative;
   border-color: color-mix(in srgb, #f59e0b 76%, var(--line));

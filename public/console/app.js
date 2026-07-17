@@ -2445,7 +2445,39 @@ function renderFlowSessionTagFilter() {
   els.flowSessionTagFilter.value = options.has(current) ? current : "all";
 }
 
-function renderFlowSessions() {
+function captureFlowSessionPositions() {
+  const positions = new Map();
+  els.flowSessionList?.querySelectorAll("[data-flow-session]").forEach((card) => {
+    positions.set(card.dataset.flowSession, card.getBoundingClientRect().top);
+  });
+  return positions;
+}
+
+function animateFlowSessionReorder(previousPositions) {
+  if (!previousPositions?.size || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+  els.flowSessionList?.querySelectorAll("[data-flow-session]").forEach((card) => {
+    const previousTop = previousPositions.get(card.dataset.flowSession);
+    if (!Number.isFinite(previousTop)) return;
+    const delta = previousTop - card.getBoundingClientRect().top;
+    if (Math.abs(delta) < 2 || typeof card.animate !== "function") return;
+    card.classList.add("is-reordering");
+    const animation = card.animate(
+      [
+        { transform: `translateY(${delta}px)` },
+        { transform: "translateY(0)" }
+      ],
+      {
+        duration: 320,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)"
+      }
+    );
+    const cleanup = () => card.classList.remove("is-reordering");
+    animation.addEventListener("finish", cleanup, { once: true });
+    animation.addEventListener("cancel", cleanup, { once: true });
+  });
+}
+
+function renderFlowSessions({ animateFrom = null } = {}) {
   const visibleSessions = getVisibleFlowSessions();
   const typeFilter = currentFlowSessionTypeFilter();
   const emptyCopy = typeFilter === "private"
@@ -2516,6 +2548,7 @@ function renderFlowSessions() {
       if (event.key === "Enter" || event.key === " ") toggle(event);
     });
   });
+  animateFlowSessionReorder(animateFrom);
 }
 
 function renderConversationAssets(assets = { fields: [], totalCount: 0, collectedCount: 0 }) {
@@ -2795,6 +2828,7 @@ async function toggleSelectedConversationHandoff(conversationKey = state.selecte
     })
   });
   if (!isCurrentBotContext(botId, contextVersion)) return;
+  const previousPositions = captureFlowSessionPositions();
   currentFlowSessions = currentFlowSessions.map((session) =>
     session.conversationKey === data.session.conversationKey
       ? { ...session, ...data.session }
@@ -2807,7 +2841,7 @@ async function toggleSelectedConversationHandoff(conversationKey = state.selecte
     };
     syncHandoffButton(currentFlowSession);
   }
-  renderFlowSessions();
+  renderFlowSessions({ animateFrom: previousPositions });
   toast(nextStatus === "human" ? "已切换为人工接手" : "已恢复 AI 接手");
 }
 
