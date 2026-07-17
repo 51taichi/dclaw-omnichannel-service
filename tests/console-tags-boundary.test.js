@@ -75,8 +75,11 @@ test("tag group enabled switch sits before the group name while option checkboxe
   assert.match(css, /\.switch-slider/);
 });
 
-test("tag item name and condition icons are swapped for clearer editing", () => {
-  assert.match(js, /icon\("terminal"\)\}标签/);
+test("tag group and tag item labels use the unified tag icon", () => {
+  assert.match(js, /icon\("tag"\)\}标签组/);
+  assert.match(js, /icon\("tag"\)\}标签/);
+  assert.doesNotMatch(js, /icon\("info"\)\}标签组/);
+  assert.doesNotMatch(js, /icon\("terminal"\)\}标签/);
   assert.match(js, /icon\("check"\)\}达标条件/);
 });
 

@@ -1567,7 +1567,7 @@ function renderTagSchemaEditor() {
                   <span class="switch-label">启用</span>
                 </label>
                 <label class="tag-name-field">
-                  <span class="field-label">${icon("info")}标签组</span>
+                  <span class="field-label">${icon("tag")}标签组</span>
                   <input data-tag-group-field="name" value="${escapeHtml(group.name)}" placeholder="例如：意向等级" />
                 </label>
                 <label class="toggle">
@@ -1597,7 +1597,7 @@ function renderTagSchemaEditor() {
                             <article class="tag-row-card" data-tag-index="${tagIndex}">
                               <div class="tag-row-head">
                                 <label class="tag-name-field">
-                                  <span class="field-label">${icon("terminal")}标签</span>
+                                  <span class="field-label">${icon("tag")}标签</span>
                                   <input data-tag-field="name" value="${escapeHtml(tag.name)}" placeholder="例如：A类" />
                                 </label>
                                 <div class="tag-card-actions">
