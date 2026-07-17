@@ -1538,6 +1538,13 @@ function dateTagFilterKeyFromInput(value) {
   return compactValue ? `date:${compactValue}` : "all";
 }
 
+function selectedFlowSessionTagFilterValues() {
+  if (!els.flowSessionTagFilter) return [];
+  return [...els.flowSessionTagFilter.selectedOptions]
+    .map((option) => option.value)
+    .filter((value) => value && value !== "all");
+}
+
 function setFlowSessionDateTagFilterValue(value) {
   const rawValue = String(value || "");
   const compactValue = rawValue.includes("-") ? compactDateTagInputValue(rawValue) : rawValue.replace(/\D/g, "").slice(0, 8);
@@ -2448,7 +2455,7 @@ function getVisibleFlowSessions() {
   const typeFilter = currentFlowSessionTypeFilter();
   const normalizedSessionSearch = String(els.flowSessionSearchInput.value || "").trim().toLowerCase();
   const nodeFilter = els.flowSessionNodeFilter.value;
-  const tagFilter = els.flowSessionTagFilter?.value || "all";
+  const tagFilters = new Set(selectedFlowSessionTagFilterValues());
   const dateTagFilterKey = dateTagFilterKeyFromInput(els.flowSessionDateTagFilter?.value || "");
 
   return sortFlowSessions(currentFlowSessions.filter((session) => {
@@ -2463,7 +2470,7 @@ function getVisibleFlowSessions() {
       if (!searchableText.includes(normalizedSessionSearch)) return false;
     }
     if (appliesFlowFilters && nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
-    if (tagFilter !== "all" && !(session.tags || []).some((tag) => tagFilterKey(tag) === tagFilter)) return false;
+    if (tagFilters.size && !(session.tags || []).some((tag) => tagFilters.has(tagFilterKey(tag)))) return false;
     if (dateTagFilterKey !== "all" && !(session.tags || []).some((tag) => tag.tagType === "date" && tagFilterKey(tag) === dateTagFilterKey)) return false;
     return true;
   }));
@@ -2481,7 +2488,7 @@ function renderFlowSessionNodeFilter() {
 
 function renderFlowSessionTagFilter() {
   if (!els.flowSessionTagFilter) return;
-  const current = els.flowSessionTagFilter.value || "all";
+  const current = new Set(selectedFlowSessionTagFilterValues());
   const options = new Map([["all", "全部"]]);
   for (const session of currentFlowSessions) {
     for (const tag of session.tags || []) {
@@ -2492,10 +2499,52 @@ function renderFlowSessionTagFilter() {
       options.set(key, label);
     }
   }
+  const selected = [...current].filter((value) => options.has(value));
   els.flowSessionTagFilter.innerHTML = [...options]
-    .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+    .map(([value, label]) => {
+      const checked = value === "all" ? selected.length === 0 : selected.includes(value);
+      return `<option value="${escapeHtml(value)}" ${checked ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    })
     .join("");
-  els.flowSessionTagFilter.value = options.has(current) ? current : "all";
+  if (els.flowSessionTagFilterButton) {
+    els.flowSessionTagFilterButton.textContent = selected.length ? `已选 ${selected.length} 个` : "全部";
+  }
+  if (els.flowSessionTagFilterMenu) {
+    els.flowSessionTagFilterMenu.innerHTML = [...options]
+      .map(([value, label]) => {
+        const checked = value === "all" ? selected.length === 0 : selected.includes(value);
+        return `
+          <label class="tag-multi-select-option" role="option" aria-selected="${checked ? "true" : "false"}">
+            <input type="checkbox" value="${escapeHtml(value)}" ${checked ? "checked" : ""} />
+            <span>${escapeHtml(label)}</span>
+          </label>
+        `;
+      })
+      .join("");
+  }
+}
+
+function closeFlowSessionTagFilterMenu() {
+  if (!els.flowSessionTagFilterMenu || !els.flowSessionTagFilterButton) return;
+  els.flowSessionTagFilterMenu.hidden = true;
+  els.flowSessionTagFilterButton.setAttribute("aria-expanded", "false");
+}
+
+function toggleFlowSessionTagFilterMenu() {
+  if (!els.flowSessionTagFilterMenu || !els.flowSessionTagFilterButton) return;
+  const willOpen = els.flowSessionTagFilterMenu.hidden;
+  els.flowSessionTagFilterMenu.hidden = !willOpen;
+  els.flowSessionTagFilterButton.setAttribute("aria-expanded", String(willOpen));
+}
+
+function setFlowSessionTagFilterValues(values) {
+  if (!els.flowSessionTagFilter) return;
+  const selected = new Set(values.filter((value) => value && value !== "all"));
+  [...els.flowSessionTagFilter.options].forEach((option) => {
+    option.selected = option.value === "all" ? selected.size === 0 : selected.has(option.value);
+  });
+  renderFlowSessionTagFilter();
+  renderFlowSessions();
 }
 
 function renderFlowSessionDateTagFilter() {
@@ -3414,6 +3463,26 @@ els.flowSessionTypeButtons.forEach((button) => {
   els.flowSessionTagFilter
 ].forEach((control) => {
   control?.addEventListener("change", renderFlowSessions);
+});
+els.flowSessionTagFilterButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleFlowSessionTagFilterMenu();
+});
+els.flowSessionTagFilterMenu?.addEventListener("change", (event) => {
+  const checkbox = event.target.closest('input[type="checkbox"]');
+  if (!checkbox) return;
+  if (checkbox.value === "all") {
+    setFlowSessionTagFilterValues([]);
+    return;
+  }
+  const values = [...els.flowSessionTagFilterMenu.querySelectorAll('input[type="checkbox"]:checked')]
+    .map((input) => input.value)
+    .filter((value) => value !== "all");
+  setFlowSessionTagFilterValues(values);
+});
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".tag-multi-select")) return;
+  closeFlowSessionTagFilterMenu();
 });
 els.flowSessionDateTagFilter?.addEventListener("input", () => {
   normalizeFlowSessionDateTagFilter();

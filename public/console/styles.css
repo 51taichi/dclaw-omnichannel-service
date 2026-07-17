@@ -2426,6 +2426,82 @@ button.danger:hover {
   min-width: 0;
 }
 
+.tag-multi-select {
+  position: relative;
+  min-width: 0;
+}
+
+.tag-multi-select-button {
+  width: 100%;
+  height: 40px;
+  justify-content: flex-start;
+  border: 0;
+  border-radius: 0 8px 8px 0;
+  background: #ffffff;
+  color: #302321;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.tag-multi-select-button:hover {
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.tag-multi-select-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  display: grid;
+  gap: 4px;
+  width: max(220px, 100%);
+  max-height: 240px;
+  padding: 8px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 36px rgba(40, 48, 124, 0.16);
+}
+
+.tag-multi-select-menu[hidden] {
+  display: none;
+}
+
+.tag-multi-select-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  padding: 5px 7px;
+  border-radius: 7px;
+  color: #302321;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.tag-multi-select-option:hover,
+.tag-multi-select-option[aria-selected="true"] {
+  background: color-mix(in srgb, var(--accent) 10%, #ffffff);
+  color: var(--accent-dark);
+}
+
+.tag-multi-select-option input {
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+}
+
+.tag-multi-select-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .flow-session-card {
   position: relative;
   display: grid;
@@ -2435,7 +2511,6 @@ button.danger:hover {
   gap: 10px 9px;
   width: 100%;
   height: auto;
-  min-height: 78px;
   padding: 9px;
   border: 1px solid color-mix(in srgb, var(--cyan) 32%, var(--line));
   border-radius: 8px;

@@ -28,6 +28,17 @@ test("console renders tag chips and tag filters", () => {
   assert.match(html, /id="icon-tag"/);
   assert.match(js, /icon\("tag"\)/);
   assert.match(js, /flowSessionTagFilter/);
+  assert.match(html, /id="flowSessionTagFilterButton"[\s\S]*全部/);
+  assert.match(html, /id="flowSessionTagFilterMenu" class="tag-multi-select-menu"[\s\S]*role="listbox"/);
+  assert.match(html, /id="flowSessionTagFilter" multiple hidden/);
+  assert.match(js, /function selectedFlowSessionTagFilterValues\(\)/);
+  assert.match(js, /const tagFilters = new Set\(selectedFlowSessionTagFilterValues\(\)\)/);
+  assert.match(js, /tagFilters\.size && !\(session\.tags \|\| \[\]\)\.some\(\(tag\) => tagFilters\.has\(tagFilterKey\(tag\)\)\)/);
+  assert.match(js, /function toggleFlowSessionTagFilterMenu\(\)/);
+  assert.match(js, /function setFlowSessionTagFilterValues\(values\)/);
+  assert.match(js, /flowSessionTagFilterMenu\?\.addEventListener\("change"/);
+  assert.match(css, /\.tag-multi-select-menu\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(css, /\.tag-multi-select-option\s*\{[\s\S]*grid-template-columns:\s*18px minmax\(0,\s*1fr\)/);
   assert.match(html, /id="flowSessionDateTagFilter"/);
   assert.match(html, /id="flowSessionSearchInput"[\s\S]*添加日期[\s\S]*id="flowSessionDateTagFilter"[^>]*type="date"[\s\S]*任务状态/);
   assert.doesNotMatch(html, /id="flowSessionDatePicker"/);
