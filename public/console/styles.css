@@ -2737,10 +2737,11 @@ button.danger:hover {
   bottom: 14px;
   z-index: 12;
   display: inline-grid;
-  grid-template-columns: 34px 34px;
+  grid-template-columns: repeat(2, 34px);
   align-items: center;
-  width: 74px;
-  height: 38px;
+  gap: 2px;
+  width: max-content;
+  height: auto;
   padding: 2px;
   border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
   border-radius: 999px;
@@ -2797,7 +2798,7 @@ button.danger:hover {
 
 .handoff-switch.is-human .handoff-switch-thumb {
   background: linear-gradient(135deg, #f59e0b, #fbbf24);
-  transform: translateX(34px);
+  transform: translateX(36px);
 }
 
 .handoff-switch:not(.is-human) .handoff-switch-option.is-ai,

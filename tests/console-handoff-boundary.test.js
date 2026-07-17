@@ -31,6 +31,8 @@ test("console shell keeps the bot rail fixed while giving more width to content"
 });
 
 test("console exposes a per-session handoff switch without redundant status labels", () => {
+  const switchRule = cssRule(".handoff-switch");
+
   assert.equal(html.includes('id="handoffStatusBanner"'), false);
   assert.equal(app.includes("toggleSelectedConversationHandoff"), true);
   assert.equal(app.includes("data-flow-handoff-switch"), true);
@@ -44,7 +46,13 @@ test("console exposes a per-session handoff switch without redundant status labe
   assert.doesNotMatch(app, /class="flow-session-status/);
   assert.doesNotMatch(app, /els\.chatStatusBadge\.innerHTML = statusBadgeHtml/);
   assert.match(css, /\.flow-session-switch\.handoff-switch\s*\{[\s\S]*right:\s*9px[\s\S]*bottom:\s*9px/);
-  assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(34px\)/);
+  assert.match(switchRule, /grid-template-columns:\s*repeat\(2,\s*34px\)/);
+  assert.match(switchRule, /gap:\s*2px/);
+  assert.match(switchRule, /width:\s*max-content/);
+  assert.match(switchRule, /height:\s*auto/);
+  assert.doesNotMatch(switchRule, /width:\s*74px/);
+  assert.doesNotMatch(switchRule, /height:\s*38px/);
+  assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(36px\)/);
 });
 
 test("flow session cards use compact icon metadata for task, assets, time, and handoff", () => {
