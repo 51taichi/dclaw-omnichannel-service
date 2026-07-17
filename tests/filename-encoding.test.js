@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { normalizeUploadedFilename } from "../src/filenames.js";
-import { buildFriendInfoUpdateCommand, buildRawMediaCommand } from "../src/worktool.js";
+import * as worktool from "../src/worktool.js";
+
+const { buildRawMediaCommand } = worktool;
 
 test("normalizeUploadedFilename restores UTF-8 names decoded as latin1", () => {
   const mojibake = Buffer.from("槟榔招商资料_PRD_v1.0.pdf", "utf8").toString("latin1");
@@ -26,23 +28,7 @@ test("buildRawMediaCommand sends restored Chinese objectName", () => {
   assert.equal(command.objectName, "槟榔招商资料_PRD_v1.0.pdf");
 });
 
-test("buildFriendInfoUpdateCommand builds WorkTool friend remark command", () => {
-  const command = buildFriendInfoUpdateCommand({
-    phone: "18570860666",
-    name: "魔兮",
-    markName: "魔兮-18570860666",
-    markExtra: "姓名=魔兮; 手机号=18570860666",
-    tagList: ["已留资"]
-  });
-
-  assert.deepEqual(command, {
-    type: 213,
-    friend: {
-      phone: "18570860666",
-      name: "魔兮",
-      markName: "魔兮-18570860666",
-      markExtra: "姓名=魔兮; 手机号=18570860666",
-      tagList: ["已留资"]
-    }
-  });
+test("worktool client does not expose friend remark update helpers", () => {
+  assert.equal("buildFriendInfoUpdateCommand" in worktool, false);
+  assert.equal("sendFriendInfoUpdate" in worktool, false);
 });

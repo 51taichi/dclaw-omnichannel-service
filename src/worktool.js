@@ -160,48 +160,11 @@ export function buildRawMediaCommand({
   };
 }
 
-export function buildFriendInfoUpdateCommand({
-  phone = "",
-  name = "",
-  markName = "",
-  markExtra = "",
-  tagList = []
-}) {
-  const normalizedPhone = String(phone || "").trim();
-  const normalizedName = String(name || "").trim();
-  const normalizedMarkName = String(markName || "").trim();
-  const normalizedMarkExtra = String(markExtra || "").trim();
-  const normalizedTagList = Array.isArray(tagList)
-    ? tagList.map((tag) => String(tag || "").trim()).filter(Boolean)
-    : [];
-
-  if (!normalizedPhone && !normalizedName) {
-    throw new Error("phone or name is required");
-  }
-  if (!normalizedMarkName && !normalizedMarkExtra && !normalizedTagList.length) {
-    throw new Error("markName, markExtra, or tagList is required");
-  }
-
-  return {
-    type: 213,
-    friend: {
-      phone: normalizedPhone,
-      name: normalizedName,
-      markName: normalizedMarkName,
-      markExtra: normalizedMarkExtra,
-      tagList: normalizedTagList
-    }
-  };
-}
-
 export async function sendRawCommand({ robotId, command, socketType = 2 }) {
   if (!command || typeof command !== "object") {
     throw new Error("command must be an object");
   }
-  if (
-    command.type !== 213 &&
-    (!Array.isArray(command.titleList) || command.titleList.length === 0)
-  ) {
+  if (!Array.isArray(command.titleList) || command.titleList.length === 0) {
     throw new Error("command.titleList must be a non-empty array");
   }
 
@@ -211,28 +174,6 @@ export async function sendRawCommand({ robotId, command, socketType = 2 }) {
     body: JSON.stringify({
       socketType,
       list: [command]
-    })
-  });
-}
-
-export async function sendFriendInfoUpdate({
-  robotId,
-  phone,
-  name,
-  markName,
-  markExtra,
-  tagList,
-  socketType = 2
-}) {
-  return sendRawCommand({
-    robotId,
-    socketType,
-    command: buildFriendInfoUpdateCommand({
-      phone,
-      name,
-      markName,
-      markExtra,
-      tagList
     })
   });
 }
