@@ -178,6 +178,12 @@ test("flow machine and proactive panels use compact title-free layouts", () => {
   assert.doesNotMatch(flowPanel, /<h2 class="module-title"[\s\S]*任务状态机/);
   assert.equal(flowPanel.includes('class="flow-name-row"'), true);
   assert.match(flowPanel, /class="flow-name-row"[\s\S]*id="addFlowNodeButton"/);
+  assert.doesNotMatch(flowPanel, /高级：导入\/查看 JSON/);
+  assert.doesNotMatch(flowPanel, /从 JSON 导入到表单/);
+  assert.match(flowPanel, /id="importFlowFile"[\s\S]*hidden/);
+  assert.match(flowPanel, /class="[^"]*\bflow-config-footer\b[^"]*"[\s\S]*id="applyFlowJsonButton"[\s\S]*导入配置[\s\S]*id="exportFlowButton"[\s\S]*导出配置[\s\S]*保存状态机/);
+  assert.match(css, /\.flow-config-footer\s*\{[\s\S]*justify-content:\s*space-between/);
+  assert.match(app, /importFlowConfigFile\(els\.importFlowFile\.files\?\.\[0\]\)/);
   assert.doesNotMatch(proactivePanel, /<h2 class="module-title"[\s\S]*主动推送/);
   assert.match(proactiveTasksPanel, /<h2 class="module-title"[\s\S]*主动推送查询/);
   assert.doesNotMatch(sessionsPanel, /<h2 class="module-title"[\s\S]*客户会话/);

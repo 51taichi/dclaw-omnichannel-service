@@ -47,6 +47,7 @@ const els = {
   flowMachineForm: document.querySelector("#flowMachineForm"),
   addFlowNodeButton: document.querySelector("#addFlowNodeButton"),
   applyFlowJsonButton: document.querySelector("#applyFlowJsonButton"),
+  importFlowFile: document.querySelector("#importFlowFile"),
   flowNodeList: document.querySelector("#flowNodeList"),
   loadDefaultFlowButton: document.querySelector("#loadDefaultFlowButton"),
   exportFlowButton: document.querySelector("#exportFlowButton"),
@@ -2365,13 +2366,14 @@ function addFlowNode() {
   syncFlowJsonTextarea();
 }
 
-function applyFlowJsonToEditor() {
+async function importFlowConfigFile(file) {
+  if (!file) return;
   try {
-    const config = JSON.parse(els.flowMachineForm.config.value);
+    const config = JSON.parse(await file.text());
     setFlowEditorFromConfig(config);
-    toast("JSON 已导入到表单");
+    toast("状态机配置已导入，保存后生效");
   } catch {
-    toast("状态机 JSON 格式不正确");
+    toast("状态机配置 JSON 格式不正确");
   }
 }
 
@@ -3386,7 +3388,14 @@ els.flowMachineForm.addEventListener("submit", (event) =>
   saveFlowMachine(event).catch(toastError)
 );
 els.addFlowNodeButton.addEventListener("click", addFlowNode);
-els.applyFlowJsonButton.addEventListener("click", applyFlowJsonToEditor);
+els.applyFlowJsonButton.addEventListener("click", () => els.importFlowFile?.click());
+els.importFlowFile?.addEventListener("change", () =>
+  importFlowConfigFile(els.importFlowFile.files?.[0])
+    .finally(() => {
+      if (els.importFlowFile) els.importFlowFile.value = "";
+    })
+    .catch(toastError)
+);
 els.flowMachineForm.entryNodeId.addEventListener("change", syncFlowJsonTextarea);
 els.loadDefaultFlowButton.addEventListener("click", () =>
   loadDefaultFlowMachine().catch(toastError)

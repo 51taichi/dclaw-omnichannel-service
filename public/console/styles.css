@@ -2108,6 +2108,17 @@ button.danger:hover {
   font-weight: 800;
 }
 
+.flow-config-footer {
+  justify-content: space-between;
+}
+
+.flow-config-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .tag-schema-editor {
   display: grid;
   gap: 14px;

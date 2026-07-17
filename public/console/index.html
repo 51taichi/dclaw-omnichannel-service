@@ -400,26 +400,23 @@
             <input name="flowVersion" type="hidden" value="1.0.0" />
             <select name="entryNodeId" hidden aria-hidden="true"></select>
             <div id="flowNodeList" class="wide flow-node-list"></div>
-            <details class="wide advanced-json">
-              <summary>高级：导入/查看 JSON</summary>
-              <label class="wide">
-                <span class="field-label">状态机 JSON</span>
-                <textarea name="config" rows="12" spellcheck="false" placeholder="可粘贴导入 JSON；普通用户无需编辑"></textarea>
-              </label>
-              <button id="applyFlowJsonButton" class="secondary" type="button">
-                <svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>
-                从 JSON 导入到表单
-              </button>
-            </details>
-            <div class="actions">
-              <button id="loadDefaultFlowButton" class="secondary" type="button">
-                <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
-                载入模板
-              </button>
-              <button id="exportFlowButton" class="secondary" type="button">
-                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-                导出
-              </button>
+            <textarea name="config" hidden spellcheck="false"></textarea>
+            <input id="importFlowFile" type="file" accept="application/json,.json" hidden />
+            <div class="actions flow-config-footer">
+              <div class="flow-config-footer-actions">
+                <button id="loadDefaultFlowButton" class="secondary" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+                  载入模板
+                </button>
+                <button id="applyFlowJsonButton" class="secondary" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
+                  导入配置
+                </button>
+                <button id="exportFlowButton" class="secondary" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+                  导出配置
+                </button>
+              </div>
               <button class="primary" type="submit">
                 <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
                 保存状态机
