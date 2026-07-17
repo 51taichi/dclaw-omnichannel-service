@@ -29,11 +29,17 @@ test("console renders tag chips and tag filters", () => {
   assert.match(js, /icon\("tag"\)/);
   assert.match(js, /flowSessionTagFilter/);
   assert.match(html, /id="flowSessionDateTagFilter"/);
+  assert.match(html, /id="flowSessionDateTagFilter"[^>]*type="text"[^>]*placeholder="yyyyMMdd"[^>]*maxlength="8"/);
+  assert.match(html, /id="flowSessionDatePicker"[^>]*type="date"/);
   assert.match(html, /添加日期/);
   assert.match(js, /function renderFlowSessionDateTagFilter\(\)/);
-  assert.match(js, /tag\.tagType === "date" && tagFilterKey\(tag\) === dateTagFilter/);
+  assert.match(js, /function compactDateTagInputValue\(value\)/);
+  assert.match(js, /function dateTagFilterKeyFromInput\(value\)/);
+  assert.match(js, /tag\.tagType === "date" && tagFilterKey\(tag\) === dateTagFilterKey/);
   assert.match(js, /if \(tag\.tagType === "date"\) continue/);
   assert.match(js, /els\.flowSessionDateTagFilter\.disabled = !dateTagEnabled/);
+  assert.match(js, /els\.flowSessionDatePicker\.value = nativeDateValueFromCompactDate\(compactValue\)/);
+  assert.match(js, /openFlowSessionDatePicker/);
   assert.match(css, /\.tag-chip/);
   assert.match(css, /\.tag-chip \.icon\s*\{[\s\S]*width:\s*12px[\s\S]*height:\s*12px/);
 });

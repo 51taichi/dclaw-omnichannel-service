@@ -57,6 +57,7 @@ const els = {
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
   flowSessionTagFilter: document.querySelector("#flowSessionTagFilter"),
   flowSessionDateTagFilter: document.querySelector("#flowSessionDateTagFilter"),
+  flowSessionDatePicker: document.querySelector("#flowSessionDatePicker"),
   chatTitle: document.querySelector("#chatTitle"),
   chatStatusBadge: document.querySelector("#chatStatusBadge"),
   chatTagList: document.querySelector("#chatTagList"),
@@ -490,7 +491,7 @@ function clearBotScopedContent() {
   els.flowEventsOutput.textContent = "";
   els.flowSessionNodeFilter.innerHTML = `<option value="all">全部</option>`;
   if (els.flowSessionTagFilter) els.flowSessionTagFilter.innerHTML = `<option value="all">全部</option>`;
-  if (els.flowSessionDateTagFilter) els.flowSessionDateTagFilter.innerHTML = `<option value="all">全部</option>`;
+  setFlowSessionDateTagFilterValue("");
   if (els.tagGroupList) els.tagGroupList.innerHTML = "";
   if (els.dateTagEnabled) els.dateTagEnabled.checked = false;
   els.flowNodeList.innerHTML = `<div class="empty-state">正在加载当前 Bot 的任务状态机...</div>`;
@@ -1510,6 +1511,47 @@ function tagFilterKey(tag) {
   return tag.tagType === "date" ? `date:${tag.tagId}` : `${tag.groupId}:${tag.tagId}`;
 }
 
+function compactDateTagInputValue(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 8);
+  return digits.length === 8 ? digits : "";
+}
+
+function nativeDateValueFromCompactDate(value) {
+  const compactValue = compactDateTagInputValue(value);
+  if (!compactValue) return "";
+  return `${compactValue.slice(0, 4)}-${compactValue.slice(4, 6)}-${compactValue.slice(6, 8)}`;
+}
+
+function dateTagFilterKeyFromInput(value) {
+  const compactValue = compactDateTagInputValue(value);
+  return compactValue ? `date:${compactValue}` : "all";
+}
+
+function setFlowSessionDateTagFilterValue(value) {
+  const rawValue = String(value || "");
+  const compactValue = rawValue.includes("-") ? compactDateTagInputValue(rawValue) : rawValue.replace(/\D/g, "").slice(0, 8);
+  if (els.flowSessionDateTagFilter) {
+    els.flowSessionDateTagFilter.value = compactValue;
+  }
+  if (els.flowSessionDatePicker) {
+    els.flowSessionDatePicker.value = nativeDateValueFromCompactDate(compactValue);
+  }
+}
+
+function normalizeFlowSessionDateTagFilter() {
+  setFlowSessionDateTagFilterValue(els.flowSessionDateTagFilter?.value || "");
+}
+
+function openFlowSessionDatePicker() {
+  if (!els.flowSessionDatePicker || els.flowSessionDatePicker.disabled) return;
+  els.flowSessionDatePicker.value = nativeDateValueFromCompactDate(els.flowSessionDateTagFilter?.value || "");
+  if (typeof els.flowSessionDatePicker.showPicker === "function") {
+    els.flowSessionDatePicker.showPicker();
+    return;
+  }
+  els.flowSessionDatePicker.focus();
+}
+
 function sortConversationTagsForDisplay(tags = []) {
   return [...tags].sort((a, b) => {
     const aDate = a?.tagType === "date" ? 0 : 1;
@@ -2408,7 +2450,7 @@ function getVisibleFlowSessions() {
   const normalizedSessionSearch = String(els.flowSessionSearchInput.value || "").trim().toLowerCase();
   const nodeFilter = els.flowSessionNodeFilter.value;
   const tagFilter = els.flowSessionTagFilter?.value || "all";
-  const dateTagFilter = els.flowSessionDateTagFilter?.value || "all";
+  const dateTagFilterKey = dateTagFilterKeyFromInput(els.flowSessionDateTagFilter?.value || "");
 
   return sortFlowSessions(currentFlowSessions.filter((session) => {
     if (typeFilter !== "all" && flowSessionType(session) !== typeFilter) return false;
@@ -2423,7 +2465,7 @@ function getVisibleFlowSessions() {
     }
     if (appliesFlowFilters && nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
     if (tagFilter !== "all" && !(session.tags || []).some((tag) => tagFilterKey(tag) === tagFilter)) return false;
-    if (dateTagFilter !== "all" && !(session.tags || []).some((tag) => tag.tagType === "date" && tagFilterKey(tag) === dateTagFilter)) return false;
+    if (dateTagFilterKey !== "all" && !(session.tags || []).some((tag) => tag.tagType === "date" && tagFilterKey(tag) === dateTagFilterKey)) return false;
     return true;
   }));
 }
@@ -2459,24 +2501,10 @@ function renderFlowSessionTagFilter() {
 
 function renderFlowSessionDateTagFilter() {
   if (!els.flowSessionDateTagFilter) return;
-  const current = els.flowSessionDateTagFilter.value || "all";
   const dateTagEnabled = Boolean(state.tagSchema?.dateTag?.enabled);
-  const options = new Map([["all", "全部"]]);
-  if (dateTagEnabled) {
-    for (const session of currentFlowSessions) {
-      for (const tag of session.tags || []) {
-        if (tag.tagType !== "date") continue;
-        const key = tagFilterKey(tag);
-        if (!key) continue;
-        options.set(key, tag.tagName || tag.tagId);
-      }
-    }
-  }
-  els.flowSessionDateTagFilter.innerHTML = [...options]
-    .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
-    .join("");
-  els.flowSessionDateTagFilter.value = options.has(current) ? current : "all";
+  normalizeFlowSessionDateTagFilter();
   els.flowSessionDateTagFilter.disabled = !dateTagEnabled;
+  if (els.flowSessionDatePicker) els.flowSessionDatePicker.disabled = !dateTagEnabled;
 }
 
 function captureFlowSessionPositions() {
@@ -3378,10 +3406,22 @@ els.flowSessionTypeButtons.forEach((button) => {
 });
 [
   els.flowSessionNodeFilter,
-  els.flowSessionTagFilter,
-  els.flowSessionDateTagFilter
+  els.flowSessionTagFilter
 ].forEach((control) => {
   control?.addEventListener("change", renderFlowSessions);
+});
+els.flowSessionDateTagFilter?.addEventListener("input", () => {
+  normalizeFlowSessionDateTagFilter();
+  renderFlowSessions();
+});
+els.flowSessionDateTagFilter?.addEventListener("change", () => {
+  normalizeFlowSessionDateTagFilter();
+  renderFlowSessions();
+});
+els.flowSessionDateTagFilter?.addEventListener("click", openFlowSessionDatePicker);
+els.flowSessionDatePicker?.addEventListener("change", () => {
+  setFlowSessionDateTagFilterValue(els.flowSessionDatePicker.value);
+  renderFlowSessions();
 });
 els.flowSessionSearchInput.addEventListener("input", renderFlowSessions);
 els.dateTagEnabled?.addEventListener("change", () => {
