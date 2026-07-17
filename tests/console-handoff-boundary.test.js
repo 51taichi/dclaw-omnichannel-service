@@ -21,6 +21,15 @@ function cssRule(selector) {
   return css.slice(start, end + 1);
 }
 
+test("console shell keeps the bot rail fixed while giving more width to content", () => {
+  const layoutRule = cssRule(".layout");
+  const shellRule = cssRule(".console-shell");
+
+  assert.match(layoutRule, /width:\s*min\(1440px,\s*calc\(100% - 16px\)\)/);
+  assert.match(layoutRule, /gap:\s*10px/);
+  assert.match(shellRule, /grid-template-columns:\s*300px minmax\(0,\s*1fr\)/);
+});
+
 test("console exposes handoff toggles on session cards without the old status banner", () => {
   assert.equal(html.includes('id="handoffStatusBanner"'), false);
   assert.equal(app.includes("toggleSelectedConversationHandoff"), true);

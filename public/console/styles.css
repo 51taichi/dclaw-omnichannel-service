@@ -114,10 +114,10 @@ h2 {
 }
 
 .layout {
-  width: min(1220px, calc(100% - 32px));
+  width: min(1440px, calc(100% - 16px));
   margin: 22px auto 48px;
   display: grid;
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
 }
 
