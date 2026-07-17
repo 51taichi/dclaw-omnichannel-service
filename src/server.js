@@ -153,6 +153,8 @@ const uploadAllowedOrigins = String(process.env.UPLOAD_ALLOWED_ORIGINS || "")
   .filter(Boolean);
 const agentFailureFallbackReply =
   process.env.AGENT_FAILURE_FALLBACK_REPLY || "刚刚这边有点卡，我稍后回复你哈";
+const friendRemarkSyncEnabled =
+  String(process.env.WORKTOOL_FRIEND_REMARK_SYNC_ENABLED || "").trim().toLowerCase() === "true";
 const uploadRetentionMs = Number(process.env.UPLOAD_RETENTION_HOURS || 24) * 60 * 60 * 1000;
 const uploadCleanupIntervalMs =
   Number(process.env.UPLOAD_CLEANUP_INTERVAL_MINUTES || 60) * 60 * 1000;
@@ -742,6 +744,7 @@ async function maybeSyncFriendRemarkFromFlowData({
   message,
   collectedData
 }) {
+  if (!friendRemarkSyncEnabled) return null;
   if (!isPrivateMessage(message)) return null;
   const profile = extractCustomerProfileForRemarkSync(collectedData);
   const markName = formatFriendRemarkName(profile);
