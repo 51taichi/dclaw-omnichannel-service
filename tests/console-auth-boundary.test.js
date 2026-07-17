@@ -6,6 +6,11 @@ const html = fs.readFileSync(new URL("../public/console/index.html", import.meta
 const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 
+test("console header uses the AI sales and customer service platform title", () => {
+  assert.equal(html.includes("AI销售/客服机器人管理中台"), true);
+  assert.equal(html.includes("微信机器人管理控制台"), false);
+});
+
 test("console has unified unlock and relock controls", () => {
   assert.equal(html.includes("unlockDialog"), true);
   assert.equal(html.includes("unlockKeyInput"), true);
