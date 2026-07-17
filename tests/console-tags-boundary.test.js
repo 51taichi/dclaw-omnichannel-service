@@ -30,6 +30,9 @@ test("tag editor supports collapsible groups and tag cards", () => {
   assert.match(js, /data-toggle-tag="/);
   assert.match(css, /\.tag-row-list/);
   assert.match(css, /repeat\(auto-fit, minmax\(220px, 1fr\)\)/);
+  assert.match(css, /calc\(\(100% - 10px\) \/ 2\)/);
+  assert.match(css, /\.tag-row-card:only-child/);
+  assert.doesNotMatch(css, /calc\(\(100% - 40px\) \/ 5\)/);
 });
 
 test("tag editor keeps import export save controls at the bottom and collapses after saving", () => {

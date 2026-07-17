@@ -2107,7 +2107,7 @@ button.danger:hover {
 
 @supports (width: max(1px, 2px)) {
   .tag-row-list {
-    grid-template-columns: repeat(auto-fit, minmax(max(220px, calc((100% - 40px) / 5)), 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(max(220px, calc((100% - 10px) / 2)), 1fr));
   }
 }
 
@@ -2115,6 +2115,10 @@ button.danger:hover {
   display: grid;
   gap: 10px;
   min-width: 0;
+}
+
+.tag-row-card:only-child {
+  grid-column: 1 / -1;
 }
 
 .tag-row-card .wide {
