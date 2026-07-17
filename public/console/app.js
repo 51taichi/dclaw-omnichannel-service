@@ -175,6 +175,10 @@ function icon(name) {
   return `<svg class="icon" aria-hidden="true"><use href="#icon-${name}"></use></svg>`;
 }
 
+function fieldLabelIcon(name, label) {
+  return `${icon(name)}${escapeHtml(label)}`;
+}
+
 function formatLocalDate(date = new Date()) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return localDate.toISOString().slice(0, 10);
@@ -576,7 +580,7 @@ function openUnlockDialog(bot) {
   state.pendingAdminKeyResolve = null;
   els.unlockTitle.textContent = "解锁 Bot";
   els.unlockBotName.textContent = `解锁 ${bot.botName || bot.agentName || bot.botId}`;
-  els.unlockKeyLabel.textContent = "密钥";
+  els.unlockKeyLabel.innerHTML = fieldLabelIcon("key", "密钥");
   els.unlockAcceptButton.innerHTML = `${icon("lock")} 解锁`;
   els.unlockKeyInput.value = "";
   els.unlockDialog.hidden = false;
@@ -590,7 +594,7 @@ function openAdminKeyDialog(message) {
     state.pendingAdminKeyResolve = resolve;
     els.unlockTitle.textContent = "管理员验证";
     els.unlockBotName.textContent = message || "请输入管理员密码后继续操作。";
-    els.unlockKeyLabel.textContent = "管理员密码";
+    els.unlockKeyLabel.innerHTML = fieldLabelIcon("key", "管理员密码");
     els.unlockAcceptButton.innerHTML = `${icon("lock")} 确认`;
     els.unlockKeyInput.value = "";
     els.unlockDialog.hidden = false;
@@ -603,7 +607,7 @@ function resetUnlockDialogState() {
   state.unlockMode = "bot";
   els.unlockTitle.textContent = "解锁 Bot";
   els.unlockBotName.textContent = "输入当前 Bot 密钥或管理员密钥。";
-  els.unlockKeyLabel.textContent = "密钥";
+  els.unlockKeyLabel.innerHTML = fieldLabelIcon("key", "密钥");
   els.unlockAcceptButton.innerHTML = `${icon("lock")} 解锁`;
 }
 

@@ -26,7 +26,11 @@ test("console has unified unlock and relock controls", () => {
   assert.equal(html.includes("unlockKeyInput"), true);
   assert.equal(html.includes("lockBotButton"), true);
   assert.equal(html.includes('id="icon-unlock"'), true);
+  assert.equal(html.includes('id="icon-key"'), true);
   assert.match(html, /id="unlockDialog"[\s\S]*?<use href="#icon-unlock"><\/use>/);
+  assert.match(html, /id="unlockKeyLabel" class="field-label"[\s\S]*?<use href="#icon-key"><\/use>[\s\S]*?密钥/);
+  assert.equal(app.includes('fieldLabelIcon("key", "密钥")'), true);
+  assert.equal(app.includes('fieldLabelIcon("key", "管理员密码")'), true);
   assert.equal(app.includes("/api/public/bots"), true);
   assert.equal(app.includes("/unlock"), true);
   assert.equal(app.includes("lockCurrentBot"), true);
