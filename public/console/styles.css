@@ -2842,6 +2842,11 @@ button.danger:hover {
   height: 16px;
 }
 
+.handoff-switch-option.is-ai .icon {
+  width: 20px;
+  height: 20px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .flow-session-card.is-handoff,
   .proactive-upload-overlay,

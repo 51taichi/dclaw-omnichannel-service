@@ -56,6 +56,7 @@ test("console exposes a per-session handoff switch without redundant status labe
   assert.match(css, /\.handoff-switch-option\s*\{[\s\S]*width:\s*30px[\s\S]*height:\s*30px/);
   assert.match(css, /\.handoff-switch-thumb\s*\{[\s\S]*width:\s*30px[\s\S]*height:\s*30px[\s\S]*border-radius:\s*6px/);
   assert.match(css, /\.handoff-switch \.icon\s*\{[\s\S]*width:\s*16px[\s\S]*height:\s*16px/);
+  assert.match(css, /\.handoff-switch-option\.is-ai \.icon\s*\{[\s\S]*width:\s*20px[\s\S]*height:\s*20px/);
   assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(32px\)/);
 });
 
