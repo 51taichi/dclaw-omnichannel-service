@@ -8,7 +8,9 @@ const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.
 
 test("console has customer tags workspace tab", () => {
   assert.match(html, /data-workspace-tab="tags"/);
+  assert.match(html, /data-workspace-tab="tags"[\s\S]*href="#icon-tag"[\s\S]*标签/);
   assert.match(html, /id="tagSchemaPanel"/);
+  assert.doesNotMatch(html, /<h2 class="module-title">[\s\S]*客户标签[\s\S]*<\/h2>/);
   assert.match(html, /启用客户添加日期标签/);
 });
 
