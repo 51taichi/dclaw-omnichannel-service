@@ -124,3 +124,51 @@ Summary:
 ### Concerns
 
 - The guard prevents pre-send cancellation after reservation by moving the task to `sending`; it does not make the external WorkTool send itself transactional with SQLite.
+
+---
+
+## Fix Report: Second Review Follow-up
+
+### Status
+
+DONE
+
+### Red Light
+
+Command:
+
+```bash
+node --test tests/server-tag-activation-boundary.test.js
+```
+
+Summary:
+
+- FAIL as expected before the fix.
+- 1 new test failed because the tag activation send path did not schedule a next same-message attempt or next message after a successful send.
+
+### Green Light
+
+Commands:
+
+```bash
+node --test tests/server-tag-activation-boundary.test.js
+node --test tests/server-tag-activation-boundary.test.js tests/server-activation-worker-boundary.test.js tests/dclaw-tags.test.js
+node --check src/server.js
+node --check src/db.js
+```
+
+Summary:
+
+- `tests/server-tag-activation-boundary.test.js`: PASS, 7 tests, 0 failures.
+- Required coverage command: PASS, 13 tests, 0 failures.
+- `src/server.js` and `src/db.js` syntax checks passed.
+
+### Implementation Summary
+
+- Added `scheduleNextTagActivationTask` to continue the current activation message while `attemptNumber < maxTimes`.
+- Added rollover scheduling to the next activation message with `attemptNumber=1` when the current message has reached its max attempts.
+- Wired next-task creation only after `markTagActivationTaskSent` succeeds and the tag is still active, using the sent task's `sentAt` as the scheduling anchor.
+
+### Concerns
+
+- The sequence advancement is covered by the existing boundary-style tests, not by a full integration worker test with a live WorkTool send stub.

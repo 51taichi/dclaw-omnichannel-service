@@ -44,6 +44,23 @@ test("tag activation send path uses db guard for processing task and active tag"
   assert.match(db, /EXISTS\s*\(\s*SELECT 1\s+FROM conversation_tags/s);
 });
 
+test("tag activation schedules the next task only after a successful send", () => {
+  assert.match(server, /function scheduleNextTagActivationTask/);
+  const sendHandler = server.slice(
+    server.indexOf("async function processTagActivationTask"),
+    server.indexOf("async function processTagActivationBatch")
+  );
+  assert.match(sendHandler, /markTagActivationTaskSent/);
+  assert.match(sendHandler, /scheduleNextTagActivationTask/);
+  assert.ok(
+    sendHandler.indexOf("markTagActivationTaskSent") < sendHandler.indexOf("scheduleNextTagActivationTask"),
+    "next tag activation task must be scheduled only after the current task is marked sent"
+  );
+  assert.match(server, /attemptNumber\s*<\s*task\.maxTimes/);
+  assert.match(server, /messageIndex:\s*task\.messageIndex\s*\+\s*1/);
+  assert.match(server, /activationDueAtForAttempt\([^)]*sentAt[^)]*attemptNumber/s);
+});
+
 test("dclaw has tag activation polish request", () => {
   assert.match(dclaw, /buildDclawTagActivationRequest/);
   assert.match(dclaw, /eventType=tag_activation_due/);

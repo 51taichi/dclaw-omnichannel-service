@@ -649,6 +649,45 @@ function scheduleTagActivationsForAcceptedChanges({ botId, binding, conversation
   return scheduled;
 }
 
+function scheduleNextTagActivationTask({ task, sentAt }) {
+  if (!task?.messages?.length) return null;
+  sentAt = sentAt || new Date().toISOString();
+  const activation = {
+    enabled: true,
+    polishByAgent: task.polishByAgent,
+    messages: task.messages
+  };
+
+  if (task.attemptNumber < task.maxTimes) {
+    const attemptNumber = task.attemptNumber + 1;
+    return scheduleTagActivationTask({
+      botId: task.botId,
+      agentId: task.agentId,
+      conversationKey: task.conversationKey,
+      groupId: task.groupId,
+      tagId: task.tagId,
+      activation,
+      dueAt: activationDueAtForAttempt(sentAt, task.intervalMinutes, attemptNumber),
+      attemptNumber,
+      messageIndex: task.messageIndex
+    });
+  }
+
+  const nextMessage = task.messages[task.messageIndex + 1];
+  if (!nextMessage) return null;
+  return scheduleTagActivationTask({
+    botId: task.botId,
+    agentId: task.agentId,
+    conversationKey: task.conversationKey,
+    groupId: task.groupId,
+    tagId: task.tagId,
+    activation,
+    dueAt: activationDueAtForAttempt(sentAt, nextMessage.intervalMinutes, 1),
+    attemptNumber: 1,
+    messageIndex: task.messageIndex + 1
+  });
+}
+
 function isValidFlowNode(machine, nodeId) {
   const nodes = machine?.config?.nodes || machine?.nodes || [];
   return Boolean(nodes.some((node) => node.id === nodeId));
@@ -2327,7 +2366,10 @@ async function processTagActivationTask(task) {
       throw error;
     }
     const result = await sendTextMessage({ robotId: task.botId, targets: [target], content: finalContent });
-    markTagActivationTaskSent({ id: task.id, worktoolMessageIds: [result.data || ""].filter(Boolean) });
+    const sentTask = markTagActivationTaskSent({
+      id: task.id,
+      worktoolMessageIds: [result.data || ""].filter(Boolean)
+    });
     recordTagActivationOutbound({
       task,
       binding,
@@ -2350,6 +2392,26 @@ async function processTagActivationTask(task) {
       polishByAgent: task.polishByAgent,
       worktoolMessageId: result.data || ""
     });
+    if (sentTask && isTagStillActiveForTask(task)) {
+      const nextTask = scheduleNextTagActivationTask({
+        task,
+        sentAt: sentTask.sentAt || new Date().toISOString()
+      });
+      if (nextTask) {
+        logInfo("tag.activation.next_scheduled", {
+          tagActivationTaskId: nextTask.id,
+          previousTagActivationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          groupId: task.groupId,
+          tagId: task.tagId,
+          dueAt: nextTask.dueAt,
+          attemptNumber: nextTask.attemptNumber,
+          messageIndex: nextTask.messageIndex
+        });
+      }
+    }
   } catch (error) {
     markTagActivationTaskFailed({ id: task.id, error: error.message });
     if (error.code === "STALE_TAG_ACTIVATION_TASK") {
