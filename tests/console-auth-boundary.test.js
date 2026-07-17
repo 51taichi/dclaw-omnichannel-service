@@ -69,9 +69,10 @@ test("console hides config tab for bot role and exposes access-key reset for adm
   assert.equal(css.includes("display: none !important"), true);
 });
 
-test("workspace tabs have a wider visual footprint", () => {
-  assert.match(css, /\.workspace-tabs\s*\{[\s\S]*width:\s*min\(760px,\s*100%\)/);
-  assert.match(css, /\.workspace-tabs button\s*\{[\s\S]*padding:\s*0 14px/);
+test("workspace tabs adapt to visible tab count without a fixed container width", () => {
+  assert.match(css, /\.workspace-tabs\s*\{[\s\S]*display:\s*inline-flex[\s\S]*width:\s*fit-content[\s\S]*max-width:\s*100%[\s\S]*overflow-x:\s*auto/);
+  assert.doesNotMatch(css, /\.workspace-tabs\s*\{[\s\S]*width:\s*min\(760px,\s*100%\)/);
+  assert.match(css, /\.workspace-tabs button\s*\{[\s\S]*flex:\s*0 0 auto[\s\S]*min-width:\s*108px[\s\S]*padding:\s*0 16px/);
 });
 
 test("bot binding form selects a saved agent instead of storing agent credentials", () => {
