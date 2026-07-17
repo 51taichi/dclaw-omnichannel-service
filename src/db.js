@@ -2440,7 +2440,7 @@ export function markTagActivationTaskSent({ id, worktoolMessageIds = [] }) {
         worktool_message_ids_json = ?,
         updated_at = ?
     WHERE id = ?
-      AND status = 'processing'
+      AND status IN ('processing', 'sending')
   `).run(timestamp, json(worktoolMessageIds), timestamp, id);
   if (result.changes === 0) return null;
   return rowToTagActivationTask(
@@ -2456,12 +2456,47 @@ export function markTagActivationTaskFailed({ id, error = "" }) {
         error_message = ?,
         updated_at = ?
     WHERE id = ?
-      AND status = 'processing'
+      AND status IN ('processing', 'sending')
   `).run(String(error || ""), timestamp, id);
   if (result.changes === 0) return null;
   return rowToTagActivationTask(
     db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(id)
   );
+}
+
+export function reserveTagActivationTaskForSend({ id }) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE tag_activation_tasks
+    SET status = 'sending',
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'processing'
+      AND EXISTS (
+        SELECT 1
+        FROM conversation_tags
+        WHERE conversation_tags.bot_id = tag_activation_tasks.bot_id
+          AND conversation_tags.agent_id = tag_activation_tasks.agent_id
+          AND conversation_tags.conversation_key = tag_activation_tasks.conversation_key
+          AND conversation_tags.group_id = tag_activation_tasks.group_id
+          AND conversation_tags.tag_id = tag_activation_tasks.tag_id
+      )
+  `).run(timestamp, id);
+  if (result.changes > 0) {
+    return {
+      task: rowToTagActivationTask(
+        db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(id)
+      ),
+      skippedReason: ""
+    };
+  }
+
+  const row = db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(id);
+  if (!row) return { task: null, skippedReason: "missing_tag_activation_task" };
+  if (row.status !== "processing") {
+    return { task: null, skippedReason: row.status || "stale_tag_activation_task" };
+  }
+  return { task: null, skippedReason: "stale_tag_activation_task" };
 }
 
 export function listTagActivationTasks({ botId = "", agentId = "", conversationKey = "", limit = 100 } = {}) {

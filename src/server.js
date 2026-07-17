@@ -95,6 +95,7 @@ import {
   mergeFlowSessionData,
   normalizeActivationConfig,
   resetInterruptedProactiveTargets,
+  reserveTagActivationTaskForSend,
   scheduleFlowActivationTask,
   scheduleTagActivationTask,
   setSetting,
@@ -2223,27 +2224,54 @@ async function buildPolishedTagActivationContent({ binding, task }) {
     throw error;
   }
 
-  if (!strictInvocation.agentReply.valid) {
+  if (!strictInvocation.agentReply.valid || strictInvocation.agentReply.degraded) {
     const sendabilityIssue = strictInvocation.agentReply.sendabilityIssue;
-    const errorCode = sendabilityIssue ? "invalid_agent_attachment_source" : "invalid_agent_reply_format";
+    const errorCode = strictInvocation.agentReply.degraded
+      ? "degraded_tag_activation_reply"
+      : sendabilityIssue ? "invalid_agent_attachment_source" : "invalid_agent_reply_format";
     finishAgentInvocation({
       id: invocationId,
       response: strictInvocation.invocation.response,
       status: "failed",
       error: errorCode
     });
-    logWarn(sendabilityIssue ? "tag.activation.agent.invalid_attachment_source" : "tag.activation.agent.invalid_format", {
+    logWarn(
+      strictInvocation.agentReply.degraded
+        ? "tag.activation.agent.degraded_rejected"
+        : sendabilityIssue ? "tag.activation.agent.invalid_attachment_source" : "tag.activation.agent.invalid_format",
+      {
+        tagActivationTaskId: task.id,
+        botId: task.botId,
+        agentId: binding.agentId,
+        conversationKey: task.conversationKey,
+        invocationId,
+        formatAttempts: strictInvocation.formatAttempts,
+        attachmentSourceAttempts: strictInvocation.attachmentSourceAttempts,
+        issueCode: sendabilityIssue?.code || "",
+        attachmentUrls: sendabilityIssue?.attachmentUrls || []
+      }
+    );
+    throw new Error(errorCode);
+  }
+
+  const reply = String(strictInvocation.agentReply.reply || "").trim();
+  if (!reply) {
+    finishAgentInvocation({
+      id: invocationId,
+      response: strictInvocation.invocation.response,
+      status: "failed",
+      error: "empty_tag_activation_reply"
+    });
+    logWarn("tag.activation.agent.empty_reply", {
       tagActivationTaskId: task.id,
       botId: task.botId,
       agentId: binding.agentId,
       conversationKey: task.conversationKey,
       invocationId,
       formatAttempts: strictInvocation.formatAttempts,
-      attachmentSourceAttempts: strictInvocation.attachmentSourceAttempts,
-      issueCode: sendabilityIssue?.code || "",
-      attachmentUrls: sendabilityIssue?.attachmentUrls || []
+      attachmentSourceAttempts: strictInvocation.attachmentSourceAttempts
     });
-    throw new Error(errorCode);
+    throw new Error("empty_tag_activation_reply");
   }
 
   finishAgentInvocation({
@@ -2251,8 +2279,6 @@ async function buildPolishedTagActivationContent({ binding, task }) {
     response: strictInvocation.invocation.response,
     status: "success"
   });
-  const reply = String(strictInvocation.agentReply.reply || "").trim();
-  if (!reply) throw new Error("empty tag activation reply");
   return {
     content: reply,
     agentReply: strictInvocation.agentReply.raw
@@ -2291,6 +2317,15 @@ async function processTagActivationTask(task) {
       throw error;
     }
     const finalContent = polished?.content || configuredContent;
+    const sendReservation = reserveTagActivationTaskForSend({ id: task.id });
+    if (!sendReservation.task) {
+      const reason = sendReservation.skippedReason || "stale_tag_activation_task";
+      const error = new Error(reason);
+      error.code = reason === "stale_tag_activation_task"
+        ? "STALE_TAG_ACTIVATION_TASK"
+        : "CANCELED_TAG_ACTIVATION_TASK";
+      throw error;
+    }
     const result = await sendTextMessage({ robotId: task.botId, targets: [target], content: finalContent });
     markTagActivationTaskSent({ id: task.id, worktoolMessageIds: [result.data || ""].filter(Boolean) });
     recordTagActivationOutbound({
@@ -2325,6 +2360,17 @@ async function processTagActivationTask(task) {
         groupId: task.groupId,
         tagId: task.tagId,
         reason: "stale_before_send"
+      });
+      return;
+    }
+    if (error.code === "CANCELED_TAG_ACTIVATION_TASK") {
+      logInfo("tag.activation.canceled_skipped", {
+        tagActivationTaskId: task.id,
+        botId: task.botId,
+        conversationKey: task.conversationKey,
+        groupId: task.groupId,
+        tagId: task.tagId,
+        reason: error.message
       });
       return;
     }
