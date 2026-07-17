@@ -58,7 +58,6 @@ const els = {
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
   flowSessionTagFilter: document.querySelector("#flowSessionTagFilter"),
   flowSessionDateTagFilter: document.querySelector("#flowSessionDateTagFilter"),
-  flowSessionDatePicker: document.querySelector("#flowSessionDatePicker"),
   chatTitle: document.querySelector("#chatTitle"),
   chatStatusBadge: document.querySelector("#chatStatusBadge"),
   chatTagList: document.querySelector("#chatTagList"),
@@ -836,6 +835,7 @@ function renderBots(bots) {
       const unlocked = isBotUnlocked(bot.botId);
       const session = getBotSession(bot.botId);
       const canDelete = unlocked && session?.role === "admin";
+      const showConfigQuickAction = unlocked && session?.role === "admin";
       const botStatusText = !unlocked ? "已上锁" : isSelected ? (session?.role === "admin" ? "管理员" : "使用中") : "已解锁";
       const botStatusClass = !unlocked ? "off" : isSelected ? "selected" : "ok";
       const accent = getBotAccent(bot);
@@ -861,8 +861,10 @@ function renderBots(bots) {
           </div>
           <div class="row-actions bot-actions">
             ${canDelete ? `<button class="danger bot-delete-button" data-action="delete" data-bot="${safeBot}" type="button" aria-label="删除 Bot" title="删除 Bot">${icon("reset")}<span>删除</span></button>` : ""}
-            <button class="secondary icon-button" data-action="${unlocked ? "tasks" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "任务配置" : "解锁"}" title="${unlocked ? "任务配置" : "解锁"}">${icon(unlocked ? "edit" : "lock")}</button>
+            ${showConfigQuickAction ? `<button class="secondary icon-button" data-action="config" data-bot="${safeBot}" type="button" aria-label="Bot 配置" title="Bot 配置">${icon("link")}</button>` : ""}
             <button class="secondary icon-button" data-action="${unlocked ? "sessions" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "客户会话" : "解锁"}" title="${unlocked ? "客户会话" : "解锁"}">${icon(unlocked ? "users" : "lock")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "tasks" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "任务配置" : "解锁"}" title="${unlocked ? "任务配置" : "解锁"}">${icon(unlocked ? "edit" : "lock")}</button>
+            <button class="secondary icon-button" data-action="${unlocked ? "tags" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "标签维护" : "解锁"}" title="${unlocked ? "标签维护" : "解锁"}">${icon(unlocked ? "tag" : "lock")}</button>
             <button class="secondary icon-button" data-action="${unlocked ? "push" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "推送消息" : "解锁"}" title="${unlocked ? "推送消息" : "解锁"}">${icon(unlocked ? "send" : "lock")}</button>
             <button class="secondary icon-button" data-action="${unlocked ? "logs" : "unlock"}" data-bot="${safeBot}" type="button" aria-label="${unlocked ? "运行日志" : "解锁"}" title="${unlocked ? "运行日志" : "解锁"}">${icon(unlocked ? "eye" : "lock")}</button>
           </div>
@@ -894,6 +896,10 @@ function renderBots(bots) {
         await applyBotContext(bot);
         return;
       }
+      if (actionTarget.dataset.action === "config") {
+        event.stopPropagation();
+        await applyBotContext(bot, { scrollTo: els.botBindingPanel });
+      }
       if (actionTarget.dataset.action === "push") {
         event.stopPropagation();
         await applyBotContext(bot, { scrollTo: els.proactivePanel });
@@ -905,6 +911,10 @@ function renderBots(bots) {
       if (actionTarget.dataset.action === "sessions") {
         event.stopPropagation();
         await applyBotContext(bot, { scrollTo: document.querySelector("#flowSessionsPanel") });
+      }
+      if (actionTarget.dataset.action === "tags") {
+        event.stopPropagation();
+        await applyBotContext(bot, { scrollTo: document.querySelector("#tagsTab") });
       }
       if (actionTarget.dataset.action === "logs") {
         event.stopPropagation();
@@ -1536,25 +1546,12 @@ function setFlowSessionDateTagFilterValue(value) {
   const rawValue = String(value || "");
   const compactValue = rawValue.includes("-") ? compactDateTagInputValue(rawValue) : rawValue.replace(/\D/g, "").slice(0, 8);
   if (els.flowSessionDateTagFilter) {
-    els.flowSessionDateTagFilter.value = compactValue;
-  }
-  if (els.flowSessionDatePicker) {
-    els.flowSessionDatePicker.value = nativeDateValueFromCompactDate(compactValue);
+    els.flowSessionDateTagFilter.value = nativeDateValueFromCompactDate(compactValue);
   }
 }
 
 function normalizeFlowSessionDateTagFilter() {
   setFlowSessionDateTagFilterValue(els.flowSessionDateTagFilter?.value || "");
-}
-
-function openFlowSessionDatePicker() {
-  if (!els.flowSessionDatePicker || els.flowSessionDatePicker.disabled) return;
-  els.flowSessionDatePicker.value = nativeDateValueFromCompactDate(els.flowSessionDateTagFilter?.value || "");
-  if (typeof els.flowSessionDatePicker.showPicker === "function") {
-    els.flowSessionDatePicker.showPicker();
-    return;
-  }
-  els.flowSessionDatePicker.focus();
 }
 
 function sortConversationTagsForDisplay(tags = []) {
@@ -2510,7 +2507,6 @@ function renderFlowSessionDateTagFilter() {
   const dateTagEnabled = Boolean(state.tagSchema?.dateTag?.enabled);
   normalizeFlowSessionDateTagFilter();
   els.flowSessionDateTagFilter.disabled = !dateTagEnabled;
-  if (els.flowSessionDatePicker) els.flowSessionDatePicker.disabled = !dateTagEnabled;
 }
 
 function captureFlowSessionPositions() {
@@ -3429,11 +3425,6 @@ els.flowSessionDateTagFilter?.addEventListener("input", () => {
 });
 els.flowSessionDateTagFilter?.addEventListener("change", () => {
   normalizeFlowSessionDateTagFilter();
-  renderFlowSessions();
-});
-els.flowSessionDateTagFilter?.addEventListener("click", openFlowSessionDatePicker);
-els.flowSessionDatePicker?.addEventListener("change", () => {
-  setFlowSessionDateTagFilterValue(els.flowSessionDatePicker.value);
   renderFlowSessions();
 });
 els.flowSessionSearchInput.addEventListener("input", renderFlowSessions);

@@ -471,6 +471,10 @@
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索客户</span>
               <input id="flowSessionSearchInput" type="search" placeholder="搜索客户/群名" />
             </label>
+            <label class="flow-session-date-filter">
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>添加日期</span>
+              <input id="flowSessionDateTagFilter" type="date" />
+            </label>
             <label>
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>任务状态</span>
               <select id="flowSessionNodeFilter">
@@ -482,11 +486,6 @@
               <select id="flowSessionTagFilter">
                 <option value="all">全部</option>
               </select>
-            </label>
-            <label>
-              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>添加日期</span>
-              <input id="flowSessionDateTagFilter" type="text" placeholder="yyyyMMdd" maxlength="8" inputmode="numeric" pattern="[0-9]{8}" autocomplete="off" />
-              <input id="flowSessionDatePicker" type="date" aria-hidden="true" tabindex="-1" style="position: fixed; left: -1000px; width: 1px; height: 1px; opacity: 0; pointer-events: none;" />
             </label>
           </div>
           <div class="section-actions">

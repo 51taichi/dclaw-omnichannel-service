@@ -130,11 +130,13 @@ test("config saves can request admin password on demand", () => {
   assert.equal(app.includes("state.unlockMode === \"admin\""), true);
 });
 
-test("bot cards expose four unlocked quick actions", () => {
-  assert.equal(app.includes('data-action="${unlocked ? "tasks" : "unlock"}'), true);
-  assert.equal(app.includes('data-action="${unlocked ? "sessions" : "unlock"}'), true);
-  assert.equal(app.includes('data-action="${unlocked ? "push" : "unlock"}'), true);
-  assert.equal(app.includes('data-action="${unlocked ? "logs" : "unlock"}'), true);
+test("bot cards expose quick actions in workspace tab order", () => {
+  assert.equal(app.includes("const showConfigQuickAction = unlocked && session?.role === \"admin\""), true);
+  assert.match(app, /showConfigQuickAction\s*\?[\s\S]*data-action="config"[\s\S]*:\s*""[\s\S]*data-action="\$\{unlocked \? "sessions" : "unlock"\}[\s\S]*data-action="\$\{unlocked \? "tasks" : "unlock"\}[\s\S]*data-action="\$\{unlocked \? "tags" : "unlock"\}[\s\S]*data-action="\$\{unlocked \? "push" : "unlock"\}[\s\S]*data-action="\$\{unlocked \? "logs" : "unlock"\}/);
+  assert.equal(app.includes('aria-label="${unlocked ? "标签维护" : "解锁"}'), true);
+  assert.equal(app.includes('icon(unlocked ? "tag" : "lock")'), true);
+  assert.equal(app.includes('actionTarget.dataset.action === "tags"'), true);
+  assert.equal(app.includes('document.querySelector("#tagsTab")'), true);
 });
 
 test("bot cards use compact spacing without wasting vertical card space", () => {
@@ -170,6 +172,7 @@ test("locked bot quick actions use lock icons", () => {
   assert.equal(app.includes('icon(unlocked ? "users" : "lock")'), true);
   assert.equal(app.includes('icon(unlocked ? "send" : "lock")'), true);
   assert.equal(app.includes('icon(unlocked ? "eye" : "lock")'), true);
+  assert.equal(app.includes('icon(unlocked ? "tag" : "lock")'), true);
   assert.equal(app.includes('icon(unlocked ? "edit" : "link")'), false);
 });
 

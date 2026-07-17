@@ -2386,7 +2386,7 @@ button.danger:hover {
 
 .flow-session-filters {
   display: grid;
-  grid-template-columns: minmax(240px, 280px) minmax(132px, 170px) minmax(132px, 160px) minmax(146px, 178px);
+  grid-template-columns: minmax(260px, 1fr) minmax(208px, 220px) minmax(132px, 170px) minmax(132px, 160px);
   gap: 10px;
   align-items: center;
   min-width: 0;
@@ -2414,6 +2414,10 @@ button.danger:hover {
 
 .flow-session-filters .flow-session-search {
   grid-template-columns: max-content minmax(118px, 1fr);
+}
+
+.flow-session-filters .flow-session-date-filter {
+  grid-template-columns: max-content minmax(122px, 1fr);
 }
 
 .flow-session-filters input,
