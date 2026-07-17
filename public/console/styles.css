@@ -2065,6 +2065,21 @@ button.danger:hover {
   justify-content: space-between;
 }
 
+.tag-schema-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 4px;
+}
+
+.tag-schema-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
 .tag-group-list {
   display: grid;
   gap: 14px;
@@ -2086,16 +2101,91 @@ button.danger:hover {
 
 .tag-row-list {
   display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 10px;
+}
+
+@supports (width: max(1px, 2px)) {
+  .tag-row-list {
+    grid-template-columns: repeat(auto-fit, minmax(max(220px, calc((100% - 40px) / 5)), 1fr));
+  }
 }
 
 .tag-row-card {
   display: grid;
   gap: 10px;
+  min-width: 0;
 }
 
 .tag-row-card .wide {
   width: 100%;
+}
+
+.tag-card-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.tag-group-card .collapse-button,
+.tag-row-card .collapse-button {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
+.tag-group-card .collapse-button .icon,
+.tag-row-card .collapse-button .icon {
+  transition: transform 140ms ease;
+}
+
+.tag-group-card.is-collapsed .collapse-button .icon,
+.tag-row-card.is-collapsed .collapse-button .icon {
+  transform: rotate(-90deg);
+}
+
+.tag-group-summary,
+.tag-row-summary {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tag-group-summary span,
+.tag-row-summary span {
+  min-width: 0;
+  max-width: 100%;
+  padding: 5px 9px;
+  border: 1px solid rgba(47, 64, 229, 0.14);
+  border-radius: 999px;
+  background: rgba(47, 64, 229, 0.06);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-group-card.is-collapsed .tag-group-summary,
+.tag-row-card.is-collapsed .tag-row-summary {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.tag-group-card.is-collapsed .tag-group-body,
+.tag-row-card.is-collapsed .tag-row-body {
+  display: none;
+}
+
+.tag-row-body {
+  display: grid;
+  gap: 10px;
 }
 
 .tag-name-field {
@@ -2105,6 +2195,26 @@ button.danger:hover {
 
 .tag-activation-editor {
   margin-top: 0;
+}
+
+.tag-row-card .activation-message-card {
+  grid-template-columns: 1fr;
+}
+
+.tag-row-card .activation-message-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .tag-schema-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tag-schema-footer .primary {
+    align-self: flex-end;
+  }
 }
 
 .conversation-tags {

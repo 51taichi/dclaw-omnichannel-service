@@ -410,20 +410,6 @@
       <section id="tagSchemaPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>客户标签</h2>
-          <div class="section-actions">
-            <button id="importTagsButton" class="secondary" type="button">
-              <svg class="icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
-              导入
-            </button>
-            <button id="exportTagsButton" class="secondary" type="button">
-              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-              导出
-            </button>
-            <button id="saveTagsButton" class="primary" type="button">
-              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-              保存标签
-            </button>
-          </div>
         </div>
         <div class="collapsible-content tag-schema-editor">
           <div class="tag-schema-toolbar">
@@ -438,6 +424,22 @@
           </div>
           <div id="tagGroupList" class="tag-group-list"></div>
           <input id="importTagsFile" type="file" accept="application/json,.json" hidden />
+          <div class="tag-schema-footer">
+            <div class="tag-schema-footer-actions">
+              <button id="importTagsButton" class="secondary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
+                导入配置
+              </button>
+              <button id="exportTagsButton" class="secondary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+                导出配置
+              </button>
+            </div>
+            <button id="saveTagsButton" class="primary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+              保存标签
+            </button>
+          </div>
         </div>
       </section>
       </div>

@@ -476,6 +476,8 @@ function clearBotScopedContent() {
   flowDraftNodes = [];
   state.tagSchema = defaultTagSchema();
   collapsedFlowNodes.clear();
+  collapsedTagGroups.clear();
+  collapsedTags.clear();
   syncHandoffButton(null);
   renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
   els.chatTitle.textContent = emptyFlowSessionTitle();
@@ -911,6 +913,8 @@ let flowDraftNodes = [];
 let currentConversationAssets = { fields: [], totalCount: 0, collectedCount: 0 };
 let currentFlowSession = null;
 const collapsedFlowNodes = new Set();
+const collapsedTagGroups = new Set();
+const collapsedTags = new Set();
 const selectedTargets = new Map();
 const manualReplyEmojis = ["😊", "👌", "👍", "🙏", "😄", "🎉", "✨", "💪"];
 
@@ -1532,6 +1536,38 @@ function nextTagId(group, start = (group?.tags || []).length + 1) {
   return `tag_${index}`;
 }
 
+function tagGroupCollapseKey(group, groupIndex) {
+  return String(group?.id || `group_${groupIndex + 1}`);
+}
+
+function tagCollapseKey(group, groupIndex, tag, tagIndex) {
+  return `${tagGroupCollapseKey(group, groupIndex)}:${String(tag?.id || `tag_${tagIndex + 1}`)}`;
+}
+
+function collapseAllTagCards() {
+  collapsedTagGroups.clear();
+  collapsedTags.clear();
+  (state.tagSchema.groups || []).forEach((group, groupIndex) => {
+    collapsedTagGroups.add(tagGroupCollapseKey(group, groupIndex));
+    (group.tags || []).forEach((tag, tagIndex) => {
+      collapsedTags.add(tagCollapseKey(group, groupIndex, tag, tagIndex));
+    });
+  });
+}
+
+function activationSummaryText(activation) {
+  const draft = activationDraftForEditor(activation);
+  if (!draft.enabled) return "未启用触发任务";
+  const totalMessages = draft.messages.length || 1;
+  const totalTimes = draft.messages.reduce((sum, message) => sum + Math.max(1, Number(message.maxTimes || 1)), 0);
+  return `${draft.polishByAgent ? "Agent 组织语言" : "原话发送"} · ${totalMessages} 条话术 · ${totalTimes} 次`;
+}
+
+function tagConditionSummary(tag) {
+  const condition = String(tag?.condition || "").replace(/\s+/g, " ").trim();
+  return condition || "未填写达标条件";
+}
+
 function renderTagSchemaEditor() {
   state.tagSchema = normalizeTagSchemaDraft(state.tagSchema);
   if (els.dateTagEnabled) els.dateTagEnabled.checked = Boolean(state.tagSchema.dateTag?.enabled);
@@ -1539,90 +1575,123 @@ function renderTagSchemaEditor() {
   const groups = state.tagSchema.groups || [];
   els.tagGroupList.innerHTML = groups.length
     ? groups
-        .map((group, groupIndex) => `
-          <article class="tag-group-card" data-tag-group-index="${groupIndex}">
-            <div class="tag-group-head">
-              <label class="tag-name-field">
-                <span class="field-label">${icon("info")}标签组</span>
-                <input data-tag-group-field="name" value="${escapeHtml(group.name)}" placeholder="例如：意向等级" />
-              </label>
-              <label class="toggle">
-                <input data-tag-group-field="enabled" type="checkbox" ${group.enabled ? "checked" : ""} />
-                启用
-              </label>
-              <label class="toggle">
-                <input data-tag-group-field="exclusive" type="checkbox" ${group.exclusive ? "checked" : ""} />
-                组内互斥
-              </label>
-              <label class="toggle">
-                <input data-tag-group-field="oneWay" type="checkbox" ${group.oneWay ? "checked" : ""} />
-                单向变更
-              </label>
-              <button class="secondary icon-button" data-add-tag="${groupIndex}" type="button" aria-label="新增标签" title="新增标签">${icon("plus")}</button>
-              <button class="danger icon-button" data-remove-tag-group="${groupIndex}" type="button" aria-label="删除标签组" title="删除标签组">${icon("reset")}</button>
-            </div>
-            <div class="tag-row-list">
-              ${(group.tags || [])
-                .map((tag, tagIndex) => {
-                  const activation = activationDraftForEditor(tag.activation || defaultActivationConfig());
-                  const activationMessages = activation.messages.length ? activation.messages : [defaultActivationMessage()];
-                  return `
-                    <article class="tag-row-card" data-tag-index="${tagIndex}">
-                      <div class="tag-row-head">
-                        <label class="tag-name-field">
-                          <span class="field-label">${icon("check")}标签</span>
-                          <input data-tag-field="name" value="${escapeHtml(tag.name)}" placeholder="例如：A类" />
-                        </label>
-                        <button class="danger icon-button" data-remove-tag="${groupIndex}:${tagIndex}" type="button" aria-label="删除标签" title="删除标签">${icon("reset")}</button>
-                      </div>
-                      <label class="wide">
-                        <span class="field-label">${icon("terminal")}达标条件</span>
-                        <textarea data-tag-field="condition" rows="2" placeholder="例如：客户明确表示愿意合作或留下联系方式">${escapeHtml(tag.condition)}</textarea>
-                      </label>
-                      <section class="activation-editor tag-activation-editor ${activation.enabled ? "is-active" : ""}" aria-label="标签触发任务">
-                        <div class="activation-toolbar">
-                          <div class="activation-toolbar-main">
-                            <label class="toggle activation-toggle">
-                              <input data-tag-activation-field="enabled" type="checkbox" ${activation.enabled ? "checked" : ""} />
-                              <span>${icon("send")}启用触发任务</span>
-                            </label>
-                            <label class="toggle activation-toggle activation-polish-toggle">
-                              <input data-tag-activation-field="polishByAgent" type="checkbox" ${activation.polishByAgent ? "checked" : ""} />
-                              <span>${icon("terminal")}Agent 组织语言</span>
-                            </label>
-                          </div>
-                          <button class="secondary icon-button activation-add-button" data-add-tag-activation-message="${groupIndex}:${tagIndex}" type="button" aria-label="新增话术" title="新增话术">${icon("plus")}</button>
-                        </div>
-                        <div class="activation-messages">
-                          ${activationMessages
-                            .map((message, messageIndex) => `
-                              <div class="activation-message-card">
-                                <textarea data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-content rows="2" placeholder="贴上这个标签后要提醒客户的话术">${escapeHtml(message.content)}</textarea>
-                                <div class="activation-message-actions">
-                                  <label class="activation-message-control" title="间隔（分钟）">
-                                    ${icon("clock")}
-                                    <input data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-interval type="number" min="1" value="${escapeHtml(message.intervalMinutes)}" aria-label="间隔（分钟）" />
-                                    <span class="activation-message-unit">分钟</span>
-                                  </label>
-                                  <label class="activation-message-control" title="发送次数">
-                                    ${icon("refresh")}
-                                    <input data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-max-times type="number" min="1" value="${escapeHtml(message.maxTimes)}" aria-label="发送次数" />
-                                    <span class="activation-message-unit">次</span>
-                                  </label>
-                                  <button class="danger icon-button activation-remove-button" data-remove-tag-activation-message="${groupIndex}:${tagIndex}:${messageIndex}" type="button" aria-label="删除触发话术" title="删除触发话术">${icon("reset")}</button>
+        .map((group, groupIndex) => {
+          const groupKey = tagGroupCollapseKey(group, groupIndex);
+          const groupCollapsed = collapsedTagGroups.has(groupKey);
+          const tagCount = (group.tags || []).length;
+          const relationText = group.exclusive ? (group.oneWay ? "组内互斥 · 单向变更" : "组内互斥") : "可同时贴多个标签";
+          return `
+            <article class="tag-group-card ${groupCollapsed ? "is-collapsed" : ""}" data-tag-group-index="${groupIndex}" data-tag-group-collapse-key="${escapeHtml(groupKey)}">
+              <div class="tag-group-head">
+                <label class="tag-name-field">
+                  <span class="field-label">${icon("info")}标签组</span>
+                  <input data-tag-group-field="name" value="${escapeHtml(group.name)}" placeholder="例如：意向等级" />
+                </label>
+                <label class="toggle">
+                  <input data-tag-group-field="enabled" type="checkbox" ${group.enabled ? "checked" : ""} />
+                  启用
+                </label>
+                <label class="toggle">
+                  <input data-tag-group-field="exclusive" type="checkbox" ${group.exclusive ? "checked" : ""} />
+                  组内互斥
+                </label>
+                <label class="toggle">
+                  <input data-tag-group-field="oneWay" type="checkbox" ${group.oneWay ? "checked" : ""} />
+                  单向变更
+                </label>
+                <div class="tag-card-actions">
+                  <button class="secondary icon-button" data-add-tag="${groupIndex}" type="button" aria-label="新增标签" title="新增标签">${icon("plus")}</button>
+                  <button class="danger icon-button" data-remove-tag-group="${groupIndex}" type="button" aria-label="删除标签组" title="删除标签组">${icon("reset")}</button>
+                  <button class="collapse-button" data-toggle-tag-group="${groupIndex}" type="button" aria-label="${groupCollapsed ? "展开标签组" : "收起标签组"}" aria-expanded="${String(!groupCollapsed)}">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="tag-group-summary">
+                <span>${group.enabled ? "已启用" : "已停用"}</span>
+                <span>${escapeHtml(relationText)}</span>
+                <span>${tagCount} 个标签</span>
+              </div>
+              <div class="tag-group-body">
+                <div class="tag-row-list">
+                  ${tagCount
+                    ? (group.tags || [])
+                        .map((tag, tagIndex) => {
+                          const tagKey = tagCollapseKey(group, groupIndex, tag, tagIndex);
+                          const tagCollapsed = collapsedTags.has(tagKey);
+                          const activation = activationDraftForEditor(tag.activation || defaultActivationConfig());
+                          const activationMessages = activation.messages.length ? activation.messages : [defaultActivationMessage()];
+                          return `
+                            <article class="tag-row-card ${tagCollapsed ? "is-collapsed" : ""}" data-tag-index="${tagIndex}" data-tag-collapse-key="${escapeHtml(tagKey)}">
+                              <div class="tag-row-head">
+                                <label class="tag-name-field">
+                                  <span class="field-label">${icon("check")}标签</span>
+                                  <input data-tag-field="name" value="${escapeHtml(tag.name)}" placeholder="例如：A类" />
+                                </label>
+                                <div class="tag-card-actions">
+                                  <button class="danger icon-button" data-remove-tag="${groupIndex}:${tagIndex}" type="button" aria-label="删除标签" title="删除标签">${icon("reset")}</button>
+                                  <button class="collapse-button" data-toggle-tag="${groupIndex}:${tagIndex}" type="button" aria-label="${tagCollapsed ? "展开标签" : "收起标签"}" aria-expanded="${String(!tagCollapsed)}">
+                                    <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+                                  </button>
                                 </div>
                               </div>
-                            `)
-                            .join("")}
-                        </div>
-                      </section>
-                    </article>
-                  `;
-                })
-                .join("")}
-            </div>
-          </article>
-        `)
+                              <div class="tag-row-summary">
+                                <span>${escapeHtml(tagConditionSummary(tag))}</span>
+                                <span>${escapeHtml(activationSummaryText(activation))}</span>
+                              </div>
+                              <div class="tag-row-body">
+                                <label class="wide">
+                                  <span class="field-label">${icon("terminal")}达标条件</span>
+                                  <textarea data-tag-field="condition" rows="2" placeholder="例如：客户明确表示愿意合作或留下联系方式">${escapeHtml(tag.condition)}</textarea>
+                                </label>
+                                <section class="activation-editor tag-activation-editor ${activation.enabled ? "is-active" : ""}" aria-label="标签触发任务">
+                                  <div class="activation-toolbar">
+                                    <div class="activation-toolbar-main">
+                                      <label class="toggle activation-toggle">
+                                        <input data-tag-activation-field="enabled" type="checkbox" ${activation.enabled ? "checked" : ""} />
+                                        <span>${icon("send")}启用触发任务</span>
+                                      </label>
+                                      <label class="toggle activation-toggle activation-polish-toggle">
+                                        <input data-tag-activation-field="polishByAgent" type="checkbox" ${activation.polishByAgent ? "checked" : ""} />
+                                        <span>${icon("terminal")}Agent 组织语言</span>
+                                      </label>
+                                    </div>
+                                    <button class="secondary icon-button activation-add-button" data-add-tag-activation-message="${groupIndex}:${tagIndex}" type="button" aria-label="新增话术" title="新增话术">${icon("plus")}</button>
+                                  </div>
+                                  <div class="activation-messages">
+                                    ${activationMessages
+                                      .map((message, messageIndex) => `
+                                        <div class="activation-message-card">
+                                          <textarea data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-content rows="2" placeholder="贴上这个标签后要提醒客户的话术">${escapeHtml(message.content)}</textarea>
+                                          <div class="activation-message-actions">
+                                            <label class="activation-message-control" title="间隔（分钟）">
+                                              ${icon("clock")}
+                                              <input data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-interval type="number" min="1" value="${escapeHtml(message.intervalMinutes)}" aria-label="间隔（分钟）" />
+                                              <span class="activation-message-unit">分钟</span>
+                                            </label>
+                                            <label class="activation-message-control" title="发送次数">
+                                              ${icon("refresh")}
+                                              <input data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-max-times type="number" min="1" value="${escapeHtml(message.maxTimes)}" aria-label="发送次数" />
+                                              <span class="activation-message-unit">次</span>
+                                            </label>
+                                            <button class="danger icon-button activation-remove-button" data-remove-tag-activation-message="${groupIndex}:${tagIndex}:${messageIndex}" type="button" aria-label="删除触发话术" title="删除触发话术">${icon("reset")}</button>
+                                          </div>
+                                        </div>
+                                      `)
+                                      .join("")}
+                                  </div>
+                                </section>
+                              </div>
+                            </article>
+                          `;
+                        })
+                        .join("")
+                    : `<div class="empty-state">这个标签组还没有标签。</div>`}
+                </div>
+              </div>
+            </article>
+          `;
+        })
         .join("")
     : `<div class="empty-state">暂无标签组。可以先新增一个标签组，例如“意向等级”。</div>`;
 
@@ -1644,6 +1713,15 @@ function bindTagSchemaEditorEvents() {
   });
   els.tagGroupList.querySelectorAll("[data-tag-activation-message-index]").forEach((input) => {
     input.addEventListener("input", () => updateTagActivationMessageDraft(input));
+  });
+  els.tagGroupList.querySelectorAll("[data-toggle-tag-group]").forEach((button) => {
+    button.addEventListener("click", () => toggleTagGroupCollapse(Number(button.dataset.toggleTagGroup)));
+  });
+  els.tagGroupList.querySelectorAll("[data-toggle-tag]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [groupIndex, tagIndex] = button.dataset.toggleTag.split(":").map(Number);
+      toggleTagCollapse(groupIndex, tagIndex);
+    });
   });
   els.tagGroupList.querySelectorAll("[data-add-tag]").forEach((button) => {
     button.addEventListener("click", () => addTag(Number(button.dataset.addTag)));
@@ -1669,6 +1747,31 @@ function bindTagSchemaEditorEvents() {
       removeTagActivationMessage(groupIndex, tagIndex, messageIndex);
     });
   });
+}
+
+function toggleTagGroupCollapse(groupIndex) {
+  const group = state.tagSchema.groups[groupIndex];
+  if (!group) return;
+  const collapseKey = tagGroupCollapseKey(group, groupIndex);
+  if (collapsedTagGroups.has(collapseKey)) {
+    collapsedTagGroups.delete(collapseKey);
+  } else {
+    collapsedTagGroups.add(collapseKey);
+  }
+  renderTagSchemaEditor();
+}
+
+function toggleTagCollapse(groupIndex, tagIndex) {
+  const group = state.tagSchema.groups[groupIndex];
+  const tag = group?.tags?.[tagIndex];
+  if (!group || !tag) return;
+  const collapseKey = tagCollapseKey(group, groupIndex, tag, tagIndex);
+  if (collapsedTags.has(collapseKey)) {
+    collapsedTags.delete(collapseKey);
+  } else {
+    collapsedTags.add(collapseKey);
+  }
+  renderTagSchemaEditor();
 }
 
 function tagGroupForInput(input) {
@@ -1732,11 +1835,20 @@ function updateTagActivationMessageDraft(input) {
 
 function addTagGroup() {
   const index = state.tagSchema.groups.length + 1;
-  state.tagSchema.groups.push({ ...defaultTagGroup(index), id: nextTagGroupId(index) });
+  const group = { ...defaultTagGroup(index), id: nextTagGroupId(index) };
+  state.tagSchema.groups.push(group);
+  collapsedTagGroups.delete(tagGroupCollapseKey(group, state.tagSchema.groups.length - 1));
   renderTagSchemaEditor();
 }
 
 function removeTagGroup(index) {
+  const group = state.tagSchema.groups[index];
+  if (group) {
+    collapsedTagGroups.delete(tagGroupCollapseKey(group, index));
+    (group.tags || []).forEach((tag, tagIndex) => {
+      collapsedTags.delete(tagCollapseKey(group, index, tag, tagIndex));
+    });
+  }
   state.tagSchema.groups.splice(index, 1);
   renderTagSchemaEditor();
 }
@@ -1745,13 +1857,18 @@ function addTag(groupIndex) {
   const group = state.tagSchema.groups[groupIndex];
   if (!group) return;
   const index = (group.tags || []).length + 1;
-  group.tags = [...(group.tags || []), { ...defaultTag(index), id: nextTagId(group, index) }];
+  const tag = { ...defaultTag(index), id: nextTagId(group, index) };
+  group.tags = [...(group.tags || []), tag];
+  collapsedTagGroups.delete(tagGroupCollapseKey(group, groupIndex));
+  collapsedTags.delete(tagCollapseKey(group, groupIndex, tag, group.tags.length - 1));
   renderTagSchemaEditor();
 }
 
 function removeTag(groupIndex, tagIndex) {
   const group = state.tagSchema.groups[groupIndex];
   if (!group) return;
+  const tag = group.tags?.[tagIndex];
+  if (tag) collapsedTags.delete(tagCollapseKey(group, groupIndex, tag, tagIndex));
   group.tags.splice(tagIndex, 1);
   renderTagSchemaEditor();
 }
@@ -1802,6 +1919,7 @@ async function saveTagSchema() {
   });
   if (!isCurrentBotContext(botId, contextVersion)) return;
   state.tagSchema = normalizeTagSchemaDraft(data.schema || state.tagSchema);
+  collapseAllTagCards();
   renderTagSchemaEditor();
   toast("标签配置已保存");
 }

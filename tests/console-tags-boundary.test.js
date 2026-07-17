@@ -22,3 +22,20 @@ test("console renders tag chips and tag filters", () => {
   assert.match(js, /flowSessionTagFilter/);
   assert.match(css, /\.tag-chip/);
 });
+
+test("tag editor supports collapsible groups and tag cards", () => {
+  assert.match(js, /collapsedTagGroups/);
+  assert.match(js, /collapsedTags/);
+  assert.match(js, /data-toggle-tag-group/);
+  assert.match(js, /data-toggle-tag="/);
+  assert.match(css, /\.tag-row-list/);
+  assert.match(css, /repeat\(auto-fit, minmax\(220px, 1fr\)\)/);
+});
+
+test("tag editor keeps import export save controls at the bottom and collapses after saving", () => {
+  assert.match(html, /导入配置/);
+  assert.match(html, /导出配置/);
+  assert.match(html, /tag-schema-footer/);
+  assert.match(js, /collapseAllTagCards/);
+  assert.match(js, /collapseAllTagCards\(\);\s*renderTagSchemaEditor\(\);\s*toast\("标签配置已保存"\)/);
+});
