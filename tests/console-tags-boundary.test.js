@@ -9,6 +9,7 @@ const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.
 test("console has customer tags workspace tab", () => {
   assert.match(html, /data-workspace-tab="tags"/);
   assert.match(html, /id="tagSchemaPanel"/);
+  assert.match(html, /启用客户添加日期标签/);
 });
 
 test("console loads and saves tag schemas", () => {
@@ -22,6 +23,12 @@ test("console renders tag chips and tag filters", () => {
   assert.match(html, /id="icon-tag"/);
   assert.match(js, /icon\("tag"\)/);
   assert.match(js, /flowSessionTagFilter/);
+  assert.match(html, /id="flowSessionDateTagFilter"/);
+  assert.match(html, /添加日期/);
+  assert.match(js, /function renderFlowSessionDateTagFilter\(\)/);
+  assert.match(js, /tag\.tagType === "date" && tagFilterKey\(tag\) === dateTagFilter/);
+  assert.match(js, /if \(tag\.tagType === "date"\) continue/);
+  assert.match(js, /els\.flowSessionDateTagFilter\.disabled = !dateTagEnabled/);
   assert.match(css, /\.tag-chip/);
   assert.match(css, /\.tag-chip \.icon\s*\{[\s\S]*width:\s*12px[\s\S]*height:\s*12px/);
 });
@@ -44,7 +51,7 @@ test("tag editor keeps import export save controls at the bottom and collapses a
   assert.match(html, /导出配置/);
   assert.match(html, /tag-schema-footer/);
   assert.match(js, /collapseAllTagCards/);
-  assert.match(js, /collapseAllTagCards\(\);\s*renderTagSchemaEditor\(\);\s*toast\("标签配置已保存"\)/);
+  assert.match(js, /collapseAllTagCards\(\);\s*renderTagSchemaEditor\(\);\s*renderFlowSessionDateTagFilter\(\);\s*toast\("标签配置已保存"\)/);
 });
 
 test("tag groups do not render collapsed summary descriptions", () => {

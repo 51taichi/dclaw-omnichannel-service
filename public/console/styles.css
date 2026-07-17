@@ -2374,7 +2374,7 @@ button.danger:hover {
 
 .flow-session-filters {
   display: grid;
-  grid-template-columns: minmax(260px, 320px) repeat(2, minmax(132px, 180px));
+  grid-template-columns: minmax(240px, 280px) minmax(132px, 170px) minmax(132px, 160px) minmax(146px, 178px);
   gap: 10px;
   align-items: center;
   min-width: 0;

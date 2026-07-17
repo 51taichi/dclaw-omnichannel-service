@@ -56,6 +56,7 @@ const els = {
   flowSessionSearchInput: document.querySelector("#flowSessionSearchInput"),
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
   flowSessionTagFilter: document.querySelector("#flowSessionTagFilter"),
+  flowSessionDateTagFilter: document.querySelector("#flowSessionDateTagFilter"),
   chatTitle: document.querySelector("#chatTitle"),
   chatStatusBadge: document.querySelector("#chatStatusBadge"),
   chatTagList: document.querySelector("#chatTagList"),
@@ -485,6 +486,7 @@ function clearBotScopedContent() {
   els.flowEventsOutput.textContent = "";
   els.flowSessionNodeFilter.innerHTML = `<option value="all">全部</option>`;
   if (els.flowSessionTagFilter) els.flowSessionTagFilter.innerHTML = `<option value="all">全部</option>`;
+  if (els.flowSessionDateTagFilter) els.flowSessionDateTagFilter.innerHTML = `<option value="all">全部</option>`;
   if (els.tagGroupList) els.tagGroupList.innerHTML = "";
   if (els.dateTagEnabled) els.dateTagEnabled.checked = false;
   els.flowNodeList.innerHTML = `<div class="empty-state">正在加载当前 Bot 的任务状态机...</div>`;
@@ -1838,6 +1840,7 @@ async function loadTagSchema({ contextVersion = state.botContextVersion } = {}) 
   state.tagSchema = normalizeTagSchemaDraft(data.schema || defaultTagSchema());
   renderTagSchemaEditor();
   renderFlowSessionTagFilter();
+  renderFlowSessionDateTagFilter();
 }
 
 async function saveTagSchema() {
@@ -1860,6 +1863,7 @@ async function saveTagSchema() {
   state.tagSchema = normalizeTagSchemaDraft(data.schema || state.tagSchema);
   collapseAllTagCards();
   renderTagSchemaEditor();
+  renderFlowSessionDateTagFilter();
   toast("标签配置已保存");
 }
 
@@ -1883,6 +1887,7 @@ async function importTagSchemaFile(file) {
   state.tagSchema = normalizeTagSchemaDraft(schema);
   renderTagSchemaEditor();
   renderFlowSessionTagFilter();
+  renderFlowSessionDateTagFilter();
   toast("标签 JSON 已导入，保存后生效");
 }
 
@@ -2337,6 +2342,7 @@ async function loadFlowSessions({ contextVersion = state.botContextVersion } = {
   currentFlowSessions = data.sessions || [];
   renderFlowSessionNodeFilter();
   renderFlowSessionTagFilter();
+  renderFlowSessionDateTagFilter();
   renderFlowSessions();
 }
 
@@ -2389,6 +2395,7 @@ function getVisibleFlowSessions() {
   const normalizedSessionSearch = String(els.flowSessionSearchInput.value || "").trim().toLowerCase();
   const nodeFilter = els.flowSessionNodeFilter.value;
   const tagFilter = els.flowSessionTagFilter?.value || "all";
+  const dateTagFilter = els.flowSessionDateTagFilter?.value || "all";
 
   return sortFlowSessions(currentFlowSessions.filter((session) => {
     if (typeFilter !== "all" && flowSessionType(session) !== typeFilter) return false;
@@ -2403,6 +2410,7 @@ function getVisibleFlowSessions() {
     }
     if (appliesFlowFilters && nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
     if (tagFilter !== "all" && !(session.tags || []).some((tag) => tagFilterKey(tag) === tagFilter)) return false;
+    if (dateTagFilter !== "all" && !(session.tags || []).some((tag) => tag.tagType === "date" && tagFilterKey(tag) === dateTagFilter)) return false;
     return true;
   }));
 }
@@ -2423,11 +2431,10 @@ function renderFlowSessionTagFilter() {
   const options = new Map([["all", "全部"]]);
   for (const session of currentFlowSessions) {
     for (const tag of session.tags || []) {
+      if (tag.tagType === "date") continue;
       const key = tagFilterKey(tag);
       if (!key) continue;
-      const label = tag.tagType === "date"
-        ? `日期：${tag.tagName}`
-        : `${tag.groupName || "标签"}：${tag.tagName}`;
+      const label = `${tag.groupName || "标签"}：${tag.tagName}`;
       options.set(key, label);
     }
   }
@@ -2435,6 +2442,28 @@ function renderFlowSessionTagFilter() {
     .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
     .join("");
   els.flowSessionTagFilter.value = options.has(current) ? current : "all";
+}
+
+function renderFlowSessionDateTagFilter() {
+  if (!els.flowSessionDateTagFilter) return;
+  const current = els.flowSessionDateTagFilter.value || "all";
+  const dateTagEnabled = Boolean(state.tagSchema?.dateTag?.enabled);
+  const options = new Map([["all", "全部"]]);
+  if (dateTagEnabled) {
+    for (const session of currentFlowSessions) {
+      for (const tag of session.tags || []) {
+        if (tag.tagType !== "date") continue;
+        const key = tagFilterKey(tag);
+        if (!key) continue;
+        options.set(key, tag.tagName || tag.tagId);
+      }
+    }
+  }
+  els.flowSessionDateTagFilter.innerHTML = [...options]
+    .map(([value, label]) => `<option value="${escapeHtml(value)}">${escapeHtml(label)}</option>`)
+    .join("");
+  els.flowSessionDateTagFilter.value = options.has(current) ? current : "all";
+  els.flowSessionDateTagFilter.disabled = !dateTagEnabled;
 }
 
 function captureFlowSessionPositions() {
@@ -2786,6 +2815,7 @@ async function openFlowSession(conversationKey) {
     );
     if (els.chatTagList) els.chatTagList.innerHTML = renderConversationTags(currentTags);
     renderFlowSessionTagFilter();
+    renderFlowSessionDateTagFilter();
     syncHandoffButton(currentFlowSession);
     renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
     renderChatMessages(data.messages || []);
@@ -3335,7 +3365,8 @@ els.flowSessionTypeButtons.forEach((button) => {
 });
 [
   els.flowSessionNodeFilter,
-  els.flowSessionTagFilter
+  els.flowSessionTagFilter,
+  els.flowSessionDateTagFilter
 ].forEach((control) => {
   control?.addEventListener("change", renderFlowSessions);
 });
@@ -3345,6 +3376,8 @@ els.dateTagEnabled?.addEventListener("change", () => {
     ...state.tagSchema,
     dateTag: { enabled: els.dateTagEnabled.checked }
   });
+  renderFlowSessionDateTagFilter();
+  renderFlowSessions();
 });
 els.addTagGroupButton?.addEventListener("click", addTagGroup);
 els.saveTagsButton?.addEventListener("click", () => saveTagSchema().catch(toastError));

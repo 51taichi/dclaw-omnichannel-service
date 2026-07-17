@@ -434,7 +434,7 @@
             <label class="toggle switch-toggle">
               <input id="dateTagEnabled" type="checkbox" />
               <span class="switch-slider" aria-hidden="true"></span>
-              <span class="switch-label">启用日期标签</span>
+              <span class="switch-label">启用客户添加日期标签</span>
             </label>
             <button id="addTagGroupButton" class="secondary" type="button">
               <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
@@ -480,6 +480,12 @@
             <label>
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>标签</span>
               <select id="flowSessionTagFilter">
+                <option value="all">全部</option>
+              </select>
+            </label>
+            <label>
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>添加日期</span>
+              <select id="flowSessionDateTagFilter">
                 <option value="all">全部</option>
               </select>
             </label>
