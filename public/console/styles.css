@@ -2405,7 +2405,8 @@ button.danger:hover {
   gap: 9px;
   width: 100%;
   height: auto;
-  padding: 9px 58px 9px 9px;
+  min-height: 86px;
+  padding: 9px 88px 12px 9px;
   border: 1px solid color-mix(in srgb, var(--cyan) 32%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--cyan) 8%, #ffffff);
@@ -2508,38 +2509,10 @@ button.danger:hover {
   font-weight: 800;
 }
 
-.flow-session-status {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 38px;
-  min-height: 24px;
-  padding: 0 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--line));
-  border-radius: 999px;
-  color: var(--accent-dark);
-  background: color-mix(in srgb, var(--accent) 10%, #ffffff);
-  font-size: 11px;
-  font-style: normal;
-  font-weight: 900;
-  line-height: 1.15;
-}
-
-:is(.flow-session-status, .chat-status-badge) .icon {
+.chat-status-badge .icon {
   width: 13px;
   height: 13px;
   margin-right: 4px;
-}
-
-.flow-session-status.is-human,
-.flow-session-card.is-handoff .flow-session-status {
-  border-color: color-mix(in srgb, #f59e0b 76%, #ffffff);
-  color: #78350f;
-  background: linear-gradient(135deg, #fde68a, #fbbf24);
-  box-shadow: 0 4px 12px color-mix(in srgb, #f59e0b 28%, transparent);
 }
 
 .flow-session-main strong span {
@@ -2775,6 +2748,11 @@ button.danger:hover {
   color: var(--accent);
   box-shadow: 0 12px 28px rgba(42, 48, 216, 0.16);
   cursor: pointer;
+}
+
+.flow-session-switch.handoff-switch {
+  right: 9px;
+  bottom: 9px;
 }
 
 .handoff-switch[hidden] {

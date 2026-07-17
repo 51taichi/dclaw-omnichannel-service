@@ -18,11 +18,11 @@ test("console derives flow session display names by session type", () => {
   assert.equal(app.includes("const name = session.receivedName || session.conversationKey"), false);
 });
 
-test("console only shows the fixed handoff switch for private flow sessions", () => {
-  assert.match(app, /const isPrivateSession = flowSessionType\(currentFlowSession\) === "private"/);
-  assert.match(app, /els\.handoffSwitch\.hidden = !isPrivateSession/);
-  assert.match(app, /els\.handoffSwitch\.disabled = !isPrivateSession/);
-  assert.doesNotMatch(app, /data-flow-handoff/);
+test("console only renders the card handoff switch for private flow sessions", () => {
+  assert.match(app, /const handoffSwitch = sessionType === "private"/);
+  assert.match(app, /data-flow-handoff-switch=/);
+  assert.match(app, /querySelectorAll\("\[data-flow-handoff-switch\]"\)/);
+  assert.doesNotMatch(app, /data-flow-handoff=/);
   assert.doesNotMatch(app, /const handoffControl = sessionType === "private"/);
 });
 

@@ -30,18 +30,20 @@ test("console shell keeps the bot rail fixed while giving more width to content"
   assert.match(shellRule, /grid-template-columns:\s*300px minmax\(0,\s*1fr\)/);
 });
 
-test("console exposes a fixed handoff switch without per-session handoff buttons", () => {
+test("console exposes a per-session handoff switch without redundant status labels", () => {
   assert.equal(html.includes('id="handoffStatusBanner"'), false);
-  assert.equal(html.includes('id="handoffSwitch"'), true);
-  assert.match(html, /id="handoffSwitch"[\s\S]*href="#icon-robot"[\s\S]*href="#icon-user"/);
   assert.equal(app.includes("toggleSelectedConversationHandoff"), true);
-  assert.equal(app.includes("data-flow-handoff"), false);
+  assert.equal(app.includes("data-flow-handoff-switch"), true);
+  assert.doesNotMatch(app, /data-flow-handoff=/);
   assert.equal(app.includes("handoffControl"), false);
-  assert.equal(app.includes("els.handoffSwitch"), true);
+  assert.equal(app.includes("els.handoffSwitch"), false);
   assert.equal(app.includes("/handoff"), true);
   assert.equal(app.includes("handoffStatus"), true);
   assert.equal(css.includes(".handoff-button"), false);
-  assert.match(css, /\.handoff-switch\s*\{[\s\S]*position:\s*absolute[\s\S]*right:\s*14px[\s\S]*bottom:\s*14px/);
+  assert.match(app, /sessionType === "private"[\s\S]*class="flow-session-switch handoff-switch/);
+  assert.doesNotMatch(app, /class="flow-session-status/);
+  assert.doesNotMatch(app, /els\.chatStatusBadge\.innerHTML = statusBadgeHtml/);
+  assert.match(css, /\.flow-session-switch\.handoff-switch\s*\{[\s\S]*right:\s*9px[\s\S]*bottom:\s*9px/);
   assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(34px\)/);
 });
 
@@ -52,23 +54,18 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
   assert.equal(app.includes("最近消息：${lastMessageAt}"), true);
   assert.equal(app.includes("data-tooltip="), true);
   assert.equal(app.includes("aria-label="), true);
-  assert.equal(app.includes('label: isHandoff ? "人工" : "AI"'), true);
-  assert.equal(app.includes('iconName: isHandoff ? "user" : "robot"'), true);
-  assert.match(app, /class="flow-session-status \$\{escapeHtml\(statusMeta\.className\)\}"[\s\S]*\$\{statusBadgeHtml\(statusMeta\)\}/);
-  assert.match(app, /els\.chatStatusBadge\.innerHTML = statusBadgeHtml\(statusMeta\)/);
   assert.equal(html.includes('id="icon-robot"'), true);
   assert.equal(app.includes("AI接待中"), false);
   assert.equal(app.includes("人工接手中"), false);
-  assert.equal(app.includes("flow-session-status"), true);
+  assert.equal(app.includes("flow-session-status"), false);
   assert.equal(css.includes(".flow-session-icons"), true);
   assert.equal(css.includes(".session-icon::after"), true);
-  assert.match(css, /:is\(\.flow-session-status, \.chat-status-badge\) \.icon\s*\{[\s\S]*width:\s*13px[\s\S]*height:\s*13px/);
 });
 
 test("flow session status labels do not change card or chat header layout", () => {
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*align-items:\s*start/);
-  assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*9px 58px 9px 9px/);
-  assert.match(css, /\.flow-session-status\s*\{[\s\S]*position:\s*absolute[\s\S]*top:\s*9px[\s\S]*right:\s*9px[\s\S]*min-width:\s*38px/);
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*9px 88px 12px 9px/);
+  assert.doesNotMatch(css, /\.flow-session-status\s*\{/);
   assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*padding-right:\s*0/);
   assert.match(css, /\.chat-head\s*\{[\s\S]*grid-template-columns:\s*minmax\(180px,\s*1fr\) minmax\(112px,\s*180px\) auto/);
   assert.match(css, /\.chat-status-slot\s*\{[\s\S]*display:\s*flex[\s\S]*justify-content:\s*center/);
@@ -113,7 +110,8 @@ test("human handoff session cards have a clear pulsing highlight", () => {
   assert.equal(css.includes("@keyframes handoffPulse"), true);
   assert.equal(css.includes("animation: handoffPulse"), true);
   assert.equal(css.includes("@media (prefers-reduced-motion: reduce)"), true);
-  assert.equal(css.includes(".flow-session-card.is-handoff .flow-session-status"), true);
+  assert.equal(css.includes(".flow-session-card.is-handoff"), true);
+  assert.equal(css.includes(".handoff-switch.is-human .handoff-switch-thumb"), true);
 });
 
 test("conversation assets open as a popover without affecting chat layout", () => {

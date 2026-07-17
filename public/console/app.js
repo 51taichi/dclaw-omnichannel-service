@@ -60,7 +60,6 @@ const els = {
   chatStatusBadge: document.querySelector("#chatStatusBadge"),
   chatTagList: document.querySelector("#chatTagList"),
   chatMessages: document.querySelector("#chatMessages"),
-  handoffSwitch: document.querySelector("#handoffSwitch"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
   assetsButton: document.querySelector("#assetsButton"),
   assetsCount: document.querySelector("#assetsCount"),
@@ -2445,19 +2444,6 @@ function renderFlowSessionTagFilter() {
   els.flowSessionTagFilter.value = options.has(current) ? current : "all";
 }
 
-function sessionStatusMeta(session) {
-  const isHandoff = session?.handoffStatus === "human";
-  return {
-    className: isHandoff ? "is-human" : "is-ai",
-    label: isHandoff ? "人工" : "AI",
-    iconName: isHandoff ? "user" : "robot"
-  };
-}
-
-function statusBadgeHtml(statusMeta) {
-  return `${icon(statusMeta.iconName)}<span>${escapeHtml(statusMeta.label)}</span>`;
-}
-
 function renderFlowSessions() {
   const visibleSessions = getVisibleFlowSessions();
   const typeFilter = currentFlowSessionTypeFilter();
@@ -2482,15 +2468,20 @@ function renderFlowSessions() {
           const taskTooltip = `当前任务：${status}`;
           const assetTooltip = `资产：${assetSummary}`;
           const timeTooltip = `最近消息：${lastMessageAt}`;
-          const statusMeta = sessionStatusMeta(session);
           const isHandoff = session.handoffStatus === "human";
+          const handoffSwitch = sessionType === "private"
+            ? `<span class="flow-session-switch handoff-switch ${isHandoff ? "is-human" : ""}" data-flow-handoff-switch="${escapeHtml(session.conversationKey)}" role="switch" tabindex="0" aria-checked="${isHandoff ? "true" : "false"}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
+                <span class="handoff-switch-option is-ai" aria-hidden="true">${icon("robot")}</span>
+                <span class="handoff-switch-option is-human" aria-hidden="true">${icon("user")}</span>
+                <span class="handoff-switch-thumb" aria-hidden="true"></span>
+              </span>`
+            : "";
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
                   <strong>${escapeHtml(name)}</strong>
-                  <em class="flow-session-status ${escapeHtml(statusMeta.className)}" title="${escapeHtml(statusMeta.label)}">${statusBadgeHtml(statusMeta)}</em>
                 </span>
                 ${renderConversationTags(session.tags || [])}
                 <span class="flow-session-tools">
@@ -2501,6 +2492,7 @@ function renderFlowSessions() {
                   </small>
                 </span>
               </span>
+              ${handoffSwitch}
             </button>
           `;
         })
@@ -2511,6 +2503,17 @@ function renderFlowSessions() {
     button.addEventListener("click", () =>
       openFlowSession(button.dataset.flowSession).catch(toastError)
     );
+  });
+  els.flowSessionList.querySelectorAll("[data-flow-handoff-switch]").forEach((switchEl) => {
+    const toggle = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      toggleSelectedConversationHandoff(switchEl.dataset.flowHandoffSwitch).catch(toastError);
+    };
+    switchEl.addEventListener("click", toggle);
+    switchEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") toggle(event);
+    });
   });
 }
 
@@ -2596,27 +2599,15 @@ function syncHandoffButton(session = currentFlowSession) {
   const hasSession = Boolean(currentFlowSession && state.selectedFlowConversationKey);
   if (!hasSession) {
     if (els.chatStatusBadge) els.chatStatusBadge.hidden = true;
-    if (els.handoffSwitch) els.handoffSwitch.hidden = true;
     renderManualReplyComposer(null);
     return;
   }
 
   const isHandoff = currentFlowSession.handoffStatus === "human";
-  const isPrivateSession = flowSessionType(currentFlowSession) === "private";
-  const statusMeta = sessionStatusMeta(currentFlowSession);
   if (els.chatStatusBadge) {
-    els.chatStatusBadge.hidden = false;
-    els.chatStatusBadge.innerHTML = statusBadgeHtml(statusMeta);
-    els.chatStatusBadge.classList.toggle("is-ai", !isHandoff);
-    els.chatStatusBadge.classList.toggle("is-human", isHandoff);
-  }
-  if (els.handoffSwitch) {
-    els.handoffSwitch.hidden = !isPrivateSession;
-    els.handoffSwitch.disabled = !isPrivateSession;
-    els.handoffSwitch.classList.toggle("is-human", isHandoff);
-    els.handoffSwitch.setAttribute("aria-pressed", String(isHandoff));
-    els.handoffSwitch.setAttribute("aria-label", isHandoff ? "恢复 AI 接手" : "切换为人工接手");
-    els.handoffSwitch.title = isHandoff ? "恢复 AI 接手" : "切换为人工接手";
+    els.chatStatusBadge.hidden = true;
+    els.chatStatusBadge.innerHTML = "";
+    els.chatStatusBadge.classList.remove("is-ai", "is-human");
   }
   renderManualReplyComposer(currentFlowSession);
 }
@@ -3307,9 +3298,6 @@ els.confirmAcceptButton.addEventListener("click", () =>
     .catch(toastError)
 );
 els.assetsButton.addEventListener("click", toggleAssetsPanel);
-els.handoffSwitch?.addEventListener("click", () =>
-  toggleSelectedConversationHandoff().catch(toastError)
-);
 els.manualReplyComposer.addEventListener("submit", (event) =>
   sendManualReply(event).catch(toastError)
 );
