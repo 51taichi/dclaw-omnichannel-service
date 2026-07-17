@@ -2293,6 +2293,36 @@ export function applyConversationTagChanges({
   return listConversationTags({ botId, agentId, conversationKey });
 }
 
+export function upsertSystemDateTag({
+  botId,
+  agentId,
+  conversationKey,
+  dateTagId,
+  source = "friend_added"
+}) {
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO conversation_tags (
+      bot_id, agent_id, conversation_key, group_id, group_name, tag_id, tag_name,
+      tag_type, reason, source, created_at, updated_at
+    )
+    VALUES (?, ?, ?, '', '', ?, ?, 'date', ?, ?, ?, ?)
+    ON CONFLICT(bot_id, agent_id, conversation_key, tag_type, group_id, tag_id)
+    DO UPDATE SET updated_at = excluded.updated_at
+  `).run(
+    botId,
+    agentId,
+    conversationKey,
+    dateTagId,
+    dateTagId,
+    "新增好友日期",
+    source,
+    timestamp,
+    timestamp
+  );
+  return listConversationTags({ botId, agentId, conversationKey });
+}
+
 export function scheduleTagActivationTask({
   botId,
   agentId,

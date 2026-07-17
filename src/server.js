@@ -37,6 +37,7 @@ import {
   beginFriendAddedFlowEntry,
   buildMessageKey,
   cancelFlowActivationTasks,
+  cancelTagActivationTasks,
   claimDueFlowActivationTasks,
   claimNextProactiveTarget,
   clearConversationForReset,
@@ -67,7 +68,10 @@ import {
   insertOutgoingMessage,
   insertMockProactiveTargets,
   resetBotFlowStateForAgentRebind,
+  applyConversationTagChanges,
+  getAgentTagSchema,
   listConversationMessages,
+  listConversationTags,
   listFlowMachines,
   listFlowSessions,
   listFlowStateEvents,
@@ -95,6 +99,7 @@ import {
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
   upsertAgent,
+  upsertSystemDateTag,
   upsertFlowMachine,
   upsertProactiveAddressBookTarget,
   upsertBotBinding,
@@ -119,6 +124,12 @@ import {
   shouldProcessInboundForAgent
 } from "./message-rules.js";
 import { normalizeUploadedFilename } from "./filenames.js";
+import {
+  adjudicateTagDecision,
+  compactTagRulesForAgent,
+  dateTagIdFor,
+  normalizeTagSchema
+} from "./tags.js";
 
 const app = express();
 const port = Number(process.env.PORT || 8765);
@@ -440,6 +451,31 @@ function invalidateFlowActivation({ conversationKey, reason }) {
   const session = incrementFlowActivationGeneration({ conversationKey, reason });
   cancelFlowActivationTasks({ conversationKey, reason });
   return session;
+}
+
+function buildTagContext({ binding, conversationKey }) {
+  if (!binding?.agentId) return null;
+  const schemaRow = getAgentTagSchema(binding.agentId);
+  const schema = normalizeTagSchema(schemaRow?.config || {});
+  const currentTags = listConversationTags({
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationKey
+  });
+  return compactTagRulesForAgent({ schema, currentTags });
+}
+
+function applySystemDateTag({ botId, binding, conversationKey }) {
+  if (!binding?.agentId) return null;
+  const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
+  if (!schema.dateTag.enabled) return null;
+  return upsertSystemDateTag({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    dateTagId: dateTagIdFor(new Date()),
+    source: "friend_added"
+  });
 }
 
 function isMentioned(message, binding) {
@@ -1209,6 +1245,15 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     conversationKey,
     message: contactMessage
   });
+  const dateTags = applySystemDateTag({ botId, binding, conversationKey });
+  if (dateTags) {
+    logInfo("friend_added.date_tag.applied", {
+      ...logContext,
+      conversationKey,
+      agentId: binding.agentId,
+      tagCount: dateTags.length
+    });
+  }
   const machine = getFlowMachineForBot(botId);
   if (!machine?.enabled) {
     logInfo("friend_added.skipped", {
@@ -2236,11 +2281,13 @@ async function processIncomingMessage({ botId, message }) {
   }
 
   const agentMessage = normalizeMessageForAgent(message, binding);
+  const tagContext = buildTagContext({ binding, conversationKey });
   const request = buildDclawRequest({
     binding,
     conversation,
     message: agentMessage,
     flow,
+    tagContext,
     conversationReset
   });
   const invocationId = insertAgentInvocationStart({
@@ -2351,6 +2398,20 @@ async function processIncomingMessage({ botId, message }) {
     const reply = String(agentReply.reply || "").trim();
     const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
     const sources = Array.isArray(agentReply.sources) ? agentReply.sources : [];
+    const tagUpdate = applyAgentTagDecision({
+      botId,
+      binding,
+      conversationKey,
+      agentReply
+    });
+    if (tagUpdate) {
+      logInfo("tag.decision.applied", {
+        ...logContext,
+        agentId: binding.agentId,
+        invocationId,
+        tagCount: tagUpdate.tags.length
+      });
+    }
     const replyWithLinkAttachments = appendLinkAttachmentsToReply(reply, attachments);
     const hasMediaAttachments = attachments
       .map(normalizeAgentAttachment)
@@ -2429,7 +2490,9 @@ async function processIncomingMessage({ botId, message }) {
           replyParts: sentParts.map((part) => part.content),
           attachments: sentAttachments.map((part) => part.attachment),
           sources,
+          tags: tagUpdate?.tags || listConversationTags({ botId, agentId: binding.agentId, conversationKey }),
           flowDecision: agentReply.flowDecision,
+          tagDecision: agentReply.tagDecision,
           agentReply: agentReply.raw
         }
       });
@@ -2446,6 +2509,8 @@ async function processIncomingMessage({ botId, message }) {
           replyParts: sentParts.map((part) => part.content),
           attachments: sentAttachments.map((part) => part.attachment),
           sources,
+          tags: tagUpdate?.tags || listConversationTags({ botId, agentId: binding.agentId, conversationKey }),
+          tagDecision: agentReply.tagDecision,
           agentReply: agentReply.raw
         }
       });
@@ -2563,6 +2628,29 @@ async function processIncomingMessage({ botId, message }) {
     });
     throw error;
   }
+}
+
+function applyAgentTagDecision({ botId, binding, conversationKey, agentReply }) {
+  if (!binding?.agentId) return null;
+  const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
+  if (!schema.groups.length) return null;
+  const currentTags = listConversationTags({ botId, agentId: binding.agentId, conversationKey });
+  const result = adjudicateTagDecision({
+    schema,
+    currentTags: currentTags.filter((tag) => tag.tagType !== "date"),
+    decision: agentReply?.tagDecision || {}
+  });
+  if (!result.accepted.length && !result.rejected.length) return null;
+  const tags = applyConversationTagChanges({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    accepted: result.accepted,
+    rejected: result.rejected,
+    nextTags: result.nextTags,
+    source: "agent_decision"
+  });
+  return { tags, accepted: result.accepted, rejected: result.rejected };
 }
 
 function resolveLegacyBotId(req) {
@@ -3154,6 +3242,15 @@ app.put(
     });
     if (session.handoffStatus === "human") {
       invalidateFlowActivation({ conversationKey, reason: "human_handoff" });
+      const binding = getBotBinding(botId);
+      if (binding?.agentId) {
+        cancelTagActivationTasks({
+          botId,
+          agentId: binding.agentId,
+          conversationKey,
+          reason: "human_handoff"
+        });
+      }
     }
     logInfo("flow_session.handoff", {
       botId,
@@ -3284,8 +3381,17 @@ app.post(
       reason: body.reason || "控制台清空会话"
     });
     invalidateFlowActivation({ conversationKey, reason: "conversation_reset" });
+    const binding = getBotBinding(botId);
+    if (binding?.agentId) {
+      cancelTagActivationTasks({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        reason: "conversation_reset"
+      });
+    }
     const agentSync = await syncConversationResetToAgent({
-      binding: getBotBinding(botId),
+      binding,
       conversationKey,
       reason: "console_reset"
     });
