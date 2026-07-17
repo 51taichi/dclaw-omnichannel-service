@@ -108,35 +108,17 @@ body {
   box-shadow: 0 12px 26px rgba(35, 51, 120, 0.12);
 }
 
-.platform-logo svg {
+.platform-logo img {
   width: 29px;
   height: 29px;
   display: block;
+  object-fit: contain;
+  border-radius: 8px;
 }
 
-.platform-logo.wechat {
-  color: #18c857;
-}
-
-.platform-logo.wechat .bubble-main {
-  fill: #18c857;
-}
-
-.platform-logo.wechat .bubble-sub {
-  fill: #12a846;
-}
-
-.platform-logo.wechat circle {
-  fill: #ffffff;
-}
-
-.platform-logo.wecom .wecom-bg {
-  fill: #1e8cff;
-}
-
-.platform-logo.wecom .wecom-w,
-.platform-logo.wecom .wecom-spark {
-  fill: #ffffff;
+.platform-logo.wechat,
+.platform-logo.wecom {
+  overflow: hidden;
 }
 
 h1,

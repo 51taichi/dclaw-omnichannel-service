@@ -12,9 +12,13 @@ test("console header uses the AI sales and customer service platform title", () 
   assert.equal(html.includes("微信机器人管理控制台"), false);
   assert.equal(html.includes('aria-label="微信"'), true);
   assert.equal(html.includes('aria-label="企业微信"'), true);
+  assert.match(html, /class="platform-logo wechat"[\s\S]*src="\.\/assets\/wechat\.png"/);
+  assert.match(html, /class="platform-logo wecom"[\s\S]*src="\.\/assets\/compay_wechat\.png"/);
   assert.equal(css.includes(".topbar-platforms"), true);
   assert.equal(css.includes(".platform-logo.wechat"), true);
   assert.equal(css.includes(".platform-logo.wecom"), true);
+  assert.match(css, /\.platform-logo\s*\{[\s\S]*width:\s*42px[\s\S]*height:\s*42px[\s\S]*border-radius:\s*12px[\s\S]*border:\s*1px solid/);
+  assert.match(css, /\.platform-logo img\s*\{[\s\S]*width:\s*29px[\s\S]*height:\s*29px/);
 });
 
 test("console has unified unlock and relock controls", () => {
