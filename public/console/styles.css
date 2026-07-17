@@ -2401,7 +2401,7 @@ button.danger:hover {
   position: relative;
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
-  align-items: center;
+  align-items: start;
   gap: 9px;
   width: 100%;
   height: auto;

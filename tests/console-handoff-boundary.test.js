@@ -66,6 +66,7 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
 });
 
 test("flow session status labels do not change card or chat header layout", () => {
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*align-items:\s*start/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*9px 58px 9px 9px/);
   assert.match(css, /\.flow-session-status\s*\{[\s\S]*position:\s*absolute[\s\S]*top:\s*9px[\s\S]*right:\s*9px[\s\S]*min-width:\s*38px/);
   assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*padding-right:\s*0/);
