@@ -1,8 +1,11 @@
+import { normalizeTagDecision } from "./tags.js";
+
 export function buildDclawRequest({
   binding,
   conversation,
   message,
   flow = null,
+  tagContext = null,
   conversationReset = false
 }) {
   const roomType = Number(message.roomType);
@@ -30,6 +33,11 @@ export function buildDclawRequest({
     }
   };
   const agentFlow = compactFlowForAgent(flow);
+  const agentTagRules = tagContext && typeof tagContext === "object" ? tagContext : null;
+  const responseSchema = responseSchemaForRequest({
+    hasFlow: Boolean(agentFlow),
+    hasTags: Boolean(agentTagRules)
+  });
 
   const instructions = [
     "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
@@ -48,6 +56,13 @@ export function buildDclawRequest({
     "如果回复实际命中或参考了企业智库、任务节点、控制台配置资源、控制台上传资源、会话上下文、客户档案或大模型兜底，请在最终 JSON 中增加 sources 数组，格式为 {\"type\":\"enterprise_knowledge|flow_node|configured_resource|console_upload|conversation|profile|llm_fallback\",\"name\":\"来源名称\",\"reason\":\"为什么用于本次回复\"}；未命中的来源不要写入 sources。",
     "需要连续发送 2-3 条短回复时，请用空行分隔每段。"
   ];
+  if (agentTagRules) {
+    instructions.push(
+      "本次请求包含 tagRules。请根据客户当前表达判断是否满足标签条件，并在最终 JSON 中通过 tagDecision 给出建议。",
+      "tagDecision 只是建议，服务端会最终裁决；不要在 reply 中解释标签规则。",
+      "tagDecision 格式：{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\"}],\"remove\":[]}。没有变化时使用 {\"add\":[],\"remove\":[]}。"
+    );
+  }
   if (flow) {
     instructions.push(
       "当前私聊会话启用了客服流程状态机。你必须围绕 flow.currentNode 的 goal、completionCriteria、collectFields 和 conversationTips 推进对话。",
@@ -55,13 +70,13 @@ export function buildDclawRequest({
       "如果 conversationReset=true，表示控制台刚清空了当前会话记录；请忽略旧会话文件，重建或清空当前 conversationId 对应的短期会话记录。",
       "不要机械追问；先回应客户当前表达，再自然推进当前节点目标。",
       "最终请只输出一个 JSON 对象，不要输出 Markdown 或分析过程。",
-      "JSON 格式：{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[],\"flowDecision\":{\"currentNodeId\":\"当前节点ID\",\"nextNodeId\":\"建议下一节点ID或当前节点ID\",\"nodeCompleted\":false,\"confidence\":0.0,\"reason\":\"判断原因\",\"collectedDataPatch\":{}}}",
+      `JSON 格式：${responseSchema}`,
       "如果当前节点已经完成，可以设置 nodeCompleted=true，并给出合法 nextNodeId；服务器会最终决定是否迁移。"
     );
   } else {
     instructions.push(
       "最终请只输出一个 JSON 对象，不要输出 Markdown、分析过程、规则解释、处理步骤或任何对象外文字。",
-      "JSON 格式：{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[]}。没有附件或来源时使用空数组；不需要回复时使用 {\"reply\":\"\",\"attachments\":[],\"sources\":[]}。"
+      `JSON 格式：${responseSchema}。没有附件或来源时使用空数组；不需要回复时使用 {"reply":"","attachments":[],"sources":[]${agentTagRules ? ",\"tagDecision\":{\"add\":[],\"remove\":[]}" : ""}}。`
     );
   }
 
@@ -74,6 +89,7 @@ export function buildDclawRequest({
       JSON.stringify({
         worktoolMessage,
         flow: agentFlow,
+        tagRules: agentTagRules,
         conversationReset
       }, null, 2)
     ].join("\n"),
@@ -89,16 +105,17 @@ export function buildDclawRequest({
       userId: worktoolMessage.userId,
       worktool: worktoolMessage,
       flow: agentFlow,
+      tagRules: agentTagRules,
       conversationReset
     }
   };
 }
 
 export function buildDclawReplyFormatRetryRequest(request) {
-  const hasFlow = Boolean(request?.metadata?.flow);
-  const responseSchema = hasFlow
-    ? "{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[],\"flowDecision\":{\"currentNodeId\":\"当前节点ID\",\"nextNodeId\":\"建议下一节点ID或当前节点ID\",\"nodeCompleted\":false,\"confidence\":0.0,\"reason\":\"判断原因\",\"collectedDataPatch\":{}}}"
-    : "{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[]}";
+  const responseSchema = responseSchemaForRequest({
+    hasFlow: Boolean(request?.metadata?.flow),
+    hasTags: Boolean(request?.metadata?.tagRules)
+  });
   return {
     ...request,
     message: [
@@ -116,10 +133,10 @@ export function buildDclawReplyFormatRetryRequest(request) {
 }
 
 export function buildDclawAttachmentSourceRetryRequest(request, issue = {}) {
-  const hasFlow = Boolean(request?.metadata?.flow);
-  const responseSchema = hasFlow
-    ? "{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[],\"flowDecision\":{\"currentNodeId\":\"当前节点ID\",\"nextNodeId\":\"建议下一节点ID或当前节点ID\",\"nodeCompleted\":false,\"confidence\":0.0,\"reason\":\"判断原因\",\"collectedDataPatch\":{}}}"
-    : "{\"reply\":\"发给客户的文本\",\"attachments\":[],\"sources\":[]}";
+  const responseSchema = responseSchemaForRequest({
+    hasFlow: Boolean(request?.metadata?.flow),
+    hasTags: Boolean(request?.metadata?.tagRules)
+  });
   const urls = Array.isArray(issue.attachmentUrls)
     ? issue.attachmentUrls.filter(Boolean)
     : [];
@@ -416,6 +433,13 @@ function compactRecentMessages(messages) {
     .filter((message) => message.direction || message.senderName || message.content);
 }
 
+function responseSchemaForRequest({ hasFlow, hasTags }) {
+  const tagPart = hasTags ? ",\"tagDecision\":{\"add\":[],\"remove\":[]}" : "";
+  return hasFlow
+    ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"建议下一节点ID或当前节点ID","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}${tagPart}}`
+    : `{"reply":"发给客户的文本","attachments":[],"sources":[]${tagPart}}`;
+}
+
 const defaultDclawTimeoutMs = 25000;
 const defaultDclawMaxAttempts = 2;
 const defaultDclawFormatRetryTimeoutMs = 30000;
@@ -561,6 +585,7 @@ export function parseAgentReply(rawReply) {
     attachments: normalizeAgentAttachments(parsed.attachments || parsed.resources || parsed.files),
     sources: normalizeAgentSources(parsed.sources || parsed.references || parsed.evidence),
     flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
+    tagDecision: normalizeTagDecision(parsed.tagDecision || parsed.tags || {}),
     raw: parsed
   };
 }
@@ -579,6 +604,7 @@ export function degradeAgentReply(rawReply) {
     attachments: [],
     sources: [],
     flowDecision: null,
+    tagDecision: { add: [], remove: [] },
     raw: rawReply,
     degraded: true
   };
@@ -697,6 +723,7 @@ function invalidAgentReply(rawReply) {
     attachments: [],
     sources: [],
     flowDecision: null,
+    tagDecision: { add: [], remove: [] },
     raw: rawReply
   };
 }
