@@ -160,6 +160,11 @@ test("admin bot cards expose a dangerous delete action with password confirmatio
   assert.match(css, /\.bot-delete-button\s*\{[\s\S]*color:\s*var\(--danger\)/);
 });
 
+test("bot delete action anchors left while quick actions stay right", () => {
+  assert.match(css, /\.bot-actions\s*\{[^}]*justify-content:\s*flex-end;/);
+  assert.match(css, /\.bot-delete-button\s*\{[^}]*margin-right:\s*auto;/);
+});
+
 test("locked bot quick actions use lock icons", () => {
   assert.equal(app.includes('icon(unlocked ? "edit" : "lock")'), true);
   assert.equal(app.includes('icon(unlocked ? "users" : "lock")'), true);

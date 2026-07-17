@@ -630,6 +630,7 @@ h2 {
   min-width: 58px;
   height: 30px;
   min-height: 30px;
+  margin-right: auto;
   padding: 0 10px;
   display: inline-flex;
   align-items: center;
@@ -2427,7 +2428,7 @@ button.danger:hover {
   grid-template-columns: 34px minmax(0, 1fr) max-content;
   grid-template-rows: 34px minmax(28px, auto);
   align-items: start;
-  gap: 7px 9px;
+  gap: 10px 9px;
   width: 100%;
   height: auto;
   min-height: 78px;
@@ -2530,6 +2531,7 @@ button.danger:hover {
   grid-row: 1;
   display: flex;
   align-items: center;
+  align-self: center;
   justify-content: flex-start;
   gap: 6px;
   min-width: 0;
