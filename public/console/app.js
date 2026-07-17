@@ -1595,7 +1595,7 @@ function renderTagSchemaEditor() {
                             <article class="tag-row-card" data-tag-index="${tagIndex}">
                               <div class="tag-row-head">
                                 <label class="tag-name-field">
-                                  <span class="field-label">${icon("check")}标签</span>
+                                  <span class="field-label">${icon("terminal")}标签</span>
                                   <input data-tag-field="name" value="${escapeHtml(tag.name)}" placeholder="例如：A类" />
                                 </label>
                                 <div class="tag-card-actions">
@@ -1604,7 +1604,7 @@ function renderTagSchemaEditor() {
                               </div>
                               <div class="tag-row-body">
                                 <label class="wide">
-                                  <span class="field-label">${icon("terminal")}达标条件</span>
+                                  <span class="field-label">${icon("check")}达标条件</span>
                                   <textarea data-tag-field="condition" rows="2" placeholder="例如：客户明确表示愿意合作或留下联系方式">${escapeHtml(tag.condition)}</textarea>
                                 </label>
                                 <section class="activation-editor tag-activation-editor ${activation.enabled ? "is-active" : ""}" aria-label="标签触发任务">
