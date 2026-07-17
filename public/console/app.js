@@ -2448,8 +2448,13 @@ function sessionStatusMeta(session) {
   const isHandoff = session?.handoffStatus === "human";
   return {
     className: isHandoff ? "is-human" : "is-ai",
-    label: isHandoff ? "人工" : "AI"
+    label: isHandoff ? "人工" : "AI",
+    iconName: isHandoff ? "user" : "robot"
   };
+}
+
+function statusBadgeHtml(statusMeta) {
+  return `${icon(statusMeta.iconName)}<span>${escapeHtml(statusMeta.label)}</span>`;
 }
 
 function renderFlowSessions() {
@@ -2489,7 +2494,7 @@ function renderFlowSessions() {
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
                   <strong>${escapeHtml(name)}</strong>
-                  <em class="flow-session-status ${escapeHtml(statusMeta.className)}" title="${escapeHtml(statusMeta.label)}">${escapeHtml(statusMeta.label)}</em>
+                  <em class="flow-session-status ${escapeHtml(statusMeta.className)}" title="${escapeHtml(statusMeta.label)}">${statusBadgeHtml(statusMeta)}</em>
                 </span>
                 ${renderConversationTags(session.tags || [])}
                 <span class="flow-session-tools">
@@ -2610,7 +2615,7 @@ function syncHandoffButton(session = currentFlowSession) {
   const statusMeta = sessionStatusMeta(currentFlowSession);
   if (els.chatStatusBadge) {
     els.chatStatusBadge.hidden = false;
-    els.chatStatusBadge.textContent = statusMeta.label;
+    els.chatStatusBadge.innerHTML = statusBadgeHtml(statusMeta);
     els.chatStatusBadge.classList.toggle("is-ai", !isHandoff);
     els.chatStatusBadge.classList.toggle("is-human", isHandoff);
   }

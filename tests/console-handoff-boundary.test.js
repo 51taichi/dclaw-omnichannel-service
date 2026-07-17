@@ -46,12 +46,17 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
   assert.equal(app.includes("data-tooltip="), true);
   assert.equal(app.includes("aria-label="), true);
   assert.equal(app.includes('label: isHandoff ? "人工" : "AI"'), true);
+  assert.equal(app.includes('iconName: isHandoff ? "user" : "robot"'), true);
+  assert.match(app, /class="flow-session-status \$\{escapeHtml\(statusMeta\.className\)\}"[\s\S]*\$\{statusBadgeHtml\(statusMeta\)\}/);
+  assert.match(app, /els\.chatStatusBadge\.innerHTML = statusBadgeHtml\(statusMeta\)/);
+  assert.equal(html.includes('id="icon-robot"'), true);
   assert.equal(app.includes("AI接待中"), false);
   assert.equal(app.includes("人工接手中"), false);
   assert.equal(app.includes("flow-session-status"), true);
   assert.equal(css.includes(".flow-session-icons"), true);
   assert.equal(css.includes(".session-icon::after"), true);
   assert.equal(css.includes(".handoff-button"), true);
+  assert.match(css, /:is\(\.flow-session-status, \.chat-status-badge\) \.icon\s*\{[\s\S]*width:\s*13px[\s\S]*height:\s*13px/);
 });
 
 test("flow session status labels do not change card or chat header layout", () => {
