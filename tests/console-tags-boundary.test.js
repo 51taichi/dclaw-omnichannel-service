@@ -19,8 +19,11 @@ test("console loads and saves tag schemas", () => {
 
 test("console renders tag chips and tag filters", () => {
   assert.match(js, /renderConversationTags/);
+  assert.match(html, /id="icon-tag"/);
+  assert.match(js, /icon\("tag"\)/);
   assert.match(js, /flowSessionTagFilter/);
   assert.match(css, /\.tag-chip/);
+  assert.match(css, /\.tag-chip \.icon\s*\{[\s\S]*width:\s*12px[\s\S]*height:\s*12px/);
 });
 
 test("tag editor supports collapsible groups with always-expanded tag cards", () => {

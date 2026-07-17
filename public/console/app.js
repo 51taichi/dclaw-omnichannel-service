@@ -6,6 +6,7 @@ const state = {
   botContextVersion: 0,
   debugReplyLoadVersion: 0,
   selectedFlowConversationKey: "",
+  loadingFlowConversationKey: "",
   currentRole: "",
   botSessions: JSON.parse(localStorage.getItem("worktool_console_bot_sessions") || "{}"),
   pendingUnlockBotId: "",
@@ -1513,7 +1514,7 @@ function renderConversationTags(tags = []) {
         .map((tag) => {
           const label = tag.tagType === "date" ? tag.tagName : `${tag.groupName || "标签"}：${tag.tagName}`;
           const title = [label, tag.reason].filter(Boolean).join("\n");
-          return `<span class="tag-chip ${tag.tagType === "date" ? "is-date" : ""}" title="${escapeHtml(title)}">${escapeHtml(tag.tagName || "-")}</span>`;
+          return `<span class="tag-chip ${tag.tagType === "date" ? "is-date" : ""}" title="${escapeHtml(title)}">${icon("tag")}<span>${escapeHtml(tag.tagName || "-")}</span></span>`;
         })
         .join("")}
     </span>
@@ -2739,25 +2740,39 @@ async function openFlowSession(conversationKey) {
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
   if (!botId) return;
+  if (state.loadingFlowConversationKey === conversationKey) return;
   state.selectedFlowConversationKey = conversationKey;
   const session = currentFlowSessions.find((item) => item.conversationKey === conversationKey);
   renderFlowSessions();
   els.chatTitle.textContent = flowSessionDisplayName(session || { conversationKey });
-  const params = new URLSearchParams({ limit: "300", botId });
-  const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
-  if (!isCurrentBotContext(botId, contextVersion) || state.selectedFlowConversationKey !== conversationKey) return;
-  currentFlowSession = data.session || session || null;
-  const currentTags = data.tags || session?.tags || [];
-  currentFlowSession = { ...(currentFlowSession || {}), tags: currentTags };
-  currentFlowSessions = currentFlowSessions.map((item) =>
-    item.conversationKey === conversationKey ? { ...item, tags: currentTags } : item
-  );
-  if (els.chatTagList) els.chatTagList.innerHTML = renderConversationTags(currentTags);
-  renderFlowSessionTagFilter();
-  syncHandoffButton(currentFlowSession);
-  renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
-  renderChatMessages(data.messages || []);
-  els.flowEventsOutput.textContent = JSON.stringify(data.events || [], null, 2);
+  state.loadingFlowConversationKey = conversationKey;
+  renderChatLoadingState(session || { conversationKey });
+  try {
+    const params = new URLSearchParams({ limit: "300", botId });
+    const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
+    if (!isCurrentBotContext(botId, contextVersion) || state.selectedFlowConversationKey !== conversationKey) return;
+    currentFlowSession = data.session || session || null;
+    const currentTags = data.tags || session?.tags || [];
+    currentFlowSession = { ...(currentFlowSession || {}), tags: currentTags };
+    currentFlowSessions = currentFlowSessions.map((item) =>
+      item.conversationKey === conversationKey ? { ...item, tags: currentTags } : item
+    );
+    if (els.chatTagList) els.chatTagList.innerHTML = renderConversationTags(currentTags);
+    renderFlowSessionTagFilter();
+    syncHandoffButton(currentFlowSession);
+    renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
+    renderChatMessages(data.messages || []);
+    els.flowEventsOutput.textContent = JSON.stringify(data.events || [], null, 2);
+  } catch (error) {
+    if (isCurrentBotContext(botId, contextVersion) && state.selectedFlowConversationKey === conversationKey) {
+      renderChatLoadError(error);
+    }
+    throw error;
+  } finally {
+    if (state.loadingFlowConversationKey === conversationKey) {
+      state.loadingFlowConversationKey = "";
+    }
+  }
 }
 
 async function toggleSelectedConversationHandoff(conversationKey = state.selectedFlowConversationKey) {
@@ -2820,6 +2835,33 @@ function renderChatMessages(messages) {
         .join("")
     : `<div class="empty-state">暂无会话记录</div>`;
   els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+}
+
+function renderChatLoadingState(session) {
+  currentFlowSession = null;
+  if (els.chatTagList) els.chatTagList.innerHTML = "";
+  renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
+  renderManualReplyComposer(null);
+  els.flowEventsOutput.textContent = "";
+  els.chatMessages.innerHTML = `
+    <div class="chat-loading-state" role="status" aria-live="polite">
+      <div class="chat-loading-card">
+        <img src="./assets/sorry.png" alt="" aria-hidden="true" />
+        <span>
+          <strong>正在加载会话记录...</strong>
+          <small>${escapeHtml(flowSessionDisplayName(session || {}))}</small>
+        </span>
+      </div>
+    </div>
+  `;
+}
+
+function renderChatLoadError(error) {
+  els.chatMessages.innerHTML = `
+    <div class="empty-state">
+      会话记录加载失败：${escapeHtml(error?.message || "请稍后重试")}
+    </div>
+  `;
 }
 
 async function sendManualReply(event) {
