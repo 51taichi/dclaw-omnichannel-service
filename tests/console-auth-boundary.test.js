@@ -69,6 +69,11 @@ test("console hides config tab for bot role and exposes access-key reset for adm
   assert.equal(css.includes("display: none !important"), true);
 });
 
+test("workspace tabs have a wider visual footprint", () => {
+  assert.match(css, /\.workspace-tabs\s*\{[\s\S]*width:\s*min\(760px,\s*100%\)/);
+  assert.match(css, /\.workspace-tabs button\s*\{[\s\S]*padding:\s*0 14px/);
+});
+
 test("bot binding form selects a saved agent instead of storing agent credentials", () => {
   const botFormStart = html.indexOf('<form id="botForm"');
   const botFormEnd = html.indexOf("</form>", botFormStart);
