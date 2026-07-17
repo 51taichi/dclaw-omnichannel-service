@@ -106,6 +106,7 @@ import {
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
   upsertAgent,
+  upsertAgentTagSchema,
   upsertSystemDateTag,
   upsertFlowMachine,
   upsertProactiveAddressBookTarget,
@@ -3700,15 +3701,51 @@ app.put(
 );
 
 app.get(
-  "/api/flow-sessions",
+  "/api/tag-schemas/:botId",
   asyncHandler(async (req, res) => {
-    assertBotAccess(req, String(req.query.botId || "").trim());
+    assertBotAccess(req, req.params.botId);
+    const binding = getBotBinding(req.params.botId);
+    if (!binding) throw new Error("bot binding not found");
     res.json({
       ok: true,
-      sessions: listFlowSessions({
-        botId: String(req.query.botId || "").trim(),
-        limit: Number(req.query.limit || 100)
-      })
+      agentId: binding.agentId,
+      schema: getAgentTagSchema(binding.agentId)?.config || { dateTag: { enabled: false }, groups: [] }
+    });
+  })
+);
+
+app.put(
+  "/api/tag-schemas/:botId",
+  asyncHandler(async (req, res) => {
+    assertBotAccess(req, req.params.botId);
+    const binding = getBotBinding(req.params.botId);
+    if (!binding) throw new Error("bot binding not found");
+    const schema = upsertAgentTagSchema({
+      agentId: binding.agentId,
+      schema: req.body?.schema || req.body || {}
+    });
+    res.json({ ok: true, agentId: binding.agentId, schema: schema.config });
+  })
+);
+
+app.get(
+  "/api/flow-sessions",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
+    const binding = getBotBinding(botId);
+    const sessions = listFlowSessions({
+      botId,
+      limit: Number(req.query.limit || 100)
+    }).map((session) => ({
+      ...session,
+      ...(binding
+        ? { tags: listConversationTags({ botId, agentId: binding.agentId, conversationKey: session.conversationKey }) }
+        : { tags: [] })
+    }));
+    res.json({
+      ok: true,
+      sessions
     });
   })
 );
@@ -3719,10 +3756,14 @@ app.get(
     const botId = String(req.query.botId || "").trim();
     assertBotAccess(req, botId);
     const conversationKey = decodeURIComponent(req.params.conversationKey);
+    const binding = getBotBinding(botId);
     const session = getFlowSessionForBot({ botId, conversationKey });
     res.json({
       ok: true,
       session,
+      ...(binding
+        ? { tags: listConversationTags({ botId, agentId: binding.agentId, conversationKey }) }
+        : { tags: [] }),
       messages: listConversationMessages({
         botId,
         conversationKey,
