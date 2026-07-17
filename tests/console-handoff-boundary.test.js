@@ -276,6 +276,16 @@ test("conversation reset shows a non-dismissible loading dialog while Agent memo
   assert.match(css, /\.conversation-reset-loading-dialog::before\s*\{[\s\S]*animation:\s*aiTakeoverSheen 3\.8s ease-in-out infinite/);
 });
 
+test("opening a flow session shows a local mascot loading state in the chat pane", () => {
+  assert.equal(app.includes("function renderChatLoadingState"), true);
+  assert.match(app, /renderChatLoadingState\(session \|\| \{ conversationKey \}\)/);
+  assert.match(app, /class="chat-loading-state"[\s\S]*src="\.\/assets\/sorry\.png"[\s\S]*正在加载会话记录/);
+  assert.match(css, /\.chat-loading-state\s*\{[\s\S]*display:\s*grid/);
+  assert.match(css, /\.chat-loading-state\s*\{[\s\S]*place-items:\s*center/);
+  assert.match(css, /\.chat-loading-card\s*\{[\s\S]*animation:\s*chatLoadingFloat/);
+  assert.match(css, /@keyframes chatLoadingFloat/);
+});
+
 test("console has manual reply composer with AI takeover prompt and emoji tools", () => {
   const aiTakeoverCardRule = cssRule(".ai-takeover-card");
 
