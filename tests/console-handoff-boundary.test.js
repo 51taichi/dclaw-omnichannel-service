@@ -79,11 +79,12 @@ test("flow session status labels do not change card or chat header layout", () =
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*display:\s*grid/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*grid-template-columns:\s*34px minmax\(0,\s*1fr\) max-content/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*grid-template-rows:\s*34px minmax\(28px,\s*auto\)/);
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*gap:\s*10px 9px/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*9px/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*min-height:\s*78px/);
   assert.match(css, /\.flow-session-avatar\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*1/);
   assert.match(css, /\.flow-session-main\s*\{[\s\S]*display:\s*contents/);
-  assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*justify-content:\s*flex-start/);
+  assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*align-self:\s*center[\s\S]*justify-content:\s*flex-start/);
   assert.match(app, /class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\]\)/);
   assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*grid-column:\s*1 \/ 3[\s\S]*grid-row:\s*2[\s\S]*min-height:\s*28px/);
   assert.match(css, /\.flow-session-tools\s*\{[\s\S]*grid-column:\s*3[\s\S]*grid-row:\s*2/);
