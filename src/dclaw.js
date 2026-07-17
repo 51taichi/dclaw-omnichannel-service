@@ -412,6 +412,58 @@ export function buildDclawActivationRequest({
   };
 }
 
+export function buildDclawTagActivationRequest({
+  binding,
+  conversationKey,
+  task,
+  recentMessages = []
+}) {
+  const userId = String(conversationKey || "").split(":private:")[1] || "";
+  const agentRecentMessages = compactRecentMessages(recentMessages);
+  const worktoolMessage = {
+    channel: "wecom-worktool",
+    eventType: "tag_activation_due",
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationId: conversationKey,
+    sessionId: conversationKey,
+    messageId: `tag_activation:${task.id}`,
+    message: task.messageContent || "",
+    rawMessage: task.messageContent || "",
+    roomType: 2,
+    groupName: "",
+    userId,
+    metadata: {
+      tagActivationTaskId: task.id,
+      groupId: task.groupId,
+      tagId: task.tagId,
+      recentMessages: agentRecentMessages
+    }
+  };
+  return {
+    external_user_id: userId || "unknown",
+    external_session_id: conversationKey,
+    message: [
+      "你收到的是 WorkTool 回调服务器的标签触发跟进事件。",
+      "eventType=tag_activation_due 表示某个客户标签仍然有效，需要发送一次自然跟进。",
+      "请只围绕 message 中的跟进话术做真人化表达，不要新增未经确认的事实、附件或资源。",
+      "最终只输出一个 JSON 对象：{\"reply\":\"发给客户的标签跟进话术\",\"attachments\":[],\"sources\":[]}",
+      "禁止输出 Markdown、分析、推理、规则、处理步骤或 JSON 对象外文字。",
+      "",
+      JSON.stringify({ worktoolMessage }, null, 2)
+    ].join("\n"),
+    stream: true,
+    metadata: {
+      source: "worktool",
+      eventType: "tag_activation_due",
+      botId: binding.botId,
+      agentId: binding.agentId,
+      conversationId: conversationKey,
+      worktool: worktoolMessage
+    }
+  };
+}
+
 function compactFlowForAgent(flow) {
   if (!flow || typeof flow !== "object" || Array.isArray(flow)) return flow || null;
   return {

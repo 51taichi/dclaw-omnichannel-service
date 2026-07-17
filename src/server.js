@@ -14,6 +14,7 @@ import {
   buildDclawProactiveEventRequest,
   buildDclawReplyFormatRetryRequest,
   buildDclawRequest,
+  buildDclawTagActivationRequest,
   degradeAgentReply,
   getDclawAgentMaxAttempts,
   getDclawFormatRetryTimeoutMs,
@@ -39,6 +40,7 @@ import {
   cancelFlowActivationTasks,
   cancelTagActivationTasks,
   claimDueFlowActivationTasks,
+  claimDueTagActivationTasks,
   claimNextProactiveTarget,
   clearConversationForReset,
   createProactiveTask,
@@ -75,6 +77,7 @@ import {
   listFlowMachines,
   listFlowSessions,
   listFlowStateEvents,
+  listTagActivationTasks,
   listProactiveAddressBookTargets,
   listProactiveTasks,
   listProactiveTaskTargets,
@@ -83,6 +86,8 @@ import {
   finalizeFlowActivationTaskDelivery,
   listRecords,
   markFlowActivationTaskFailed,
+  markTagActivationTaskFailed,
+  markTagActivationTaskSent,
   markConversationResetHandled,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
@@ -91,6 +96,7 @@ import {
   normalizeActivationConfig,
   resetInterruptedProactiveTargets,
   scheduleFlowActivationTask,
+  scheduleTagActivationTask,
   setSetting,
   setBotAccessKey,
   touchFlowSession,
@@ -432,6 +438,10 @@ function addMinutes(date, minutes) {
   return new Date(date.getTime() + Number(minutes || 0) * 60 * 1000).toISOString();
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+}
+
 function activationDueAtForAttempt(anchorAt, intervalMinutes, attemptNumber) {
   const multiplier = 2 ** Math.max(0, attemptNumber - 1);
   return addMinutes(new Date(anchorAt), Number(intervalMinutes || 0) * multiplier);
@@ -581,6 +591,61 @@ function scheduleActivationAfterFlowReply({ botId, binding, conversationKey, flo
     session,
     anchorAt
   });
+}
+
+function cancelTagTasksForAcceptedChanges({ botId, binding, conversationKey, accepted = [] }) {
+  if (!binding?.agentId) return 0;
+  let canceled = 0;
+  for (const change of accepted) {
+    for (const oldTagId of change.oldTagIds || []) {
+      canceled += cancelTagActivationTasks({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        groupId: change.groupId,
+        tagId: oldTagId,
+        reason: "tag_changed"
+      });
+    }
+    if (change.action === "remove") {
+      canceled += cancelTagActivationTasks({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        groupId: change.groupId,
+        tagId: change.tagId,
+        reason: "tag_removed"
+      });
+    }
+  }
+  return canceled;
+}
+
+function scheduleTagActivationsForAcceptedChanges({ botId, binding, conversationKey, accepted = [] }) {
+  if (!binding?.agentId || !isPrivateConversationKey(conversationKey)) return [];
+  const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
+  const scheduled = [];
+  for (const change of accepted) {
+    if (!["add", "replace"].includes(change.action)) continue;
+    const group = schema.groups.find((item) => item.id === change.groupId);
+    const tag = group?.tags.find((item) => item.id === change.tagId);
+    const activation = tag?.activation || {};
+    if (!activation.enabled || !activation.messages?.length) continue;
+    const firstMessage = activation.messages[0];
+    const task = scheduleTagActivationTask({
+      botId,
+      agentId: binding.agentId,
+      conversationKey,
+      groupId: group.id,
+      tagId: tag.id,
+      activation,
+      dueAt: activationDueAtForAttempt(new Date().toISOString(), firstMessage.intervalMinutes, 1),
+      attemptNumber: 1,
+      messageIndex: 0
+    });
+    scheduled.push(task);
+  }
+  return scheduled;
 }
 
 function isValidFlowNode(machine, nodeId) {
@@ -742,6 +807,14 @@ const activationWorkerConfig = {
   sendDelayMs: Number(process.env.ACTIVATION_SEND_DELAY_MS || 500),
   maxConcurrentAgentCalls: Number(process.env.ACTIVATION_MAX_CONCURRENT_AGENT_CALLS || 2)
 };
+const tagActivationWorkerConfig = {
+  enabled: process.env.TAG_ACTIVATION_WORKER_ENABLED !== "false",
+  intervalMs: Number(process.env.TAG_ACTIVATION_WORKER_INTERVAL_MS || 10000),
+  batchSize: Number(process.env.TAG_ACTIVATION_WORKER_BATCH_SIZE || 20),
+  staleProcessingMs: Number(process.env.TAG_ACTIVATION_WORKER_STALE_PROCESSING_MS || 300000),
+  sendDelayMs: Number(process.env.TAG_ACTIVATION_SEND_DELAY_MS || 500),
+  maxConcurrentAgentCalls: Number(process.env.TAG_ACTIVATION_MAX_CONCURRENT_AGENT_CALLS || 2)
+};
 const friendAddedReentryCooldownMs = Math.max(
   0,
   Number(process.env.FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES || 10) * 60 * 1000
@@ -762,6 +835,7 @@ const replySplitConfig = {
 
 let proactiveWorkerBusy = false;
 let activationWorkerBusy = false;
+let tagActivationWorkerBusy = false;
 let agentQueue = Promise.resolve();
 
 function enqueueAgentInvocation(task) {
@@ -2014,6 +2088,286 @@ async function processFlowActivationBatch() {
   }
 }
 
+function isTagStillActiveForTask(task) {
+  return listConversationTags({
+    botId: task.botId,
+    agentId: task.agentId,
+    conversationKey: task.conversationKey
+  }).some((tag) => tag.groupId === task.groupId && tag.tagId === task.tagId);
+}
+
+function recordTagActivationOutbound({ task, binding, target, content, result, rawPayload = {} }) {
+  insertConversationMessage({
+    botId: task.botId,
+    conversationKey: task.conversationKey,
+    direction: "outbound",
+    senderName: binding.botName || binding.agentName || "机器人",
+    content,
+    rawPayload: {
+      source: "tag_activation",
+      tagActivationTaskId: task.id,
+      groupId: task.groupId,
+      tagId: task.tagId,
+      messageId: result?.data || "",
+      worktoolResponse: result || null,
+      ...rawPayload
+    }
+  });
+  insertOutgoingMessage({
+    botId: task.botId,
+    agentId: task.agentId || binding.agentId || "",
+    conversationKey: task.conversationKey,
+    messageId: result?.data || "",
+    targetName: target,
+    content,
+    worktoolResponse: {
+      ...(result || {}),
+      source: "tag_activation",
+      tagActivationTaskId: task.id,
+      groupId: task.groupId,
+      tagId: task.tagId
+    }
+  });
+}
+
+async function buildPolishedTagActivationContent({ binding, task }) {
+  const recentMessages = listConversationMessages({
+    conversationKey: task.conversationKey,
+    limit: 12
+  });
+  const request = buildDclawTagActivationRequest({
+    binding,
+    conversationKey: task.conversationKey,
+    task,
+    recentMessages
+  });
+  const invocationId = insertAgentInvocationStart({
+    botId: task.botId,
+    agentId: binding.agentId,
+    conversationKey: task.conversationKey,
+    incomingMessageId: `tag_activation:${task.id}`,
+    request
+  });
+  let strictInvocation;
+  try {
+    strictInvocation = await invokeStrictAgentReply({
+      binding,
+      request,
+      onRetry: (retry) => {
+        logWarn("tag.activation.agent.retry", {
+          tagActivationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          attempt: retry.attempt,
+          maxAttempts: retry.maxAttempts,
+          timeoutMs: retry.timeoutMs,
+          error: retry.error.message
+        });
+      },
+      onFormatRetry: ({ rawReplyLength }) => {
+        logWarn("tag.activation.agent.format_retry", {
+          tagActivationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          rawReplyLength
+        });
+      },
+      onAttachmentSourceRetry: ({ rawReplyLength, issue }) => {
+        logWarn("tag.activation.agent.attachment_source_retry", {
+          tagActivationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          rawReplyLength,
+          issueCode: issue?.code || "",
+          attachmentUrls: issue?.attachmentUrls || []
+        });
+      },
+      onInvalidAttachmentSource: ({ rawReplyLength, issue }) => {
+        logWarn("tag.activation.agent.invalid_attachment_source", {
+          tagActivationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          rawReplyLength,
+          issueCode: issue?.code || "",
+          attachmentUrls: issue?.attachmentUrls || []
+        });
+      },
+      onDegrade: ({ rawReplyLength, reason, error }) => {
+        logWarn("tag.activation.agent.degraded", {
+          tagActivationTaskId: task.id,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          invocationId,
+          rawReplyLength,
+          reason,
+          error: error || ""
+        });
+      }
+    });
+  } catch (error) {
+    finishAgentInvocation({
+      id: invocationId,
+      response: null,
+      status: "failed",
+      error: error.message
+    });
+    throw error;
+  }
+
+  if (!strictInvocation.agentReply.valid) {
+    const sendabilityIssue = strictInvocation.agentReply.sendabilityIssue;
+    const errorCode = sendabilityIssue ? "invalid_agent_attachment_source" : "invalid_agent_reply_format";
+    finishAgentInvocation({
+      id: invocationId,
+      response: strictInvocation.invocation.response,
+      status: "failed",
+      error: errorCode
+    });
+    logWarn(sendabilityIssue ? "tag.activation.agent.invalid_attachment_source" : "tag.activation.agent.invalid_format", {
+      tagActivationTaskId: task.id,
+      botId: task.botId,
+      agentId: binding.agentId,
+      conversationKey: task.conversationKey,
+      invocationId,
+      formatAttempts: strictInvocation.formatAttempts,
+      attachmentSourceAttempts: strictInvocation.attachmentSourceAttempts,
+      issueCode: sendabilityIssue?.code || "",
+      attachmentUrls: sendabilityIssue?.attachmentUrls || []
+    });
+    throw new Error(errorCode);
+  }
+
+  finishAgentInvocation({
+    id: invocationId,
+    response: strictInvocation.invocation.response,
+    status: "success"
+  });
+  const reply = String(strictInvocation.agentReply.reply || "").trim();
+  if (!reply) throw new Error("empty tag activation reply");
+  return {
+    content: reply,
+    agentReply: strictInvocation.agentReply.raw
+  };
+}
+
+async function processTagActivationTask(task) {
+  if (!isTagStillActiveForTask(task)) {
+    markTagActivationTaskFailed({ id: task.id, error: "stale_tag_activation_task" });
+    logInfo("tag.activation.stale_skipped", {
+      tagActivationTaskId: task.id,
+      botId: task.botId,
+      conversationKey: task.conversationKey,
+      groupId: task.groupId,
+      tagId: task.tagId
+    });
+    return;
+  }
+  const binding = getBotBinding(task.botId);
+  if (!binding || binding.agentId !== task.agentId || !binding.enabled) {
+    markTagActivationTaskFailed({ id: task.id, error: "agent_binding_changed" });
+    return;
+  }
+
+  try {
+    const target = privateTargetNameFromConversationKey(task.conversationKey);
+    if (!target) throw new Error("missing tag activation target");
+    const configuredContent = String(task.messageContent || "").trim();
+    if (!configuredContent) throw new Error("empty tag activation message");
+    const polished = task.polishByAgent
+      ? await buildPolishedTagActivationContent({ binding, task })
+      : null;
+    if (!isTagStillActiveForTask(task)) {
+      const error = new Error("stale_tag_activation_task");
+      error.code = "STALE_TAG_ACTIVATION_TASK";
+      throw error;
+    }
+    const finalContent = polished?.content || configuredContent;
+    const result = await sendTextMessage({ robotId: task.botId, targets: [target], content: finalContent });
+    markTagActivationTaskSent({ id: task.id, worktoolMessageIds: [result.data || ""].filter(Boolean) });
+    recordTagActivationOutbound({
+      task,
+      binding,
+      target,
+      content: finalContent,
+      result,
+      rawPayload: {
+        polishByAgent: task.polishByAgent,
+        configuredMessage: configuredContent,
+        agentReply: polished?.agentReply || null
+      }
+    });
+    logInfo("tag.activation.sent", {
+      tagActivationTaskId: task.id,
+      botId: task.botId,
+      agentId: binding.agentId,
+      conversationKey: task.conversationKey,
+      groupId: task.groupId,
+      tagId: task.tagId,
+      polishByAgent: task.polishByAgent,
+      worktoolMessageId: result.data || ""
+    });
+  } catch (error) {
+    markTagActivationTaskFailed({ id: task.id, error: error.message });
+    if (error.code === "STALE_TAG_ACTIVATION_TASK") {
+      logInfo("tag.activation.stale_skipped", {
+        tagActivationTaskId: task.id,
+        botId: task.botId,
+        conversationKey: task.conversationKey,
+        groupId: task.groupId,
+        tagId: task.tagId,
+        reason: "stale_before_send"
+      });
+      return;
+    }
+    logWarn("tag.activation.failed", {
+      tagActivationTaskId: task.id,
+      botId: task.botId,
+      conversationKey: task.conversationKey,
+      groupId: task.groupId,
+      tagId: task.tagId,
+      error: error.message
+    });
+  }
+}
+
+async function processTagActivationBatch() {
+  if (!tagActivationWorkerConfig.enabled || tagActivationWorkerBusy) return;
+  tagActivationWorkerBusy = true;
+  try {
+    const nowDate = new Date();
+    const staleBefore = new Date(nowDate.getTime() - tagActivationWorkerConfig.staleProcessingMs).toISOString();
+    const tasks = claimDueTagActivationTasks({
+      limit: tagActivationWorkerConfig.batchSize,
+      nowIso: nowDate.toISOString(),
+      staleBeforeIso: staleBefore
+    });
+    if (tasks.length) {
+      logInfo("tag.activation.worker.claimed", {
+        count: tasks.length,
+        batchSize: tagActivationWorkerConfig.batchSize,
+        maxConcurrentAgentCalls: tagActivationWorkerConfig.maxConcurrentAgentCalls
+      });
+    }
+    for (const task of tasks) {
+      await processTagActivationTask(task);
+      if (tagActivationWorkerConfig.sendDelayMs > 0) {
+        await delay(tagActivationWorkerConfig.sendDelayMs);
+      }
+    }
+  } finally {
+    tagActivationWorkerBusy = false;
+  }
+}
+
 async function processNextProactiveTarget() {
   if (!proactiveWorkerConfig.enabled || proactiveWorkerBusy) return;
   proactiveWorkerBusy = true;
@@ -2113,6 +2467,14 @@ if (activationWorkerConfig.enabled) {
       logError("activation.worker.failed", { error });
     });
   }, activationWorkerConfig.intervalMs).unref();
+}
+
+if (tagActivationWorkerConfig.enabled) {
+  setInterval(() => {
+    void processTagActivationBatch().catch((error) => {
+      logError("tag.activation.worker.failed", { error });
+    });
+  }, tagActivationWorkerConfig.intervalMs).unref();
 }
 
 async function processIncomingMessage({ botId, message }) {
@@ -2641,6 +3003,12 @@ function applyAgentTagDecision({ botId, binding, conversationKey, agentReply }) 
     decision: agentReply?.tagDecision || {}
   });
   if (!result.accepted.length && !result.rejected.length) return null;
+  const canceledTagActivationTaskCount = cancelTagTasksForAcceptedChanges({
+    botId,
+    binding,
+    conversationKey,
+    accepted: result.accepted
+  });
   const tags = applyConversationTagChanges({
     botId,
     agentId: binding.agentId,
@@ -2650,24 +3018,43 @@ function applyAgentTagDecision({ botId, binding, conversationKey, agentReply }) 
     nextTags: result.nextTags,
     source: "agent_decision"
   });
-  const acceptedInactiveTags = new Map();
-  for (const event of result.accepted) {
-    for (const tagId of event.oldTagIds || []) {
-      acceptedInactiveTags.set(`${event.groupId}:${tagId}`, { groupId: event.groupId, tagId });
-    }
-  }
-  let canceledTagActivationTaskCount = 0;
-  for (const tag of acceptedInactiveTags.values()) {
-    canceledTagActivationTaskCount += cancelTagActivationTasks({
+  const scheduledTagActivationTasks = scheduleTagActivationsForAcceptedChanges({
+    botId,
+    binding,
+    conversationKey,
+    accepted: result.accepted
+  });
+  if (canceledTagActivationTaskCount) {
+    logInfo("tag.activation.canceled", {
       botId,
       agentId: binding.agentId,
       conversationKey,
-      groupId: tag.groupId,
-      tagId: tag.tagId,
-      reason: "tag_inactive"
+      count: canceledTagActivationTaskCount
     });
   }
-  return { tags, accepted: result.accepted, rejected: result.rejected, canceledTagActivationTaskCount };
+  for (const task of scheduledTagActivationTasks) {
+    logInfo("tag.activation.scheduled", {
+      botId,
+      agentId: binding.agentId,
+      conversationKey,
+      tagActivationTaskId: task.id,
+      groupId: task.groupId,
+      tagId: task.tagId,
+      attemptNumber: task.attemptNumber,
+      dueAt: task.dueAt
+    });
+  }
+  const tagActivationTasks = scheduledTagActivationTasks.length
+    ? listTagActivationTasks({ botId, agentId: binding.agentId, conversationKey })
+    : [];
+  return {
+    tags,
+    accepted: result.accepted,
+    rejected: result.rejected,
+    canceledTagActivationTaskCount,
+    scheduledTagActivationTasks,
+    tagActivationTasks
+  };
 }
 
 function resolveLegacyBotId(req) {
