@@ -50,7 +50,7 @@ body {
 }
 
 .topbar-inner {
-  width: min(1220px, calc(100% - 32px));
+  width: min(1440px, calc(100% - 16px));
   margin: 0 auto;
   display: flex;
   align-items: center;
@@ -87,6 +87,56 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+.topbar-platforms {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.platform-logo {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(217, 226, 255, 0.9);
+  box-shadow: 0 12px 26px rgba(35, 51, 120, 0.12);
+}
+
+.platform-logo svg {
+  width: 29px;
+  height: 29px;
+  display: block;
+}
+
+.platform-logo.wechat {
+  color: #18c857;
+}
+
+.platform-logo.wechat .bubble-main {
+  fill: #18c857;
+}
+
+.platform-logo.wechat .bubble-sub {
+  fill: #12a846;
+}
+
+.platform-logo.wechat circle {
+  fill: #ffffff;
+}
+
+.platform-logo.wecom .wecom-bg {
+  fill: #1e8cff;
+}
+
+.platform-logo.wecom .wecom-w,
+.platform-logo.wecom .wecom-spark {
+  fill: #ffffff;
 }
 
 h1,
