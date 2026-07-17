@@ -2434,22 +2434,20 @@ export function markTagActivationTaskFailed({ id, error = "" }) {
   );
 }
 
-export function listTagActivationTasks({ conversationKey = "", limit = 100 } = {}) {
+export function listTagActivationTasks({ botId = "", agentId = "", conversationKey = "", limit = 100 } = {}) {
+  if (!botId || !agentId || !conversationKey) {
+    throw new Error("listTagActivationTasks requires botId, agentId, and conversationKey");
+  }
   const normalizedLimit = Math.max(1, Number.parseInt(limit, 10) || 100);
-  const rows = conversationKey
-    ? db.prepare(`
-        SELECT *
-        FROM tag_activation_tasks
-        WHERE conversation_key = ?
-        ORDER BY id ASC
-        LIMIT ?
-      `).all(conversationKey, normalizedLimit)
-    : db.prepare(`
-        SELECT *
-        FROM tag_activation_tasks
-        ORDER BY id ASC
-        LIMIT ?
-      `).all(normalizedLimit);
+  const rows = db.prepare(`
+    SELECT *
+    FROM tag_activation_tasks
+    WHERE bot_id = ?
+      AND agent_id = ?
+      AND conversation_key = ?
+    ORDER BY id ASC
+    LIMIT ?
+  `).all(botId, agentId, conversationKey, normalizedLimit);
   return rows.map(rowToTagActivationTask);
 }
 

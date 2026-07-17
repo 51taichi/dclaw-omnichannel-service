@@ -97,6 +97,69 @@ test("cancelTagActivationTasks cancels pending tag work", () => {
     reason: "tag_removed"
   });
 
-  assert.equal(listTagActivationTasks({ conversationKey: "tag_bot_b:private:李四" }).find((item) => item.id === task.id).status, "canceled");
+  assert.equal(listTagActivationTasks({
+    botId: "tag_bot_b",
+    agentId: "tag_agent_b",
+    conversationKey: "tag_bot_b:private:李四"
+  }).find((item) => item.id === task.id).status, "canceled");
 });
 
+test("tag activation task listing is isolated by bot agent and conversation", () => {
+  const conversationKey = "shared:private:王五";
+  const first = scheduleTagActivationTask({
+    botId: "tag_scope_bot_a",
+    agentId: "tag_scope_agent_a",
+    conversationKey,
+    groupId: "intent",
+    tagId: "a",
+    activation: {
+      enabled: true,
+      polishByAgent: false,
+      messages: [{ content: "A", intervalMinutes: 1, maxTimes: 1 }]
+    },
+    dueAt: "2026-07-17T00:00:00.000Z"
+  });
+  const otherAgent = scheduleTagActivationTask({
+    botId: "tag_scope_bot_a",
+    agentId: "tag_scope_agent_b",
+    conversationKey,
+    groupId: "intent",
+    tagId: "b",
+    activation: {
+      enabled: true,
+      polishByAgent: false,
+      messages: [{ content: "B", intervalMinutes: 1, maxTimes: 1 }]
+    },
+    dueAt: "2026-07-17T00:00:00.000Z"
+  });
+  const otherBot = scheduleTagActivationTask({
+    botId: "tag_scope_bot_b",
+    agentId: "tag_scope_agent_a",
+    conversationKey,
+    groupId: "intent",
+    tagId: "c",
+    activation: {
+      enabled: true,
+      polishByAgent: false,
+      messages: [{ content: "C", intervalMinutes: 1, maxTimes: 1 }]
+    },
+    dueAt: "2026-07-17T00:00:00.000Z"
+  });
+
+  const scoped = listTagActivationTasks({
+    botId: "tag_scope_bot_a",
+    agentId: "tag_scope_agent_a",
+    conversationKey
+  });
+
+  assert.equal(scoped.some((item) => item.id === first.id), true);
+  assert.equal(scoped.some((item) => item.id === otherAgent.id), false);
+  assert.equal(scoped.some((item) => item.id === otherBot.id), false);
+});
+
+test("tag activation task listing requires full scope", () => {
+  assert.throws(
+    () => listTagActivationTasks({ conversationKey: "shared:private:王五" }),
+    /botId, agentId, and conversationKey/
+  );
+});
