@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { hashAccessKey } from "./auth.js";
+import { normalizeTagActivation, normalizeTagSchema } from "./tags.js";
 
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
 fs.mkdirSync(dataDir, { recursive: true });
@@ -288,6 +289,71 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_flow_activation_tasks_conversation
   ON flow_activation_tasks (conversation_key, status, id);
+
+  CREATE TABLE IF NOT EXISTS agent_tag_schemas (
+    agent_id TEXT PRIMARY KEY,
+    config_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS conversation_tags (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    group_id TEXT,
+    group_name TEXT,
+    tag_id TEXT NOT NULL,
+    tag_name TEXT NOT NULL,
+    tag_type TEXT NOT NULL DEFAULT 'normal',
+    reason TEXT,
+    source TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(bot_id, agent_id, conversation_key, tag_type, group_id, tag_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS conversation_tag_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    group_id TEXT,
+    tag_id TEXT,
+    accepted INTEGER NOT NULL DEFAULT 1,
+    reason TEXT,
+    source TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS tag_activation_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    tag_id TEXT NOT NULL,
+    attempt_number INTEGER NOT NULL DEFAULT 1,
+    message_index INTEGER NOT NULL DEFAULT 0,
+    message_content TEXT NOT NULL,
+    max_times INTEGER NOT NULL DEFAULT 1,
+    interval_minutes INTEGER NOT NULL DEFAULT 30,
+    polish_by_agent INTEGER NOT NULL DEFAULT 1,
+    messages_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    due_at TEXT NOT NULL,
+    processing_started_at TEXT,
+    sent_at TEXT,
+    canceled_at TEXT,
+    cancel_reason TEXT,
+    error_message TEXT,
+    worktool_message_ids_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
 
 function ensureColumn(table, column, definition) {
@@ -1160,6 +1226,64 @@ function rowToFlowActivationTask(row) {
     messages: parseJson(row.messages_json) || [],
     status: row.status,
     anchorAt: row.anchor_at || row.due_at,
+    dueAt: row.due_at,
+    processingStartedAt: row.processing_started_at || "",
+    sentAt: row.sent_at || "",
+    canceledAt: row.canceled_at || "",
+    cancelReason: row.cancel_reason || "",
+    errorMessage: row.error_message || "",
+    worktoolMessageIds: parseJson(row.worktool_message_ids_json) || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToAgentTagSchema(row) {
+  if (!row) return null;
+  return {
+    agentId: row.agent_id,
+    config: parseJson(row.config_json) || { dateTag: { enabled: false }, groups: [] },
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToConversationTag(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    conversationKey: row.conversation_key,
+    groupId: row.group_id || "",
+    groupName: row.group_name || "",
+    tagId: row.tag_id,
+    tagName: row.tag_name,
+    tagType: row.tag_type,
+    reason: row.reason || "",
+    source: row.source,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToTagActivationTask(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    conversationKey: row.conversation_key,
+    groupId: row.group_id,
+    tagId: row.tag_id,
+    attemptNumber: row.attempt_number,
+    messageIndex: row.message_index,
+    messageContent: row.message_content,
+    maxTimes: row.max_times,
+    intervalMinutes: row.interval_minutes,
+    polishByAgent: Boolean(row.polish_by_agent),
+    messages: parseJson(row.messages_json) || [],
+    status: row.status,
     dueAt: row.due_at,
     processingStartedAt: row.processing_started_at || "",
     sentAt: row.sent_at || "",
@@ -2070,6 +2194,265 @@ export function listFlowActivationTasks({ conversationKey = "", limit = 100 } = 
   return rows.map(rowToFlowActivationTask);
 }
 
+export function getAgentTagSchema(agentId) {
+  return rowToAgentTagSchema(
+    db.prepare("SELECT * FROM agent_tag_schemas WHERE agent_id = ?").get(agentId)
+  );
+}
+
+export function upsertAgentTagSchema({ agentId, schema }) {
+  const normalized = normalizeTagSchema(schema);
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO agent_tag_schemas (agent_id, config_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(agent_id) DO UPDATE SET
+      config_json = excluded.config_json,
+      updated_at = excluded.updated_at
+  `).run(agentId, json(normalized), timestamp, timestamp);
+  return getAgentTagSchema(agentId);
+}
+
+export function listConversationTags({ botId, agentId, conversationKey }) {
+  return db.prepare(`
+    SELECT *
+    FROM conversation_tags
+    WHERE bot_id = ?
+      AND agent_id = ?
+      AND conversation_key = ?
+    ORDER BY tag_type ASC, group_id ASC, tag_id ASC
+  `).all(botId, agentId, conversationKey).map(rowToConversationTag);
+}
+
+export function applyConversationTagChanges({
+  botId,
+  agentId,
+  conversationKey,
+  accepted = [],
+  rejected = [],
+  nextTags = [],
+  source = "agent_decision"
+}) {
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      DELETE FROM conversation_tags
+      WHERE bot_id = ?
+        AND agent_id = ?
+        AND conversation_key = ?
+        AND tag_type = 'normal'
+    `).run(botId, agentId, conversationKey);
+    for (const tag of nextTags) {
+      db.prepare(`
+        INSERT INTO conversation_tags (
+          bot_id, agent_id, conversation_key, group_id, group_name, tag_id, tag_name,
+          tag_type, reason, source, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'normal', ?, ?, ?, ?)
+      `).run(
+        botId,
+        agentId,
+        conversationKey,
+        tag.groupId || "",
+        tag.groupName || "",
+        tag.tagId,
+        tag.tagName || tag.name || tag.tagId,
+        tag.reason || "",
+        source,
+        timestamp,
+        timestamp
+      );
+    }
+    for (const event of [...accepted, ...rejected]) {
+      db.prepare(`
+        INSERT INTO conversation_tag_events (
+          bot_id, agent_id, conversation_key, event_type, group_id, tag_id,
+          accepted, reason, source, payload_json, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        botId,
+        agentId,
+        conversationKey,
+        event.action || "tag_decision",
+        event.groupId || "",
+        event.tagId || "",
+        accepted.includes(event) ? 1 : 0,
+        event.reason || "",
+        source,
+        json(event),
+        timestamp
+      );
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return listConversationTags({ botId, agentId, conversationKey });
+}
+
+export function scheduleTagActivationTask({
+  botId,
+  agentId,
+  conversationKey,
+  groupId,
+  tagId,
+  activation,
+  dueAt,
+  attemptNumber = 1,
+  messageIndex = 0
+}) {
+  const config = normalizeTagActivation(activation);
+  const normalizedMessageIndex = Math.max(0, Number.parseInt(messageIndex, 10) || 0);
+  const message = config.messages[normalizedMessageIndex] || null;
+  const timestamp = now();
+  const result = db.prepare(`
+    INSERT INTO tag_activation_tasks (
+      bot_id, agent_id, conversation_key, group_id, tag_id, attempt_number,
+      message_index, message_content, max_times, interval_minutes, polish_by_agent,
+      messages_json, status, due_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+  `).run(
+    botId,
+    agentId,
+    conversationKey,
+    groupId,
+    tagId,
+    Math.max(1, Number.parseInt(attemptNumber, 10) || 1),
+    normalizedMessageIndex,
+    message?.content || "",
+    message?.maxTimes || 1,
+    message?.intervalMinutes || 30,
+    config.polishByAgent ? 1 : 0,
+    json(config.messages),
+    dueAt || timestamp,
+    timestamp,
+    timestamp
+  );
+  return rowToTagActivationTask(
+    db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(result.lastInsertRowid)
+  );
+}
+
+export function claimDueTagActivationTasks({ limit = 20, nowIso = now(), staleBeforeIso = "" } = {}) {
+  const timestamp = now();
+  if (staleBeforeIso) {
+    db.prepare(`
+      UPDATE tag_activation_tasks
+      SET status = 'pending',
+          processing_started_at = NULL,
+          updated_at = ?
+      WHERE status = 'processing'
+        AND processing_started_at < ?
+    `).run(timestamp, staleBeforeIso);
+  }
+
+  const rows = db.prepare(`
+    SELECT *
+    FROM tag_activation_tasks
+    WHERE status = 'pending'
+      AND due_at <= ?
+    ORDER BY due_at ASC, id ASC
+    LIMIT ?
+  `).all(nowIso, Math.max(1, Number.parseInt(limit, 10) || 20));
+
+  const claimed = [];
+  for (const row of rows) {
+    const result = db.prepare(`
+      UPDATE tag_activation_tasks
+      SET status = 'processing',
+          processing_started_at = ?,
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'pending'
+    `).run(timestamp, timestamp, row.id);
+    if (result.changes > 0) {
+      claimed.push(rowToTagActivationTask(
+        db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(row.id)
+      ));
+    }
+  }
+  return claimed;
+}
+
+export function cancelTagActivationTasks({ botId, agentId, conversationKey, groupId = "", tagId = "", reason = "" }) {
+  const timestamp = now();
+  const clauses = ["bot_id = ?", "agent_id = ?", "conversation_key = ?", "status IN ('pending', 'processing')"];
+  const params = [botId, agentId, conversationKey];
+  if (groupId) {
+    clauses.push("group_id = ?");
+    params.push(groupId);
+  }
+  if (tagId) {
+    clauses.push("tag_id = ?");
+    params.push(tagId);
+  }
+  return db.prepare(`
+    UPDATE tag_activation_tasks
+    SET status = 'canceled',
+        canceled_at = ?,
+        cancel_reason = ?,
+        updated_at = ?
+    WHERE ${clauses.join(" AND ")}
+  `).run(timestamp, reason || "", timestamp, ...params).changes;
+}
+
+export function markTagActivationTaskSent({ id, worktoolMessageIds = [] }) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE tag_activation_tasks
+    SET status = 'sent',
+        sent_at = ?,
+        error_message = '',
+        worktool_message_ids_json = ?,
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'processing'
+  `).run(timestamp, json(worktoolMessageIds), timestamp, id);
+  if (result.changes === 0) return null;
+  return rowToTagActivationTask(
+    db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(id)
+  );
+}
+
+export function markTagActivationTaskFailed({ id, error = "" }) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE tag_activation_tasks
+    SET status = 'failed',
+        error_message = ?,
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'processing'
+  `).run(String(error || ""), timestamp, id);
+  if (result.changes === 0) return null;
+  return rowToTagActivationTask(
+    db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(id)
+  );
+}
+
+export function listTagActivationTasks({ conversationKey = "", limit = 100 } = {}) {
+  const normalizedLimit = Math.max(1, Number.parseInt(limit, 10) || 100);
+  const rows = conversationKey
+    ? db.prepare(`
+        SELECT *
+        FROM tag_activation_tasks
+        WHERE conversation_key = ?
+        ORDER BY id ASC
+        LIMIT ?
+      `).all(conversationKey, normalizedLimit)
+    : db.prepare(`
+        SELECT *
+        FROM tag_activation_tasks
+        ORDER BY id ASC
+        LIMIT ?
+      `).all(normalizedLimit);
+  return rows.map(rowToTagActivationTask);
+}
+
 export function insertConversationMessage({
   botId,
   conversationKey,
@@ -2667,6 +3050,18 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
     "flow-activation-tasks": {
       table: "flow_activation_tasks",
       mapper: rowToFlowActivationTask
+    },
+    "tag-activation-tasks": {
+      table: "tag_activation_tasks",
+      mapper: rowToTagActivationTask
+    },
+    "conversation-tags": {
+      table: "conversation_tags",
+      mapper: rowToConversationTag
+    },
+    "conversation-tag-events": {
+      table: "conversation_tag_events",
+      mapper: (row) => ({ ...row, payload: parseJson(row.payload_json) })
     },
     "proactive-tasks": {
       table: "proactive_tasks",
