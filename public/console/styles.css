@@ -369,8 +369,8 @@ h2 {
 
 .bot-card {
   display: grid;
-  gap: 6px;
-  padding: 9px;
+  gap: 4px;
+  padding: 7px 8px 8px;
   border: 1px solid var(--line);
   border-left-width: 3px;
   border-radius: 8px;
@@ -439,10 +439,10 @@ h2 {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   width: 100%;
   height: auto;
-  min-height: 48px;
+  min-height: 42px;
   padding: 0;
   color: var(--text);
   text-align: left;
@@ -451,16 +451,16 @@ h2 {
 .bot-identity {
   position: relative;
   min-width: 0;
-  min-height: 48px;
+  min-height: 42px;
   display: grid;
   align-items: center;
 }
 
 .bot-identity-content {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
   transition: opacity 140ms ease, filter 140ms ease;
 }
@@ -564,8 +564,8 @@ h2 {
 }
 
 .bot-avatar {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 9px;
   object-fit: cover;
   object-position: center;
@@ -615,10 +615,10 @@ h2 {
 
 .icon-button,
 .bot-actions button {
-  width: 32px;
-  min-width: 32px;
-  height: 32px;
-  min-height: 32px;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
   padding: 0;
   gap: 0;
   font-size: 0;
@@ -627,9 +627,9 @@ h2 {
 
 .bot-delete-button {
   width: auto;
-  min-width: 62px;
-  height: 32px;
-  min-height: 32px;
+  min-width: 58px;
+  height: 30px;
+  min-height: 30px;
   padding: 0 10px;
   display: inline-flex;
   align-items: center;

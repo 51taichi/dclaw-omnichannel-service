@@ -133,6 +133,16 @@ test("bot cards expose four unlocked quick actions", () => {
   assert.equal(app.includes('data-action="${unlocked ? "logs" : "unlock"}'), true);
 });
 
+test("bot cards use compact spacing without wasting vertical card space", () => {
+  assert.match(css, /\.bot-card\s*\{[^}]*gap:\s*4px;[^}]*padding:\s*7px 8px 8px;/);
+  assert.match(css, /\.bot-main\s*\{[^}]*gap:\s*8px;[^}]*min-height:\s*42px;/);
+  assert.match(css, /\.bot-identity\s*\{[^}]*min-height:\s*42px;/);
+  assert.match(css, /\.bot-identity-content\s*\{[^}]*grid-template-columns:\s*36px minmax\(0,\s*1fr\);[^}]*gap:\s*8px;/);
+  assert.match(css, /\.bot-avatar\s*\{[^}]*width:\s*36px;[^}]*height:\s*36px;/);
+  assert.match(css, /\.icon-button,\s*\n\.bot-actions button\s*\{[^}]*width:\s*30px;[^}]*height:\s*30px;/);
+  assert.doesNotMatch(css, /\.bot-card\s*\{[^}]*gap:\s*6px;[^}]*padding:\s*9px;/);
+});
+
 test("admin bot cards expose a dangerous delete action with password confirmation", () => {
   assert.equal(app.includes('session?.role === "admin"'), true);
   assert.equal(app.includes('data-action="delete"'), true);
