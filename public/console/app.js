@@ -54,7 +54,6 @@ const els = {
   flowSessionList: document.querySelector("#flowSessionList"),
   flowSessionTypeButtons: document.querySelectorAll("[data-flow-session-type]"),
   flowSessionSearchInput: document.querySelector("#flowSessionSearchInput"),
-  flowSessionAssetFilter: document.querySelector("#flowSessionAssetFilter"),
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
   flowSessionTagFilter: document.querySelector("#flowSessionTagFilter"),
   chatTitle: document.querySelector("#chatTitle"),
@@ -2388,7 +2387,6 @@ function emptyFlowSessionTitle() {
 function getVisibleFlowSessions() {
   const typeFilter = currentFlowSessionTypeFilter();
   const normalizedSessionSearch = String(els.flowSessionSearchInput.value || "").trim().toLowerCase();
-  const assetFilter = els.flowSessionAssetFilter.value;
   const nodeFilter = els.flowSessionNodeFilter.value;
   const tagFilter = els.flowSessionTagFilter?.value || "all";
 
@@ -2405,12 +2403,6 @@ function getVisibleFlowSessions() {
     }
     if (appliesFlowFilters && nodeFilter !== "all" && session.currentNodeId !== nodeFilter) return false;
     if (tagFilter !== "all" && !(session.tags || []).some((tag) => tagFilterKey(tag) === tagFilter)) return false;
-
-    const assets = session.assets || {};
-    const totalCount = Number(assets.totalCount || 0);
-    const collectedCount = Number(assets.collectedCount || 0);
-    if (appliesFlowFilters && assetFilter === "pending" && !(totalCount > 0 && collectedCount < totalCount)) return false;
-    if (appliesFlowFilters && assetFilter === "complete" && !(totalCount > 0 && collectedCount >= totalCount)) return false;
     return true;
   }));
 }
@@ -3340,7 +3332,6 @@ els.flowSessionTypeButtons.forEach((button) => {
   });
 });
 [
-  els.flowSessionAssetFilter,
   els.flowSessionNodeFilter,
   els.flowSessionTagFilter
 ].forEach((control) => {

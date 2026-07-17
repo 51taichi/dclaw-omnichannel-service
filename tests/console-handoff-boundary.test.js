@@ -98,7 +98,11 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(app.includes("normalizedSessionSearch"), true);
   assert.equal(app.includes("flowSessionType(session) !== typeFilter"), true);
   assert.equal(app.includes("[data-flow-session-type].active"), true);
-  assert.equal(html.includes('id="flowSessionAssetFilter"'), true);
+  assert.equal(html.includes("搜索客户/会话"), false);
+  assert.equal(html.includes(">搜索客户</span>"), true);
+  assert.equal(html.includes('placeholder="搜索客户/群名"'), true);
+  assert.equal(html.includes('id="flowSessionAssetFilter"'), false);
+  assert.equal(app.includes("flowSessionAssetFilter"), false);
   assert.equal(html.includes('id="flowSessionNodeFilter"'), true);
   assert.equal(html.includes('id="flowSessionHandoffFilter"'), false);
   assert.equal(html.includes("接手状态"), false);

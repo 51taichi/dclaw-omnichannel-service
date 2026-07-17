@@ -31,8 +31,8 @@ test("console does not apply private flow filters to group sessions", () => {
   assert.match(app, /return flowSessionType\(session\) === "private"/);
   assert.match(app, /const appliesFlowFilters = sessionUsesFlowFilters\(session\)/);
   assert.match(app, /if \(appliesFlowFilters && nodeFilter !== "all"/);
-  assert.match(app, /if \(appliesFlowFilters && assetFilter === "pending"/);
-  assert.match(app, /if \(appliesFlowFilters && assetFilter === "complete"/);
+  assert.doesNotMatch(app, /flowSessionAssetFilter/);
+  assert.doesNotMatch(app, /assetFilter ===/);
 });
 
 test("empty chat title follows the selected session type tab", () => {

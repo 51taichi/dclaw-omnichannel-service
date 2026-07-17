@@ -2374,7 +2374,7 @@ button.danger:hover {
 
 .flow-session-filters {
   display: grid;
-  grid-template-columns: minmax(280px, 2fr) repeat(3, minmax(132px, 1fr));
+  grid-template-columns: minmax(260px, 320px) repeat(2, minmax(132px, 180px));
   gap: 10px;
   align-items: center;
   min-width: 0;
@@ -2401,7 +2401,7 @@ button.danger:hover {
 }
 
 .flow-session-filters .flow-session-search {
-  grid-template-columns: max-content minmax(240px, 1fr);
+  grid-template-columns: max-content minmax(118px, 1fr);
 }
 
 .flow-session-filters input,
