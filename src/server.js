@@ -2650,7 +2650,24 @@ function applyAgentTagDecision({ botId, binding, conversationKey, agentReply }) 
     nextTags: result.nextTags,
     source: "agent_decision"
   });
-  return { tags, accepted: result.accepted, rejected: result.rejected };
+  const acceptedInactiveTags = new Map();
+  for (const event of result.accepted) {
+    for (const tagId of event.oldTagIds || []) {
+      acceptedInactiveTags.set(`${event.groupId}:${tagId}`, { groupId: event.groupId, tagId });
+    }
+  }
+  let canceledTagActivationTaskCount = 0;
+  for (const tag of acceptedInactiveTags.values()) {
+    canceledTagActivationTaskCount += cancelTagActivationTasks({
+      botId,
+      agentId: binding.agentId,
+      conversationKey,
+      groupId: tag.groupId,
+      tagId: tag.tagId,
+      reason: "tag_inactive"
+    });
+  }
+  return { tags, accepted: result.accepted, rejected: result.rejected, canceledTagActivationTaskCount };
 }
 
 function resolveLegacyBotId(req) {
