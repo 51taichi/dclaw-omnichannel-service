@@ -46,13 +46,17 @@ test("console exposes a per-session handoff switch without redundant status labe
   assert.doesNotMatch(app, /class="flow-session-status/);
   assert.doesNotMatch(app, /els\.chatStatusBadge\.innerHTML = statusBadgeHtml/);
   assert.match(css, /\.flow-session-switch\.handoff-switch\s*\{[\s\S]*right:\s*9px[\s\S]*bottom:\s*9px/);
-  assert.match(switchRule, /grid-template-columns:\s*repeat\(2,\s*34px\)/);
+  assert.match(switchRule, /grid-template-columns:\s*repeat\(2,\s*30px\)/);
   assert.match(switchRule, /gap:\s*2px/);
   assert.match(switchRule, /width:\s*max-content/);
   assert.match(switchRule, /height:\s*auto/);
+  assert.match(switchRule, /border-radius:\s*8px/);
   assert.doesNotMatch(switchRule, /width:\s*74px/);
   assert.doesNotMatch(switchRule, /height:\s*38px/);
-  assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(36px\)/);
+  assert.match(css, /\.handoff-switch-option\s*\{[\s\S]*width:\s*30px[\s\S]*height:\s*30px/);
+  assert.match(css, /\.handoff-switch-thumb\s*\{[\s\S]*width:\s*30px[\s\S]*height:\s*30px[\s\S]*border-radius:\s*6px/);
+  assert.match(css, /\.handoff-switch \.icon\s*\{[\s\S]*width:\s*16px[\s\S]*height:\s*16px/);
+  assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(32px\)/);
 });
 
 test("flow session cards use compact icon metadata for task, assets, time, and handoff", () => {

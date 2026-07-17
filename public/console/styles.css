@@ -2750,14 +2750,14 @@ button.danger:hover {
   bottom: 14px;
   z-index: 12;
   display: inline-grid;
-  grid-template-columns: repeat(2, 34px);
+  grid-template-columns: repeat(2, 30px);
   align-items: center;
   gap: 2px;
   width: max-content;
   height: auto;
   padding: 2px;
   border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
-  border-radius: 999px;
+  border-radius: 8px;
   background: rgba(255, 255, 255, 0.94);
   color: var(--accent);
   box-shadow: 0 12px 28px rgba(42, 48, 216, 0.16);
@@ -2783,8 +2783,8 @@ button.danger:hover {
   z-index: 2;
   display: inline-grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   color: color-mix(in srgb, var(--muted) 72%, var(--accent));
   transition: color 0.16s ease;
 }
@@ -2800,9 +2800,9 @@ button.danger:hover {
 .handoff-switch-thumb {
   grid-column: 1;
   z-index: 1;
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
   background: linear-gradient(135deg, var(--accent), var(--cyan));
   box-shadow: 0 8px 18px rgba(42, 48, 216, 0.22);
   transform: translateX(0);
@@ -2811,7 +2811,7 @@ button.danger:hover {
 
 .handoff-switch.is-human .handoff-switch-thumb {
   background: linear-gradient(135deg, #f59e0b, #fbbf24);
-  transform: translateX(36px);
+  transform: translateX(32px);
 }
 
 .handoff-switch:not(.is-human) .handoff-switch-option.is-ai,
