@@ -824,6 +824,67 @@ label.wide,
   border-left: 0;
 }
 
+.switch-toggle {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+}
+
+.switch-toggle input[type="checkbox"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch-slider {
+  position: relative;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 22px;
+  border: 1px solid rgba(42, 48, 216, 0.28);
+  border-radius: 999px;
+  background: rgba(47, 64, 229, 0.1);
+  transition:
+    background 140ms ease,
+    border-color 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.switch-slider::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(28, 34, 92, 0.25);
+  transition: transform 140ms ease;
+}
+
+.switch-toggle input[type="checkbox"]:checked + .switch-slider {
+  border-color: transparent;
+  background: linear-gradient(90deg, var(--accent), var(--cyan));
+  box-shadow: 0 8px 16px rgba(47, 64, 229, 0.16);
+}
+
+.switch-toggle input[type="checkbox"]:checked + .switch-slider::after {
+  transform: translateX(16px);
+}
+
+.switch-toggle input[type="checkbox"]:focus-visible + .switch-slider {
+  outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.switch-label {
+  font-weight: 800;
+}
+
 input,
 select,
 textarea,
@@ -1821,7 +1882,7 @@ button.danger:hover {
   background: #fff;
 }
 
-.activation-toggle span {
+.activation-toggle span:not(.switch-slider) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1841,7 +1902,7 @@ button.danger:hover {
   background: color-mix(in srgb, var(--orange) 10%, #ffffff);
 }
 
-.activation-editor.is-active .activation-toggle:first-child span,
+.activation-editor.is-active .activation-toggle:first-child span:not(.switch-slider),
 .activation-editor.is-active .activation-toggle:first-child .icon {
   color: var(--orange);
 }
@@ -2065,6 +2126,10 @@ button.danger:hover {
   justify-content: space-between;
 }
 
+.tag-group-enabled-toggle {
+  flex: 0 0 auto;
+}
+
 .tag-schema-footer {
   display: flex;
   align-items: center;
@@ -2147,33 +2212,6 @@ button.danger:hover {
 
 .tag-group-card.is-collapsed .collapse-button .icon {
   transform: rotate(-90deg);
-}
-
-.tag-group-summary {
-  display: none;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.tag-group-summary span {
-  min-width: 0;
-  max-width: 100%;
-  padding: 5px 9px;
-  border: 1px solid rgba(47, 64, 229, 0.14);
-  border-radius: 999px;
-  background: rgba(47, 64, 229, 0.06);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tag-group-card.is-collapsed .tag-group-summary {
-  display: flex;
-  flex-wrap: wrap;
 }
 
 .tag-group-card.is-collapsed .tag-group-body {

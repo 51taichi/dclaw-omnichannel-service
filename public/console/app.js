@@ -1556,17 +1556,17 @@ function renderTagSchemaEditor() {
           const groupKey = tagGroupCollapseKey(group, groupIndex);
           const groupCollapsed = collapsedTagGroups.has(groupKey);
           const tagCount = (group.tags || []).length;
-          const relationText = group.exclusive ? (group.oneWay ? "组内互斥 · 单向变更" : "组内互斥") : "可同时贴多个标签";
           return `
             <article class="tag-group-card ${groupCollapsed ? "is-collapsed" : ""}" data-tag-group-index="${groupIndex}" data-tag-group-collapse-key="${escapeHtml(groupKey)}">
               <div class="tag-group-head">
+                <label class="toggle switch-toggle tag-group-enabled-toggle">
+                  <input data-tag-group-field="enabled" type="checkbox" ${group.enabled ? "checked" : ""} />
+                  <span class="switch-slider" aria-hidden="true"></span>
+                  <span class="switch-label">启用</span>
+                </label>
                 <label class="tag-name-field">
                   <span class="field-label">${icon("info")}标签组</span>
                   <input data-tag-group-field="name" value="${escapeHtml(group.name)}" placeholder="例如：意向等级" />
-                </label>
-                <label class="toggle">
-                  <input data-tag-group-field="enabled" type="checkbox" ${group.enabled ? "checked" : ""} />
-                  启用
                 </label>
                 <label class="toggle">
                   <input data-tag-group-field="exclusive" type="checkbox" ${group.exclusive ? "checked" : ""} />
@@ -1583,11 +1583,6 @@ function renderTagSchemaEditor() {
                     <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
                   </button>
                 </div>
-              </div>
-              <div class="tag-group-summary">
-                <span>${group.enabled ? "已启用" : "已停用"}</span>
-                <span>${escapeHtml(relationText)}</span>
-                <span>${tagCount} 个标签</span>
               </div>
               <div class="tag-group-body">
                 <div class="tag-row-list">
@@ -1615,8 +1610,9 @@ function renderTagSchemaEditor() {
                                 <section class="activation-editor tag-activation-editor ${activation.enabled ? "is-active" : ""}" aria-label="标签触发任务">
                                   <div class="activation-toolbar">
                                     <div class="activation-toolbar-main">
-                                      <label class="toggle activation-toggle">
+                                      <label class="toggle switch-toggle activation-toggle">
                                         <input data-tag-activation-field="enabled" type="checkbox" ${activation.enabled ? "checked" : ""} />
+                                        <span class="switch-slider" aria-hidden="true"></span>
                                         <span>${icon("send")}启用触发任务</span>
                                       </label>
                                       <label class="toggle activation-toggle activation-polish-toggle">
@@ -2117,8 +2113,9 @@ function renderFlowNodeEditor(entryNodeId = "") {
           <section class="activation-editor ${activationEnabled ? "is-active" : ""}" aria-label="客户激活设置">
             <div class="activation-toolbar">
               <div class="activation-toolbar-main">
-                <label class="toggle activation-toggle">
+                <label class="toggle switch-toggle activation-toggle">
                   <input data-flow-node-activation-field="enabled" type="checkbox" ${activationEnabled ? "checked" : ""} />
+                  <span class="switch-slider" aria-hidden="true"></span>
                   <span>${icon("send")}启用客户激活</span>
                 </label>
                 <label class="toggle activation-toggle activation-polish-toggle">

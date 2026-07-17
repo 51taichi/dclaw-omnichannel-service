@@ -236,9 +236,10 @@
             </select>
           </label>
           <div class="actions">
-            <label class="toggle action-toggle">
+            <label class="toggle switch-toggle action-toggle">
               <input name="enabled" type="checkbox" checked />
-              启用
+              <span class="switch-slider" aria-hidden="true"></span>
+              <span class="switch-label">启用</span>
             </label>
             <button class="primary" type="submit">
               <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
@@ -258,9 +259,10 @@
         </div>
         <div class="collapsible-content">
         <form id="debugReplyForm" class="form-grid compact-form">
-          <label class="toggle">
+          <label class="toggle switch-toggle">
             <input name="enabled" type="checkbox" />
-            开启调试自动回复
+            <span class="switch-slider" aria-hidden="true"></span>
+            <span class="switch-label">开启调试自动回复</span>
           </label>
           <label>
             <span class="field-label">触发词</span>
@@ -336,9 +338,10 @@
               <input name="agentApiKey" type="password" placeholder="可选" autocomplete="off" />
             </label>
             <div class="actions">
-              <label class="toggle action-toggle">
+              <label class="toggle switch-toggle action-toggle">
                 <input name="enabled" type="checkbox" checked />
-                启用
+                <span class="switch-slider" aria-hidden="true"></span>
+                <span class="switch-label">启用</span>
               </label>
               <button class="secondary" id="resetAgentFormButton" type="button">
                 <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
@@ -359,9 +362,10 @@
       <section id="flowMachinePanel" class="panel bot-context-panel collapsible-panel">
         <div class="collapsible-content">
           <form id="flowMachineForm" class="form-grid">
-            <label class="toggle">
+            <label class="toggle switch-toggle">
               <input name="enabled" type="checkbox" />
-              启用私聊状态机
+              <span class="switch-slider" aria-hidden="true"></span>
+              <span class="switch-label">启用私聊状态机</span>
             </label>
             <div class="flow-name-row">
               <label>
@@ -413,9 +417,10 @@
         </div>
         <div class="collapsible-content tag-schema-editor">
           <div class="tag-schema-toolbar">
-            <label class="toggle">
+            <label class="toggle switch-toggle">
               <input id="dateTagEnabled" type="checkbox" />
-              启用日期标签
+              <span class="switch-slider" aria-hidden="true"></span>
+              <span class="switch-label">启用日期标签</span>
             </label>
             <button id="addTagGroupButton" class="secondary" type="button">
               <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>

@@ -43,3 +43,22 @@ test("tag editor keeps import export save controls at the bottom and collapses a
   assert.match(js, /collapseAllTagCards/);
   assert.match(js, /collapseAllTagCards\(\);\s*renderTagSchemaEditor\(\);\s*toast\("标签配置已保存"\)/);
 });
+
+test("tag groups do not render collapsed summary descriptions", () => {
+  assert.doesNotMatch(js, /tag-group-summary/);
+  assert.doesNotMatch(js, /已启用/);
+  assert.doesNotMatch(js, /已停用/);
+  assert.doesNotMatch(js, /\$\{tagCount\} 个标签/);
+  assert.doesNotMatch(css, /\.tag-group-summary/);
+});
+
+test("tag group enabled switch sits before the group name while option checkboxes stay regular", () => {
+  assert.match(js, /class="toggle switch-toggle tag-group-enabled-toggle"[\s\S]*data-tag-group-field="enabled"[\s\S]*class="tag-name-field"/);
+  assert.match(js, /data-tag-group-field="exclusive"/);
+  assert.match(js, /data-tag-group-field="oneWay"/);
+  assert.doesNotMatch(js, /class="toggle switch-toggle"[\s\S]*data-tag-group-field="exclusive"/);
+  assert.doesNotMatch(js, /class="toggle switch-toggle"[\s\S]*data-tag-group-field="oneWay"/);
+  assert.match(css, /\.switch-toggle/);
+  assert.match(css, /\.switch-toggle input\[type="checkbox"\]/);
+  assert.match(css, /\.switch-slider/);
+});

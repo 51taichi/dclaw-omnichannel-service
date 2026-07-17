@@ -95,6 +95,17 @@ test("bot binding form selects a saved agent instead of storing agent credential
   assert.match(app, /class="danger" data-agent-delete/);
 });
 
+test("startup toggles render as switch components instead of plain checkboxes", () => {
+  assert.match(html, /class="toggle switch-toggle action-toggle"[\s\S]*name="enabled" type="checkbox" checked[\s\S]*class="switch-slider"/);
+  assert.match(html, /id="debugReplyForm"[\s\S]*class="toggle switch-toggle"[\s\S]*name="enabled" type="checkbox"[\s\S]*class="switch-slider"/);
+  assert.match(html, /id="agentForm"[\s\S]*class="toggle switch-toggle action-toggle"[\s\S]*name="enabled" type="checkbox" checked[\s\S]*class="switch-slider"/);
+  assert.match(html, /id="flowMachineForm"[\s\S]*class="toggle switch-toggle"[\s\S]*name="enabled" type="checkbox"[\s\S]*class="switch-slider"/);
+  assert.match(html, /id="dateTagEnabled" type="checkbox"[\s\S]*class="switch-slider"/);
+  assert.match(css, /\.switch-toggle/);
+  assert.match(css, /\.switch-toggle input\[type="checkbox"\]/);
+  assert.match(css, /\.switch-slider/);
+});
+
 test("agent cards hide base url and enabled status tag", () => {
   assert.equal(app.includes('Public ID：${escapeHtml(agent.dclawPublicId || "-")}'), true);
   assert.equal(app.includes("已绑定 Bot：${boundCount}"), true);
