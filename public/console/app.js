@@ -415,6 +415,10 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
     panel.hidden = !active;
     panel.classList.toggle("active", active);
   });
+  if (tabName === "tags") {
+    collapseAllTagCards();
+    renderTagSchemaEditor();
+  }
   if (scrollTo) {
     requestAnimationFrame(() => scrollTo.scrollIntoView({ behavior: "smooth", block: "start" }));
   }

@@ -40,6 +40,7 @@ test("console renders tag chips and tag filters", () => {
 
 test("tag editor supports collapsible groups with always-expanded tag cards", () => {
   assert.match(js, /collapsedTagGroups/);
+  assert.match(js, /if \(tabName === "tags"\) \{[\s\S]*collapseAllTagCards\(\);[\s\S]*renderTagSchemaEditor\(\);[\s\S]*\}/);
   assert.doesNotMatch(js, /collapsedTags/);
   assert.match(js, /data-toggle-tag-group/);
   assert.doesNotMatch(js, /data-toggle-tag="/);
