@@ -22,6 +22,9 @@ test("console loads and saves tag schemas", () => {
 
 test("console renders tag chips and tag filters", () => {
   assert.match(js, /renderConversationTags/);
+  assert.match(js, /function sortConversationTagsForDisplay\(tags = \[\]\)/);
+  assert.match(js, /const aDate = a\?\.tagType === "date" \? 0 : 1/);
+  assert.match(js, /const visibleTags = sortConversationTagsForDisplay/);
   assert.match(html, /id="icon-tag"/);
   assert.match(js, /icon\("tag"\)/);
   assert.match(js, /flowSessionTagFilter/);

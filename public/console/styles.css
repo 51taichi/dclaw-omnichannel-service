@@ -2412,11 +2412,14 @@ button.danger:hover {
 
 .flow-session-card {
   position: relative;
-  display: block;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: start;
+  column-gap: 9px;
   width: 100%;
   height: auto;
   min-height: 104px;
-  padding: 44px 88px 12px 9px;
+  padding: 9px 88px 12px 9px;
   border: 1px solid color-mix(in srgb, var(--cyan) 32%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--cyan) 8%, #ffffff);
@@ -2482,9 +2485,8 @@ button.danger:hover {
 }
 
 .flow-session-avatar {
-  position: absolute;
-  top: 9px;
-  right: 9px;
+  grid-column: 1;
+  grid-row: 1 / span 2;
   width: 34px;
   height: 34px;
   border-radius: 8px;
@@ -2501,6 +2503,9 @@ button.danger:hover {
 
 .flow-session-main {
   display: grid;
+  grid-column: 2;
+  grid-row: 1;
+  grid-template-rows: 34px minmax(28px, auto) 24px;
   gap: 7px;
   min-width: 0;
 }
@@ -2513,13 +2518,9 @@ button.danger:hover {
 }
 
 .flow-session-name-row {
-  position: absolute;
-  top: 11px;
-  right: 52px;
-  left: 9px;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 6px;
   min-width: 0;
   padding-right: 0;
@@ -2538,6 +2539,7 @@ button.danger:hover {
   display: block;
   min-height: 28px;
   padding-right: 4px;
+  overflow: hidden;
 }
 
 .chat-status-badge .icon {
@@ -2592,57 +2594,6 @@ button.danger:hover {
   background: color-mix(in srgb, var(--accent) 12%, #ffffff);
   color: var(--accent);
   transform: translateY(-1px);
-}
-
-.session-icon::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 8px);
-  z-index: 20;
-  min-width: max-content;
-  max-width: 220px;
-  padding: 6px 8px;
-  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
-  border-radius: 7px;
-  background: #1f2937;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.3;
-  white-space: normal;
-  box-shadow: 0 10px 24px rgba(31, 41, 55, 0.18);
-  opacity: 0;
-  pointer-events: none;
-  transform: translate(-50%, 4px);
-  transition: opacity 0.12s ease, transform 0.12s ease;
-}
-
-.session-icon::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: calc(100% + 3px);
-  z-index: 21;
-  width: 8px;
-  height: 8px;
-  background: #1f2937;
-  opacity: 0;
-  pointer-events: none;
-  transform: translateX(-50%) rotate(45deg);
-  transition: opacity 0.12s ease;
-}
-
-.session-icon:hover::after,
-.session-icon:hover::before,
-.session-icon:focus-visible::after,
-.session-icon:focus-visible::before {
-  opacity: 1;
-}
-
-.session-icon:hover::after,
-.session-icon:focus-visible::after {
-  transform: translate(-50%, 0);
 }
 
 .flow-session-icons .icon {

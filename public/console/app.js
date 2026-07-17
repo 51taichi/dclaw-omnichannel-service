@@ -1506,8 +1506,17 @@ function tagFilterKey(tag) {
   return tag.tagType === "date" ? `date:${tag.tagId}` : `${tag.groupId}:${tag.tagId}`;
 }
 
+function sortConversationTagsForDisplay(tags = []) {
+  return [...tags].sort((a, b) => {
+    const aDate = a?.tagType === "date" ? 0 : 1;
+    const bDate = b?.tagType === "date" ? 0 : 1;
+    if (aDate !== bDate) return aDate - bDate;
+    return String(a?.tagName || "").localeCompare(String(b?.tagName || ""), "zh-Hans-CN");
+  });
+}
+
 function renderConversationTags(tags = []) {
-  const visibleTags = Array.isArray(tags) ? tags.filter(Boolean) : [];
+  const visibleTags = sortConversationTagsForDisplay(Array.isArray(tags) ? tags.filter(Boolean) : []);
   if (!visibleTags.length) return "";
   return `
     <span class="conversation-tags">
@@ -2532,6 +2541,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
             : "";
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
+              <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
                   <strong>${escapeHtml(name)}</strong>
@@ -2541,13 +2551,12 @@ function renderFlowSessions({ animateFrom = null } = {}) {
                 </span>
                 <span class="flow-session-tools">
                   <small class="flow-session-icons">
-                    <span class="session-icon" title="${escapeHtml(taskTooltip)}" data-tooltip="${escapeHtml(taskTooltip)}" aria-label="${escapeHtml(taskTooltip)}">${icon("edit")}</span>
-                    <span class="session-icon" title="${escapeHtml(assetTooltip)}" data-tooltip="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
-                    <span class="session-icon" title="${escapeHtml(timeTooltip)}" data-tooltip="${escapeHtml(timeTooltip)}" aria-label="${escapeHtml(timeTooltip)}">${icon("clock")}</span>
+                    <span class="session-icon" title="${escapeHtml(taskTooltip)}" aria-label="${escapeHtml(taskTooltip)}">${icon("edit")}</span>
+                    <span class="session-icon" title="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
+                    <span class="session-icon" title="${escapeHtml(timeTooltip)}" aria-label="${escapeHtml(timeTooltip)}">${icon("clock")}</span>
                   </small>
                 </span>
               </span>
-              <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               ${handoffSwitch}
             </button>
           `;

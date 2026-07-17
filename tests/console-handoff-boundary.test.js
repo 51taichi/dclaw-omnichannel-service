@@ -65,22 +65,22 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
   assert.equal(app.includes("当前任务：${status}"), true);
   assert.equal(app.includes("资产：${assetSummary}"), true);
   assert.equal(app.includes("最近消息：${lastMessageAt}"), true);
-  assert.equal(app.includes("data-tooltip="), true);
+  assert.doesNotMatch(app, /class="session-icon"[^>]*data-tooltip=/);
   assert.equal(app.includes("aria-label="), true);
   assert.equal(html.includes('id="icon-robot"'), true);
   assert.equal(app.includes("AI接待中"), false);
   assert.equal(app.includes("人工接手中"), false);
   assert.equal(app.includes("flow-session-status"), false);
   assert.equal(css.includes(".flow-session-icons"), true);
-  assert.equal(css.includes(".session-icon::after"), true);
+  assert.equal(css.includes(".session-icon::after"), false);
 });
 
 test("flow session status labels do not change card or chat header layout", () => {
-  assert.match(css, /\.flow-session-card\s*\{[\s\S]*display:\s*block/);
-  assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*44px 88px 12px 9px/);
-  assert.doesNotMatch(css, /\.flow-session-card\s*\{[\s\S]*grid-template-columns:\s*34px minmax\(0,\s*1fr\)/);
-  assert.match(css, /\.flow-session-avatar\s*\{[\s\S]*position:\s*absolute[\s\S]*top:\s*9px[\s\S]*right:\s*9px/);
-  assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*position:\s*absolute[\s\S]*right:\s*52px[\s\S]*justify-content:\s*flex-end/);
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*display:\s*grid/);
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*grid-template-columns:\s*34px minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*9px 88px 12px 9px/);
+  assert.match(css, /\.flow-session-avatar\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*1 \/ span 2/);
+  assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*justify-content:\s*flex-start/);
   assert.match(app, /class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\]\)/);
   assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*min-height:\s*28px/);
   assert.doesNotMatch(css, /\.flow-session-status\s*\{/);
