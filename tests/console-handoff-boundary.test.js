@@ -75,8 +75,13 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
 });
 
 test("flow session status labels do not change card or chat header layout", () => {
-  assert.match(css, /\.flow-session-card\s*\{[\s\S]*align-items:\s*start/);
-  assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*9px 88px 12px 9px/);
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*display:\s*block/);
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*44px 88px 12px 9px/);
+  assert.doesNotMatch(css, /\.flow-session-card\s*\{[\s\S]*grid-template-columns:\s*34px minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.flow-session-avatar\s*\{[\s\S]*position:\s*absolute[\s\S]*top:\s*9px[\s\S]*right:\s*9px/);
+  assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*position:\s*absolute[\s\S]*right:\s*52px[\s\S]*justify-content:\s*flex-end/);
+  assert.match(app, /class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\]\)/);
+  assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*min-height:\s*28px/);
   assert.doesNotMatch(css, /\.flow-session-status\s*\{/);
   assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*padding-right:\s*0/);
   assert.match(css, /\.chat-head\s*\{[\s\S]*grid-template-columns:\s*minmax\(180px,\s*1fr\) minmax\(112px,\s*180px\) auto/);

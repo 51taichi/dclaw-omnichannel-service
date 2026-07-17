@@ -2503,12 +2503,13 @@ function renderFlowSessions({ animateFrom = null } = {}) {
             : "";
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
-              <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
                   <strong>${escapeHtml(name)}</strong>
                 </span>
-                ${renderConversationTags(session.tags || [])}
+                <span class="flow-session-tag-zone">
+                  ${renderConversationTags(session.tags || [])}
+                </span>
                 <span class="flow-session-tools">
                   <small class="flow-session-icons">
                     <span class="session-icon" title="${escapeHtml(taskTooltip)}" data-tooltip="${escapeHtml(taskTooltip)}" aria-label="${escapeHtml(taskTooltip)}">${icon("edit")}</span>
@@ -2517,6 +2518,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
                   </small>
                 </span>
               </span>
+              <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               ${handoffSwitch}
             </button>
           `;

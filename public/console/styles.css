@@ -2412,14 +2412,11 @@ button.danger:hover {
 
 .flow-session-card {
   position: relative;
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  align-items: start;
-  gap: 9px;
+  display: block;
   width: 100%;
   height: auto;
-  min-height: 86px;
-  padding: 9px 88px 12px 9px;
+  min-height: 104px;
+  padding: 44px 88px 12px 9px;
   border: 1px solid color-mix(in srgb, var(--cyan) 32%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--cyan) 8%, #ffffff);
@@ -2485,6 +2482,9 @@ button.danger:hover {
 }
 
 .flow-session-avatar {
+  position: absolute;
+  top: 9px;
+  right: 9px;
   width: 34px;
   height: 34px;
   border-radius: 8px;
@@ -2501,7 +2501,7 @@ button.danger:hover {
 
 .flow-session-main {
   display: grid;
-  gap: 6px;
+  gap: 7px;
   min-width: 0;
 }
 
@@ -2513,8 +2513,13 @@ button.danger:hover {
 }
 
 .flow-session-name-row {
+  position: absolute;
+  top: 11px;
+  right: 52px;
+  left: 9px;
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 6px;
   min-width: 0;
   padding-right: 0;
@@ -2522,9 +2527,17 @@ button.danger:hover {
 
 .flow-session-main strong {
   display: block;
+  min-width: 0;
+  max-width: 100%;
   color: #302321;
   font-size: 13px;
   font-weight: 800;
+}
+
+.flow-session-tag-zone {
+  display: block;
+  min-height: 28px;
+  padding-right: 4px;
 }
 
 .chat-status-badge .icon {
