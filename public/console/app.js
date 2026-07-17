@@ -477,7 +477,6 @@ function clearBotScopedContent() {
   state.tagSchema = defaultTagSchema();
   collapsedFlowNodes.clear();
   collapsedTagGroups.clear();
-  collapsedTags.clear();
   syncHandoffButton(null);
   renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
   els.chatTitle.textContent = emptyFlowSessionTitle();
@@ -914,7 +913,6 @@ let currentConversationAssets = { fields: [], totalCount: 0, collectedCount: 0 }
 let currentFlowSession = null;
 const collapsedFlowNodes = new Set();
 const collapsedTagGroups = new Set();
-const collapsedTags = new Set();
 const selectedTargets = new Map();
 const manualReplyEmojis = ["😊", "👌", "👍", "🙏", "😄", "🎉", "✨", "💪"];
 
@@ -1540,32 +1538,11 @@ function tagGroupCollapseKey(group, groupIndex) {
   return String(group?.id || `group_${groupIndex + 1}`);
 }
 
-function tagCollapseKey(group, groupIndex, tag, tagIndex) {
-  return `${tagGroupCollapseKey(group, groupIndex)}:${String(tag?.id || `tag_${tagIndex + 1}`)}`;
-}
-
 function collapseAllTagCards() {
   collapsedTagGroups.clear();
-  collapsedTags.clear();
   (state.tagSchema.groups || []).forEach((group, groupIndex) => {
     collapsedTagGroups.add(tagGroupCollapseKey(group, groupIndex));
-    (group.tags || []).forEach((tag, tagIndex) => {
-      collapsedTags.add(tagCollapseKey(group, groupIndex, tag, tagIndex));
-    });
   });
-}
-
-function activationSummaryText(activation) {
-  const draft = activationDraftForEditor(activation);
-  if (!draft.enabled) return "未启用触发任务";
-  const totalMessages = draft.messages.length || 1;
-  const totalTimes = draft.messages.reduce((sum, message) => sum + Math.max(1, Number(message.maxTimes || 1)), 0);
-  return `${draft.polishByAgent ? "Agent 组织语言" : "原话发送"} · ${totalMessages} 条话术 · ${totalTimes} 次`;
-}
-
-function tagConditionSummary(tag) {
-  const condition = String(tag?.condition || "").replace(/\s+/g, " ").trim();
-  return condition || "未填写达标条件";
 }
 
 function renderTagSchemaEditor() {
@@ -1617,12 +1594,10 @@ function renderTagSchemaEditor() {
                   ${tagCount
                     ? (group.tags || [])
                         .map((tag, tagIndex) => {
-                          const tagKey = tagCollapseKey(group, groupIndex, tag, tagIndex);
-                          const tagCollapsed = collapsedTags.has(tagKey);
                           const activation = activationDraftForEditor(tag.activation || defaultActivationConfig());
                           const activationMessages = activation.messages.length ? activation.messages : [defaultActivationMessage()];
                           return `
-                            <article class="tag-row-card ${tagCollapsed ? "is-collapsed" : ""}" data-tag-index="${tagIndex}" data-tag-collapse-key="${escapeHtml(tagKey)}">
+                            <article class="tag-row-card" data-tag-index="${tagIndex}">
                               <div class="tag-row-head">
                                 <label class="tag-name-field">
                                   <span class="field-label">${icon("check")}标签</span>
@@ -1630,14 +1605,7 @@ function renderTagSchemaEditor() {
                                 </label>
                                 <div class="tag-card-actions">
                                   <button class="danger icon-button" data-remove-tag="${groupIndex}:${tagIndex}" type="button" aria-label="删除标签" title="删除标签">${icon("reset")}</button>
-                                  <button class="collapse-button" data-toggle-tag="${groupIndex}:${tagIndex}" type="button" aria-label="${tagCollapsed ? "展开标签" : "收起标签"}" aria-expanded="${String(!tagCollapsed)}">
-                                    <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
-                                  </button>
                                 </div>
-                              </div>
-                              <div class="tag-row-summary">
-                                <span>${escapeHtml(tagConditionSummary(tag))}</span>
-                                <span>${escapeHtml(activationSummaryText(activation))}</span>
                               </div>
                               <div class="tag-row-body">
                                 <label class="wide">
@@ -1717,12 +1685,6 @@ function bindTagSchemaEditorEvents() {
   els.tagGroupList.querySelectorAll("[data-toggle-tag-group]").forEach((button) => {
     button.addEventListener("click", () => toggleTagGroupCollapse(Number(button.dataset.toggleTagGroup)));
   });
-  els.tagGroupList.querySelectorAll("[data-toggle-tag]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const [groupIndex, tagIndex] = button.dataset.toggleTag.split(":").map(Number);
-      toggleTagCollapse(groupIndex, tagIndex);
-    });
-  });
   els.tagGroupList.querySelectorAll("[data-add-tag]").forEach((button) => {
     button.addEventListener("click", () => addTag(Number(button.dataset.addTag)));
   });
@@ -1757,19 +1719,6 @@ function toggleTagGroupCollapse(groupIndex) {
     collapsedTagGroups.delete(collapseKey);
   } else {
     collapsedTagGroups.add(collapseKey);
-  }
-  renderTagSchemaEditor();
-}
-
-function toggleTagCollapse(groupIndex, tagIndex) {
-  const group = state.tagSchema.groups[groupIndex];
-  const tag = group?.tags?.[tagIndex];
-  if (!group || !tag) return;
-  const collapseKey = tagCollapseKey(group, groupIndex, tag, tagIndex);
-  if (collapsedTags.has(collapseKey)) {
-    collapsedTags.delete(collapseKey);
-  } else {
-    collapsedTags.add(collapseKey);
   }
   renderTagSchemaEditor();
 }
@@ -1845,9 +1794,6 @@ function removeTagGroup(index) {
   const group = state.tagSchema.groups[index];
   if (group) {
     collapsedTagGroups.delete(tagGroupCollapseKey(group, index));
-    (group.tags || []).forEach((tag, tagIndex) => {
-      collapsedTags.delete(tagCollapseKey(group, index, tag, tagIndex));
-    });
   }
   state.tagSchema.groups.splice(index, 1);
   renderTagSchemaEditor();
@@ -1860,15 +1806,12 @@ function addTag(groupIndex) {
   const tag = { ...defaultTag(index), id: nextTagId(group, index) };
   group.tags = [...(group.tags || []), tag];
   collapsedTagGroups.delete(tagGroupCollapseKey(group, groupIndex));
-  collapsedTags.delete(tagCollapseKey(group, groupIndex, tag, group.tags.length - 1));
   renderTagSchemaEditor();
 }
 
 function removeTag(groupIndex, tagIndex) {
   const group = state.tagSchema.groups[groupIndex];
   if (!group) return;
-  const tag = group.tags?.[tagIndex];
-  if (tag) collapsedTags.delete(tagCollapseKey(group, groupIndex, tag, tagIndex));
   group.tags.splice(tagIndex, 1);
   renderTagSchemaEditor();
 }

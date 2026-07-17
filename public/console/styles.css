@@ -2133,8 +2133,7 @@ button.danger:hover {
   margin-left: auto;
 }
 
-.tag-group-card .collapse-button,
-.tag-row-card .collapse-button {
+.tag-group-card .collapse-button {
   flex: 0 0 auto;
   width: 34px;
   height: 34px;
@@ -2142,18 +2141,15 @@ button.danger:hover {
   padding: 0;
 }
 
-.tag-group-card .collapse-button .icon,
-.tag-row-card .collapse-button .icon {
+.tag-group-card .collapse-button .icon {
   transition: transform 140ms ease;
 }
 
-.tag-group-card.is-collapsed .collapse-button .icon,
-.tag-row-card.is-collapsed .collapse-button .icon {
+.tag-group-card.is-collapsed .collapse-button .icon {
   transform: rotate(-90deg);
 }
 
-.tag-group-summary,
-.tag-row-summary {
+.tag-group-summary {
   display: none;
   align-items: center;
   gap: 8px;
@@ -2163,8 +2159,7 @@ button.danger:hover {
   font-weight: 800;
 }
 
-.tag-group-summary span,
-.tag-row-summary span {
+.tag-group-summary span {
   min-width: 0;
   max-width: 100%;
   padding: 5px 9px;
@@ -2176,14 +2171,12 @@ button.danger:hover {
   white-space: nowrap;
 }
 
-.tag-group-card.is-collapsed .tag-group-summary,
-.tag-row-card.is-collapsed .tag-row-summary {
+.tag-group-card.is-collapsed .tag-group-summary {
   display: flex;
   flex-wrap: wrap;
 }
 
-.tag-group-card.is-collapsed .tag-group-body,
-.tag-row-card.is-collapsed .tag-row-body {
+.tag-group-card.is-collapsed .tag-group-body {
   display: none;
 }
 

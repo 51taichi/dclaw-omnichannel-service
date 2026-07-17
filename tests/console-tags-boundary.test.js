@@ -23,15 +23,16 @@ test("console renders tag chips and tag filters", () => {
   assert.match(css, /\.tag-chip/);
 });
 
-test("tag editor supports collapsible groups and tag cards", () => {
+test("tag editor supports collapsible groups with always-expanded tag cards", () => {
   assert.match(js, /collapsedTagGroups/);
-  assert.match(js, /collapsedTags/);
+  assert.doesNotMatch(js, /collapsedTags/);
   assert.match(js, /data-toggle-tag-group/);
-  assert.match(js, /data-toggle-tag="/);
+  assert.doesNotMatch(js, /data-toggle-tag="/);
   assert.match(css, /\.tag-row-list/);
   assert.match(css, /repeat\(auto-fit, minmax\(220px, 1fr\)\)/);
   assert.match(css, /calc\(\(100% - 10px\) \/ 2\)/);
   assert.match(css, /\.tag-row-card:only-child/);
+  assert.doesNotMatch(css, /\.tag-row-card\.is-collapsed/);
   assert.doesNotMatch(css, /calc\(\(100% - 40px\) \/ 5\)/);
 });
 
