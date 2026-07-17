@@ -2448,7 +2448,7 @@ function sessionStatusMeta(session) {
   const isHandoff = session?.handoffStatus === "human";
   return {
     className: isHandoff ? "is-human" : "is-ai",
-    label: isHandoff ? "人工接手中" : "AI接待中"
+    label: isHandoff ? "人工" : "AI"
   };
 }
 

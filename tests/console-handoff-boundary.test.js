@@ -45,11 +45,23 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
   assert.equal(app.includes("最近消息：${lastMessageAt}"), true);
   assert.equal(app.includes("data-tooltip="), true);
   assert.equal(app.includes("aria-label="), true);
-  assert.equal(app.includes("AI接待中"), true);
+  assert.equal(app.includes('label: isHandoff ? "人工" : "AI"'), true);
+  assert.equal(app.includes("AI接待中"), false);
+  assert.equal(app.includes("人工接手中"), false);
   assert.equal(app.includes("flow-session-status"), true);
   assert.equal(css.includes(".flow-session-icons"), true);
   assert.equal(css.includes(".session-icon::after"), true);
   assert.equal(css.includes(".handoff-button"), true);
+});
+
+test("flow session status labels do not change card or chat header layout", () => {
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*9px 58px 9px 9px/);
+  assert.match(css, /\.flow-session-status\s*\{[\s\S]*position:\s*absolute[\s\S]*top:\s*9px[\s\S]*right:\s*9px[\s\S]*min-width:\s*38px/);
+  assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*padding-right:\s*0/);
+  assert.match(css, /\.chat-head\s*\{[\s\S]*grid-template-columns:\s*minmax\(180px,\s*1fr\) minmax\(112px,\s*180px\) auto/);
+  assert.match(css, /\.chat-status-slot\s*\{[\s\S]*display:\s*flex[\s\S]*justify-content:\s*center/);
+  assert.match(css, /\.chat-status-badge\s*\{[\s\S]*min-width:\s*48px/);
+  assert.match(html, /class="chat-title-wrap"[\s\S]*id="chatStatusSlot" class="chat-status-slot"[\s\S]*class="chat-head-actions"/);
 });
 
 test("flow sessions can be filtered and human handoff sessions are pinned first", () => {
