@@ -36,10 +36,15 @@ test("server applies tag decisions only after valid agent replies", () => {
 });
 
 test("tag decisions cancel activation work for tags made inactive", () => {
-  const body = functionBody("applyAgentTagDecision");
-  assert.match(body, /acceptedInactiveTags/);
-  assert.match(body, /oldTagIds/);
-  assert.match(body, /cancelTagActivationTasks\(\{[\s\S]*groupId:[\s\S]*tagId:[\s\S]*reason: "tag_inactive"/);
+  const cancelBody = functionBody("cancelTagTasksForAcceptedChanges");
+  const applyBody = functionBody("applyAgentTagDecision");
+  assert.match(applyBody, /cancelTagTasksForAcceptedChanges\(\{/);
+  assert.match(cancelBody, /for \(const oldTagId of change\.oldTagIds \|\| \[\]\)/);
+  assert.match(cancelBody, /tagId: oldTagId/);
+  assert.match(cancelBody, /reason: "tag_changed"/);
+  assert.match(cancelBody, /if \(change\.action === "remove"\)/);
+  assert.match(cancelBody, /tagId: change\.tagId/);
+  assert.match(cancelBody, /reason: "tag_removed"/);
 });
 
 test("friend-added event can create date tags", () => {
