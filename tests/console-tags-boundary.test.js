@@ -67,3 +67,9 @@ test("tag item name and condition icons are swapped for clearer editing", () => 
   assert.match(js, /icon\("terminal"\)\}标签/);
   assert.match(js, /icon\("check"\)\}达标条件/);
 });
+
+test("tag activation message controls stay on one row beside the text", () => {
+  assert.match(css, /\.tag-activation-editor \.activation-message-card\s*\{[\s\S]*grid-template-columns: minmax\(140px, 1fr\) max-content;/);
+  assert.match(css, /\.tag-activation-editor \.activation-message-actions\s*\{[\s\S]*flex-wrap: nowrap;/);
+  assert.doesNotMatch(css, /\.tag-row-card \.activation-message-card\s*\{[\s\S]*grid-template-columns: 1fr;/);
+});

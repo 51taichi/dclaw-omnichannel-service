@@ -2232,13 +2232,36 @@ button.danger:hover {
   margin-top: 0;
 }
 
-.tag-row-card .activation-message-card {
-  grid-template-columns: 1fr;
+.tag-activation-editor .activation-message-card {
+  grid-template-columns: minmax(140px, 1fr) max-content;
+  gap: 8px;
+  align-items: center;
 }
 
-.tag-row-card .activation-message-actions {
-  justify-content: flex-start;
-  flex-wrap: wrap;
+.tag-activation-editor .activation-message-card textarea {
+  min-height: 46px;
+}
+
+.tag-activation-editor .activation-message-actions {
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+
+.tag-activation-editor .activation-message-control {
+  height: 34px;
+  gap: 4px;
+  padding: 0 6px;
+}
+
+.tag-activation-editor .activation-message-control input {
+  width: 42px;
+  min-width: 42px;
+}
+
+.tag-activation-editor .activation-remove-button {
+  width: 32px;
+  height: 32px;
 }
 
 @media (max-width: 760px) {
