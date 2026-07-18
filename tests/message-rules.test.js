@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   friendAddedName,
   isFriendAddedEvent,
+  isSystemFriendGreeting,
   shouldProcessInboundForAgent
 } from "../src/message-rules.js";
 
@@ -40,4 +41,31 @@ test("recognizes WorkTool friend-added callbacks without treating them as text",
 test("does not confuse other empty WorkTool callbacks with friend additions", () => {
   assert.equal(isFriendAddedEvent({ textType: 22, type: 999, friendName: "客户" }), false);
   assert.equal(friendAddedName({ textType: 22, type: 105, friendName: "   " }), "");
+});
+
+test("recognizes the WeCom automatic friend greeting but not similar customer text", () => {
+  assert.equal(
+    isSystemFriendGreeting({
+      textType: 1,
+      roomType: 2,
+      spoken: "我已经添加了你，现在我们可以开始聊天了。"
+    }),
+    true
+  );
+  assert.equal(
+    isSystemFriendGreeting({
+      textType: 1,
+      roomType: 2,
+      spoken: "我已经添加了你，现在可以聊聊产品了"
+    }),
+    false
+  );
+  assert.equal(
+    isSystemFriendGreeting({
+      textType: 1,
+      roomType: 1,
+      spoken: "我已经添加了你，现在我们可以开始聊天了。"
+    }),
+    false
+  );
 });

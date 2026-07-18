@@ -128,6 +128,7 @@ import {
 import {
   friendAddedName,
   isFriendAddedEvent,
+  isSystemFriendGreeting,
   shouldProcessInboundForAgent
 } from "./message-rules.js";
 import { normalizeUploadedFilename } from "./filenames.js";
@@ -430,6 +431,27 @@ function isPrivateMessage(message) {
 
 function shouldRecordConversationHistory(message) {
   return isPrivateMessage(message) || isGroupMessage(message);
+}
+
+function recordSystemFriendGreeting({ botId, binding, conversationKey, message }) {
+  if (!binding?.agentId) return;
+  upsertConversation({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    message
+  });
+  insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: message.receivedName || "",
+    content: message.spoken || message.rawSpoken || "",
+    rawPayload: {
+      ...message,
+      systemMessageType: "friend_greeting"
+    }
+  });
 }
 
 function isPrivateConversationKey(conversationKey) {
@@ -2625,6 +2647,16 @@ async function processIncomingMessage({ botId, message }) {
   if (isFriendAddedEvent(message)) {
     await handleFriendAddedEvent({ botId, binding, message, logContext });
     finishMessageProcessing({ messageKey, status: "processed" });
+    return;
+  }
+
+  if (isSystemFriendGreeting(message)) {
+    recordSystemFriendGreeting({ botId, binding, conversationKey, message });
+    logInfo("incoming.skipped", {
+      ...logContext,
+      reason: "system_friend_greeting"
+    });
+    finishMessageProcessing({ messageKey, status: "system_friend_greeting" });
     return;
   }
 

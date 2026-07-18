@@ -37,6 +37,18 @@ test("friend-added, unsupported, human handoff, and debug replies finish before 
   assert.ok(source.indexOf("handleDebugPing", handlerStart) < push);
 });
 
+test("automatic friend greetings are recorded but cannot cancel activation or invoke the Agent", () => {
+  const handlerStart = source.indexOf("async function processIncomingMessage");
+  const handlerEnd = source.indexOf("async function processCoalescedIncomingBatch", handlerStart);
+  const handler = source.slice(handlerStart, handlerEnd);
+  const greeting = handler.indexOf("isSystemFriendGreeting(message)");
+  const invalidation = handler.indexOf("invalidateFlowActivation");
+  const push = handler.indexOf("inboundCoalescer.push");
+  assert.ok(greeting >= 0 && greeting < invalidation && greeting < push);
+  assert.match(handler, /recordSystemFriendGreeting\(\{ botId, binding, conversationKey, message \}\)/);
+  assert.match(handler, /reason: "system_friend_greeting"/);
+});
+
 test("an unmentioned group continuation may only join an existing mentioned batch", () => {
   assert.match(source, /joinsMentionedGroupBatch/);
   assert.match(source, /isGroupMessage\(message\) && inboundCoalescer\.has\(coalesceKey\)/);
