@@ -186,6 +186,11 @@ function formatLocalDate(date = new Date()) {
   return localDate.toISOString().slice(0, 10);
 }
 
+function formatDisplayDateTime(value) {
+  const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+  return match ? `${match[1]} ${match[2]}` : String(value || "");
+}
+
 function saveBotSessions() {
   localStorage.setItem("worktool_console_bot_sessions", JSON.stringify(state.botSessions));
 }
@@ -2970,7 +2975,7 @@ function renderChatMessages(messages) {
             <div class="chat-bubble">
               <div class="chat-meta">
                 <small>${escapeHtml(sender)}</small>
-                <time>${escapeHtml(message.createdAt || "")}</time>
+                <time>${escapeHtml(formatDisplayDateTime(message.createdAt))}</time>
               </div>
               ${renderChatMessageContent(message)}
             </div>

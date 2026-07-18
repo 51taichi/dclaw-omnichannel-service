@@ -41,3 +41,10 @@ test("empty chat title follows the selected session type tab", () => {
   assert.match(app, /typeFilter === "group"/);
   assert.match(app, /请选择一个群聊会话/);
 });
+
+test("chat message timestamps render as compact date time text", () => {
+  assert.match(app, /function formatDisplayDateTime\(value\)/);
+  assert.match(app, /return match \? `\$\{match\[1\]\} \$\{match\[2\]\}` : String\(value \|\| ""\)/);
+  assert.match(app, /<time>\$\{escapeHtml\(formatDisplayDateTime\(message\.createdAt\)\)\}<\/time>/);
+  assert.doesNotMatch(app, /<time>\$\{escapeHtml\(message\.createdAt \|\| ""\)\}<\/time>/);
+});
