@@ -91,6 +91,60 @@ test("friend-added entry persists its first activation task with the re-entry st
   assert.equal(entry.task.messageContent, "道友在吗");
 });
 
+test("duplicate friend-added callbacks do not re-enter after entry activation is complete", () => {
+  const { botId, agentId, conversationKey, machine } = setup();
+  const activation = {
+    enabled: true,
+    polishByAgent: false,
+    messages: [{ content: "道友，刚给你发学习资料，看过了吗", intervalMinutes: 10, maxTimes: 1 }]
+  };
+  const first = db.beginFriendAddedFlowEntry({
+    botId,
+    conversationKey,
+    machine,
+    cooldownMs: 10 * 60 * 1000,
+    occurredAt: "2026-07-16T11:20:00.000Z",
+    activationTask: {
+      agentId,
+      activation,
+      anchorAt: "2026-07-16T11:20:00.000Z",
+      dueAt: "2026-07-16T11:30:00.000Z"
+    }
+  });
+  const [claimed] = db.claimDueFlowActivationTasks({
+    nowIso: "2026-07-16T11:30:01.000Z",
+    staleBeforeIso: "2026-07-16T10:00:00.000Z"
+  }).filter((task) => task.conversationKey === conversationKey);
+  assert.equal(claimed.id, first.task.id);
+  const delivered = db.finalizeFlowActivationTaskDelivery({
+    id: claimed.id,
+    worktoolMessageIds: ["first-reminder"]
+  });
+  assert.deepEqual(delivered.progress, { nodeId: "node_1", messageIndex: 1, sentCount: 0 });
+
+  const duplicate = db.beginFriendAddedFlowEntry({
+    botId,
+    conversationKey,
+    machine,
+    cooldownMs: 10 * 60 * 1000,
+    occurredAt: "2026-07-16T11:30:05.000Z",
+    activationTask: {
+      agentId,
+      activation,
+      anchorAt: "2026-07-16T11:30:05.000Z",
+      dueAt: "2026-07-16T11:40:05.000Z"
+    }
+  });
+
+  assert.equal(duplicate.status, "duplicate");
+  assert.equal(duplicate.task, null);
+  assert.equal(duplicate.session.activationGeneration, first.session.activationGeneration);
+  assert.deepEqual(
+    db.listFlowActivationTasks({ conversationKey }).map((task) => task.status),
+    ["sent"]
+  );
+});
+
 test("friend-added re-entry never advances an old delivery into the new generation", () => {
   const { botId, agentId, conversationKey, machine } = setup();
   const first = db.beginFriendAddedFlowEntry({
@@ -111,6 +165,12 @@ test("friend-added re-entry never advances an old delivery into the new generati
   }).filter((task) => task.conversationKey === conversationKey);
   assert.equal(claimed.length, 1);
   db.cancelFlowActivationTasks({ conversationKey, reason: "customer_replied" });
+  db.updateFlowSessionNode({
+    botId,
+    conversationKey,
+    nextNodeId: "node_2",
+    reason: "test_transition"
+  });
   const reentry = db.beginFriendAddedFlowEntry({
     botId,
     conversationKey,
@@ -132,10 +192,11 @@ test("friend-added re-entry never advances an old delivery into the new generati
   assert.equal(finalized.task.wasCanceled, true);
   assert.equal(finalized.progress, null);
   assert.equal(db.getFlowSession(conversationKey).activationGeneration, reentry.session.activationGeneration);
-  assert.deepEqual(
-    db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }),
-    { nodeId: "node_1", messageIndex: 0, sentCount: 0 }
-  );
+  assert.deepEqual(db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }), {
+    nodeId: "node_1",
+    messageIndex: 0,
+    sentCount: 0
+  });
   assert.equal(reentry.task.status, "pending");
   assert.equal(db.listFlowActivationTasks({ conversationKey }).at(-1).messageContent, "新提醒");
 });
@@ -201,13 +262,19 @@ test("friend-added entry creates, deduplicates, then re-enters without clearing 
   assert.equal(db.listFlowActivationTasks({ conversationKey }).at(-1).status, "canceled");
 });
 
-test("friend-added re-entry has no default cooldown", () => {
+test("friend-added re-entry has no default cooldown after leaving the entry node", () => {
   const { botId, conversationKey, machine } = setup();
   const first = db.beginFriendAddedFlowEntry({
     botId,
     conversationKey,
     machine,
     occurredAt: "2026-07-16T10:00:00.000Z"
+  });
+  db.updateFlowSessionNode({
+    botId,
+    conversationKey,
+    nextNodeId: "node_2",
+    reason: "test_transition"
   });
   const second = db.beginFriendAddedFlowEntry({
     botId,

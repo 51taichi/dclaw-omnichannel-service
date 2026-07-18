@@ -46,6 +46,7 @@ test("friend-added activation uses durable re-entry and reports cooldown skips",
 
   assert.equal(handler.includes("beginFriendAddedFlowEntry"), true);
   assert.equal(handler.includes('reason: "friend_added_cooldown"'), true);
+  assert.equal(handler.includes('reason: "friend_added_duplicate"'), true);
   assert.equal(handler.includes("existing_entry_session"), false);
 });
 

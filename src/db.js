@@ -1544,6 +1544,10 @@ export function beginFriendAddedFlowEntry({
       db.exec("COMMIT");
       return { status: "cooldown", session: rowToFlowSession(row), task: null };
     }
+    if (row.current_node_id === entryNodeId) {
+      db.exec("COMMIT");
+      return { status: "duplicate", session: rowToFlowSession(row), task: null };
+    }
 
     db.prepare(`
       UPDATE flow_activation_tasks

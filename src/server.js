@@ -1311,6 +1311,15 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     });
     return "skipped";
   }
+  if (entryResult.status === "duplicate") {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      friendName,
+      conversationKey,
+      reason: "friend_added_duplicate"
+    });
+    return "skipped";
+  }
   if (!canScheduleActivation) {
     logInfo("friend_added.skipped", {
       ...logContext,
