@@ -22,6 +22,10 @@ test("console loads and saves tag schemas", () => {
 
 test("console renders tag chips and tag filters", () => {
   assert.match(js, /renderConversationTags/);
+  assert.match(js, /function renderConversationDateTag\(tags = \[\]\)/);
+  assert.match(js, /\.find\(\(tag\) => tag\?\.tagType === "date"\)/);
+  assert.match(js, /if \(!dateTag\) return ""/);
+  assert.match(js, /includeDate \|\| tag\?\.tagType !== "date"/);
   assert.match(js, /function sortConversationTagsForDisplay\(tags = \[\]\)/);
   assert.match(js, /const aDate = a\?\.tagType === "date" \? 0 : 1/);
   assert.match(js, /const visibleTags = sortConversationTagsForDisplay/);

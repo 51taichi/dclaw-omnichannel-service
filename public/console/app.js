@@ -1618,8 +1618,12 @@ function sortConversationTagsForDisplay(tags = []) {
   });
 }
 
-function renderConversationTags(tags = []) {
-  const visibleTags = sortConversationTagsForDisplay(Array.isArray(tags) ? tags.filter(Boolean) : []);
+function renderConversationTags(tags = [], { includeDate = true } = {}) {
+  const visibleTags = sortConversationTagsForDisplay(
+    Array.isArray(tags)
+      ? tags.filter((tag) => Boolean(tag) && (includeDate || tag?.tagType !== "date"))
+      : []
+  );
   if (!visibleTags.length) return "";
   return `
     <span class="conversation-tags">
@@ -1632,6 +1636,13 @@ function renderConversationTags(tags = []) {
         .join("")}
     </span>
   `;
+}
+
+function renderConversationDateTag(tags = []) {
+  const dateTag = (Array.isArray(tags) ? tags : []).find((tag) => tag?.tagType === "date");
+  if (!dateTag) return "";
+  const title = [dateTag.tagName, dateTag.reason].filter(Boolean).join("\n");
+  return `<span class="flow-session-date-tag"><span class="tag-chip is-date" title="${escapeHtml(title)}">${icon("tag")}<span>${escapeHtml(dateTag.tagName || "-")}</span></span></span>`;
 }
 
 function enabledManualTagGroups() {
@@ -2812,10 +2823,11 @@ function renderFlowSessions({ animateFrom = null } = {}) {
               <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
-                  <strong>${escapeHtml(name)}</strong>
+                  <strong class="flow-session-name" title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
                 </span>
+                ${renderConversationDateTag(session.tags || [])}
                 <span class="flow-session-tag-zone">
-                  ${renderConversationTags(session.tags || [])}
+                  ${renderConversationTags(session.tags || [], { includeDate: false })}
                 </span>
                 <span class="flow-session-tools">
                   <small class="flow-session-icons">
