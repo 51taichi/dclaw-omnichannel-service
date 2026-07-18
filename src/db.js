@@ -2293,6 +2293,21 @@ function backfillConversationFirstSeenDateTags(agentId) {
   }
 }
 
+export function backfillEnabledConversationFirstSeenDateTags() {
+  const schemas = db.prepare(`
+    SELECT agent_id, config_json
+    FROM agent_tag_schemas
+  `).all();
+  let agentCount = 0;
+  for (const row of schemas) {
+    const schema = normalizeTagSchema(parseJson(row.config_json, {}));
+    if (!schema.dateTag.enabled) continue;
+    backfillConversationFirstSeenDateTags(row.agent_id);
+    agentCount += 1;
+  }
+  return agentCount;
+}
+
 function cancelObsoleteTagActivationTasksForSchema({ agentId, schema, timestamp = now() }) {
   const activeKeys = new Set();
   for (const group of schema.groups || []) {

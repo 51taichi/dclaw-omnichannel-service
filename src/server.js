@@ -34,6 +34,7 @@ import {
   verifyAccessKey
 } from "./auth.js";
 import {
+  backfillEnabledConversationFirstSeenDateTags,
   beginMessageProcessing,
   beginFriendAddedFlowEntry,
   buildMessageKey,
@@ -4443,6 +4444,9 @@ app.use((error, req, res, next) => {
     message: error.message || "internal server error"
   });
 });
+
+const dateTagBackfillAgentCount = backfillEnabledConversationFirstSeenDateTags();
+logInfo("customer_date_tags.backfilled", { agentCount: dateTagBackfillAgentCount });
 
 app.listen(port, host, () => {
   logInfo("service.started", { host, port });

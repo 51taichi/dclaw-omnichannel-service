@@ -52,6 +52,13 @@ test("friend-added event can create date tags", () => {
   assert.match(source, /friend_added\.date_tag\.applied/);
 });
 
+test("service startup backfills enabled first-seen date tags", () => {
+  const backfillIndex = source.indexOf("backfillEnabledConversationFirstSeenDateTags();");
+  const listenIndex = source.indexOf("app.listen(port, host");
+  assert.ok(backfillIndex >= 0);
+  assert.ok(backfillIndex < listenIndex);
+});
+
 test("conversation reset and handoff cancel tag activation work", () => {
   assert.match(source, /cancelTagActivationTasks\(\{[\s\S]*reason: "human_handoff"/);
   assert.match(source, /cancelTagActivationTasks\(\{[\s\S]*reason: "conversation_reset"/);
