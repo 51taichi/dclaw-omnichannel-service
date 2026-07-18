@@ -57,6 +57,47 @@ test("buildDclawRequest sends compact recent messages without nested raw payload
   assert.doesNotMatch(JSON.stringify(request.metadata), /agentReply/);
 });
 
+test("normal inbound requests hide node activation scripts from the agent", () => {
+  const activation = {
+    enabled: true,
+    polishByAgent: false,
+    messages: [{ content: "刚给你发学习资料，看过了吗", intervalMinutes: 10, maxTimes: 1 }]
+  };
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:新客户" },
+    message: {
+      messageId: "m-activation-boundary",
+      spoken: "我已经添加了你，现在我们可以开始聊天了。",
+      rawSpoken: "我已经添加了你，现在我们可以开始聊天了。",
+      roomType: 2,
+      textType: 1,
+      receivedName: "新客户",
+      atMe: "false"
+    },
+    flow: {
+      machine: {
+        name: "课程销售状态机",
+        nodes: [{ id: "node_1", name: "发资料后回访", goal: "确认资料是否看过", activation }]
+      },
+      currentNode: {
+        id: "node_1",
+        name: "发资料后回访",
+        goal: "确认资料是否看过",
+        completionCriteria: "客户明确反馈",
+        activation
+      },
+      session: { currentNodeId: "node_1" }
+    }
+  });
+
+  assert.match(request.message, /确认资料是否看过/);
+  assert.doesNotMatch(request.message, /刚给你发学习资料/);
+  assert.doesNotMatch(request.message, /"activation"/);
+  assert.doesNotMatch(JSON.stringify(request.metadata), /刚给你发学习资料/);
+  assert.doesNotMatch(JSON.stringify(request.metadata), /"activation"/);
+});
+
 test("buildDclawActivationRequest also sends compact recent messages", () => {
   const request = buildDclawActivationRequest({
     binding,

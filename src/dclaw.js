@@ -466,8 +466,23 @@ export function buildDclawTagActivationRequest({
 
 function compactFlowForAgent(flow) {
   if (!flow || typeof flow !== "object" || Array.isArray(flow)) return flow || null;
+  const compactNode = (node) => {
+    if (!node || typeof node !== "object" || Array.isArray(node)) return node;
+    const { activation: _activation, ...visibleNode } = node;
+    return visibleNode;
+  };
+  const machine = flow.machine && typeof flow.machine === "object" && !Array.isArray(flow.machine)
+    ? {
+        ...flow.machine,
+        nodes: Array.isArray(flow.machine.nodes)
+          ? flow.machine.nodes.map(compactNode)
+          : flow.machine.nodes
+      }
+    : flow.machine;
   return {
     ...flow,
+    machine,
+    currentNode: compactNode(flow.currentNode),
     recentMessages: compactRecentMessages(flow.recentMessages)
   };
 }
