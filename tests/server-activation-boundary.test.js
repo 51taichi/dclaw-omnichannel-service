@@ -116,8 +116,12 @@ test("friend-added re-entry never lets a canceled old task advance new activatio
   assert.equal(dbSource.includes("finalizeFlowActivationTaskDelivery"), true);
 });
 
-test("saving a flow machine resets activation work for every bot bound to its agent", () => {
+test("saving a flow machine invalidates pending activation work without clearing progress", () => {
   assert.equal(dbSource.includes("resetAgentFlowActivationState"), true);
   assert.equal(dbSource.includes("flow_machine_saved"), true);
-  assert.equal(dbSource.includes("activation_state_json = NULL"), true);
+  const helperStart = dbSource.indexOf("function resetAgentFlowActivationState");
+  const helperEnd = dbSource.indexOf("\nexport function getFlowMachine", helperStart);
+  const helperSource = dbSource.slice(helperStart, helperEnd);
+  assert.equal(helperSource.includes("activation_generation = COALESCE(activation_generation, 0) + 1"), true);
+  assert.equal(helperSource.includes("activation_state_json = NULL"), false);
 });

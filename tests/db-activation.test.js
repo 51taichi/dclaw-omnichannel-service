@@ -240,9 +240,47 @@ test("saving an agent flow machine invalidates activation work without changing 
     const current = db.getFlowSessionForBot(session);
     assert.equal(current.currentNodeId, "node_2");
     assert.equal(current.activationGeneration, session.generation + 1);
-    assert.equal(current.activationState, null);
+    assert.deepEqual(current.activationState, { nodeId: "node_2", messageIndex: 0, sentCount: 1 });
     assert.equal(db.listFlowActivationTasks({ conversationKey: session.conversationKey })[0].status, "canceled");
   }
+});
+
+test("saving an agent flow machine preserves completed activation progress", () => {
+  const agentId = "agent_machine_save_progress";
+  const botId = "bot_machine_save_progress";
+  const conversationKey = `${botId}:private:保存进度客户`;
+  const machineConfig = {
+    name: "保存状态机进度",
+    version: "1.0.0",
+    entryNodeId: "node_1",
+    nodes: [
+      { id: "node_1", name: "节点一", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "" }
+    ]
+  };
+  ensureBotAgent(botId, agentId);
+  const machine = db.upsertFlowMachine({ agentId, enabled: true, config: machineConfig });
+  const session = db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  db.advanceFlowActivationProgress({
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    messageIndex: 0,
+    attemptNumber: 1,
+    messages: [{ content: "提醒", intervalMinutes: 10, maxTimes: 1 }]
+  });
+  assert.deepEqual(db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }), {
+    nodeId: "node_1",
+    messageIndex: 1,
+    sentCount: 0
+  });
+
+  db.upsertFlowMachine({ agentId, enabled: true, config: { ...machineConfig, version: "1.0.1" } });
+
+  assert.deepEqual(db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }), {
+    nodeId: "node_1",
+    messageIndex: 1,
+    sentCount: 0
+  });
 });
 
 test("canceled delivery advances only the same node and never regresses activation progress", () => {

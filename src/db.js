@@ -1422,7 +1422,6 @@ function resetAgentFlowActivationState({ agentId, timestamp = now() }) {
   db.prepare(`
     UPDATE flow_sessions
     SET activation_generation = COALESCE(activation_generation, 0) + 1,
-        activation_state_json = NULL,
         updated_at = ?
     WHERE bot_id IN (${boundBots})
   `).run(timestamp, agentId);
