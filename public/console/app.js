@@ -2710,9 +2710,20 @@ function closeFlowSessionTagFilterMenu() {
   els.flowSessionTagFilterButton.setAttribute("aria-expanded", "false");
 }
 
+function positionFlowSessionTagFilterMenu() {
+  if (!els.flowSessionTagFilterMenu || !els.flowSessionTagFilterButton) return;
+  const rect = els.flowSessionTagFilterButton.getBoundingClientRect();
+  const menuWidth = Math.max(220, rect.width);
+  const left = Math.min(Math.max(12, rect.left), window.innerWidth - menuWidth - 12);
+  els.flowSessionTagFilterMenu.style.left = `${left}px`;
+  els.flowSessionTagFilterMenu.style.top = `${rect.bottom + 6}px`;
+  els.flowSessionTagFilterMenu.style.width = `${menuWidth}px`;
+}
+
 function toggleFlowSessionTagFilterMenu() {
   if (!els.flowSessionTagFilterMenu || !els.flowSessionTagFilterButton) return;
   const willOpen = els.flowSessionTagFilterMenu.hidden;
+  if (willOpen) positionFlowSessionTagFilterMenu();
   els.flowSessionTagFilterMenu.hidden = !willOpen;
   els.flowSessionTagFilterButton.setAttribute("aria-expanded", String(willOpen));
 }
@@ -3698,8 +3709,13 @@ document.addEventListener("click", (event) => {
   hideFlowSessionManualTagMenu();
   closeFlowSessionTagFilterMenu();
 });
+window.addEventListener("resize", closeFlowSessionTagFilterMenu);
+window.addEventListener("scroll", closeFlowSessionTagFilterMenu, true);
 document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") hideFlowSessionManualTagMenu();
+  if (event.key === "Escape") {
+    hideFlowSessionManualTagMenu();
+    closeFlowSessionTagFilterMenu();
+  }
 });
 els.flowSessionDateTagFilter?.addEventListener("input", () => {
   normalizeFlowSessionDateTagFilter();
