@@ -123,7 +123,7 @@ function currentGroupTags(currentTags, groupId) {
   return currentTags.filter((tag) => tag.groupId === groupId);
 }
 
-export function adjudicateTagDecision({ schema, currentTags = [], decision = {} }) {
+export function adjudicateTagDecision({ schema, currentTags = [], decision = {}, ignoreOneWay = false }) {
   const normalizedSchema = normalizeTagSchema(schema);
   const normalizedDecision = normalizeTagDecision(decision);
   const next = new Map(
@@ -162,7 +162,7 @@ export function adjudicateTagDecision({ schema, currentTags = [], decision = {} 
     if (group.exclusive) {
       const current = existing[0] || null;
       if (current?.tagId === tag.id) continue;
-      if (group.oneWay && current) {
+      if (group.oneWay && current && !ignoreOneWay) {
         const currentTag = findTag(group, current.tagId);
         if (currentTag && tag.order < currentTag.order) {
           rejected.push({ ...action, action: "add", reason: "one_way_regression" });

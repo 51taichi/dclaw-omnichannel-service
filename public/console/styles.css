@@ -2502,6 +2502,119 @@ button.danger:hover {
   white-space: nowrap;
 }
 
+.flow-session-tag-menu {
+  position: fixed;
+  z-index: 120;
+  display: grid;
+  width: min(320px, calc(100vw - 24px));
+  max-height: min(460px, calc(100vh - 24px));
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(36, 42, 104, 0.18);
+}
+
+.flow-session-tag-menu[hidden] {
+  display: none;
+}
+
+.flow-session-manual-tag-menu-head {
+  display: grid;
+  gap: 3px;
+  padding: 4px 5px 9px;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
+}
+
+.flow-session-manual-tag-menu-head strong {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.flow-session-manual-tag-menu-head small,
+.flow-session-manual-tag-empty {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.flow-session-manual-tag-groups {
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.flow-session-manual-tag-group {
+  display: grid;
+  gap: 6px;
+}
+
+.flow-session-manual-tag-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: color-mix(in srgb, var(--text) 72%, var(--accent));
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.flow-session-manual-tag-group-title .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.flow-session-manual-tag-options {
+  display: grid;
+  gap: 5px;
+}
+
+.flow-session-manual-tag-option {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--cyan) 5%, #ffffff);
+  color: #302321;
+  font-size: 12px;
+  font-weight: 900;
+  text-align: left;
+}
+
+.flow-session-manual-tag-option:hover,
+.flow-session-manual-tag-option.selected {
+  border-color: color-mix(in srgb, var(--accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--accent) 10%, #ffffff);
+  color: var(--accent-dark);
+}
+
+.flow-session-manual-tag-option span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.manual-tag-check {
+  display: inline-grid;
+  place-items: center;
+  color: var(--accent);
+}
+
+.manual-tag-check .icon {
+  width: 14px;
+  height: 14px;
+}
+
+.flow-session-manual-tag-empty {
+  padding: 10px;
+  text-align: center;
+}
+
 .flow-session-card {
   position: relative;
   display: grid;
@@ -2511,6 +2624,7 @@ button.danger:hover {
   gap: 10px 9px;
   width: 100%;
   height: auto;
+  min-height: 78px;
   padding: 9px;
   border: 1px solid color-mix(in srgb, var(--cyan) 32%, var(--line));
   border-radius: 8px;

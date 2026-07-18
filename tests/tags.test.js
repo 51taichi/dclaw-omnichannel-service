@@ -8,8 +8,9 @@ import {
   normalizeTagDecision
 } from "../src/tags.js";
 
-test("dateTagIdFor formats server date tags as yyyymmdd", () => {
+test("dateTagIdFor formats server date tags in Beijing time as yyyymmdd", () => {
   assert.equal(dateTagIdFor("2026-07-17T03:04:05.000Z"), "20260717");
+  assert.equal(dateTagIdFor("2026-07-17T16:30:00.000Z"), "20260718");
 });
 
 test("normalizeTagSchema keeps enabled groups and normalizes activation messages", () => {
@@ -117,6 +118,33 @@ test("adjudicateTagDecision rejects one-way exclusive rollback", () => {
 
   assert.deepEqual(result.nextTags.map((tag) => tag.tagId), ["a"]);
   assert.equal(result.rejected[0].reason, "one_way_regression");
+});
+
+test("adjudicateTagDecision can ignore one-way rules for manual overrides", () => {
+  const schema = normalizeTagSchema({
+    groups: [{
+      id: "intent",
+      name: "意向",
+      exclusive: true,
+      oneWay: true,
+      tags: [
+        { id: "c", name: "C类", condition: "了解" },
+        { id: "b", name: "B类", condition: "询问" },
+        { id: "a", name: "A类", condition: "强意向" }
+      ]
+    }]
+  });
+
+  const result = adjudicateTagDecision({
+    schema,
+    currentTags: [{ groupId: "intent", tagId: "a", name: "A类" }],
+    decision: normalizeTagDecision({ add: [{ groupId: "intent", tagId: "b", reason: "人工修正" }] }),
+    ignoreOneWay: true
+  });
+
+  assert.deepEqual(result.nextTags.map((tag) => tag.tagId), ["b"]);
+  assert.equal(result.accepted[0].action, "replace");
+  assert.deepEqual(result.accepted[0].oldTagIds, ["a"]);
 });
 
 test("adjudicateTagDecision keeps non-exclusive tags together", () => {

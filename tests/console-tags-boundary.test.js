@@ -57,6 +57,20 @@ test("console renders tag chips and tag filters", () => {
   assert.match(css, /\.tag-chip \.icon\s*\{[\s\S]*width:\s*12px[\s\S]*height:\s*12px/);
 });
 
+test("conversation cards expose a right click manual tag menu", () => {
+  assert.match(html, /id="flowSessionTagMenu" class="flow-session-tag-menu"/);
+  assert.match(js, /flowSessionTagMenu: document\.querySelector\("#flowSessionTagMenu"\)/);
+  assert.match(js, /function renderFlowSessionManualTagMenu\(\{ session, x, y \}\)/);
+  assert.match(js, /button\.addEventListener\("contextmenu"/);
+  assert.match(js, /function enabledManualTagGroups\(\)/);
+  assert.match(js, /group\.enabled !== false[\s\S]*tag\.enabled !== false/);
+  assert.match(js, /function applyManualConversationTag\(\{ conversationKey, groupId, tagId, action \}\)/);
+  assert.match(js, /\/api\/flow-sessions\/\$\{encodeURIComponent\(conversationKey\)\}\/tags\/manual/);
+  assert.match(js, /hideFlowSessionManualTagMenu/);
+  assert.match(css, /\.flow-session-tag-menu\s*\{[\s\S]*position:\s*fixed/);
+  assert.match(css, /\.flow-session-manual-tag-option\s*\{[\s\S]*grid-template-columns:\s*18px minmax\(0,\s*1fr\)/);
+});
+
 test("tag editor supports collapsible groups with always-expanded tag cards", () => {
   assert.match(js, /collapsedTagGroups/);
   assert.match(js, /if \(tabName === "tags"\) \{[\s\S]*collapseAllTagCards\(\);[\s\S]*renderTagSchemaEditor\(\);[\s\S]*\}/);

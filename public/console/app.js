@@ -59,6 +59,7 @@ const els = {
   flowSessionTagFilter: document.querySelector("#flowSessionTagFilter"),
   flowSessionTagFilterButton: document.querySelector("#flowSessionTagFilterButton"),
   flowSessionTagFilterMenu: document.querySelector("#flowSessionTagFilterMenu"),
+  flowSessionTagMenu: document.querySelector("#flowSessionTagMenu"),
   flowSessionDateTagFilter: document.querySelector("#flowSessionDateTagFilter"),
   chatTitle: document.querySelector("#chatTitle"),
   chatStatusBadge: document.querySelector("#chatStatusBadge"),
@@ -1587,6 +1588,134 @@ function renderConversationTags(tags = []) {
   `;
 }
 
+function enabledManualTagGroups() {
+  return (state.tagSchema?.groups || [])
+    .filter((group) => group.enabled !== false)
+    .map((group) => ({
+      ...group,
+      tags: (group.tags || []).filter((tag) => tag.enabled !== false)
+    }))
+    .filter((group) => group.tags.length);
+}
+
+function conversationHasTag(session, groupId, tagId) {
+  return (session?.tags || []).some((tag) => tag.tagType !== "date" && tag.groupId === groupId && tag.tagId === tagId);
+}
+
+function hideFlowSessionManualTagMenu() {
+  if (!els.flowSessionTagMenu) return;
+  els.flowSessionTagMenu.hidden = true;
+  els.flowSessionTagMenu.innerHTML = "";
+}
+
+function positionFlowSessionManualTagMenu(menu, x, y) {
+  const rect = menu.getBoundingClientRect();
+  const padding = 12;
+  const left = Math.max(padding, Math.min(x, window.innerWidth - rect.width - padding));
+  const top = Math.max(padding, Math.min(y, window.innerHeight - rect.height - padding));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
+}
+
+function updateConversationTagsInState(conversationKey, tags = []) {
+  const previousPositions = captureFlowSessionPositions();
+  currentFlowSessions = currentFlowSessions.map((session) =>
+    session.conversationKey === conversationKey ? { ...session, tags } : session
+  );
+  if (state.selectedFlowConversationKey === conversationKey) {
+    currentFlowSession = { ...(currentFlowSession || {}), tags };
+    if (els.chatTagList) els.chatTagList.innerHTML = renderConversationTags(tags);
+  }
+  renderFlowSessionTagFilter();
+  renderFlowSessionDateTagFilter();
+  renderFlowSessions({ animateFrom: previousPositions });
+}
+
+async function applyManualConversationTag({ conversationKey, groupId, tagId, action }) {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (!botId || !conversationKey || !groupId || !tagId) {
+    toast("请选择要打标的会话和标签");
+    return;
+  }
+  const result = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/tags/manual`, {
+    method: "POST",
+    botId,
+    body: JSON.stringify({
+      botId,
+      groupId,
+      tagId,
+      action
+    })
+  });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  hideFlowSessionManualTagMenu();
+  updateConversationTagsInState(conversationKey, result.tags || []);
+  toast(action === "remove" ? "标签已移除" : "标签已更新");
+}
+
+function renderFlowSessionManualTagMenu({ session, x, y }) {
+  if (!els.flowSessionTagMenu || !session?.conversationKey) return;
+  const groups = enabledManualTagGroups();
+  els.flowSessionTagMenu.innerHTML = groups.length
+    ? `
+      <div class="flow-session-manual-tag-menu-head">
+        <strong>手动打标签</strong>
+        <small>${escapeHtml(flowSessionDisplayName(session))}</small>
+      </div>
+      <div class="flow-session-manual-tag-groups">
+        ${groups
+          .map((group) => `
+            <section class="flow-session-manual-tag-group" aria-label="${escapeHtml(group.name)}">
+              <div class="flow-session-manual-tag-group-title">
+                ${icon(group.exclusive ? "tag" : "info")}
+                <span>${escapeHtml(group.name)}</span>
+              </div>
+              <div class="flow-session-manual-tag-options">
+                ${group.tags
+                  .map((tag) => {
+                    const selected = conversationHasTag(session, group.id, tag.id);
+                    const action = group.exclusive ? "set" : selected ? "remove" : "add";
+                    const role = group.exclusive ? "menuitemradio" : "menuitemcheckbox";
+                    return `
+                      <button
+                        class="flow-session-manual-tag-option ${selected ? "selected" : ""}"
+                        data-manual-tag-action="${action}"
+                        data-manual-tag-group-id="${escapeHtml(group.id)}"
+                        data-manual-tag-id="${escapeHtml(tag.id)}"
+                        type="button"
+                        role="${role}"
+                        aria-checked="${selected ? "true" : "false"}"
+                      >
+                        <span class="manual-tag-check" aria-hidden="true">${selected ? icon("check") : ""}</span>
+                        <span>${escapeHtml(tag.name)}</span>
+                      </button>
+                    `;
+                  })
+                  .join("")}
+              </div>
+            </section>
+          `)
+          .join("")}
+      </div>
+    `
+    : `<div class="flow-session-manual-tag-empty">当前 Agent 没有可用标签。</div>`;
+  els.flowSessionTagMenu.hidden = false;
+  positionFlowSessionManualTagMenu(els.flowSessionTagMenu, x, y);
+  els.flowSessionTagMenu.querySelectorAll("[data-manual-tag-action]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyManualConversationTag({
+        conversationKey: session.conversationKey,
+        groupId: button.dataset.manualTagGroupId,
+        tagId: button.dataset.manualTagId,
+        action: button.dataset.manualTagAction
+      }).catch(toastError);
+    });
+  });
+}
+
 function nextTagGroupId(start = state.tagSchema.groups.length + 1) {
   let index = Math.max(1, start);
   const used = new Set((state.tagSchema.groups || []).map((group) => group.id));
@@ -2652,6 +2781,16 @@ function renderFlowSessions({ animateFrom = null } = {}) {
     button.addEventListener("click", () =>
       openFlowSession(button.dataset.flowSession).catch(toastError)
     );
+    button.addEventListener("contextmenu", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const session = currentFlowSessions.find((item) => item.conversationKey === button.dataset.flowSession);
+      renderFlowSessionManualTagMenu({
+        session,
+        x: event.clientX,
+        y: event.clientY
+      });
+    });
   });
   els.flowSessionList.querySelectorAll("[data-flow-handoff-switch]").forEach((switchEl) => {
     const toggle = (event) => {
@@ -3486,8 +3625,13 @@ els.flowSessionTagFilterMenu?.addEventListener("change", (event) => {
   setFlowSessionTagFilterValues(values);
 });
 document.addEventListener("click", (event) => {
+  if (event.target.closest(".flow-session-tag-menu")) return;
   if (event.target.closest(".tag-multi-select")) return;
+  hideFlowSessionManualTagMenu();
   closeFlowSessionTagFilterMenu();
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") hideFlowSessionManualTagMenu();
 });
 els.flowSessionDateTagFilter?.addEventListener("input", () => {
   normalizeFlowSessionDateTagFilter();

@@ -3070,6 +3070,78 @@ function applyAgentTagDecision({ botId, binding, conversationKey, agentReply }) 
   };
 }
 
+function applyManualConversationTagChange({ botId, binding, conversationKey, groupId, tagId, action = "set" }) {
+  if (!binding?.agentId) throw new Error("no enabled bot binding");
+  const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
+  const group = schema.groups.find((item) => item.id === groupId);
+  const tag = group?.tags.find((item) => item.id === tagId);
+  if (!group || !tag) throw new Error("tag not found");
+
+  const normalizedAction = action === "remove" ? "remove" : "add";
+  const currentTags = listConversationTags({ botId, agentId: binding.agentId, conversationKey });
+  const decision = normalizedAction === "remove"
+    ? { remove: [{ groupId, tagId, reason: "控制台手动移除标签" }] }
+    : { add: [{ groupId, tagId, reason: "控制台手动打标签" }] };
+  const result = adjudicateTagDecision({
+    schema,
+    currentTags: currentTags.filter((item) => item.tagType !== "date"),
+    decision,
+    ignoreOneWay: true
+  });
+
+  if (!result.accepted.length && result.rejected.length) {
+    throw new Error(`tag change rejected: ${result.rejected[0].reason}`);
+  }
+  if (!result.accepted.length) {
+    return {
+      tags: currentTags,
+      accepted: [],
+      rejected: result.rejected,
+      canceledTagActivationTaskCount: 0,
+      scheduledTagActivationTasks: []
+    };
+  }
+
+  const canceledTagActivationTaskCount = cancelTagTasksForAcceptedChanges({
+    botId,
+    binding,
+    conversationKey,
+    accepted: result.accepted
+  });
+  const tags = applyConversationTagChanges({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    accepted: result.accepted,
+    rejected: result.rejected,
+    nextTags: result.nextTags,
+    source: "manual_tag"
+  });
+  const scheduledTagActivationTasks = scheduleTagActivationsForAcceptedChanges({
+    botId,
+    binding,
+    conversationKey,
+    accepted: result.accepted
+  });
+  logInfo("conversation.manual_tag.changed", {
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    groupId,
+    tagId,
+    action: normalizedAction,
+    canceledTagActivationTaskCount,
+    scheduledTagActivationTaskCount: scheduledTagActivationTasks.length
+  });
+  return {
+    tags,
+    accepted: result.accepted,
+    rejected: result.rejected,
+    canceledTagActivationTaskCount,
+    scheduledTagActivationTasks
+  };
+}
+
 function resolveLegacyBotId(req) {
   return req.params.botId || req.query.botId || process.env.ROBOT_ID;
 }
@@ -3679,6 +3751,30 @@ app.get(
         conversationKey
       })
     });
+  })
+);
+
+app.post(
+  "/api/flow-sessions/:conversationKey/tags/manual",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const conversationKey = decodeURIComponent(req.params.conversationKey);
+    const botId = String(body.botId || "").trim();
+    assertBotAccess(req, botId);
+    if (!botId) throw new Error("botId is required");
+    const binding = getBotBinding(botId);
+    if (!binding || !binding.enabled) throw new Error("no enabled bot binding");
+    const session = getFlowSessionForBot({ botId, conversationKey });
+    if (!session) throw new Error("flow session not found");
+    const result = applyManualConversationTagChange({
+      botId,
+      binding,
+      conversationKey,
+      groupId: String(body.groupId || "").trim(),
+      tagId: String(body.tagId || "").trim(),
+      action: String(body.action || "set").trim()
+    });
+    res.json({ ok: true, tags: result.tags, accepted: result.accepted, rejected: result.rejected });
   })
 );
 
