@@ -200,3 +200,23 @@ test("friend-added entry creates, deduplicates, then re-enters without clearing 
   assert.equal(reentry.session.activationGeneration, 2);
   assert.equal(db.listFlowActivationTasks({ conversationKey }).at(-1).status, "canceled");
 });
+
+test("friend-added re-entry has no default cooldown", () => {
+  const { botId, conversationKey, machine } = setup();
+  const first = db.beginFriendAddedFlowEntry({
+    botId,
+    conversationKey,
+    machine,
+    occurredAt: "2026-07-16T10:00:00.000Z"
+  });
+  const second = db.beginFriendAddedFlowEntry({
+    botId,
+    conversationKey,
+    machine,
+    occurredAt: "2026-07-16T10:00:10.000Z"
+  });
+
+  assert.equal(first.status, "created");
+  assert.equal(second.status, "reentered");
+  assert.equal(second.session.activationGeneration, first.session.activationGeneration + 1);
+});

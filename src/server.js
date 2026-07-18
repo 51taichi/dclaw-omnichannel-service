@@ -762,7 +762,7 @@ const tagActivationWorkerConfig = {
 };
 const friendAddedReentryCooldownMs = Math.max(
   0,
-  Number(process.env.FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES || 10) * 60 * 1000
+  Number(process.env.FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES || 0) * 60 * 1000
 );
 
 const configuredReplyMaxParts = Number(process.env.WORKTOOL_REPLY_MAX_PARTS || 3);

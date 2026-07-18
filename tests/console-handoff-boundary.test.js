@@ -64,7 +64,7 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
   assert.equal(app.includes("flow-session-icons"), true);
   assert.equal(app.includes("当前任务：${status}"), true);
   assert.equal(app.includes("资产：${assetSummary}"), true);
-  assert.equal(app.includes("最近消息：${lastMessageAt}"), true);
+  assert.equal(app.includes('最近消息：${formatDisplayDateTime(lastMessageAt) || "暂无"}'), true);
   assert.doesNotMatch(app, /class="session-icon"[^>]*data-tooltip=/);
   assert.equal(app.includes("aria-label="), true);
   assert.equal(html.includes('id="icon-robot"'), true);

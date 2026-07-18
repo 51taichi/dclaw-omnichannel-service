@@ -1,9 +1,19 @@
-export function dateTagIdFor(value = new Date()) {
+const BEIJING_TIME_ZONE = "Asia/Shanghai";
+
+function beijingDateParts(value = new Date()) {
   const date = value instanceof Date ? value : new Date(value);
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(date.getUTCDate()).padStart(2, "0");
-  return `${year}${month}${day}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BEIJING_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+}
+
+export function dateTagIdFor(value = new Date()) {
+  const parts = beijingDateParts(value);
+  return `${parts.year}${parts.month}${parts.day}`;
 }
 
 function asId(value) {

@@ -1,4 +1,5 @@
 const PROACTIVE_MAX_ATTACHMENTS = 5;
+const BEIJING_TIME_ZONE = "Asia/Shanghai";
 
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
@@ -182,14 +183,33 @@ function fieldLabelIcon(name, label) {
   return `${icon(name)}${escapeHtml(label)}`;
 }
 
+function beijingDateTimeParts(date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BEIJING_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(date);
+  return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+}
+
 function formatLocalDate(date = new Date()) {
-  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-  return localDate.toISOString().slice(0, 10);
+  const parts = beijingDateTimeParts(date);
+  return `${parts.year}-${parts.month}-${parts.day}`;
 }
 
 function formatDisplayDateTime(value) {
-  const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
-  return match ? `${match[1]} ${match[2]}` : String(value || "");
+  if (!value) return "";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    const match = String(value || "").match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/);
+    return match ? `${match[1]} ${match[2]}` : String(value || "");
+  }
+  const parts = beijingDateTimeParts(date);
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function saveBotSessions() {
@@ -273,14 +293,13 @@ function syncRoleVisibility() {
 
 function dateToLocalIsoStart(value) {
   if (!value) return "";
-  return new Date(`${value}T00:00:00`).toISOString();
+  return new Date(`${value}T00:00:00+08:00`).toISOString();
 }
 
 function dateToLocalIsoNextDay(value) {
   if (!value) return "";
-  const date = new Date(`${value}T00:00:00`);
-  date.setDate(date.getDate() + 1);
-  return date.toISOString();
+  const date = new Date(`${value}T00:00:00+08:00`);
+  return new Date(date.getTime() + 24 * 60 * 60 * 1000).toISOString();
 }
 
 function fileNameFromUrl(value) {
@@ -2740,10 +2759,10 @@ function renderFlowSessions({ animateFrom = null } = {}) {
           const assetSummary = assets.totalCount
             ? `${assets.collectedCount || 0}/${assets.totalCount}`
             : "0/0";
-          const lastMessageAt = session.lastMessageAt || "暂无";
+          const lastMessageAt = session.lastMessageAt || "";
           const taskTooltip = `当前任务：${status}`;
           const assetTooltip = `资产：${assetSummary}`;
-          const timeTooltip = `最近消息：${lastMessageAt}`;
+          const timeTooltip = `最近消息：${formatDisplayDateTime(lastMessageAt) || "暂无"}`;
           const isHandoff = session.handoffStatus === "human";
           const handoffSwitch = sessionType === "private"
             ? `<span class="flow-session-switch handoff-switch ${isHandoff ? "is-human" : ""}" data-flow-handoff-switch="${escapeHtml(session.conversationKey)}" role="switch" tabindex="0" aria-checked="${isHandoff ? "true" : "false"}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
@@ -3511,7 +3530,7 @@ function renderProactiveTasks(tasks) {
           <td class="muted">${escapeHtml(botDisplayName(task.botId))}</td>
           <td><span class="pill ${task.status === "sent" ? "ok" : task.status === "failed" ? "bad" : "off"}">${escapeHtml(task.status)}</span></td>
           <td>${escapeHtml(progress + failed)}</td>
-          <td class="muted">${escapeHtml(task.updatedAt || task.createdAt || "")}</td>
+          <td class="muted">${escapeHtml(formatDisplayDateTime(task.updatedAt || task.createdAt))}</td>
           <td><button class="secondary" data-task="${task.id}" type="button">${icon("info")}详情</button></td>
         </tr>
       `;

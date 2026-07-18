@@ -43,8 +43,11 @@ test("empty chat title follows the selected session type tab", () => {
 });
 
 test("chat message timestamps render as compact date time text", () => {
+  assert.match(app, /const BEIJING_TIME_ZONE = "Asia\/Shanghai"/);
   assert.match(app, /function formatDisplayDateTime\(value\)/);
-  assert.match(app, /return match \? `\$\{match\[1\]\} \$\{match\[2\]\}` : String\(value \|\| ""\)/);
+  assert.match(app, /timeZone: BEIJING_TIME_ZONE/);
   assert.match(app, /<time>\$\{escapeHtml\(formatDisplayDateTime\(message\.createdAt\)\)\}<\/time>/);
+  assert.match(app, /最近消息：\$\{formatDisplayDateTime\(lastMessageAt\) \|\| "暂无"\}/);
+  assert.match(app, /formatDisplayDateTime\(task\.updatedAt \|\| task\.createdAt\)/);
   assert.doesNotMatch(app, /<time>\$\{escapeHtml\(message\.createdAt \|\| ""\)\}<\/time>/);
 });

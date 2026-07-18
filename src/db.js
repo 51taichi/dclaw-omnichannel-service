@@ -1480,7 +1480,7 @@ export function beginFriendAddedFlowEntry({
   botId,
   conversationKey,
   machine,
-  cooldownMs = 10 * 60 * 1000,
+  cooldownMs = 0,
   occurredAt = now(),
   activationTask = null
 }) {

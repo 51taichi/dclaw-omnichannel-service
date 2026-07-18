@@ -49,6 +49,10 @@ test("friend-added activation uses durable re-entry and reports cooldown skips",
   assert.equal(handler.includes("existing_entry_session"), false);
 });
 
+test("friend-added re-entry cooldown defaults to immediate retriggering", () => {
+  assert.match(source, /FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES \|\| 0/);
+});
+
 test("friend-added re-entry happens even when the entry node has no activation script", () => {
   const start = source.indexOf("async function handleFriendAddedEvent");
   const end = source.indexOf("\nfunction commandCallbackLogFields", start);
