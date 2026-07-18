@@ -2378,7 +2378,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
                   <input data-flow-node-activation-field="polishByAgent" type="checkbox" ${activationPolishByAgent ? "checked" : ""} />
                   <span>${icon("terminal")}Agent 组织语言</span>
                 </label>
-                <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" data-tooltip="${escapeHtml("例：10 分钟后发第 1 条；还没回复，第 2 次按更长间隔继续提醒。Agent 组织语言会先润色话术。")}">
+                <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" title="${escapeHtml("例：10 分钟后发第 1 条；还没回复，第 2 次按更长间隔继续提醒。Agent 组织语言会先润色话术。")}">
                   ${icon("info")}
                 </span>
               </div>

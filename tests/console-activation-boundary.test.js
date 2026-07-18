@@ -4,6 +4,7 @@ import test from "node:test";
 
 const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
+const html = fs.readFileSync(new URL("../public/console/index.html", import.meta.url), "utf8");
 const db = fs.readFileSync(new URL("../src/db.js", import.meta.url), "utf8");
 
 test("flow node editor supports activation settings", () => {
@@ -25,7 +26,11 @@ test("flow node editor supports activation settings", () => {
   assert.equal(app.includes(">次<"), true);
   assert.equal(css.includes(".activation-editor"), true);
   assert.equal(css.includes(".activation-toolbar"), true);
-  assert.equal(css.includes(".activation-help-icon::after"), true);
+  assert.equal(css.includes(".activation-help-icon::after"), false);
+  assert.equal(html.includes("data-tooltip="), false);
+  assert.equal(app.includes("data-tooltip="), false);
+  assert.equal(html.includes('title="当前等待时间 = 回复等待间隔'), true);
+  assert.match(app, /class="activation-help-icon"[^>]*title="\$\{escapeHtml\(/);
   assert.equal(css.includes(".activation-message-card {"), true);
   assert.equal(css.includes(".activation-message-actions"), true);
   assert.equal(css.includes(".activation-message-control"), true);

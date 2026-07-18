@@ -1923,35 +1923,6 @@ button.danger:hover {
   cursor: help;
 }
 
-.activation-help-icon::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: 0;
-  bottom: calc(100% + 10px);
-  z-index: 30;
-  width: 260px;
-  max-width: min(260px, calc(100vw - 40px));
-  padding: 10px 12px;
-  border-radius: 8px;
-  background: #211614;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.55;
-  white-space: normal;
-  box-shadow: var(--shadow);
-  opacity: 0;
-  pointer-events: none;
-  transform: translateY(4px);
-  transition: opacity 140ms ease, transform 140ms ease;
-}
-
-.activation-help-icon:hover::after,
-.activation-help-icon:focus-visible::after {
-  opacity: 1;
-  transform: translateY(0);
-}
-
 .activation-help-icon .icon {
   width: 15px;
   height: 15px;
@@ -1964,12 +1935,6 @@ button.danger:hover {
 
 .response-wait-help {
   margin-bottom: 2px;
-}
-
-.response-wait-help::after {
-  width: 350px;
-  max-width: min(350px, calc(100vw - 40px));
-  white-space: pre-line;
 }
 
 @media (max-width: 920px) {
