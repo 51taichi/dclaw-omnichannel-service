@@ -2800,9 +2800,11 @@ button.danger:hover {
 }
 
 .flow-session-icons {
-  display: flex;
+  display: inline-grid;
+  grid-template-columns: repeat(2, 30px);
   align-items: center;
-  gap: 7px;
+  justify-content: end;
+  gap: 2px;
   min-width: 0;
 }
 
@@ -2810,8 +2812,8 @@ button.danger:hover {
   display: inline-grid;
   place-items: center;
   position: relative;
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
   border-radius: 999px;
   background: color-mix(in srgb, var(--cyan) 8%, #ffffff);

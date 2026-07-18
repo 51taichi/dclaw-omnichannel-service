@@ -2786,10 +2786,8 @@ function renderFlowSessions({ animateFrom = null } = {}) {
           const assetSummary = assets.totalCount
             ? `${assets.collectedCount || 0}/${assets.totalCount}`
             : "0/0";
-          const lastMessageAt = session.lastMessageAt || "";
           const taskTooltip = `当前任务：${status}`;
           const assetTooltip = `资产：${assetSummary}`;
-          const timeTooltip = `最近消息：${formatDisplayDateTime(lastMessageAt) || "暂无"}`;
           const isHandoff = session.handoffStatus === "human";
           const handoffSwitch = sessionType === "private"
             ? `<span class="flow-session-switch handoff-switch ${isHandoff ? "is-human" : ""}" data-flow-handoff-switch="${escapeHtml(session.conversationKey)}" role="switch" tabindex="0" aria-checked="${isHandoff ? "true" : "false"}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
@@ -2812,7 +2810,6 @@ function renderFlowSessions({ animateFrom = null } = {}) {
                   <small class="flow-session-icons">
                     <span class="session-icon" title="${escapeHtml(taskTooltip)}" aria-label="${escapeHtml(taskTooltip)}">${icon("edit")}</span>
                     <span class="session-icon" title="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
-                    <span class="session-icon" title="${escapeHtml(timeTooltip)}" aria-label="${escapeHtml(timeTooltip)}">${icon("clock")}</span>
                   </small>
                 </span>
               </span>

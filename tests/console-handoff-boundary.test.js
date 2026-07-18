@@ -60,11 +60,13 @@ test("console exposes a per-session handoff switch without redundant status labe
   assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(32px\)/);
 });
 
-test("flow session cards use compact icon metadata for task, assets, time, and handoff", () => {
+test("flow session cards use compact icon metadata for task, assets, and handoff", () => {
   assert.equal(app.includes("flow-session-icons"), true);
   assert.equal(app.includes("当前任务：${status}"), true);
   assert.equal(app.includes("资产：${assetSummary}"), true);
-  assert.equal(app.includes('最近消息：${formatDisplayDateTime(lastMessageAt) || "暂无"}'), true);
+  assert.equal(app.includes('最近消息：${formatDisplayDateTime(lastMessageAt) || "暂无"}'), false);
+  assert.doesNotMatch(app, /timeTooltip/);
+  assert.doesNotMatch(app, /title="\$\{escapeHtml\(timeTooltip\)\}"/);
   assert.doesNotMatch(app, /class="session-icon"[^>]*data-tooltip=/);
   assert.equal(app.includes("aria-label="), true);
   assert.equal(html.includes('id="icon-robot"'), true);
@@ -72,6 +74,8 @@ test("flow session cards use compact icon metadata for task, assets, time, and h
   assert.equal(app.includes("人工接手中"), false);
   assert.equal(app.includes("flow-session-status"), false);
   assert.equal(css.includes(".flow-session-icons"), true);
+  assert.match(css, /\.flow-session-icons\s*\{[\s\S]*display:\s*inline-grid[\s\S]*grid-template-columns:\s*repeat\(2,\s*30px\)[\s\S]*gap:\s*2px/);
+  assert.match(css, /\.flow-session-icons span\s*\{[\s\S]*width:\s*30px[\s\S]*height:\s*30px/);
   assert.equal(css.includes(".session-icon::after"), false);
 });
 
