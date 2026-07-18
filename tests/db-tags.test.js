@@ -163,3 +163,120 @@ test("tag activation task listing requires full scope", () => {
     /botId, agentId, and conversationKey/
   );
 });
+
+test("saving tag schema cancels obsolete pending work without touching valid or sent tasks", () => {
+  const botId = "tag_schema_cleanup_bot";
+  const agentId = "tag_schema_cleanup_agent";
+  const conversationKey = `${botId}:private:标签保存客户`;
+
+  upsertAgentTagSchema({
+    agentId,
+    schema: {
+      groups: [{
+        id: "intent",
+        name: "意向",
+        tags: [
+          {
+            id: "a",
+            name: "A类",
+            condition: "高意向",
+            activation: {
+              enabled: true,
+              polishByAgent: false,
+              messages: [{ content: "A follow", intervalMinutes: 10, maxTimes: 1 }]
+            }
+          },
+          {
+            id: "b",
+            name: "B类",
+            condition: "中意向",
+            activation: {
+              enabled: true,
+              polishByAgent: false,
+              messages: [{ content: "B follow", intervalMinutes: 10, maxTimes: 1 }]
+            }
+          }
+        ]
+      }]
+    }
+  });
+
+  const validTask = scheduleTagActivationTask({
+    botId,
+    agentId,
+    conversationKey,
+    groupId: "intent",
+    tagId: "a",
+    activation: {
+      enabled: true,
+      polishByAgent: false,
+      messages: [{ content: "A follow", intervalMinutes: 10, maxTimes: 1 }]
+    },
+    dueAt: "2026-07-17T00:10:00.000Z"
+  });
+  const obsoleteTask = scheduleTagActivationTask({
+    botId,
+    agentId,
+    conversationKey,
+    groupId: "intent",
+    tagId: "b",
+    activation: {
+      enabled: true,
+      polishByAgent: false,
+      messages: [{ content: "B follow", intervalMinutes: 10, maxTimes: 1 }]
+    },
+    dueAt: "2026-07-17T00:10:00.000Z"
+  });
+  const sentTask = scheduleTagActivationTask({
+    botId,
+    agentId,
+    conversationKey,
+    groupId: "intent",
+    tagId: "b",
+    activation: {
+      enabled: true,
+      polishByAgent: false,
+      messages: [{ content: "B sent", intervalMinutes: 10, maxTimes: 1 }]
+    },
+    dueAt: "2026-07-17T00:00:00.000Z"
+  });
+  claimDueTagActivationTasks({ nowIso: "2026-07-17T00:00:01.000Z", limit: 10 });
+  markTagActivationTaskSent({ id: sentTask.id, worktoolMessageIds: ["already_sent"] });
+
+  upsertAgentTagSchema({
+    agentId,
+    schema: {
+      groups: [{
+        id: "intent",
+        name: "意向",
+        tags: [
+          {
+            id: "a",
+            name: "A类",
+            condition: "高意向",
+            activation: {
+              enabled: true,
+              polishByAgent: false,
+              messages: [{ content: "A follow", intervalMinutes: 10, maxTimes: 1 }]
+            }
+          },
+          {
+            id: "b",
+            name: "B类",
+            condition: "中意向",
+            activation: {
+              enabled: false,
+              messages: [{ content: "B follow", intervalMinutes: 10, maxTimes: 1 }]
+            }
+          }
+        ]
+      }]
+    }
+  });
+
+  const tasks = listTagActivationTasks({ botId, agentId, conversationKey });
+  assert.equal(tasks.find((task) => task.id === validTask.id).status, "pending");
+  assert.equal(tasks.find((task) => task.id === obsoleteTask.id).status, "canceled");
+  assert.equal(tasks.find((task) => task.id === obsoleteTask.id).cancelReason, "tag_schema_saved");
+  assert.equal(tasks.find((task) => task.id === sentTask.id).status, "sent");
+});

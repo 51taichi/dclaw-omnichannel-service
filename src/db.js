@@ -2206,14 +2206,53 @@ export function getAgentTagSchema(agentId) {
 export function upsertAgentTagSchema({ agentId, schema }) {
   const normalized = normalizeTagSchema(schema);
   const timestamp = now();
-  db.prepare(`
-    INSERT INTO agent_tag_schemas (agent_id, config_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?)
-    ON CONFLICT(agent_id) DO UPDATE SET
-      config_json = excluded.config_json,
-      updated_at = excluded.updated_at
-  `).run(agentId, json(normalized), timestamp, timestamp);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      INSERT INTO agent_tag_schemas (agent_id, config_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?)
+      ON CONFLICT(agent_id) DO UPDATE SET
+        config_json = excluded.config_json,
+        updated_at = excluded.updated_at
+    `).run(agentId, json(normalized), timestamp, timestamp);
+    cancelObsoleteTagActivationTasksForSchema({ agentId, schema: normalized, timestamp });
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
   return getAgentTagSchema(agentId);
+}
+
+function cancelObsoleteTagActivationTasksForSchema({ agentId, schema, timestamp = now() }) {
+  const activeKeys = new Set();
+  for (const group of schema.groups || []) {
+    for (const tag of group.tags || []) {
+      if (tag.activation?.enabled && tag.activation.messages?.length) {
+        activeKeys.add(`${group.id}:${tag.id}`);
+      }
+    }
+  }
+
+  const tasks = db.prepare(`
+    SELECT id, group_id, tag_id
+    FROM tag_activation_tasks
+    WHERE agent_id = ?
+      AND status IN ('pending', 'processing')
+  `).all(agentId);
+
+  for (const task of tasks) {
+    if (activeKeys.has(`${task.group_id}:${task.tag_id}`)) continue;
+    db.prepare(`
+      UPDATE tag_activation_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = 'tag_schema_saved',
+          updated_at = ?
+      WHERE id = ?
+        AND status IN ('pending', 'processing')
+    `).run(timestamp, timestamp, task.id);
+  }
 }
 
 export function listConversationTags({ botId, agentId, conversationKey }) {
