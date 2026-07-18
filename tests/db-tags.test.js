@@ -10,8 +10,11 @@ import {
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
   scheduleTagActivationTask,
-  upsertAgentTagSchema
+  upsertConversation,
+  upsertAgentTagSchema,
+  upsertSystemDateTag
 } from "../src/db.js";
+import { dateTagIdFor } from "../src/tags.js";
 
 test("agent tag schemas are stored by agent id", () => {
   const schema = upsertAgentTagSchema({
@@ -47,6 +50,88 @@ test("conversation tags are isolated by bot agent and conversation", () => {
     agentId: "other_agent",
     conversationKey: "tag_bot_a:private:张三"
   }), []);
+});
+
+test("private conversations receive one stable Beijing date tag from first persistence", () => {
+  const botId = "date_first_seen_bot";
+  const agentId = "date_first_seen_agent";
+  const conversationKey = `${botId}:private:首次客户`;
+  upsertAgentTagSchema({ agentId, schema: { dateTag: { enabled: true }, groups: [] } });
+
+  const first = upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "首次客户", groupName: "首次客户" }
+  });
+  const expectedDateTagId = dateTagIdFor(first.createdAt);
+  assert.deepEqual(
+    listConversationTags({ botId, agentId, conversationKey })
+      .filter((tag) => tag.tagType === "date")
+      .map((tag) => tag.tagId),
+    [expectedDateTagId]
+  );
+
+  const repeated = upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "首次客户", groupName: "首次客户" }
+  });
+  assert.equal(repeated.createdAt, first.createdAt);
+  assert.deepEqual(
+    listConversationTags({ botId, agentId, conversationKey })
+      .filter((tag) => tag.tagType === "date")
+      .map((tag) => tag.tagId),
+    [expectedDateTagId]
+  );
+});
+
+test("saving an enabled date tag schema backfills existing private conversations only", () => {
+  const scope = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const botId = `date_backfill_bot_${scope}`;
+  const agentId = `date_backfill_agent_${scope}`;
+  const privateKey = `${botId}:private:历史客户`;
+  const groupKey = `${botId}:group:历史群`;
+  const privateConversation = upsertConversation({
+    botId,
+    agentId,
+    conversationKey: privateKey,
+    message: { roomType: 2, receivedName: "历史客户", groupName: "历史客户" }
+  });
+  upsertConversation({
+    botId,
+    agentId,
+    conversationKey: groupKey,
+    message: { roomType: 1, receivedName: "群成员", groupName: "历史群" }
+  });
+
+  assert.deepEqual(listConversationTags({ botId, agentId, conversationKey: privateKey }), []);
+  upsertAgentTagSchema({ agentId, schema: { dateTag: { enabled: true }, groups: [] } });
+
+  assert.equal(
+    listConversationTags({ botId, agentId, conversationKey: privateKey })
+      .find((tag) => tag.tagType === "date")?.tagId,
+    dateTagIdFor(privateConversation.createdAt)
+  );
+  assert.deepEqual(listConversationTags({ botId, agentId, conversationKey: groupKey }), []);
+});
+
+test("system date updates replace an old date instead of creating a second date tag", () => {
+  const scope = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const botId = `date_replace_bot_${scope}`;
+  const agentId = `date_replace_agent_${scope}`;
+  const conversationKey = `${botId}:private:重新添加客户`;
+
+  upsertSystemDateTag({ botId, agentId, conversationKey, dateTagId: "20260717" });
+  upsertSystemDateTag({ botId, agentId, conversationKey, dateTagId: "20260718" });
+
+  assert.deepEqual(
+    listConversationTags({ botId, agentId, conversationKey })
+      .filter((tag) => tag.tagType === "date")
+      .map((tag) => tag.tagId),
+    ["20260718"]
+  );
 });
 
 test("tag activation tasks can be scheduled claimed and finalized", () => {

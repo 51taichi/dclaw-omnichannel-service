@@ -499,7 +499,7 @@ function buildTagContext({ binding, conversationKey }) {
   return compactTagRulesForAgent({ schema, currentTags });
 }
 
-function applySystemDateTag({ botId, binding, conversationKey }) {
+function applySystemDateTag({ botId, binding, conversationKey, firstSeenAt }) {
   if (!binding?.agentId) return null;
   const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
   if (!schema.dateTag.enabled) return null;
@@ -507,7 +507,7 @@ function applySystemDateTag({ botId, binding, conversationKey }) {
     botId,
     agentId: binding.agentId,
     conversationKey,
-    dateTagId: dateTagIdFor(new Date()),
+    dateTagId: dateTagIdFor(firstSeenAt || new Date()),
     source: "friend_added"
   });
 }
@@ -1396,13 +1396,18 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     groupName: friendName
   };
   const conversationKey = getConversationKey(botId, contactMessage);
-  upsertConversation({
+  const conversation = upsertConversation({
     botId,
     agentId: binding.agentId,
     conversationKey,
     message: contactMessage
   });
-  const dateTags = applySystemDateTag({ botId, binding, conversationKey });
+  const dateTags = applySystemDateTag({
+    botId,
+    binding,
+    conversationKey,
+    firstSeenAt: conversation.createdAt
+  });
   if (dateTags) {
     logInfo("friend_added.date_tag.applied", {
       ...logContext,

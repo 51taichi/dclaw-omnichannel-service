@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { hashAccessKey } from "./auth.js";
-import { normalizeTagActivation, normalizeTagSchema } from "./tags.js";
+import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags.js";
 
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
 fs.mkdirSync(dataDir, { recursive: true });
@@ -910,7 +910,9 @@ export function upsertConversation({ botId, agentId, conversationKey, message })
     timestamp,
     timestamp
   );
-  return getConversation(conversationKey);
+  const conversation = getConversation(conversationKey);
+  syncConversationFirstSeenDateTag(conversation);
+  return conversation;
 }
 
 export function updateConversationSession(conversationKey, dclawSessionId) {
@@ -2230,12 +2232,65 @@ export function upsertAgentTagSchema({ agentId, schema }) {
         updated_at = excluded.updated_at
     `).run(agentId, json(normalized), timestamp, timestamp);
     cancelObsoleteTagActivationTasksForSchema({ agentId, schema: normalized, timestamp });
+    if (normalized.dateTag.enabled) {
+      backfillConversationFirstSeenDateTags(agentId);
+    }
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
   }
   return getAgentTagSchema(agentId);
+}
+
+function syncConversationFirstSeenDateTag(conversation) {
+  if (!conversation || !conversation.agentId) return null;
+  const roomType = Number(conversation.roomType);
+  if (roomType !== 2 && roomType !== 4) return null;
+  const schema = normalizeTagSchema(getAgentTagSchema(conversation.agentId)?.config || {});
+  if (!schema.dateTag.enabled) return null;
+  const dateTagId = dateTagIdFor(conversation.createdAt);
+  const timestamp = now();
+  db.prepare(`
+    DELETE FROM conversation_tags
+    WHERE bot_id = ?
+      AND agent_id = ?
+      AND conversation_key = ?
+      AND tag_type = 'date'
+      AND tag_id <> ?
+  `).run(conversation.botId, conversation.agentId, conversation.conversationKey, dateTagId);
+  db.prepare(`
+    INSERT INTO conversation_tags (
+      bot_id, agent_id, conversation_key, group_id, group_name, tag_id, tag_name,
+      tag_type, reason, source, created_at, updated_at
+    )
+    VALUES (?, ?, ?, '', '', ?, ?, 'date', ?, 'conversation_first_seen', ?, ?)
+    ON CONFLICT(bot_id, agent_id, conversation_key, tag_type, group_id, tag_id)
+    DO UPDATE SET updated_at = excluded.updated_at
+  `).run(
+    conversation.botId,
+    conversation.agentId,
+    conversation.conversationKey,
+    dateTagId,
+    dateTagId,
+    "客户首次入库日期",
+    timestamp,
+    timestamp
+  );
+  return dateTagId;
+}
+
+function backfillConversationFirstSeenDateTags(agentId) {
+  const conversations = db.prepare(`
+    SELECT conversation_key
+    FROM conversations
+    WHERE agent_id = ?
+      AND room_type IN (2, 4)
+    ORDER BY created_at ASC
+  `).all(agentId);
+  for (const row of conversations) {
+    syncConversationFirstSeenDateTag(getConversation(row.conversation_key));
+  }
 }
 
 function cancelObsoleteTagActivationTasksForSchema({ agentId, schema, timestamp = now() }) {
@@ -2357,6 +2412,14 @@ export function upsertSystemDateTag({
   source = "friend_added"
 }) {
   const timestamp = now();
+  db.prepare(`
+    DELETE FROM conversation_tags
+    WHERE bot_id = ?
+      AND agent_id = ?
+      AND conversation_key = ?
+      AND tag_type = 'date'
+      AND tag_id <> ?
+  `).run(botId, agentId, conversationKey, dateTagId);
   db.prepare(`
     INSERT INTO conversation_tags (
       bot_id, agent_id, conversation_key, group_id, group_name, tag_id, tag_name,
