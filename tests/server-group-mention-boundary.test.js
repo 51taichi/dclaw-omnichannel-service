@@ -9,6 +9,6 @@ test("server normalizes mentioned group callbacks before sending them to the age
   assert.match(serverSource, /if \(!isGroupMessage\(message\) \|\| !isMentioned\(message, binding\)\)/);
   assert.match(serverSource, /atMe: "true"/);
   assert.match(serverSource, /originalAtMe/);
-  assert.match(serverSource, /const agentMessage = normalizeMessageForAgent\(message, binding\)/);
+  assert.match(serverSource, /const agentMessage = normalizeMessageForAgent\(coalescedMessage, binding\)/);
   assert.match(serverSource, /message: agentMessage/);
 });

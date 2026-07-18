@@ -131,6 +131,7 @@ import {
   shouldProcessInboundForAgent
 } from "./message-rules.js";
 import { normalizeUploadedFilename } from "./filenames.js";
+import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
 import {
   adjudicateTagDecision,
   compactTagRulesForAgent,
@@ -778,10 +779,111 @@ const replySplitConfig = {
     : 1000
 };
 
+const inboundCoalesceQuietMs = Math.max(
+  0,
+  Number(process.env.INBOUND_COALESCE_QUIET_MS || 10_000)
+);
+const inboundCoalesceMaxMs = Math.max(
+  inboundCoalesceQuietMs,
+  Number(process.env.INBOUND_COALESCE_MAX_MS || 15_000)
+);
+
 let proactiveWorkerBusy = false;
 let activationWorkerBusy = false;
 let tagActivationWorkerBusy = false;
 let agentQueue = Promise.resolve();
+
+function inboundCoalesceKey(botId, conversationKey) {
+  return `${String(botId || "")}\u0000${String(conversationKey || "")}`;
+}
+
+function buildCoalescedAgentMessage(messages) {
+  const ordered = messages.filter(Boolean);
+  const last = ordered.at(-1) || {};
+  if (ordered.length <= 1) return last;
+  const mentioned = ordered.some(
+    (message) => message.atMe === true || String(message.atMe || "").toLowerCase() === "true"
+  );
+  const lines = ordered.map(
+    (message, index) => `${index + 1}. ${String(message.spoken || message.rawSpoken || "").trim()}`
+  );
+  const spoken = `客户连续发送了以下消息，请结合上下文统一回答：\n${lines.join("\n")}`;
+  return {
+    ...last,
+    spoken,
+    rawSpoken: spoken,
+    atMe: mentioned ? "true" : last.atMe,
+    metadata: {
+      ...(last.metadata || {}),
+      coalescedMessages: ordered.map((message, index) => ({
+        index,
+        messageId: message.messageId || "",
+        spoken: message.spoken || message.rawSpoken || "",
+        receivedName: message.receivedName || "",
+        roomType: message.roomType ?? null,
+        groupName: message.groupName || ""
+      }))
+    }
+  };
+}
+
+function finishCoalescedMessageProcessing({ batch, status, error = "" }) {
+  for (const item of batch?.items || []) {
+    finishMessageProcessing({ messageKey: item.messageKey, status, error });
+  }
+}
+
+function cancelInboundBatch(key, reason) {
+  const items = inboundCoalescer.cancel(key, reason);
+  for (const item of items) {
+    finishMessageProcessing({
+      messageKey: item.messageKey,
+      status: "coalesced_canceled",
+      error: reason
+    });
+  }
+  return items;
+}
+
+function cancelInboundBatchesForBot(botId, reason) {
+  const batches = inboundCoalescer.cancelByBot(botId, reason);
+  for (const batch of batches) {
+    for (const item of batch.items) {
+      finishMessageProcessing({
+        messageKey: item.messageKey,
+        status: "coalesced_canceled",
+        error: reason
+      });
+    }
+  }
+  return batches;
+}
+
+const inboundCoalesceEventNames = {
+  started: "incoming.coalesce.started",
+  appended: "incoming.coalesce.appended",
+  flushed: "incoming.coalesce.flushed",
+  canceled: "incoming.coalesce.canceled"
+};
+
+const inboundCoalescer = createInboundMessageCoalescer({
+  quietMs: inboundCoalesceQuietMs,
+  maxMs: inboundCoalesceMaxMs,
+  onFlush: processCoalescedIncomingBatch,
+  onEvent: (name, details) => {
+    const event = inboundCoalesceEventNames[name] || `incoming.coalesce.${name}`;
+    const fields = {
+      batchId: details.id,
+      botId: details.botId,
+      conversationKey: details.conversationKey,
+      messageCount: details.itemCount,
+      reason: details.reason || "",
+      waitMs: details.waitMs ?? null
+    };
+    if (name === "canceled") logWarn(event, fields);
+    else logInfo(event, fields);
+  }
+});
 
 function enqueueAgentInvocation(task) {
   const run = agentQueue.then(task, task);
@@ -2541,7 +2643,9 @@ async function processIncomingMessage({ botId, message }) {
     return;
   }
 
-  if (!shouldInvokeAgent(message, binding)) {
+  const coalesceKey = inboundCoalesceKey(botId, conversationKey);
+  const joinsMentionedGroupBatch = isGroupMessage(message) && inboundCoalescer.has(coalesceKey);
+  if (!shouldInvokeAgent(message, binding) && !joinsMentionedGroupBatch) {
     logInfo("incoming.skipped", {
       ...logContext,
       reason: "group_message_without_mention"
@@ -2664,7 +2768,59 @@ async function processIncomingMessage({ botId, message }) {
     return;
   }
 
-  const agentMessage = normalizeMessageForAgent(message, binding);
+  inboundCoalescer.push(coalesceKey, {
+    botId,
+    conversationKey,
+    message,
+    messageKey,
+    acceptedAt: new Date().toISOString()
+  });
+}
+
+async function processCoalescedIncomingBatch(batch) {
+  const startedAt = Date.now();
+  const botId = batch.botId;
+  const conversationKey = batch.conversationKey;
+  const messages = batch.items.map((item) => item.message);
+  const coalescedMessage = buildCoalescedAgentMessage(messages);
+  const message = coalescedMessage;
+  const messageKey = batch.items.at(-1)?.messageKey || "";
+  const binding = getBotBinding(botId);
+  const baseLog = messageLogFields({ botId, conversationKey, message });
+  const logContext = {
+    ...baseLog,
+    messageKey,
+    batchId: batch.id,
+    coalescedMessageCount: batch.items.length,
+    coalesceReason: batch.reason
+  };
+  if (!binding || !binding.enabled) {
+    logWarn("incoming.skipped", {
+      ...logContext,
+      reason: "no_enabled_dclaw_binding_after_coalesce"
+    });
+    finishCoalescedMessageProcessing({ batch, status: "skipped" });
+    return;
+  }
+
+  const conversation = upsertConversation({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    message
+  });
+  const flow = buildFlowContext({ botId, conversationKey, message });
+  const conversationReset = getConversationResetPending(conversationKey);
+  if (isPrivateMessage(message) && flow?.session?.handoffStatus === "human") {
+    logInfo("incoming.skipped", {
+      ...logContext,
+      reason: "human_handoff_after_coalesce"
+    });
+    finishCoalescedMessageProcessing({ batch, status: "human_handoff" });
+    return;
+  }
+
+  const agentMessage = normalizeMessageForAgent(coalescedMessage, binding);
   const tagContext = buildTagContext({ binding, conversationKey });
   const request = buildDclawRequest({
     binding,
@@ -2762,7 +2918,11 @@ async function processIncomingMessage({ botId, message }) {
         issueCode: sendabilityIssue?.code || "",
         attachmentUrls: sendabilityIssue?.attachmentUrls || []
       });
-      finishMessageProcessing({ messageKey, status: sendabilityIssue ? "invalid_attachment_source" : "invalid_reply_format", error: errorCode });
+      finishCoalescedMessageProcessing({
+        batch,
+        status: sendabilityIssue ? "invalid_attachment_source" : "invalid_reply_format",
+        error: errorCode
+      });
       return;
     }
 
@@ -2819,7 +2979,7 @@ async function processIncomingMessage({ botId, message }) {
         agentId: binding.agentId,
         invocationId
       });
-      finishMessageProcessing({ messageKey, status: "empty_reply" });
+      finishCoalescedMessageProcessing({ batch, status: "empty_reply" });
       return;
     }
     if (looksLikeInternalNonReplyAnalysis(reply)) {
@@ -2829,7 +2989,7 @@ async function processIncomingMessage({ botId, message }) {
         invocationId,
         reason: "internal_non_reply_analysis"
       });
-      finishMessageProcessing({ messageKey, status: "suppressed" });
+      finishCoalescedMessageProcessing({ batch, status: "suppressed" });
       return;
     }
 
@@ -2964,7 +3124,7 @@ async function processIncomingMessage({ botId, message }) {
         dueAt: activationTask.dueAt
       });
     }
-    finishMessageProcessing({ messageKey, status: "replied" });
+    finishCoalescedMessageProcessing({ batch, status: "coalesced_processed" });
   } catch (error) {
     if (!agentInvocationSucceeded) {
       finishAgentInvocation({
@@ -2985,8 +3145,8 @@ async function processIncomingMessage({ botId, message }) {
           error
         });
         if (fallbackSent) {
-          finishMessageProcessing({
-            messageKey,
+          finishCoalescedMessageProcessing({
+            batch,
             status: "fallback_replied",
             error: error.message
           });
@@ -3002,7 +3162,7 @@ async function processIncomingMessage({ botId, message }) {
         });
       }
     }
-    finishMessageProcessing({ messageKey, status: "failed", error: error.message });
+    finishCoalescedMessageProcessing({ batch, status: "failed", error: error.message });
     logError("incoming.failed", {
       ...logContext,
       agentId: binding?.agentId || "",
@@ -3488,6 +3648,7 @@ app.put(
     });
     let rebindReset = null;
     if (previousBinding && previousBinding.agentId !== binding.agentId) {
+      cancelInboundBatchesForBot(binding.botId, "agent_rebound");
       rebindReset = resetBotFlowStateForAgentRebind({
         botId: binding.botId,
         oldAgentId: previousBinding.agentId,
@@ -3543,6 +3704,7 @@ app.delete(
       });
     }
 
+    cancelInboundBatchesForBot(req.params.botId, "bot_deleted");
     const deleted = deleteBotData(req.params.botId);
     if (!deleted) {
       res.status(404).json({ ok: false, message: "bot not found" });
@@ -3803,6 +3965,7 @@ app.put(
       reason: body.reason || (body.handoffStatus === "human" ? "人工接手" : "恢复 AI")
     });
     if (session.handoffStatus === "human") {
+      cancelInboundBatch(inboundCoalesceKey(botId, conversationKey), "human_handoff");
       invalidateFlowActivation({ conversationKey, reason: "human_handoff" });
       const binding = getBotBinding(botId);
       if (binding?.agentId) {
@@ -3937,6 +4100,7 @@ app.post(
     const botId = String(body.botId || "").trim();
     assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
+    cancelInboundBatch(inboundCoalesceKey(botId, conversationKey), "conversation_reset");
     const session = clearConversationForReset({
       botId,
       conversationKey,

@@ -21,13 +21,13 @@ function functionBody(name) {
 }
 
 test("incoming agent calls build and pass tag context", () => {
-  const body = functionBody("processIncomingMessage");
+  const body = functionBody("processCoalescedIncomingBatch");
   assert.match(body, /const tagContext = buildTagContext\(\{ binding, conversationKey \}\);/);
   assert.match(body, /const request = buildDclawRequest\(\{[\s\S]*\n\s+tagContext,\n[\s\S]*\}\);/);
 });
 
 test("server applies tag decisions only after valid agent replies", () => {
-  const body = functionBody("processIncomingMessage");
+  const body = functionBody("processCoalescedIncomingBatch");
   const applyIndex = body.indexOf("applyAgentTagDecision({");
   const validIndex = body.indexOf("if (!strictInvocation.agentReply.valid)");
   assert.ok(applyIndex > validIndex);
