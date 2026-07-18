@@ -82,18 +82,21 @@ test("flow session cards use compact icon metadata for task, assets, and handoff
 test("flow session status labels do not change card or chat header layout", () => {
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*display:\s*grid/);
   assert.match(css, /\.flow-workbench\s*\{[\s\S]*grid-template-columns:\s*310px minmax\(0,\s*1fr\)/);
-  assert.match(css, /\.flow-session-card\s*\{[\s\S]*grid-template-columns:\s*34px minmax\(64px,\s*76px\) minmax\(78px,\s*1fr\) max-content/);
+  assert.match(css, /\.flow-session-card\s*\{[\s\S]*grid-template-columns:\s*34px minmax\(0,\s*1fr\) max-content max-content/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*grid-template-rows:\s*34px minmax\(28px,\s*auto\)/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*gap:\s*10px 9px/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*9px/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*min-height:\s*78px/);
   assert.match(css, /\.flow-session-avatar\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*1/);
   assert.match(css, /\.flow-session-main\s*\{[\s\S]*display:\s*contents/);
-  assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*grid-column:\s*2[\s\S]*width:\s*76px[\s\S]*align-self:\s*center/);
+  assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*grid-column:\s*2[\s\S]*width:\s*auto[\s\S]*align-self:\s*center/);
   assert.match(app, /class="flow-session-name" title="\$\{escapeHtml\(name\)\}"/);
   assert.match(app, /class="flow-session-date-tag"[\s\S]*renderConversationDateTag\(session\.tags \|\| \[\]\)/);
   assert.match(app, /class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\], \{ includeDate: false \}\)/);
   assert.match(css, /\.flow-session-date-tag\s*\{[\s\S]*grid-column:\s*3[\s\S]*grid-row:\s*1/);
+  assert.match(css, /\.flow-session-date-tag\s*\{[\s\S]*min-width:\s*max-content[\s\S]*overflow:\s*visible/);
+  assert.match(css, /\.flow-session-date-tag \.tag-chip\s*\{[\s\S]*max-width:\s*none/);
+  assert.match(css, /\.flow-session-card \.tag-chip,\n\.flow-session-card \.tag-chip span\s*\{[\s\S]*overflow:\s*visible[\s\S]*text-overflow:\s*clip/);
   assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*grid-column:\s*1 \/ 4[\s\S]*grid-row:\s*2/);
   assert.match(css, /\.flow-session-tools\s*\{[\s\S]*grid-column:\s*4[\s\S]*grid-row:\s*2/);
   assert.match(css, /\.flow-session-switch\.handoff-switch\s*\{[\s\S]*grid-column:\s*4[\s\S]*grid-row:\s*1/);

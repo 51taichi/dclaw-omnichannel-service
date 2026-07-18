@@ -2602,7 +2602,7 @@ button.danger:hover {
 .flow-session-card {
   position: relative;
   display: grid;
-  grid-template-columns: 34px minmax(64px, 76px) minmax(78px, 1fr) max-content;
+  grid-template-columns: 34px minmax(0, 1fr) max-content max-content;
   grid-template-rows: 34px minmax(28px, auto);
   align-items: start;
   gap: 10px 9px;
@@ -2711,7 +2711,7 @@ button.danger:hover {
   align-self: center;
   justify-content: flex-start;
   gap: 6px;
-  width: 76px;
+  width: auto;
   min-width: 0;
   padding-right: 0;
 }
@@ -2720,14 +2720,21 @@ button.danger:hover {
   grid-column: 3;
   grid-row: 1;
   align-self: center;
-  min-width: 0;
-  overflow: hidden;
+  min-width: max-content;
+  overflow: visible;
 }
 
 .flow-session-date-tag .tag-chip {
-  width: 100%;
-  max-width: 100%;
+  width: auto;
+  max-width: none;
   justify-content: center;
+}
+
+.flow-session-card .tag-chip,
+.flow-session-card .tag-chip span {
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .flow-session-main strong {
