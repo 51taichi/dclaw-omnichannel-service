@@ -801,14 +801,10 @@ const replySplitConfig = {
     : 1000
 };
 
-const inboundCoalesceQuietMs = Math.max(
-  0,
-  Number(process.env.INBOUND_COALESCE_QUIET_MS || 10_000)
-);
-const inboundCoalesceMaxMs = Math.max(
-  inboundCoalesceQuietMs,
-  Number(process.env.INBOUND_COALESCE_MAX_MS || 15_000)
-);
+const inboundCoalesceDefaults = {
+  baseQuietMs: 10_000,
+  incrementMs: 5_000
+};
 
 let proactiveWorkerBusy = false;
 let activationWorkerBusy = false;
@@ -889,8 +885,8 @@ const inboundCoalesceEventNames = {
 };
 
 const inboundCoalescer = createInboundMessageCoalescer({
-  quietMs: inboundCoalesceQuietMs,
-  maxMs: inboundCoalesceMaxMs,
+  baseQuietMs: inboundCoalesceDefaults.baseQuietMs,
+  incrementMs: inboundCoalesceDefaults.incrementMs,
   onFlush: processCoalescedIncomingBatch,
   onEvent: (name, details) => {
     const event = inboundCoalesceEventNames[name] || `incoming.coalesce.${name}`;
@@ -900,7 +896,8 @@ const inboundCoalescer = createInboundMessageCoalescer({
       conversationKey: details.conversationKey,
       messageCount: details.itemCount,
       reason: details.reason || "",
-      waitMs: details.waitMs ?? null
+      waitMs: details.waitMs ?? null,
+      scheduledDelayMs: details.scheduledDelayMs ?? null
     };
     if (name === "canceled") logWarn(event, fields);
     else logInfo(event, fields);
@@ -1173,6 +1170,23 @@ async function invokeStrictAgentReply({
 
 function getDebugReplySettingKey(botId) {
   return `debug_reply:${String(botId || "").trim()}`;
+}
+
+function getReplyWaitSettingKey(botId) {
+  return `reply_wait:${String(botId || "").trim()}`;
+}
+
+function normalizeReplyWaitConfig(config = {}) {
+  const baseSeconds = Number(config.baseSeconds);
+  const incrementSeconds = Number(config.incrementSeconds);
+  return {
+    baseSeconds: Number.isFinite(baseSeconds) ? Math.max(1, Math.round(baseSeconds)) : 10,
+    incrementSeconds: Number.isFinite(incrementSeconds) ? Math.max(0, Math.round(incrementSeconds)) : 5
+  };
+}
+
+function getReplyWaitConfig(botId) {
+  return normalizeReplyWaitConfig(getSetting(getReplyWaitSettingKey(botId), null) || {});
 }
 
 function getDebugReplyConfig(botId) {
@@ -2800,12 +2814,16 @@ async function processIncomingMessage({ botId, message }) {
     return;
   }
 
+  const replyWaitConfig = getReplyWaitConfig(botId);
   inboundCoalescer.push(coalesceKey, {
     botId,
     conversationKey,
     message,
     messageKey,
     acceptedAt: new Date().toISOString()
+  }, {
+    baseQuietMs: replyWaitConfig.baseSeconds * 1000,
+    incrementMs: replyWaitConfig.incrementSeconds * 1000
   });
 }
 
@@ -3771,6 +3789,24 @@ app.put(
       trigger: String(body.trigger || "ping").trim(),
       reply: String(body.reply || "pong")
     });
+    res.json({ ok: true, botId: req.params.botId, config });
+  })
+);
+
+app.get(
+  "/api/bots/:botId/settings/reply-wait",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    res.json({ ok: true, botId: req.params.botId, config: getReplyWaitConfig(req.params.botId) });
+  })
+);
+
+app.put(
+  "/api/bots/:botId/settings/reply-wait",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    const config = normalizeReplyWaitConfig(req.body || {});
+    setSetting(getReplyWaitSettingKey(req.params.botId), config);
     res.json({ ok: true, botId: req.params.botId, config });
   })
 );

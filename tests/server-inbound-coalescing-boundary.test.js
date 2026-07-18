@@ -7,8 +7,8 @@ const envExample = fs.readFileSync(new URL("../.env.example", import.meta.url), 
 
 test("server configures an inbound coalescer with approved defaults", () => {
   assert.match(source, /createInboundMessageCoalescer/);
-  assert.match(source, /INBOUND_COALESCE_QUIET_MS \|\| 10_000/);
-  assert.match(source, /INBOUND_COALESCE_MAX_MS \|\| 15_000/);
+  assert.match(source, /baseQuietMs: inboundCoalesceDefaults\.baseQuietMs/);
+  assert.match(source, /incrementMs: inboundCoalesceDefaults\.incrementMs/);
 });
 
 test("multiple inbound texts are presented to the Agent as one ordered customer turn", () => {
@@ -74,8 +74,7 @@ test("coalescer lifecycle events have structured log names", () => {
 });
 
 test("coalescing environment variables are documented", () => {
-  assert.match(envExample, /^INBOUND_COALESCE_QUIET_MS=10000$/m);
-  assert.match(envExample, /^INBOUND_COALESCE_MAX_MS=15000$/m);
+  assert.doesNotMatch(envExample, /^INBOUND_COALESCE_MAX_MS=/m);
 });
 
 test("pending batches are canceled when their lifecycle context becomes stale", () => {

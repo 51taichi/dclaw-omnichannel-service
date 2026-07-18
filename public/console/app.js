@@ -6,6 +6,7 @@ const state = {
   selectedBotId: "",
   botContextVersion: 0,
   debugReplyLoadVersion: 0,
+  replyWaitLoadVersion: 0,
   selectedFlowConversationKey: "",
   loadingFlowConversationKey: "",
   currentRole: "",
@@ -45,6 +46,8 @@ const els = {
   agentCount: document.querySelector("#agentCount"),
   agentsList: document.querySelector("#agentsList"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
+  replyWaitPanel: document.querySelector("#replyWaitPanel"),
+  replyWaitForm: document.querySelector("#replyWaitForm"),
   flowMachineForm: document.querySelector("#flowMachineForm"),
   addFlowNodeButton: document.querySelector("#addFlowNodeButton"),
   applyFlowJsonButton: document.querySelector("#applyFlowJsonButton"),
@@ -533,6 +536,11 @@ function clearBotScopedContent() {
   els.debugReplyForm.reset();
   els.debugReplyForm.trigger.value = "ping";
   els.debugReplyForm.reply.value = "pong";
+  els.replyWaitForm?.reset();
+  if (els.replyWaitForm) {
+    els.replyWaitForm.baseSeconds.value = "10";
+    els.replyWaitForm.incrementSeconds.value = "5";
+  }
   els.manualReplyInput.value = "";
   els.accessKeyForm.reset();
   els.proactiveForm.reset();
@@ -573,6 +581,8 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
       renderBots(currentBots);
       fillForm(activeBot);
       await loadDebugReply({ contextVersion });
+      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
+      await loadReplyWait({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
     }
     const tasks = [
@@ -1137,6 +1147,23 @@ async function loadDebugReply({ contextVersion = state.botContextVersion } = {})
   els.debugReplyForm.enabled.checked = Boolean(config.enabled);
   els.debugReplyForm.trigger.value = config.trigger || "ping";
   els.debugReplyForm.reply.value = config.reply || "pong";
+}
+
+async function loadReplyWait({ contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (state.currentRole !== "admin" || !botId || !els.replyWaitForm) return;
+  const requestVersion = ++state.replyWaitLoadVersion;
+  const data = await request(
+    `/api/bots/${encodeURIComponent(botId)}/settings/reply-wait`
+  );
+  if (
+    requestVersion !== state.replyWaitLoadVersion ||
+    state.selectedBotId !== botId ||
+    !isCurrentBotContext(botId, contextVersion)
+  ) return;
+  const config = data.config || {};
+  els.replyWaitForm.baseSeconds.value = String(config.baseSeconds ?? 10);
+  els.replyWaitForm.incrementSeconds.value = String(config.incrementSeconds ?? 5);
 }
 
 async function saveBot(event) {
@@ -3282,6 +3309,28 @@ async function saveDebugReply(event) {
   toast("调试自动回复已保存");
 }
 
+async function saveReplyWait(event) {
+  event.preventDefault();
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (state.currentRole !== "admin" || !botId) {
+    toast("请先以管理员身份选择 Bot");
+    return;
+  }
+  const result = await request(`/api/bots/${encodeURIComponent(botId)}/settings/reply-wait`, {
+    method: "PUT",
+    botId,
+    body: JSON.stringify({
+      baseSeconds: Number(els.replyWaitForm.baseSeconds.value),
+      incrementSeconds: Number(els.replyWaitForm.incrementSeconds.value)
+    })
+  });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  els.replyWaitForm.baseSeconds.value = String(result.config?.baseSeconds ?? 10);
+  els.replyWaitForm.incrementSeconds.value = String(result.config?.incrementSeconds ?? 5);
+  toast("连续消息回复等待配置已保存");
+}
+
 function proactiveAttachmentIcon(type) {
   return {
     image: "icon-image",
@@ -3587,6 +3636,9 @@ els.accessKeyForm.addEventListener("submit", (event) =>
 );
 els.debugReplyForm.addEventListener("submit", (event) =>
   saveDebugReply(event).catch(toastError)
+);
+els.replyWaitForm?.addEventListener("submit", (event) =>
+  saveReplyWait(event).catch(toastError)
 );
 els.flowMachineForm.addEventListener("submit", (event) =>
   saveFlowMachine(event).catch(toastError)

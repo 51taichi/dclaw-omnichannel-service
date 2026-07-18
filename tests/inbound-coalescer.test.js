@@ -43,12 +43,12 @@ function createFakeClock() {
   };
 }
 
-test("coalescer resets the quiet window but respects the hard maximum", async () => {
+test("coalescer increases the quiet window for each appended message without a hard cutoff", async () => {
   const clock = createFakeClock();
   const flushed = [];
   const coalescer = createInboundMessageCoalescer({
-    quietMs: 10_000,
-    maxMs: 15_000,
+    baseQuietMs: 10_000,
+    incrementMs: 5_000,
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
@@ -58,20 +58,23 @@ test("coalescer resets the quiet window but respects the hard maximum", async ()
   coalescer.push("bot-a:private:张三", { text: "去哪里听？" });
   await clock.advance(9_000);
   coalescer.push("bot-a:private:张三", { text: "收钱的不？" });
-  await clock.advance(5_999);
+  await clock.advance(14_000);
+  assert.equal(flushed.length, 0);
+  coalescer.push("bot-a:private:张三", { text: "需要预约吗？" });
+  await clock.advance(19_999);
   assert.equal(flushed.length, 0);
   await clock.advance(1);
 
-  assert.deepEqual(flushed[0].items.map((item) => item.text), ["去哪里听？", "收钱的不？"]);
-  assert.equal(flushed[0].reason, "max_window");
+  assert.deepEqual(flushed[0].items.map((item) => item.text), ["去哪里听？", "收钱的不？", "需要预约吗？"]);
+  assert.equal(flushed[0].reason, "quiet_window");
 });
 
 test("coalescer flushes one message after the quiet window", async () => {
   const clock = createFakeClock();
   const flushed = [];
   const coalescer = createInboundMessageCoalescer({
-    quietMs: 10_000,
-    maxMs: 15_000,
+    baseQuietMs: 10_000,
+    incrementMs: 5_000,
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
@@ -87,13 +90,34 @@ test("coalescer flushes one message after the quiet window", async () => {
   assert.equal(flushed[0].reason, "quiet_window");
 });
 
+test("coalescer allows a zero increment override", async () => {
+  const clock = createFakeClock();
+  const flushed = [];
+  const coalescer = createInboundMessageCoalescer({
+    baseQuietMs: 100,
+    incrementMs: 50,
+    now: clock.now,
+    setTimer: clock.setTimer,
+    clearTimer: clock.clearTimer,
+    onFlush: async (batch) => flushed.push(batch)
+  });
+
+  coalescer.push("bot-a:private:张三", { text: "1" }, { incrementMs: 0 });
+  await clock.advance(50);
+  coalescer.push("bot-a:private:张三", { text: "2" });
+  await clock.advance(99);
+  assert.equal(flushed.length, 0);
+  await clock.advance(1);
+  assert.equal(flushed.length, 1);
+});
+
 test("coalescer isolates conversations and reports lifecycle events", async () => {
   const clock = createFakeClock();
   const flushed = [];
   const events = [];
   const coalescer = createInboundMessageCoalescer({
-    quietMs: 100,
-    maxMs: 200,
+    baseQuietMs: 100,
+    incrementMs: 50,
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
@@ -109,6 +133,8 @@ test("coalescer isolates conversations and reports lifecycle events", async () =
   assert.equal(coalescer.has("bot-a:private:张三"), true);
   await clock.advance(100);
 
+  assert.equal(flushed.length, 1);
+  await clock.advance(50);
   assert.equal(flushed.length, 2);
   assert.deepEqual(flushed.find((batch) => batch.key.endsWith("张三")).items.map((item) => item.text), ["A1", "A2"]);
   assert.deepEqual(events.map((event) => event.name), ["started", "started", "appended", "flushed", "flushed"]);
@@ -119,8 +145,8 @@ test("coalescer cancellation returns items and prevents a late flush", async () 
   const flushed = [];
   const events = [];
   const coalescer = createInboundMessageCoalescer({
-    quietMs: 100,
-    maxMs: 200,
+    baseQuietMs: 100,
+    incrementMs: 50,
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
@@ -142,8 +168,8 @@ test("coalescer cancellation returns items and prevents a late flush", async () 
 test("coalescer cancels only pending batches for one bot", () => {
   const clock = createFakeClock();
   const coalescer = createInboundMessageCoalescer({
-    quietMs: 100,
-    maxMs: 200,
+    baseQuietMs: 100,
+    incrementMs: 50,
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,
@@ -168,8 +194,8 @@ test("coalescer serializes flushed batches for the same conversation", async () 
     releaseFirst = resolve;
   });
   const coalescer = createInboundMessageCoalescer({
-    quietMs: 10,
-    maxMs: 20,
+    baseQuietMs: 10,
+    incrementMs: 5,
     now: clock.now,
     setTimer: clock.setTimer,
     clearTimer: clock.clearTimer,

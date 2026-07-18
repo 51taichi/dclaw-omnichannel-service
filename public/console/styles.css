@@ -1957,6 +1957,27 @@ button.danger:hover {
   height: 15px;
 }
 
+.reply-wait-form {
+  grid-template-columns: minmax(220px, 1fr) minmax(180px, 1fr) auto auto;
+  align-items: end;
+}
+
+.response-wait-help {
+  margin-bottom: 2px;
+}
+
+.response-wait-help::after {
+  width: 350px;
+  max-width: min(350px, calc(100vw - 40px));
+  white-space: pre-line;
+}
+
+@media (max-width: 920px) {
+  .reply-wait-form {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
 .activation-messages {
   display: grid;
   gap: 8px;

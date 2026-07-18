@@ -10,9 +10,14 @@ function splitKey(key) {
   };
 }
 
+function normalizeDelay(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 export function createInboundMessageCoalescer({
-  quietMs,
-  maxMs,
+  baseQuietMs,
+  incrementMs,
   now = Date.now,
   setTimer = setTimeout,
   clearTimer = clearTimeout,
@@ -21,8 +26,8 @@ export function createInboundMessageCoalescer({
 }) {
   if (typeof onFlush !== "function") throw new Error("onFlush is required");
 
-  const quietWindowMs = Math.max(0, Number(quietMs) || 0);
-  const maximumWindowMs = Math.max(quietWindowMs, Number(maxMs) || quietWindowMs);
+  const defaultBaseQuietMs = normalizeDelay(baseQuietMs, 0);
+  const defaultIncrementMs = normalizeDelay(incrementMs, 0);
   const pending = new Map();
   const executionTails = new Map();
   let nextBatchId = 1;
@@ -45,9 +50,7 @@ export function createInboundMessageCoalescer({
 
   function clearBatchTimers(batch) {
     if (batch.quietTimer !== null) clearTimer(batch.quietTimer);
-    if (batch.maximumTimer !== null) clearTimer(batch.maximumTimer);
     batch.quietTimer = null;
-    batch.maximumTimer = null;
   }
 
   function runSerially(batch) {
@@ -85,16 +88,18 @@ export function createInboundMessageCoalescer({
 
   function scheduleQuiet(batch) {
     if (batch.quietTimer !== null) clearTimer(batch.quietTimer);
-    batch.quietTimer = setTimer(() => flush(batch, "quiet_window"), quietWindowMs);
+    const delayMs = batch.baseQuietMs + Math.max(0, batch.items.length - 1) * batch.incrementMs;
+    batch.scheduledDelayMs = delayMs;
+    batch.quietTimer = setTimer(() => flush(batch, "quiet_window"), delayMs);
   }
 
-  function push(key, item) {
+  function push(key, item, options = {}) {
     const normalizedKey = String(key || "");
     const existing = pending.get(normalizedKey);
     if (existing) {
       existing.items.push(item);
       scheduleQuiet(existing);
-      emit("appended", existing);
+      emit("appended", existing, { scheduledDelayMs: existing.scheduledDelayMs });
       return existing.id;
     }
 
@@ -107,12 +112,13 @@ export function createInboundMessageCoalescer({
       items: [item],
       startedAt: now(),
       quietTimer: null,
-      maximumTimer: null
+      baseQuietMs: normalizeDelay(options.baseQuietMs, defaultBaseQuietMs),
+      incrementMs: normalizeDelay(options.incrementMs, defaultIncrementMs),
+      scheduledDelayMs: 0
     };
     pending.set(normalizedKey, batch);
     scheduleQuiet(batch);
-    batch.maximumTimer = setTimer(() => flush(batch, "max_window"), maximumWindowMs);
-    emit("started", batch);
+    emit("started", batch, { scheduledDelayMs: batch.scheduledDelayMs });
     return batch.id;
   }
 

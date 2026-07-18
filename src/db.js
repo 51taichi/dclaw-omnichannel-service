@@ -407,7 +407,21 @@ export function buildMessageKey({ botId, conversationKey, message, nowMs = Date.
   const messageId = String(message?.messageId || "").trim();
   const isFriendAdded = Number(message?.textType) === 22 && Number(message?.type) === 105;
   if (messageId && !isFriendAdded) {
-    return `${botId}:message:${messageId}`;
+    const contentDigest = crypto
+      .createHash("sha256")
+      .update(JSON.stringify({
+        conversationKey,
+        roomType: message?.roomType ?? "",
+        textType: message?.textType ?? "",
+        receivedName: message?.receivedName || "",
+        groupName: message?.groupName || "",
+        raw: message?.rawSpoken || message?.rawMessage || message?.spoken || "",
+        fileName: message?.fileName || "",
+        filePath: message?.filePath || ""
+      }))
+      .digest("hex")
+      .slice(0, 16);
+    return `${botId}:message:${messageId}:${contentDigest}`;
   }
 
   const roomType = message?.roomType ?? "";
