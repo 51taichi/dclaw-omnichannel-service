@@ -61,6 +61,8 @@ test("conversation cards expose a right click manual tag menu", () => {
   assert.match(html, /id="flowSessionTagMenu" class="flow-session-tag-menu"/);
   assert.match(js, /flowSessionTagMenu: document\.querySelector\("#flowSessionTagMenu"\)/);
   assert.match(js, /function renderFlowSessionManualTagMenu\(\{ session, x, y \}\)/);
+  assert.match(js, /const sessionName = flowSessionDisplayName\(session\)/);
+  assert.match(js, /<strong>给\$\{escapeHtml\(sessionName\)\}打上标签：<\/strong>/);
   assert.match(js, /button\.addEventListener\("contextmenu"/);
   assert.match(js, /function enabledManualTagGroups\(\)/);
   assert.match(js, /group\.enabled !== false[\s\S]*tag\.enabled !== false/);

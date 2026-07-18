@@ -1703,11 +1703,11 @@ async function applyManualConversationTag({ conversationKey, groupId, tagId, act
 function renderFlowSessionManualTagMenu({ session, x, y }) {
   if (!els.flowSessionTagMenu || !session?.conversationKey) return;
   const groups = enabledManualTagGroups();
+  const sessionName = flowSessionDisplayName(session);
   els.flowSessionTagMenu.innerHTML = groups.length
     ? `
       <div class="flow-session-manual-tag-menu-head">
-        <strong>手动打标签</strong>
-        <small>${escapeHtml(flowSessionDisplayName(session))}</small>
+        <strong>给${escapeHtml(sessionName)}打上标签：</strong>
       </div>
       <div class="flow-session-manual-tag-groups">
         ${groups
