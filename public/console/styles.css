@@ -2608,7 +2608,6 @@ button.danger:hover {
   gap: 10px 9px;
   width: 100%;
   height: auto;
-  min-height: 78px;
   padding: 9px;
   border: 1px solid color-mix(in srgb, var(--cyan) 32%, var(--line));
   border-radius: 8px;
