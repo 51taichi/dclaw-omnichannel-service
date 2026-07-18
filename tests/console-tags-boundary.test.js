@@ -64,19 +64,25 @@ test("console renders tag chips and tag filters", () => {
   assert.match(css, /\.tag-chip \.icon\s*\{[\s\S]*width:\s*12px[\s\S]*height:\s*12px/);
 });
 
-test("conversation cards expose a right click manual tag menu", () => {
+test("conversation cards expose click and right-click entry points for one manual tag menu", () => {
   assert.match(html, /id="flowSessionTagMenu" class="flow-session-tag-menu"/);
   assert.match(js, /flowSessionTagMenu: document\.querySelector\("#flowSessionTagMenu"\)/);
   assert.match(js, /function renderFlowSessionManualTagMenu\(\{ session, x, y \}\)/);
   assert.match(js, /const sessionName = flowSessionDisplayName\(session\)/);
   assert.match(js, /<strong>给\$\{escapeHtml\(sessionName\)\}打上标签：<\/strong>/);
   assert.match(js, /button\.addEventListener\("contextmenu"/);
+  assert.match(js, /class="flow-session-manual-tag-trigger"[^>]*data-flow-manual-tag-trigger=/);
+  assert.match(js, /title="手工打标签"/);
+  assert.match(js, /querySelectorAll\("\[data-flow-manual-tag-trigger\]"\)/);
+  assert.match(js, /renderFlowSessionManualTagMenu\(\{[\s\S]*session,[\s\S]*x: rect\.left,[\s\S]*y: rect\.bottom \+ 6/);
   assert.match(js, /function enabledManualTagGroups\(\)/);
   assert.match(js, /group\.enabled !== false[\s\S]*tag\.enabled !== false/);
   assert.match(js, /function applyManualConversationTag\(\{ conversationKey, groupId, tagId, action \}\)/);
   assert.match(js, /\/api\/flow-sessions\/\$\{encodeURIComponent\(conversationKey\)\}\/tags\/manual/);
   assert.match(js, /hideFlowSessionManualTagMenu/);
   assert.match(css, /\.flow-session-tag-menu\s*\{[\s\S]*position:\s*fixed/);
+  assert.match(css, /\.flow-session-manual-tag-trigger\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*2/);
+  assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*grid-column:\s*2 \/ 4/);
   assert.match(css, /\.flow-session-manual-tag-option\s*\{[\s\S]*grid-template-columns:\s*18px minmax\(0,\s*1fr\)/);
 });
 

@@ -2747,12 +2747,41 @@ button.danger:hover {
 }
 
 .flow-session-tag-zone {
-  grid-column: 1 / 4;
+  grid-column: 2 / 4;
   grid-row: 2;
   display: block;
   min-height: 28px;
   padding-right: 4px;
   overflow: hidden;
+}
+
+.flow-session-manual-tag-trigger {
+  grid-column: 1;
+  grid-row: 2;
+  display: inline-grid;
+  place-items: center;
+  align-self: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, var(--line));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cyan) 8%, #ffffff);
+  color: color-mix(in srgb, var(--text) 70%, var(--accent));
+  cursor: pointer;
+  transition: border-color 0.16s ease, background 0.16s ease, color 0.16s ease, transform 0.16s ease;
+}
+
+.flow-session-manual-tag-trigger:hover,
+.flow-session-manual-tag-trigger:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, #ffffff);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.flow-session-manual-tag-trigger .icon {
+  width: 15px;
+  height: 15px;
 }
 
 .chat-status-badge .icon {

@@ -97,7 +97,7 @@ test("flow session status labels do not change card or chat header layout", () =
   assert.match(css, /\.flow-session-date-tag\s*\{[\s\S]*min-width:\s*max-content[\s\S]*overflow:\s*visible/);
   assert.match(css, /\.flow-session-date-tag \.tag-chip\s*\{[\s\S]*max-width:\s*none/);
   assert.match(css, /\.flow-session-card \.tag-chip,\n\.flow-session-card \.tag-chip span\s*\{[\s\S]*overflow:\s*visible[\s\S]*text-overflow:\s*clip/);
-  assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*grid-column:\s*1 \/ 4[\s\S]*grid-row:\s*2/);
+  assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*grid-column:\s*2 \/ 4[\s\S]*grid-row:\s*2/);
   assert.match(css, /\.flow-session-tools\s*\{[\s\S]*grid-column:\s*4[\s\S]*grid-row:\s*2/);
   assert.match(css, /\.flow-session-switch\.handoff-switch\s*\{[\s\S]*grid-column:\s*4[\s\S]*grid-row:\s*1/);
   assert.doesNotMatch(css, /\.flow-session-status\s*\{/);

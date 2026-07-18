@@ -2826,6 +2826,14 @@ function renderFlowSessions({ animateFrom = null } = {}) {
                   <strong class="flow-session-name" title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
                 </span>
                 ${renderConversationDateTag(session.tags || [])}
+                <span
+                  class="flow-session-manual-tag-trigger"
+                  data-flow-manual-tag-trigger="${escapeHtml(session.conversationKey)}"
+                  role="button"
+                  tabindex="0"
+                  title="手工打标签"
+                  aria-label="给${escapeHtml(name)}手工打标签"
+                >${icon("tag")}</span>
                 <span class="flow-session-tag-zone">
                   ${renderConversationTags(session.tags || [], { includeDate: false })}
                 </span>
@@ -2867,6 +2875,25 @@ function renderFlowSessions({ animateFrom = null } = {}) {
     switchEl.addEventListener("click", toggle);
     switchEl.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") toggle(event);
+    });
+  });
+  els.flowSessionList.querySelectorAll("[data-flow-manual-tag-trigger]").forEach((trigger) => {
+    const openMenu = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const session = currentFlowSessions.find(
+        (item) => item.conversationKey === trigger.dataset.flowManualTagTrigger
+      );
+      const rect = trigger.getBoundingClientRect();
+      renderFlowSessionManualTagMenu({
+        session,
+        x: rect.left,
+        y: rect.bottom + 6
+      });
+    };
+    trigger.addEventListener("click", openMenu);
+    trigger.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") openMenu(event);
     });
   });
   animateFlowSessionReorder(animateFrom);
