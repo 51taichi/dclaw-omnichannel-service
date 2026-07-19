@@ -88,6 +88,8 @@ import {
   listBotBindings,
   finalizeFlowActivationTaskDelivery,
   listRecords,
+  markFlowActionExecutionFailed,
+  markFlowActionExecutionSucceeded,
   markFlowActivationTaskFailed,
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
@@ -98,6 +100,7 @@ import {
   mergeFlowSessionData,
   normalizeActivationConfig,
   resetInterruptedProactiveTargets,
+  reserveFlowActionExecution,
   reserveTagActivationTaskForSend,
   scheduleFlowActivationTask,
   scheduleTagActivationTask,
@@ -122,6 +125,7 @@ import {
   bindMessageCallback,
   getCallbackConfig,
   getRobotInfo,
+  sendGroupInviteCommand,
   sendRawCommand,
   sendMediaMessage,
   sendTextMessage,
@@ -731,6 +735,184 @@ function isValidFlowNode(machine, nodeId) {
   return Boolean(nodes.some((node) => node.id === nodeId));
 }
 
+async function executeFlowActions({
+  source,
+  botId,
+  binding,
+  conversationKey,
+  nodeId,
+  activationTaskId = "",
+  actions = []
+}) {
+  if (!Array.isArray(actions) || actions.length === 0) return [];
+  if (!binding?.agentId) {
+    logWarn("flow_action.skipped", {
+      botId,
+      conversationKey,
+      nodeId,
+      activationTaskId,
+      source,
+      reason: "missing_agent_binding"
+    });
+    return [];
+  }
+  if (!isPrivateConversationKey(conversationKey)) {
+    logInfo("flow_action.skipped", {
+      botId,
+      agentId: binding?.agentId || "",
+      conversationKey,
+      nodeId,
+      activationTaskId,
+      source,
+      reason: "non_private_conversation"
+    });
+    return [];
+  }
+
+  const target = privateTargetNameFromConversationKey(conversationKey);
+  if (!target) {
+    logWarn("flow_action.skipped", {
+      botId,
+      agentId: binding?.agentId || "",
+      conversationKey,
+      nodeId,
+      activationTaskId,
+      source,
+      reason: "missing_current_contact"
+    });
+    return [];
+  }
+
+  const results = [];
+  for (const action of actions) {
+    if (!action || action.type !== "invite_to_group") continue;
+    if (action.target !== "current_contact") {
+      logInfo("flow_action.skipped", {
+        botId,
+        agentId: binding?.agentId || "",
+        conversationKey,
+        nodeId,
+        activationTaskId,
+        source,
+        actionId: action.id || "",
+        actionType: action.type || "",
+        reason: "unsupported_target"
+      });
+      continue;
+    }
+
+    let reservation;
+    try {
+      reservation = reserveFlowActionExecution({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        source,
+        nodeId,
+        activationTaskId,
+        action
+      });
+    } catch (error) {
+      logWarn("flow_action.invalid", {
+        botId,
+        agentId: binding?.agentId || "",
+        conversationKey,
+        nodeId,
+        activationTaskId,
+        source,
+        actionId: action.id || "",
+        actionType: action.type || "",
+        error: error.message
+      });
+      continue;
+    }
+
+    if (!reservation?.reserved) {
+      logInfo("flow_action.duplicate_skipped", {
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        nodeId,
+        activationTaskId,
+        source,
+        actionId: action.id || "",
+        executionId: reservation?.execution?.id || ""
+      });
+      continue;
+    }
+
+    try {
+      const result = await sendGroupInviteCommand({
+        robotId: botId,
+        groupName: action.groupName,
+        targets: [target],
+        showMessageHistory: action.showMessageHistory !== false
+      });
+      const worktoolMessageId = String(result?.data || "");
+      const execution = markFlowActionExecutionSucceeded({
+        id: reservation.execution.id,
+        worktoolMessageId,
+        worktoolResponse: result
+      });
+      insertOutgoingMessage({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        messageId: worktoolMessageId,
+        targetName: target,
+        content: `拉入群：${target} -> ${action.groupName}`,
+        worktoolResponse: {
+          ...(result || {}),
+          source: "flow_action",
+          flowActionSource: source,
+          flowActionExecutionId: execution?.id || reservation.execution.id,
+          actionId: action.id || "",
+          actionType: action.type || "",
+          nodeId,
+          activationTaskId,
+          groupName: action.groupName,
+          targetName: target
+        }
+      });
+      logInfo("flow_action.sent", {
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        nodeId,
+        activationTaskId,
+        source,
+        actionId: action.id || "",
+        executionId: execution?.id || reservation.execution.id,
+        groupName: action.groupName,
+        targetName: target,
+        worktoolMessageId,
+        worktoolCode: result?.code
+      });
+      results.push({ action, execution, result });
+    } catch (error) {
+      markFlowActionExecutionFailed({
+        id: reservation.execution.id,
+        errorMessage: error.message
+      });
+      logWarn("flow_action.failed", {
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        nodeId,
+        activationTaskId,
+        source,
+        actionId: action.id || "",
+        executionId: reservation.execution.id,
+        groupName: action.groupName,
+        targetName: target,
+        error: error.message
+      });
+    }
+  }
+
+  return results;
+}
+
 async function applyFlowDecision({ botId, binding, conversationKey, message, flow, decision }) {
   if (!flow || !decision || typeof decision !== "object") return;
   const patch = decision.collectedDataPatch || decision.collectedFields || decision.dataPatch || {};
@@ -739,6 +921,7 @@ async function applyFlowDecision({ botId, binding, conversationKey, message, flo
   }
 
   const nextNodeId = String(decision.nextNodeId || "").trim();
+  const completedNode = getFlowNode(flow.machine, flow.session.currentNodeId);
   if (
     decision.nodeCompleted === true &&
     nextNodeId &&
@@ -753,6 +936,14 @@ async function applyFlowDecision({ botId, binding, conversationKey, message, flo
       decision
     });
     invalidateFlowActivation({ conversationKey, reason: "node_transition" });
+    await executeFlowActions({
+      source: "node_complete",
+      botId,
+      binding,
+      conversationKey,
+      nodeId: completedNode?.id || flow.session.currentNodeId,
+      actions: completedNode?.actionsOnComplete || []
+    });
   }
 }
 
@@ -2136,6 +2327,18 @@ async function processFlowActivationTask(task) {
       return;
     }
     const { task: sentTask, progress } = delivery;
+    const activationActions = sentTask.messages?.[sentTask.messageIndex]?.actionsAfterSend || [];
+    if (!sentTask.wasCanceled) {
+      await executeFlowActions({
+        source: "activation_sent",
+        botId: task.botId,
+        binding,
+        conversationKey: task.conversationKey,
+        nodeId: task.nodeId,
+        activationTaskId: String(task.id),
+        actions: activationActions
+      });
+    }
     const session = getFlowSession(task.conversationKey);
     const nextTask = progress &&
       !sentTask.wasCanceled &&
