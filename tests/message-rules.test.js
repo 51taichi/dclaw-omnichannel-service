@@ -1,8 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  friendAddedName,
-  isFriendAddedEvent,
   isSystemFriendGreeting,
   shouldProcessInboundForAgent
 } from "../src/message-rules.js";
@@ -31,16 +29,15 @@ test("allows text callbacks with customer content", () => {
   );
 });
 
-test("recognizes WorkTool friend-added callbacks without treating them as text", () => {
-  const event = { textType: 22, type: 105, friendName: "  新客户  " };
-  assert.equal(isFriendAddedEvent(event), true);
-  assert.equal(friendAddedName(event), "新客户");
-  assert.equal(shouldProcessInboundForAgent(event), false);
-});
-
-test("does not confuse other empty WorkTool callbacks with friend additions", () => {
-  assert.equal(isFriendAddedEvent({ textType: 22, type: 999, friendName: "客户" }), false);
-  assert.equal(friendAddedName({ textType: 22, type: 105, friendName: "   " }), "");
+test("ignores WorkTool friend-added callbacks because they are not the canonical trigger", () => {
+  assert.equal(
+    shouldProcessInboundForAgent({
+      textType: 22,
+      type: 105,
+      friendName: "新客户"
+    }),
+    false
+  );
 });
 
 test("recognizes the WeCom automatic friend greeting but not similar customer text", () => {

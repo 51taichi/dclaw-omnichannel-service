@@ -4,11 +4,12 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 
-test("friend-added callback is handled before empty inbound messages are skipped", () => {
+test("friend-added activation is triggered only by the system greeting before agent filtering", () => {
   assert.equal(source.includes("handleFriendAddedEvent"), true);
-  assert.equal(source.includes("isFriendAddedEvent(message)"), true);
+  assert.equal(source.includes("isFriendAddedEvent(message)"), false);
+  assert.equal(source.includes("isSystemFriendGreeting(message)"), true);
   assert.equal(
-    source.indexOf("isFriendAddedEvent(message)") < source.indexOf("shouldProcessInboundForAgent(message)"),
+    source.indexOf("isSystemFriendGreeting(message)") < source.indexOf("shouldProcessInboundForAgent(message)"),
     true
   );
 });

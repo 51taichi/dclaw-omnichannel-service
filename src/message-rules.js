@@ -9,10 +9,6 @@ export function shouldProcessInboundForAgent(message) {
   return true;
 }
 
-export function isFriendAddedEvent(message) {
-  return Number(message?.textType) === 22 && Number(message?.type) === 105;
-}
-
 export function isSystemFriendGreeting(message) {
   const roomType = Number(message?.roomType);
   if (Number(message?.textType) !== 1 || (roomType !== 2 && roomType !== 4)) return false;
@@ -20,8 +16,4 @@ export function isSystemFriendGreeting(message) {
     .normalize("NFKC")
     .replace(/[\s,，。.!！]/g, "");
   return content === "我已经添加了你现在我们可以开始聊天了";
-}
-
-export function friendAddedName(message) {
-  return String(message?.friendName || "").trim();
 }

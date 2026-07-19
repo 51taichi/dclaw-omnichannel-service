@@ -28,16 +28,17 @@ test("callbacks persist and cancel old activation before entering the buffer", (
   assert.ok(source.indexOf("invalidateFlowActivation", handlerStart) < push);
 });
 
-test("friend-added, unsupported, human handoff, and debug replies finish before buffering", () => {
+test("system friend greeting, unsupported, human handoff, and debug replies finish before buffering", () => {
   const handlerStart = source.indexOf("async function processIncomingMessage");
   const push = source.indexOf("inboundCoalescer.push", handlerStart);
-  assert.ok(source.indexOf("handleFriendAddedEvent", handlerStart) < push);
+  assert.ok(source.indexOf("isSystemFriendGreeting(message)", handlerStart) < push);
+  assert.equal(source.includes("isFriendAddedEvent(message)"), false);
   assert.ok(source.indexOf("non_text_or_empty_message", handlerStart) < push);
   assert.ok(source.indexOf('status: "human_handoff"', handlerStart) < push);
   assert.ok(source.indexOf("handleDebugPing", handlerStart) < push);
 });
 
-test("automatic friend greetings are recorded but cannot cancel activation or invoke the Agent", () => {
+test("automatic friend greetings trigger friend-added handling without canceling activation or invoking the Agent", () => {
   const handlerStart = source.indexOf("async function processIncomingMessage");
   const handlerEnd = source.indexOf("async function processCoalescedIncomingBatch", handlerStart);
   const handler = source.slice(handlerStart, handlerEnd);
@@ -45,7 +46,7 @@ test("automatic friend greetings are recorded but cannot cancel activation or in
   const invalidation = handler.indexOf("invalidateFlowActivation");
   const push = handler.indexOf("inboundCoalescer.push");
   assert.ok(greeting >= 0 && greeting < invalidation && greeting < push);
-  assert.match(handler, /recordSystemFriendGreeting\(\{ botId, binding, conversationKey, message \}\)/);
+  assert.match(handler, /handleFriendAddedEvent\(\{ botId, binding, message, logContext, conversationKey \}\)/);
   assert.match(handler, /reason: "system_friend_greeting"/);
 });
 

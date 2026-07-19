@@ -51,6 +51,7 @@ import {
   finishMessageProcessing,
   getAgent,
   getBotBinding,
+  getConversation,
   getConversationKey,
   getConversationResetPending,
   getConversationAssets,
@@ -127,8 +128,6 @@ import {
   unbindMessageCallback
 } from "./worktool.js";
 import {
-  friendAddedName,
-  isFriendAddedEvent,
   isSystemFriendGreeting,
   shouldProcessInboundForAgent
 } from "./message-rules.js";
@@ -435,8 +434,8 @@ function shouldRecordConversationHistory(message) {
 }
 
 function recordSystemFriendGreeting({ botId, binding, conversationKey, message }) {
-  if (!binding?.agentId) return;
-  upsertConversation({
+  if (!binding?.agentId) return null;
+  const conversation = upsertConversation({
     botId,
     agentId: binding.agentId,
     conversationKey,
@@ -453,6 +452,7 @@ function recordSystemFriendGreeting({ botId, binding, conversationKey, message }
       systemMessageType: "friend_greeting"
     }
   });
+  return conversation;
 }
 
 function isPrivateConversationKey(conversationKey) {
@@ -1367,12 +1367,12 @@ function messageLogFields({ botId, conversationKey, message }) {
   };
 }
 
-async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
-  const friendName = friendAddedName(message);
+async function handleFriendAddedEvent({ botId, binding, message, logContext, conversationKey }) {
+  const friendName = String(message?.receivedName || message?.groupName || "").trim();
   logInfo("friend_added.received", {
     ...logContext,
     friendName,
-    eventType: message.type
+    trigger: "system_friend_greeting"
   });
   if (!friendName) {
     logInfo("friend_added.skipped", {
@@ -1390,19 +1390,17 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext }) {
     return "skipped";
   }
 
-  const contactMessage = {
-    ...message,
-    roomType: 2,
-    receivedName: friendName,
-    groupName: friendName
-  };
-  const conversationKey = getConversationKey(botId, contactMessage);
-  const conversation = upsertConversation({
-    botId,
-    agentId: binding.agentId,
-    conversationKey,
-    message: contactMessage
-  });
+  const existingConversation = getConversation(conversationKey);
+  const conversation = recordSystemFriendGreeting({ botId, binding, conversationKey, message });
+  if (existingConversation) {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      friendName,
+      conversationKey,
+      reason: "system_friend_greeting_existing_conversation"
+    });
+    return "skipped";
+  }
   const dateTags = applySystemDateTag({
     botId,
     binding,
@@ -2664,14 +2662,8 @@ async function processIncomingMessage({ botId, message }) {
 
   insertIncomingMessage({ botId, conversationKey, payload: message });
 
-  if (isFriendAddedEvent(message)) {
-    await handleFriendAddedEvent({ botId, binding, message, logContext });
-    finishMessageProcessing({ messageKey, status: "processed" });
-    return;
-  }
-
   if (isSystemFriendGreeting(message)) {
-    recordSystemFriendGreeting({ botId, binding, conversationKey, message });
+    await handleFriendAddedEvent({ botId, binding, message, logContext, conversationKey });
     logInfo("incoming.skipped", {
       ...logContext,
       reason: "system_friend_greeting"
