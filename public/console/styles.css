@@ -2627,12 +2627,17 @@ textarea[data-action-target-activation].is-action-target-focused {
 .action-toolbox-toggle {
   width: 46px;
   height: 46px;
-  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--line));
+  border: 1px solid transparent;
   border-radius: 999px;
   color: #fff;
-  background: linear-gradient(135deg, var(--primary), var(--accent));
-  box-shadow: 0 16px 34px rgba(37, 48, 220, 0.24);
+  background: linear-gradient(90deg, var(--danger), var(--orange));
+  box-shadow: 0 10px 24px rgba(239, 38, 37, 0.16);
   cursor: pointer;
+}
+
+.action-toolbox-toggle:hover {
+  background: linear-gradient(90deg, var(--danger-dark), var(--danger), var(--orange));
+  box-shadow: 0 12px 28px rgba(239, 38, 37, 0.22);
 }
 
 .action-toolbox-toggle .icon {
