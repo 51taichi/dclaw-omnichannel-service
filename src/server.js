@@ -456,6 +456,19 @@ function recordSystemFriendGreeting({ botId, binding, conversationKey, message }
   return conversation;
 }
 
+function existingFriendAddedInCooldown({ botId, conversationKey, occurredAt }) {
+  if (friendAddedReentryCooldownMs <= 0) return false;
+  const session = getFlowSessionForBot({ botId, conversationKey });
+  const lastFriendAddedAtMs = Date.parse(session?.lastFriendAddedAt || "");
+  const occurredAtMs = Date.parse(occurredAt || "");
+  return (
+    Number.isFinite(lastFriendAddedAtMs) &&
+    Number.isFinite(occurredAtMs) &&
+    occurredAtMs - lastFriendAddedAtMs >= 0 &&
+    occurredAtMs - lastFriendAddedAtMs < friendAddedReentryCooldownMs
+  );
+}
+
 function isPrivateConversationKey(conversationKey) {
   return String(conversationKey || "").includes(":private:");
 }
@@ -1393,6 +1406,15 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
 
   const existingConversation = getConversation(conversationKey);
   const entryAnchorAt = new Date().toISOString();
+  if (existingConversation && existingFriendAddedInCooldown({ botId, conversationKey, occurredAt: entryAnchorAt })) {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      friendName,
+      conversationKey,
+      reason: "friend_added_cooldown"
+    });
+    return "skipped";
+  }
   if (existingConversation) {
     resetConversationForFriendGreeting({
       botId,

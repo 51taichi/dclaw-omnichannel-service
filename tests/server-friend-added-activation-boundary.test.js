@@ -94,3 +94,16 @@ test("friend-added callback resets an existing conversation instead of skipping 
   assert.equal(handler.includes("system_friend_greeting_existing_conversation"), false);
   assert.equal(handler.includes("forceReentry: Boolean(existingConversation)"), true);
 });
+
+test("friend-added cooldown is checked before resetting an existing conversation", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+  const cooldownIndex = handler.indexOf("existingFriendAddedInCooldown");
+  const resetIndex = handler.indexOf("resetConversationForFriendGreeting");
+
+  assert.ok(cooldownIndex >= 0);
+  assert.ok(resetIndex >= 0);
+  assert.ok(cooldownIndex < resetIndex);
+  assert.match(source, /function existingFriendAddedInCooldown[\s\S]*getFlowSessionForBot\(\{ botId, conversationKey \}\)/);
+});
