@@ -1572,13 +1572,6 @@ button.danger:hover {
   gap: 8px;
 }
 
-.target-pagination {
-  grid-column: 2;
-  align-self: center;
-  min-height: 40px;
-  padding-top: 0;
-}
-
 .target-picker-head strong {
   display: block;
   margin-bottom: 2px;
@@ -3847,7 +3840,16 @@ button.danger:hover {
 
 .bulk-actions {
   grid-column: 1 / -1;
+  align-items: center;
+  flex-wrap: nowrap;
   justify-content: flex-start;
+}
+
+.bulk-actions .target-pagination {
+  flex: 1 1 360px;
+  margin-left: auto;
+  min-height: 40px;
+  padding-top: 0;
 }
 
 .empty-targets {
@@ -4102,8 +4104,13 @@ td .muted {
     grid-template-columns: 1fr;
   }
 
-  .target-pagination {
-    grid-column: 1;
+  .bulk-actions {
+    flex-wrap: wrap;
+  }
+
+  .bulk-actions .target-pagination {
+    flex-basis: 100%;
+    margin-left: 0;
   }
 
   .manual-reply-tools {

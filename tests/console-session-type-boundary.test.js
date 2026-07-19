@@ -3,6 +3,8 @@ import fs from "node:fs";
 import test from "node:test";
 
 const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
+const html = fs.readFileSync(new URL("../public/console/index.html", import.meta.url), "utf8");
+const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 
 test("console classifies flow sessions by conversation key before groupName fallback", () => {
   assert.match(app, /function flowSessionType\(session\)/);
@@ -85,4 +87,11 @@ test("pagination controls use compact icon buttons", () => {
   assert.match(app, /icon\("chevron"\)/);
   assert.doesNotMatch(app, />上一页<\/button>/);
   assert.doesNotMatch(app, />下一页<\/button>/);
+});
+
+test("proactive target pagination sits on the bulk action row", () => {
+  assert.match(html, /<div class="bulk-actions">[\s\S]*id="targetPagination"[\s\S]*<\/div>\s*<\/div>\s*<div id="targetList"/);
+  assert.match(css, /\.bulk-actions\s*\{[^}]*align-items:\s*center/);
+  assert.match(css, /\.bulk-actions \.target-pagination\s*\{[^}]*margin-left:\s*auto/);
+  assert.doesNotMatch(css, /\.target-pagination\s*\{[^}]*grid-column:\s*2/);
 });
