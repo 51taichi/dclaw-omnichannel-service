@@ -160,6 +160,51 @@ export function buildRawMediaCommand({
   };
 }
 
+export function buildGroupInviteCommand({
+  groupName,
+  targets,
+  showMessageHistory = true
+}) {
+  const normalizedGroupName = String(groupName || "").trim();
+  if (!normalizedGroupName) {
+    throw new Error("groupName must be a non-empty string");
+  }
+  if (!Array.isArray(targets) || targets.length === 0) {
+    throw new Error("targets must be a non-empty array");
+  }
+
+  const selectList = targets.map((target) => String(target || "").trim()).filter(Boolean);
+  if (selectList.length === 0) {
+    throw new Error("targets must be a non-empty array");
+  }
+
+  return {
+    type: 207,
+    groupName: normalizedGroupName,
+    selectList,
+    removeList: [],
+    showMessageHistory: Boolean(showMessageHistory)
+  };
+}
+
+export async function sendGroupInviteCommand({
+  robotId,
+  groupName,
+  targets,
+  showMessageHistory = true,
+  socketType = 2
+}) {
+  const command = buildGroupInviteCommand({ groupName, targets, showMessageHistory });
+  return requestWorkTool("/wework/sendRawMessage", {
+    robotId,
+    method: "POST",
+    body: JSON.stringify({
+      socketType,
+      list: [command]
+    })
+  });
+}
+
 export async function sendRawCommand({ robotId, command, socketType = 2 }) {
   if (!command || typeof command !== "object") {
     throw new Error("command must be an object");
