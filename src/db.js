@@ -290,6 +290,30 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_flow_activation_tasks_conversation
   ON flow_activation_tasks (conversation_key, status, id);
 
+  CREATE TABLE IF NOT EXISTS flow_action_executions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    source TEXT NOT NULL,
+    node_id TEXT NOT NULL,
+    activation_task_id TEXT NOT NULL DEFAULT '',
+    action_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    action_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    worktool_message_id TEXT,
+    worktool_response_json TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT,
+    UNIQUE(bot_id, agent_id, conversation_key, source, node_id, activation_task_id, action_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_flow_action_executions_conversation
+  ON flow_action_executions (conversation_key, source, node_id, activation_task_id);
+
   CREATE TABLE IF NOT EXISTS agent_tag_schemas (
     agent_id TEXT PRIMARY KEY,
     config_json TEXT NOT NULL,
@@ -1173,17 +1197,21 @@ function normalizeFlowConfig(input) {
   if (!nodes.length) {
     throw new Error("flow machine requires at least one node");
   }
-  const normalizedNodes = nodes.map((node) => ({
-    id: String(node.id || "").trim(),
-    name: String(node.name || "").trim(),
-    goal: String(node.goal || "").trim(),
-    completionCriteria: String(node.completionCriteria || "").trim(),
-    collectFields: Array.isArray(node.collectFields) ? node.collectFields.map(String) : [],
-    conversationTips: Array.isArray(node.conversationTips) ? node.conversationTips.map(String) : [],
-    activation: normalizeActivationConfig(node.activation),
-    nextNodeId: String(node.nextNodeId || "").trim(),
-    transitions: Array.isArray(node.transitions) ? node.transitions : []
-  }));
+  const normalizedNodes = nodes.map((node) => {
+    const actionsOnComplete = normalizeFlowActions(node.actionsOnComplete);
+    return {
+      id: String(node.id || "").trim(),
+      name: String(node.name || "").trim(),
+      goal: String(node.goal || "").trim(),
+      completionCriteria: String(node.completionCriteria || "").trim(),
+      collectFields: Array.isArray(node.collectFields) ? node.collectFields.map(String) : [],
+      conversationTips: Array.isArray(node.conversationTips) ? node.conversationTips.map(String) : [],
+      activation: normalizeActivationConfig(node.activation),
+      nextNodeId: String(node.nextNodeId || "").trim(),
+      transitions: Array.isArray(node.transitions) ? node.transitions : [],
+      ...(actionsOnComplete.length ? { actionsOnComplete } : {})
+    };
+  });
   if (normalizedNodes.some((node) => !node.id || !node.name)) {
     throw new Error("each flow node requires id and name");
   }
@@ -1274,6 +1302,29 @@ function rowToFlowActivationTask(row) {
     worktoolMessageIds: parseJson(row.worktool_message_ids_json) || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function rowToFlowActionExecution(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    conversationKey: row.conversation_key,
+    source: row.source,
+    nodeId: row.node_id,
+    activationTaskId: row.activation_task_id || "",
+    actionId: row.action_id,
+    actionType: row.action_type,
+    action: parseJson(row.action_json),
+    status: row.status,
+    worktoolMessageId: row.worktool_message_id || "",
+    worktoolResponse: parseJson(row.worktool_response_json),
+    errorMessage: row.error_message || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    finishedAt: row.finished_at || ""
   };
 }
 
@@ -2075,14 +2126,51 @@ export function mergeFlowSessionData({ conversationKey, patch = {} }) {
   );
 }
 
+export function normalizeFlowActions(rawActions = []) {
+  if (!Array.isArray(rawActions)) return [];
+  const seenIds = new Set();
+  const actions = [];
+
+  for (const [index, raw] of rawActions.entries()) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) continue;
+    const type = String(raw.type || "").trim();
+    if (type !== "invite_to_group") continue;
+    const groupName = String(raw.groupName || "").trim();
+    if (!groupName) continue;
+    const target = String(raw.target || "current_contact").trim() || "current_contact";
+    if (target !== "current_contact") continue;
+
+    let id = String(raw.id || `action_${index + 1}`).trim();
+    if (!id || seenIds.has(id)) {
+      let nextIndex = actions.length + 1;
+      while (seenIds.has(`action_${nextIndex}`)) nextIndex += 1;
+      id = `action_${nextIndex}`;
+    }
+    seenIds.add(id);
+
+    actions.push({
+      id,
+      type,
+      groupName,
+      target,
+      showMessageHistory: raw.showMessageHistory !== false,
+      runOnce: raw.runOnce !== false
+    });
+  }
+
+  return actions;
+}
+
 function normalizeActivationMessage(raw, defaults) {
   const source = typeof raw === "string" ? { content: raw } : raw || {};
   const content = String(source.content || "").trim();
   if (!content) return null;
+  const actionsAfterSend = normalizeFlowActions(source.actionsAfterSend);
   return {
     content,
     intervalMinutes: Math.max(1, Number.parseInt(source.intervalMinutes ?? defaults.intervalMinutes, 10) || defaults.intervalMinutes),
-    maxTimes: Math.max(1, Number.parseInt(source.maxTimes ?? defaults.maxTimes, 10) || defaults.maxTimes)
+    maxTimes: Math.max(1, Number.parseInt(source.maxTimes ?? defaults.maxTimes, 10) || defaults.maxTimes),
+    ...(actionsAfterSend.length ? { actionsAfterSend } : {})
   };
 }
 
@@ -2263,6 +2351,116 @@ export function markFlowActivationTaskFailed({ id, error = "" }) {
   if (result.changes === 0) return null;
   return rowToFlowActivationTask(
     db.prepare("SELECT * FROM flow_activation_tasks WHERE id = ?").get(id)
+  );
+}
+
+export function reserveFlowActionExecution({
+  botId,
+  agentId,
+  conversationKey,
+  source,
+  nodeId,
+  activationTaskId = "",
+  action
+}) {
+  const normalizedAction = normalizeFlowActions([action])[0];
+  if (!normalizedAction) {
+    throw new Error("flow action must be a valid invite_to_group action");
+  }
+
+  const timestamp = now();
+  const normalizedActivationTaskId = String(activationTaskId || "");
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO flow_action_executions (
+      bot_id,
+      agent_id,
+      conversation_key,
+      source,
+      node_id,
+      activation_task_id,
+      action_id,
+      action_type,
+      action_json,
+      status,
+      created_at,
+      updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)
+  `).run(
+    botId,
+    agentId,
+    conversationKey,
+    String(source || ""),
+    String(nodeId || ""),
+    normalizedActivationTaskId,
+    normalizedAction.id,
+    normalizedAction.type,
+    json(normalizedAction),
+    timestamp,
+    timestamp
+  );
+
+  const execution = rowToFlowActionExecution(db.prepare(`
+    SELECT *
+    FROM flow_action_executions
+    WHERE bot_id = ?
+      AND agent_id = ?
+      AND conversation_key = ?
+      AND source = ?
+      AND node_id = ?
+      AND activation_task_id = ?
+      AND action_id = ?
+  `).get(
+    botId,
+    agentId,
+    conversationKey,
+    String(source || ""),
+    String(nodeId || ""),
+    normalizedActivationTaskId,
+    normalizedAction.id
+  ));
+
+  return { reserved: result.changes > 0, execution };
+}
+
+export function markFlowActionExecutionSucceeded({ id, worktoolMessageId = "", worktoolResponse = null }) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE flow_action_executions
+    SET status = 'success',
+        worktool_message_id = ?,
+        worktool_response_json = ?,
+        error_message = '',
+        finished_at = ?,
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'processing'
+  `).run(String(worktoolMessageId || ""), json(worktoolResponse), timestamp, timestamp, id);
+  if (result.changes === 0) return rowToFlowActionExecution(
+    db.prepare("SELECT * FROM flow_action_executions WHERE id = ?").get(id)
+  );
+  return rowToFlowActionExecution(
+    db.prepare("SELECT * FROM flow_action_executions WHERE id = ?").get(id)
+  );
+}
+
+export function markFlowActionExecutionFailed({ id, errorMessage = "", worktoolResponse = null }) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE flow_action_executions
+    SET status = 'failed',
+        worktool_response_json = ?,
+        error_message = ?,
+        finished_at = ?,
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'processing'
+  `).run(json(worktoolResponse), String(errorMessage || ""), timestamp, timestamp, id);
+  if (result.changes === 0) return rowToFlowActionExecution(
+    db.prepare("SELECT * FROM flow_action_executions WHERE id = ?").get(id)
+  );
+  return rowToFlowActionExecution(
+    db.prepare("SELECT * FROM flow_action_executions WHERE id = ?").get(id)
   );
 }
 
