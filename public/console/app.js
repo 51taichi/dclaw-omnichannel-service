@@ -1,6 +1,6 @@
 const PROACTIVE_MAX_ATTACHMENTS = 5;
 const BEIJING_TIME_ZONE = "Asia/Shanghai";
-const PAGE_SIZE_OPTIONS = [20, 50, 100];
+const PAGE_SIZE_OPTIONS = [2, 20, 50, 100];
 
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",

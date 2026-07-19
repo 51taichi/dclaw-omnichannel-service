@@ -52,6 +52,7 @@ test("chat message timestamps render as compact date time text", () => {
 });
 
 test("console loads flow sessions through paginated server queries", () => {
+  assert.match(app, /PAGE_SIZE_OPTIONS = \[2, 20, 50, 100\]/);
   assert.match(app, /flowSessionsPagination:\s*\{[\s\S]*page:\s*1[\s\S]*pageSize:\s*20/);
   assert.match(app, /flowSessionsPaginationEl:\s*document\.querySelector\("#flowSessionsPagination"\)/);
   assert.match(app, /params\.set\("page", String\(state\.flowSessionsPagination\.page\)\)/);
