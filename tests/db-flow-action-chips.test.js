@@ -56,7 +56,7 @@ test("activation text chips are stored as actions and removed from message conte
       type: "invite_to_group",
       groupName: "直播课学习群",
       target: "current_contact",
-      showMessageHistory: true,
+      showMessageHistory: false,
       runOnce: true
     }
   ]);
@@ -78,7 +78,7 @@ test("action-only activation messages are preserved", () => {
       type: "invite_to_group",
       groupName: "直播课学习群",
       target: "current_contact",
-      showMessageHistory: true,
+      showMessageHistory: false,
       runOnce: true
     }
   ]);

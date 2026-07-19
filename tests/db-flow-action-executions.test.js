@@ -36,7 +36,7 @@ test("normalizeFlowActions keeps valid invite actions only", () => {
       type: "invite_to_group",
       groupName: "直播课学习群",
       target: "current_contact",
-      showMessageHistory: true,
+      showMessageHistory: false,
       runOnce: true
     }
   ]);
@@ -87,7 +87,7 @@ test("flow machine normalization preserves node and activation actions", () => {
       type: "invite_to_group",
       groupName: "直播课学习群",
       target: "current_contact",
-      showMessageHistory: true,
+      showMessageHistory: false,
       runOnce: true
     }
   ]);
@@ -97,7 +97,7 @@ test("flow machine normalization preserves node and activation actions", () => {
       type: "invite_to_group",
       groupName: "直播课学习群",
       target: "current_contact",
-      showMessageHistory: true,
+      showMessageHistory: false,
       runOnce: true
     }
   ]);

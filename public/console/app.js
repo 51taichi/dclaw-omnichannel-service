@@ -1382,7 +1382,7 @@ function defaultFlowAction(index = 1) {
     type: "invite_to_group",
     groupName: "",
     target: "current_contact",
-    showMessageHistory: true,
+    showMessageHistory: false,
     runOnce: true
   };
 }
@@ -1400,7 +1400,7 @@ function normalizeFlowActionDraft(value = {}, index = 1) {
     type: "invite_to_group",
     groupName: String(source.groupName || ""),
     target: "current_contact",
-    showMessageHistory: source.showMessageHistory !== false,
+    showMessageHistory: false,
     runOnce: source.runOnce !== false
   };
 }
@@ -1778,26 +1778,19 @@ function addActivationAction(nodeIndex, messageIndex) {
 }
 
 function updateNodeActionInput(input) {
-  const [nodeIndex, actionIndex] = input.dataset.nodeActionGroupName
-    ? input.dataset.nodeActionGroupName.split(":").map(Number)
-    : input.dataset.nodeActionShowHistory.split(":").map(Number);
+  const [nodeIndex, actionIndex] = input.dataset.nodeActionGroupName.split(":").map(Number);
   const node = flowDraftNodes[nodeIndex];
   if (!node) return;
   const actions = normalizeFlowActionDrafts(node.actionsOnComplete || []);
   const action = actions[actionIndex];
   if (!action) return;
-  if (input.dataset.nodeActionGroupName !== undefined) {
-    action.groupName = input.value;
-  } else {
-    action.showMessageHistory = input.checked;
-  }
+  action.groupName = input.value;
   node.actionsOnComplete = actions;
   syncFlowJsonTextarea();
 }
 
 function updateActivationActionInput(input) {
-  const rawIndex = input.dataset.activationActionGroupName || input.dataset.activationActionShowHistory || "";
-  const [nodeIndex, messageIndex, actionIndex] = rawIndex.split(":").map(Number);
+  const [nodeIndex, messageIndex, actionIndex] = input.dataset.activationActionGroupName.split(":").map(Number);
   const node = flowDraftNodes[nodeIndex];
   if (!node) return;
   const activation = activationDraftForEditor(node.activation);
@@ -1805,11 +1798,7 @@ function updateActivationActionInput(input) {
   const actions = normalizeFlowActionDrafts(message.actionsAfterSend || []);
   const action = actions[actionIndex];
   if (!action) return;
-  if (input.dataset.activationActionGroupName !== undefined) {
-    action.groupName = input.value;
-  } else {
-    action.showMessageHistory = input.checked;
-  }
+  action.groupName = input.value;
   message.actionsAfterSend = actions;
   activation.messages[messageIndex] = message;
   node.activation = activation;
@@ -1910,7 +1899,7 @@ function actionFromToolbox() {
     type: "invite_to_group",
     groupName,
     target: "current_contact",
-    showMessageHistory: true,
+    showMessageHistory: false,
     runOnce: true
   };
 }
@@ -1992,9 +1981,6 @@ function renderFlowActionChips(actions = [], { nodeIndex, messageIndex } = {}) {
           const groupAttr = isActivationAction
             ? `data-activation-action-group-name="${indexPath}"`
             : `data-node-action-group-name="${indexPath}"`;
-          const historyAttr = isActivationAction
-            ? `data-activation-action-show-history="${indexPath}"`
-            : `data-node-action-show-history="${indexPath}"`;
           const removeAttr = isActivationAction
             ? `data-remove-activation-action="${indexPath}"`
             : `data-remove-node-action="${indexPath}"`;
@@ -2004,10 +1990,6 @@ function renderFlowActionChips(actions = [], { nodeIndex, messageIndex } = {}) {
               <label class="input-group compact flow-action-group-field">
                 <span>群名</span>
                 <input ${groupAttr} value="${escapeHtml(action.groupName || "")}" placeholder="例如 直播课学习群" />
-              </label>
-              <label class="toggle flow-action-history-toggle">
-                <input ${historyAttr} type="checkbox" ${action.showMessageHistory === false ? "" : "checked"} />
-                <span>带聊天记录</span>
               </label>
               <button class="danger icon-button flow-action-remove-button" ${removeAttr} type="button" aria-label="删除动作" title="删除动作">
                 ${icon("reset")}
@@ -3007,14 +2989,8 @@ function renderFlowNodeEditor(entryNodeId = "") {
   els.flowNodeList.querySelectorAll("[data-node-action-group-name]").forEach((input) => {
     input.addEventListener("input", () => updateNodeActionInput(input));
   });
-  els.flowNodeList.querySelectorAll("[data-node-action-show-history]").forEach((input) => {
-    input.addEventListener("change", () => updateNodeActionInput(input));
-  });
   els.flowNodeList.querySelectorAll("[data-activation-action-group-name]").forEach((input) => {
     input.addEventListener("input", () => updateActivationActionInput(input));
-  });
-  els.flowNodeList.querySelectorAll("[data-activation-action-show-history]").forEach((input) => {
-    input.addEventListener("change", () => updateActivationActionInput(input));
   });
   els.flowNodeList.querySelectorAll("[data-remove-node-action]").forEach((button) => {
     button.addEventListener("click", () => {

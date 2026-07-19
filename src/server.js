@@ -847,7 +847,7 @@ async function executeFlowActions({
         robotId: botId,
         groupName: action.groupName,
         targets: [target],
-        showMessageHistory: action.showMessageHistory !== false
+        showMessageHistory: false
       });
       const worktoolMessageId = String(result?.data || "");
       const execution = markFlowActionExecutionSucceeded({

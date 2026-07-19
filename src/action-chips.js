@@ -19,7 +19,7 @@ export function extractActionChips(text = "") {
       type: "invite_to_group",
       groupName,
       target: "current_contact",
-      showMessageHistory: true,
+      showMessageHistory: false,
       runOnce: true
     });
   }
@@ -45,7 +45,7 @@ function normalizeInlineAction(action = {}, index = 1) {
     type: "invite_to_group",
     groupName,
     target: "current_contact",
-    showMessageHistory: action.showMessageHistory !== false,
+    showMessageHistory: false,
     runOnce: action.runOnce !== false
   };
 }

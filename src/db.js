@@ -2154,7 +2154,7 @@ export function normalizeFlowActions(rawActions = []) {
       type,
       groupName,
       target,
-      showMessageHistory: raw.showMessageHistory !== false,
+      showMessageHistory: false,
       runOnce: raw.runOnce !== false
     });
   }

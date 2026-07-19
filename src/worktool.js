@@ -163,7 +163,7 @@ export function buildRawMediaCommand({
 export function buildGroupInviteCommand({
   groupName,
   targets,
-  showMessageHistory = true
+  showMessageHistory = false
 }) {
   const normalizedGroupName = String(groupName || "").trim();
   if (!normalizedGroupName) {
@@ -183,7 +183,7 @@ export function buildGroupInviteCommand({
     groupName: normalizedGroupName,
     selectList,
     removeList: [],
-    showMessageHistory: Boolean(showMessageHistory)
+    showMessageHistory: false
   };
 }
 
@@ -191,7 +191,7 @@ export async function sendGroupInviteCommand({
   robotId,
   groupName,
   targets,
-  showMessageHistory = true,
+  showMessageHistory = false,
   socketType = 2
 }) {
   const command = buildGroupInviteCommand({ groupName, targets, showMessageHistory });

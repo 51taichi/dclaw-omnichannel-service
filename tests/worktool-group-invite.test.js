@@ -9,6 +9,22 @@ test("buildGroupInviteCommand builds WorkTool type 207 payload", () => {
   assert.deepEqual(
     buildGroupInviteCommand({
       groupName: "直播课学习群",
+      targets: ["张三"]
+    }),
+    {
+      type: 207,
+      groupName: "直播课学习群",
+      selectList: ["张三"],
+      removeList: [],
+      showMessageHistory: false
+    }
+  );
+});
+
+test("buildGroupInviteCommand never includes group message history", () => {
+  assert.deepEqual(
+    buildGroupInviteCommand({
+      groupName: "直播课学习群",
       targets: ["张三"],
       showMessageHistory: true
     }),
@@ -17,7 +33,7 @@ test("buildGroupInviteCommand builds WorkTool type 207 payload", () => {
       groupName: "直播课学习群",
       selectList: ["张三"],
       removeList: [],
-      showMessageHistory: true
+      showMessageHistory: false
     }
   );
 });

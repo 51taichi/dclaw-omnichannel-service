@@ -32,7 +32,7 @@ test("console action editors use structured invite-to-group fields", () => {
   assert.equal(app.includes('type: "invite_to_group"'), true);
   assert.equal(app.includes('target: "current_contact"'), true);
   assert.equal(app.includes("showMessageHistory"), true);
-  assert.equal(app.includes("带聊天记录"), true);
+  assert.equal(app.includes("带聊天记录"), false);
   assert.equal(app.includes("群名"), true);
   assert.equal(app.includes("拉入群"), true);
 });

@@ -17,7 +17,8 @@ test("console exposes a fixed universal action toolbox", () => {
   assert.equal(app.includes("data-action-toolbox-group-name"), true);
   assert.equal(app.includes("邀请入群"), true);
   assert.equal(app.includes('class="field-label">${icon("users")}邀请入群</span>'), true);
-  assert.equal(app.includes("showMessageHistory: true"), true);
+  assert.equal(app.includes("showMessageHistory: true"), false);
+  assert.equal(app.includes("带聊天记录"), false);
   assert.equal(css.includes(".action-toolbox"), true);
   assert.equal(css.includes("position: fixed"), true);
   assert.match(css, /\.action-toolbox-toggle\s*\{[\s\S]*background:\s*linear-gradient\(90deg,\s*var\(--danger\),\s*var\(--orange\)\)/);

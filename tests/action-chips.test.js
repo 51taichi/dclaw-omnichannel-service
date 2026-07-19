@@ -24,7 +24,7 @@ test("serializes and extracts invite-to-group chips", () => {
       type: "invite_to_group",
       groupName: "直播课学习群",
       target: "current_contact",
-      showMessageHistory: true,
+      showMessageHistory: false,
       runOnce: true
     }
   ]);
@@ -52,7 +52,7 @@ test("mergeInlineActions appends textual chips after existing structured actions
           type: "invite_to_group",
           groupName: "老群",
           target: "current_contact",
-          showMessageHistory: true,
+          showMessageHistory: false,
           runOnce: true
         },
         {
@@ -60,7 +60,7 @@ test("mergeInlineActions appends textual chips after existing structured actions
           type: "invite_to_group",
           groupName: "直播课学习群",
           target: "current_contact",
-          showMessageHistory: true,
+          showMessageHistory: false,
           runOnce: true
         }
       ]
