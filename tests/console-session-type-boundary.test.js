@@ -89,6 +89,13 @@ test("pagination controls use compact icon buttons", () => {
   assert.doesNotMatch(app, />下一页<\/button>/);
 });
 
+test("target pagination total sits before page size controls on the right", () => {
+  assert.match(app, /<span class="pagination-summary">共 \$\{current\.total\} 条<\/span>\s*<label class="pagination-size">/);
+  assert.match(css, /\.pagination-size\s*\{[^}]*display:\s*inline-flex;[^}]*grid-template-columns:\s*none;[^}]*align-items:\s*center;[^}]*margin:\s*0;[^}]*padding-left:\s*15px;/);
+  assert.match(css, /\.pagination-size select\s*\{[^}]*width:\s*60px;[^}]*min-width:\s*60px;[^}]*height:\s*32px;[^}]*padding:\s*0 24px 0 0px;[^}]*font-size:\s*13px;/);
+  assert.match(css, /\.bulk-actions \.target-pagination\s*\{[^}]*justify-content:\s*flex-end/);
+});
+
 test("proactive target pagination sits on the bulk action row", () => {
   assert.match(html, /<div class="bulk-actions">[\s\S]*id="targetPagination"[\s\S]*<\/div>\s*<\/div>\s*<div id="targetList"/);
   assert.match(css, /\.bulk-actions\s*\{[^}]*align-items:\s*center/);
