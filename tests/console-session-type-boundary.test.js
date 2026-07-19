@@ -108,6 +108,10 @@ test("target pagination total sits after the next page button", () => {
   assert.match(css, /\.bulk-actions \.target-pagination\s*\{[^}]*justify-content:\s*flex-end/);
 });
 
+test("target pagination buttons keep shared dimensions inside bulk actions", () => {
+  assert.match(css, /\.bulk-actions \.pagination-button\s*\{[^}]*width:\s*34px;[^}]*min-width:\s*34px;[^}]*height:\s*34px;[^}]*min-height:\s*34px;[^}]*padding:\s*0;[^}]*gap:\s*0;/);
+});
+
 test("proactive target pagination sits on the bulk action row", () => {
   assert.match(html, /<div class="bulk-actions">[\s\S]*id="targetPagination"[\s\S]*<\/div>\s*<\/div>\s*<div id="targetList"/);
   assert.match(css, /\.bulk-actions\s*\{[^}]*align-items:\s*center/);

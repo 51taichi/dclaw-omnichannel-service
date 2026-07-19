@@ -3823,6 +3823,15 @@ button.danger:hover {
   font-size: 14px;
 }
 
+.bulk-actions .pagination-button {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+  gap: 0;
+}
+
 .bulk-actions button.selected {
   border-color: var(--accent);
   background: var(--accent);
