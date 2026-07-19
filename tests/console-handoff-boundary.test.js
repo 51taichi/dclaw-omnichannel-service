@@ -253,6 +253,7 @@ test("proactive target cards use checkbox indicators instead of choose text", ()
 test("proactive target list keeps a fixed scrollable height", () => {
   const targetListRule = cssRule(".target-list");
 
+  assert.match(targetListRule, /grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/);
   assert.match(targetListRule, /height:\s*168px/);
   assert.match(targetListRule, /overflow-y:\s*auto/);
   assert.doesNotMatch(targetListRule, /max-height/);
