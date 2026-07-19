@@ -2706,62 +2706,30 @@ textarea[data-action-target-activation].is-action-target-focused {
   gap: 8px;
 }
 
-.action-toolbox-head strong,
-.action-toolbox-tool {
+.action-toolbox-head strong {
   display: inline-flex;
   align-items: center;
   gap: 8px;
 }
 
-.action-toolbox-head .icon,
-.action-toolbox-tool .icon {
+.action-toolbox-head .icon {
   width: 16px;
   height: 16px;
-}
-
-.action-toolbox-tool {
-  width: 100%;
-  min-height: 50px;
-  justify-content: flex-start;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--primary) 5%, #ffffff);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.action-toolbox-tool span {
-  display: grid;
-  gap: 2px;
-  text-align: left;
-}
-
-.action-toolbox-tool small {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.action-toolbox-target {
-  min-height: 30px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  border-radius: 8px;
-  color: var(--muted);
-  background: color-mix(in srgb, var(--primary) 4%, #ffffff);
-  font-size: 12px;
-  font-weight: 800;
 }
 
 .action-toolbox-field {
   grid-template-columns: 72px minmax(0, 1fr);
 }
 
-.action-toolbox-toggle-row {
-  justify-content: flex-start;
-  min-height: 38px;
+.action-toolbox-field > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.action-toolbox-field .icon {
+  width: 14px;
+  height: 14px;
 }
 
 .action-toolbox-insert {

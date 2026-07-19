@@ -10,7 +10,12 @@ test("console exposes a fixed universal action toolbox", () => {
   assert.equal(app.includes("renderActionToolbox"), true);
   assert.equal(app.includes("openActionToolbox"), true);
   assert.equal(app.includes("insertActionIntoFocusedTarget"), true);
-  assert.equal(app.includes("邀请进群"), true);
+  assert.equal(app.includes('icon("tool")'), true);
+  assert.equal(app.includes("插入拉群动作 chip"), false);
+  assert.equal(app.includes("插入到激活话术"), false);
+  assert.equal(app.includes("data-action-toolbox-tool"), false);
+  assert.equal(app.includes("data-action-toolbox-group-name"), true);
+  assert.equal(app.includes("showMessageHistory: true"), true);
   assert.equal(css.includes(".action-toolbox"), true);
   assert.equal(css.includes("position: fixed"), true);
 });

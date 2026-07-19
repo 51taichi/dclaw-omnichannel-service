@@ -1841,33 +1841,19 @@ function removeActivationAction(nodeIndex, messageIndex, actionIndex) {
 function renderActionToolbox() {
   return `
     <aside class="action-toolbox" id="actionToolbox" aria-label="动作工具箱">
-      <button class="action-toolbox-toggle" data-action-toolbox-toggle type="button" aria-label="打开动作工具箱" title="动作工具箱">
-        ${icon("link")}
+      <button class="action-toolbox-toggle" data-action-toolbox-toggle type="button" aria-label="打开工具箱" title="工具">
+        ${icon("tool")}
       </button>
-      <div class="action-toolbox-panel" role="dialog" aria-label="动作工具箱">
+      <div class="action-toolbox-panel" role="dialog" aria-label="工具箱">
         <div class="action-toolbox-head">
-          <strong>${icon("link")}动作工具箱</strong>
-          <button class="icon-button secondary" data-action-toolbox-close type="button" aria-label="收起动作工具箱" title="收起">
+          <strong>${icon("tool")}工具</strong>
+          <button class="icon-button secondary" data-action-toolbox-close type="button" aria-label="收起工具箱" title="收起">
             ${icon("chevron")}
           </button>
         </div>
-        <button class="action-toolbox-tool" data-action-toolbox-tool="invite_to_group" type="button">
-          ${icon("users")}
-          <span>
-            <strong>邀请进群</strong>
-            <small>插入拉群动作 chip</small>
-          </span>
-        </button>
-        <div class="action-toolbox-target">
-          <span data-action-toolbox-target-label>先点击要插入的位置</span>
-        </div>
         <label class="input-group compact action-toolbox-field">
-          <span>群名</span>
+          <span>${icon("users")}群名</span>
           <input data-action-toolbox-group-name placeholder="例如 直播课学习群" />
-        </label>
-        <label class="toggle action-toolbox-toggle-row">
-          <input data-action-toolbox-show-history type="checkbox" checked />
-          <span>带聊天记录</span>
         </label>
         <button class="primary action-toolbox-insert" data-action-toolbox-insert type="button">
           ${icon("plus")}插入动作
@@ -1886,7 +1872,6 @@ function ensureActionToolbox() {
     syncActionToolbox();
   });
   toolbox?.querySelector("[data-action-toolbox-close]")?.addEventListener("click", closeActionToolbox);
-  toolbox?.querySelector("[data-action-toolbox-tool]")?.addEventListener("click", openActionToolbox);
   toolbox?.querySelector("[data-action-toolbox-insert]")?.addEventListener("click", () => {
     const action = actionFromToolbox();
     if (!action) return;
@@ -1901,14 +1886,6 @@ function syncActionToolbox() {
   const toolbox = document.querySelector("#actionToolbox");
   if (!toolbox) return;
   toolbox.classList.toggle("is-open", actionToolboxOpen);
-  const targetLabel = toolbox.querySelector("[data-action-toolbox-target-label]");
-  if (targetLabel) {
-    targetLabel.textContent = focusedActionTarget?.kind === "activation_message"
-      ? "插入到激活话术"
-      : focusedActionTarget?.kind === "node_complete"
-        ? "插入到节点完成动作"
-        : "先点击要插入的位置";
-  }
 }
 
 function openActionToolbox() {
@@ -1933,7 +1910,7 @@ function actionFromToolbox() {
     type: "invite_to_group",
     groupName,
     target: "current_contact",
-    showMessageHistory: toolbox?.querySelector("[data-action-toolbox-show-history]")?.checked !== false,
+    showMessageHistory: true,
     runOnce: true
   };
 }
