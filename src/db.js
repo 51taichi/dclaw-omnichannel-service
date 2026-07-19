@@ -2,6 +2,7 @@ import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { mergeInlineActions } from "./action-chips.js";
 import { hashAccessKey } from "./auth.js";
 import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags.js";
 
@@ -2163,9 +2164,13 @@ export function normalizeFlowActions(rawActions = []) {
 
 function normalizeActivationMessage(raw, defaults) {
   const source = typeof raw === "string" ? { content: raw } : raw || {};
-  const content = String(source.content || "").trim();
-  if (!content) return null;
-  const actionsAfterSend = normalizeFlowActions(source.actionsAfterSend);
+  const merged = mergeInlineActions({
+    content: String(source.content || "").trim(),
+    actions: source.actionsAfterSend
+  });
+  const content = merged.content;
+  const actionsAfterSend = normalizeFlowActions(merged.actions);
+  if (!content && actionsAfterSend.length === 0) return null;
   return {
     content,
     intervalMinutes: Math.max(1, Number.parseInt(source.intervalMinutes ?? defaults.intervalMinutes, 10) || defaults.intervalMinutes),
