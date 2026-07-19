@@ -18,6 +18,7 @@ const state = {
   proactiveSubmitting: false,
   proactiveUploadFiles: [],
   flowSessionsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
+  proactiveTargetsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   proactiveTasksPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   tagSchema: { dateTag: { enabled: false }, groups: [] }
 };
@@ -109,6 +110,7 @@ const els = {
   clearTargetsButton: document.querySelector("#clearTargetsButton"),
   targetSearchInput: document.querySelector("#targetSearchInput"),
   targetList: document.querySelector("#targetList"),
+  targetPaginationEl: document.querySelector("#targetPagination"),
   resetFormButton: document.querySelector("#resetFormButton"),
   botsTable: document.querySelector("#botsTable"),
   botCount: document.querySelector("#botCount"),
@@ -514,6 +516,7 @@ function isCurrentBotContext(botId, contextVersion) {
 function clearBotScopedContent() {
   state.selectedFlowConversationKey = "";
   state.flowSessionsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
+  state.proactiveTargetsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTasksPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   selectedTargets.clear();
   addressBookTargets = [];
@@ -557,6 +560,10 @@ function clearBotScopedContent() {
   renderSelectedTargets();
   renderTargetList();
   renderProactiveTasks([]);
+  renderPaginationBar({
+    container: els.targetPaginationEl,
+    pagination: state.proactiveTargetsPagination
+  });
   renderPaginationBar({
     container: els.flowSessionsPaginationEl,
     pagination: state.flowSessionsPagination
@@ -1055,15 +1062,8 @@ function renderSelectedTargets() {
 }
 
 function renderTargetList() {
-  const query = els.targetSearchInput.value.trim().toLowerCase();
-  const targets = addressBookTargets.filter((target) => {
-    if (targetFilter !== "all" && target.targetType !== targetFilter) return false;
-    if (!query) return true;
-    return `${target.targetName} ${target.displayName || ""}`.toLowerCase().includes(query);
-  });
-
-  els.targetList.innerHTML = targets.length
-    ? targets
+  els.targetList.innerHTML = addressBookTargets.length
+    ? addressBookTargets
         .map((target) => {
           const key = targetKey(target);
           const checked = selectedTargets.has(key);
@@ -1104,17 +1104,34 @@ async function loadAddressBookTargets({ contextVersion = state.botContextVersion
     toast("请先选择 Bot");
     return;
   }
-  const params = new URLSearchParams({ botId, limit: "300" });
+  const params = new URLSearchParams();
+  params.set("botId", botId);
+  params.set("page", String(state.proactiveTargetsPagination.page));
+  params.set("pageSize", String(state.proactiveTargetsPagination.pageSize));
+  if (targetFilter === "private" || targetFilter === "group") {
+    params.set("targetType", targetFilter);
+  }
+  const query = String(els.targetSearchInput.value || "").trim();
+  if (query) params.set("q", query);
   const data = await request(`/api/proactive/targets?${params.toString()}`);
   if (!isCurrentBotContext(botId, contextVersion)) return;
   addressBookTargets = data.targets || [];
-  for (const key of Array.from(selectedTargets.keys())) {
-    if (!addressBookTargets.some((target) => targetKey(target) === key)) {
-      selectedTargets.delete(key);
-    }
-  }
+  state.proactiveTargetsPagination = normalizePagination(data.pagination, state.proactiveTargetsPagination);
   renderSelectedTargets();
   renderTargetList();
+  renderPaginationBar({
+    container: els.targetPaginationEl,
+    pagination: state.proactiveTargetsPagination,
+    onPage: (page) => {
+      state.proactiveTargetsPagination.page = page;
+      loadAddressBookTargets().catch(toastError);
+    },
+    onPageSize: (pageSize) => {
+      state.proactiveTargetsPagination.page = 1;
+      state.proactiveTargetsPagination.pageSize = pageSize;
+      loadAddressBookTargets().catch(toastError);
+    }
+  });
   updateBulkActionButtons();
 }
 
@@ -1655,9 +1672,9 @@ function renderPaginationBar({ container, pagination, onPage, onPageSize }) {
         ${PAGE_SIZE_OPTIONS.map((size) => `<option value="${size}" ${size === current.pageSize ? "selected" : ""}>${size}</option>`).join("")}
       </select>
     </label>
-    <button class="secondary pagination-button" data-pagination-page="${current.page - 1}" type="button" ${current.hasPrev ? "" : "disabled"}>上一页</button>
+    <button class="secondary pagination-button is-prev" data-pagination-page="${current.page - 1}" type="button" aria-label="上一页" title="上一页" ${current.hasPrev ? "" : "disabled"}>${icon("chevron")}</button>
     <span class="pagination-current">第 ${current.page} / ${current.totalPages} 页</span>
-    <button class="secondary pagination-button" data-pagination-page="${current.page + 1}" type="button" ${current.hasNext ? "" : "disabled"}>下一页</button>
+    <button class="secondary pagination-button is-next" data-pagination-page="${current.page + 1}" type="button" aria-label="下一页" title="下一页" ${current.hasNext ? "" : "disabled"}>${icon("chevron")}</button>
   `;
   container.querySelector("[data-pagination-size]")?.addEventListener("change", (event) => {
     onPageSize?.(Number(event.target.value));
@@ -1691,6 +1708,18 @@ function resetProactiveTasksPagination() {
 function reloadProactiveTasksFromFirstPage() {
   resetProactiveTasksPagination();
   return loadProactiveTasks();
+}
+
+function resetProactiveTargetsPagination() {
+  state.proactiveTargetsPagination = {
+    ...state.proactiveTargetsPagination,
+    page: 1
+  };
+}
+
+function reloadProactiveTargetsFromFirstPage() {
+  resetProactiveTargetsPagination();
+  return loadAddressBookTargets();
 }
 
 function sortConversationTagsForDisplay(tags = []) {
@@ -3942,9 +3971,11 @@ els.taskDateFrom.addEventListener("change", () =>
 els.taskDateTo.addEventListener("change", () =>
   reloadProactiveTasksFromFirstPage().catch(toastError)
 );
-els.targetSearchInput.addEventListener("input", () => renderTargetList());
+els.targetSearchInput.addEventListener("input", () =>
+  reloadProactiveTargetsFromFirstPage().catch(toastError)
+);
 els.loadTargetsButton.addEventListener("click", () =>
-  loadAddressBookTargets().catch(toastError)
+  reloadProactiveTargetsFromFirstPage().catch(toastError)
 );
 els.selectPrivateTargetsButton.addEventListener("click", () => toggleTargetsByType("private"));
 els.selectGroupTargetsButton.addEventListener("click", () => toggleTargetsByType("group"));
@@ -3955,7 +3986,7 @@ document.querySelectorAll("[data-target-filter]").forEach((button) => {
     document.querySelectorAll("[data-target-filter]").forEach((item) => {
       item.classList.toggle("active", item === button);
     });
-    renderTargetList();
+    reloadProactiveTargetsFromFirstPage().catch(toastError);
   });
 });
 els.workspaceTabs.forEach((button) => {

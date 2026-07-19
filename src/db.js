@@ -3039,32 +3039,71 @@ export function syncProactiveTargetsFromIncoming(botId) {
 export function listProactiveAddressBookTargets({ botId, targetType, query, limit = 200 }) {
   syncProactiveTargetsFromIncoming(botId);
 
-  const where = ["enabled = 1"];
-  const params = [];
-  if (botId) {
-    where.push("bot_id = ?");
-    params.push(botId);
-  }
-  if (targetType === "private" || targetType === "group") {
-    where.push("target_type = ?");
-    params.push(targetType);
-  }
-  if (query) {
-    where.push("(target_name LIKE ? OR display_name LIKE ?)");
-    params.push(`%${query}%`, `%${query}%`);
-  }
-  params.push(Number(limit));
+  const { where, values } = proactiveAddressBookTargetsWhere({ botId, targetType, query });
 
   return db
     .prepare(`
       SELECT *
       FROM proactive_targets
-      WHERE ${where.join(" AND ")}
+      ${where}
       ORDER BY target_type ASC, COALESCE(last_seen_at, updated_at) DESC, target_name ASC
       LIMIT ?
     `)
-    .all(...params)
+    .all(...values, Number(limit))
     .map(rowToProactiveAddressBookTarget);
+}
+
+function proactiveAddressBookTargetsWhere({ botId = "", targetType = "", query = "" } = {}) {
+  const filters = ["enabled = 1"];
+  const values = [];
+  if (botId) {
+    filters.push("bot_id = ?");
+    values.push(botId);
+  }
+  if (targetType === "private" || targetType === "group") {
+    filters.push("target_type = ?");
+    values.push(targetType);
+  }
+  if (query) {
+    filters.push("(target_name LIKE ? OR display_name LIKE ?)");
+    values.push(`%${query}%`, `%${query}%`);
+  }
+  return {
+    where: `WHERE ${filters.join(" AND ")}`,
+    values
+  };
+}
+
+export function listProactiveAddressBookTargetsPage({
+  botId = "",
+  targetType = "",
+  query = "",
+  page = 1,
+  pageSize = 20
+} = {}) {
+  syncProactiveTargetsFromIncoming(botId);
+
+  const normalizedPageSize = normalizePageSize(pageSize, 20, 100);
+  const requestedPage = normalizePage(page);
+  const { where, values } = proactiveAddressBookTargetsWhere({ botId, targetType, query });
+  const total = db.prepare(`SELECT COUNT(*) AS total FROM proactive_targets ${where}`).get(...values)?.total || 0;
+  const pagination = paginationResult({
+    total,
+    page: requestedPage,
+    pageSize: normalizedPageSize
+  });
+  const offset = (pagination.page - 1) * pagination.pageSize;
+  const items = db
+    .prepare(`
+      SELECT *
+      FROM proactive_targets
+      ${where}
+      ORDER BY target_type ASC, COALESCE(last_seen_at, updated_at) DESC, target_name ASC
+      LIMIT ? OFFSET ?
+    `)
+    .all(...values, pagination.pageSize, offset)
+    .map(rowToProactiveAddressBookTarget);
+  return { items, pagination };
 }
 
 export function insertMockProactiveTargets(botId) {

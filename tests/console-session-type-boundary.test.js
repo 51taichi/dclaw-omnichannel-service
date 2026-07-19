@@ -69,3 +69,20 @@ test("console loads proactive tasks through paginated server queries", () => {
   assert.match(app, /renderPaginationBar\(\{[\s\S]*container:\s*els\.proactiveTasksPaginationEl/);
   assert.doesNotMatch(app, /new URLSearchParams\(\{ limit: "20" \}\)/);
 });
+
+test("console loads proactive targets through the shared pagination bar", () => {
+  assert.match(app, /proactiveTargetsPagination:\s*\{[\s\S]*page:\s*1[\s\S]*pageSize:\s*20/);
+  assert.match(app, /targetPaginationEl:\s*document\.querySelector\("#targetPagination"\)/);
+  assert.match(app, /params\.set\("page", String\(state\.proactiveTargetsPagination\.page\)\)/);
+  assert.match(app, /params\.set\("pageSize", String\(state\.proactiveTargetsPagination\.pageSize\)\)/);
+  assert.match(app, /renderPaginationBar\(\{[\s\S]*container:\s*els\.targetPaginationEl/);
+  assert.doesNotMatch(app, /new URLSearchParams\(\{ botId, limit: "300" \}\)/);
+});
+
+test("pagination controls use compact icon buttons", () => {
+  assert.match(app, /aria-label="上一页"/);
+  assert.match(app, /aria-label="下一页"/);
+  assert.match(app, /icon\("chevron"\)/);
+  assert.doesNotMatch(app, />上一页<\/button>/);
+  assert.doesNotMatch(app, />下一页<\/button>/);
+});

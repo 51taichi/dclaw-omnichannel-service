@@ -102,3 +102,32 @@ test("listProactiveTasksPage returns total count and requested page only", () =>
   assert.equal(page.pagination.totalPages, 3);
   assert.equal(page.items.length, 2);
 });
+
+test("listProactiveAddressBookTargetsPage returns filtered total count and requested page", () => {
+  const botId = "pagination_targets_bot";
+  ensureBot(botId);
+  for (let index = 1; index <= 5; index += 1) {
+    db.upsertProactiveAddressBookTarget({
+      botId,
+      targetType: index % 2 === 0 ? "group" : "private",
+      targetName: `目标${index}`
+    });
+  }
+
+  const page = db.listProactiveAddressBookTargetsPage({ botId, page: 2, pageSize: 2 });
+  const privateMatches = db.listProactiveAddressBookTargetsPage({
+    botId,
+    targetType: "private",
+    query: "目标",
+    page: 1,
+    pageSize: 20
+  });
+
+  assert.equal(page.pagination.total, 5);
+  assert.equal(page.pagination.page, 2);
+  assert.equal(page.pagination.pageSize, 2);
+  assert.equal(page.pagination.totalPages, 3);
+  assert.equal(page.items.length, 2);
+  assert.equal(privateMatches.pagination.total, 3);
+  assert.equal(privateMatches.items.every((target) => target.targetType === "private"), true);
+});

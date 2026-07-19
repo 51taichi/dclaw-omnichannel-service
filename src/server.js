@@ -80,7 +80,7 @@ import {
   listFlowSessionsPage,
   listFlowStateEvents,
   listTagActivationTasks,
-  listProactiveAddressBookTargets,
+  listProactiveAddressBookTargetsPage,
   listProactiveTasksPage,
   listProactiveTaskTargets,
   listAgents,
@@ -4287,14 +4287,17 @@ app.get(
     const botId = String(req.query.botId || "").trim();
     assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
+    const page = listProactiveAddressBookTargetsPage({
+      botId,
+      targetType: req.query.targetType,
+      query: String(req.query.q || "").trim(),
+      page: Number(req.query.page || 1),
+      pageSize: Number(req.query.pageSize || req.query.limit || 20)
+    });
     res.json({
       ok: true,
-      targets: listProactiveAddressBookTargets({
-        botId,
-        targetType: req.query.targetType,
-        query: String(req.query.q || "").trim(),
-        limit: Number(req.query.limit || 200)
-      })
+      targets: page.items,
+      pagination: page.pagination
     });
   })
 );
