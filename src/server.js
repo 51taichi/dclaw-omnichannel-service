@@ -5,6 +5,7 @@ import fs from "node:fs";
 import multer from "multer";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { mergeInlineActions } from "./action-chips.js";
 import { loadBotBindingsFromConfig } from "./config.js";
 import {
   buildDclawActivationRequest,
@@ -2098,22 +2099,36 @@ function recordActivationOutbound({ task, binding, target, content, result, rawP
   });
 }
 
-async function sendActivationRawMessages({ task, binding }) {
+function activationDeliveryForTask(task) {
+  const message = Array.isArray(task.messages)
+    ? task.messages[Number(task.messageIndex || 0)] || {}
+    : {};
+  const mergedActivation = mergeInlineActions({
+    content: message.content ?? task.messageContent ?? "",
+    actions: message.actionsAfterSend || []
+  });
+  return {
+    visibleActivationContent: mergedActivation.content,
+    mergedActivationActions: mergedActivation.actions
+  };
+}
+
+async function sendActivationRawMessages({ task, binding, delivery }) {
   const target = privateTargetNameFromConversationKey(task.conversationKey);
   if (!target) throw new Error("missing activation target");
-  const content = String(task.messageContent || "").trim();
-  if (!content) throw new Error("empty activation message");
+  const visibleActivationContent = String(delivery?.visibleActivationContent || "").trim();
   assertActivationTaskStillSendable(task);
+  if (!visibleActivationContent) return [];
   const result = await sendTextMessage({
     robotId: task.botId,
     targets: [target],
-    content
+    content: visibleActivationContent
   });
   recordActivationOutbound({
     task,
     binding,
     target,
-    content,
+    content: visibleActivationContent,
     result,
     rawPayload: {
       polishByAgent: false,
@@ -2123,11 +2138,14 @@ async function sendActivationRawMessages({ task, binding }) {
   return [result.data || ""].filter(Boolean);
 }
 
-async function sendActivationPolishedMessage({ task, binding }) {
+async function sendActivationPolishedMessage({ task, binding, delivery }) {
   const target = privateTargetNameFromConversationKey(task.conversationKey);
   if (!target) throw new Error("missing activation target");
-  const activationMessage = String(task.messageContent || "").trim();
-  if (!activationMessage) throw new Error("empty activation message");
+  const activationMessage = String(delivery?.visibleActivationContent || "").trim();
+  if (!activationMessage) {
+    assertActivationTaskStillSendable(task);
+    return [];
+  }
   const machine = getFlowMachineForBot(task.botId);
   const session = getFlowSession(task.conversationKey);
   const flow = machine && session
@@ -2311,9 +2329,11 @@ async function processFlowActivationTask(task) {
   }
 
   try {
+    const activationDelivery = activationDeliveryForTask(task);
+    const { mergedActivationActions } = activationDelivery;
     const worktoolMessageIds = task.polishByAgent
-      ? await sendActivationPolishedMessage({ task, binding })
-      : await sendActivationRawMessages({ task, binding });
+      ? await sendActivationPolishedMessage({ task, binding, delivery: activationDelivery })
+      : await sendActivationRawMessages({ task, binding, delivery: activationDelivery });
     const delivery = finalizeFlowActivationTaskDelivery({ id: task.id, worktoolMessageIds });
     if (!delivery) {
       logInfo("activation.stale_skipped", {
@@ -2327,7 +2347,6 @@ async function processFlowActivationTask(task) {
       return;
     }
     const { task: sentTask, progress } = delivery;
-    const activationActions = sentTask.messages?.[sentTask.messageIndex]?.actionsAfterSend || [];
     if (!sentTask.wasCanceled) {
       await executeFlowActions({
         source: "activation_sent",
@@ -2336,7 +2355,7 @@ async function processFlowActivationTask(task) {
         conversationKey: task.conversationKey,
         nodeId: task.nodeId,
         activationTaskId: String(task.id),
-        actions: activationActions
+        actions: mergedActivationActions
       });
     }
     const session = getFlowSession(task.conversationKey);

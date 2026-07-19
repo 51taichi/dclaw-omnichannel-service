@@ -49,7 +49,7 @@ test("activation actions run only after delivery is finalized", () => {
 
   assert.equal(helper.includes("finalizeFlowActivationTaskDelivery"), true);
   assert.equal(helper.includes('source: "activation_sent"'), true);
-  assert.equal(helper.includes("sentTask.messages?.[sentTask.messageIndex]?.actionsAfterSend"), true);
+  assert.equal(helper.includes("mergedActivationActions"), true);
   assert.equal(
     helper.indexOf("finalizeFlowActivationTaskDelivery") < helper.indexOf("executeFlowActions({"),
     true
