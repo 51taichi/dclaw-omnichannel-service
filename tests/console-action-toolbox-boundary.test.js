@@ -15,6 +15,8 @@ test("console exposes a fixed universal action toolbox", () => {
   assert.equal(app.includes("插入到激活话术"), false);
   assert.equal(app.includes("data-action-toolbox-tool"), false);
   assert.equal(app.includes("data-action-toolbox-group-name"), true);
+  assert.equal(app.includes("邀请入群"), true);
+  assert.equal(app.includes('class="field-label">${icon("users")}邀请入群</span>'), true);
   assert.equal(app.includes("showMessageHistory: true"), true);
   assert.equal(css.includes(".action-toolbox"), true);
   assert.equal(css.includes("position: fixed"), true);

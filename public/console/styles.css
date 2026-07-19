@@ -2718,13 +2718,12 @@ textarea[data-action-target-activation].is-action-target-focused {
 }
 
 .action-toolbox-field {
-  grid-template-columns: 72px minmax(0, 1fr);
+  grid-template-columns: max-content minmax(0, 1fr);
+  min-height: 42px;
 }
 
-.action-toolbox-field > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.action-toolbox-field .field-label {
+  padding: 0 12px;
 }
 
 .action-toolbox-field .icon {

@@ -1852,7 +1852,7 @@ function renderActionToolbox() {
           </button>
         </div>
         <label class="input-group compact action-toolbox-field">
-          <span>${icon("users")}群名</span>
+          <span class="field-label">${icon("users")}邀请入群</span>
           <input data-action-toolbox-group-name placeholder="例如 直播课学习群" />
         </label>
         <button class="primary action-toolbox-insert" data-action-toolbox-insert type="button">
