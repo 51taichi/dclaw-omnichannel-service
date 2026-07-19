@@ -89,10 +89,12 @@ test("pagination controls use compact icon buttons", () => {
   assert.doesNotMatch(app, />下一页<\/button>/);
 });
 
-test("target pagination total sits before page size controls on the right", () => {
-  assert.match(app, /<span class="pagination-summary">共 \$\{current\.total\} 条<\/span>\s*<label class="pagination-size">/);
+test("target pagination total sits after the next page button", () => {
+  assert.doesNotMatch(app, /<span class="pagination-summary">共 \$\{current\.total\} 条<\/span>\s*<label class="pagination-size">/);
+  assert.match(app, /<button class="secondary pagination-button is-next"[\s\S]*>\$\{icon\("chevron"\)\}<\/button>\s*<span class="pagination-summary">共 \$\{current\.total\} 条<\/span>/);
   assert.match(css, /\.pagination-size\s*\{[^}]*display:\s*inline-flex;[^}]*grid-template-columns:\s*none;[^}]*align-items:\s*center;[^}]*margin:\s*0;[^}]*padding-left:\s*15px;/);
   assert.match(css, /\.pagination-size select\s*\{[^}]*width:\s*60px;[^}]*min-width:\s*60px;[^}]*height:\s*32px;[^}]*padding:\s*0 24px 0 0px;[^}]*font-size:\s*13px;/);
+  assert.doesNotMatch(css, /\.pagination-summary\s*\{[^}]*margin-right:\s*auto/);
   assert.match(css, /\.bulk-actions \.target-pagination\s*\{[^}]*justify-content:\s*flex-end/);
 });
 

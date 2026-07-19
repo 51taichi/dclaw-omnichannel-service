@@ -1665,7 +1665,6 @@ function renderPaginationBar({ container, pagination, onPage, onPageSize }) {
   if (!container) return;
   const current = normalizePagination(pagination, pagination);
   container.innerHTML = `
-    <span class="pagination-summary">共 ${current.total} 条</span>
     <label class="pagination-size">
       <span>每页</span>
       <select data-pagination-size>
@@ -1675,6 +1674,7 @@ function renderPaginationBar({ container, pagination, onPage, onPageSize }) {
     <button class="secondary pagination-button is-prev" data-pagination-page="${current.page - 1}" type="button" aria-label="上一页" title="上一页" ${current.hasPrev ? "" : "disabled"}>${icon("chevron")}</button>
     <span class="pagination-current">第 ${current.page} / ${current.totalPages} 页</span>
     <button class="secondary pagination-button is-next" data-pagination-page="${current.page + 1}" type="button" aria-label="下一页" title="下一页" ${current.hasNext ? "" : "disabled"}>${icon("chevron")}</button>
+    <span class="pagination-summary">共 ${current.total} 条</span>
   `;
   container.querySelector("[data-pagination-size]")?.addEventListener("change", (event) => {
     onPageSize?.(Number(event.target.value));

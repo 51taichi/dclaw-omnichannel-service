@@ -1125,10 +1125,6 @@ button.danger:hover {
   white-space: nowrap;
 }
 
-.pagination-summary {
-  margin-right: auto;
-}
-
 .pagination-button .icon {
   width: 16px;
   height: 16px;
