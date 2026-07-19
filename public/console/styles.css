@@ -1892,6 +1892,17 @@ button.danger:hover {
   border: 1px dashed color-mix(in srgb, var(--accent) 22%, var(--line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 3%, #ffffff);
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
+}
+
+.flow-action-section:hover,
+.flow-action-section:focus-visible,
+.flow-action-section.is-action-target-focused,
+textarea[data-action-target-activation].is-action-target-focused {
+  border-color: color-mix(in srgb, var(--primary) 70%, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
+  background: color-mix(in srgb, var(--primary) 3%, #ffffff);
 }
 
 .flow-action-section-head {
@@ -1915,6 +1926,12 @@ button.danger:hover {
 .flow-action-section-head .icon {
   width: 14px;
   height: 14px;
+}
+
+.flow-action-section-head small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .flow-action-chips {
@@ -2633,6 +2650,123 @@ button.danger:hover {
   box-shadow: none;
   font-size: 13px;
   font-weight: 800;
+}
+
+.action-toolbox {
+  position: fixed;
+  right: 18px;
+  top: 46%;
+  z-index: 120;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.action-toolbox-toggle,
+.action-toolbox-panel {
+  pointer-events: auto;
+}
+
+.action-toolbox-toggle {
+  width: 46px;
+  height: 46px;
+  border: 1px solid color-mix(in srgb, var(--primary) 45%, var(--line));
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: 0 16px 34px rgba(37, 48, 220, 0.24);
+  cursor: pointer;
+}
+
+.action-toolbox-toggle .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.action-toolbox-panel {
+  width: min(320px, calc(100vw - 86px));
+  display: none;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--primary) 26%, var(--line));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 18px 46px rgba(18, 28, 83, 0.18);
+}
+
+.action-toolbox.is-open .action-toolbox-panel {
+  display: grid;
+}
+
+.action-toolbox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.action-toolbox-head strong,
+.action-toolbox-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.action-toolbox-head .icon,
+.action-toolbox-tool .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.action-toolbox-tool {
+  width: 100%;
+  min-height: 50px;
+  justify-content: flex-start;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--primary) 5%, #ffffff);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.action-toolbox-tool span {
+  display: grid;
+  gap: 2px;
+  text-align: left;
+}
+
+.action-toolbox-tool small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.action-toolbox-target {
+  min-height: 30px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 8px;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--primary) 4%, #ffffff);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.action-toolbox-field {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.action-toolbox-toggle-row {
+  justify-content: flex-start;
+  min-height: 38px;
+}
+
+.action-toolbox-insert {
+  width: 100%;
+  justify-content: center;
 }
 
 .tag-multi-select-button:hover {

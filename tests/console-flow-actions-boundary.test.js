@@ -9,18 +9,20 @@ test("console flow drafts preserve node and activation actions", () => {
   assert.equal(app.includes("defaultFlowAction"), true);
   assert.equal(app.includes("normalizeFlowActionDrafts"), true);
   assert.equal(app.includes("actionsOnComplete: normalizeFlowActionDrafts(node.actionsOnComplete || [])"), true);
-  assert.equal(app.includes("const actionsAfterSend = normalizeFlowActionDrafts(source.actionsAfterSend || [])"), true);
+  assert.equal(app.includes("const actionsAfterSend = mergeEditorFlowActions"), true);
+  assert.equal(app.includes("const inlineActions = extractActionChipsFromEditorText"), true);
   assert.equal(app.includes("actionsOnComplete: normalizeFlowActionDrafts(node.actionsOnComplete)"), true);
 });
 
-test("console renders action chips outside node and activation textareas", () => {
+test("console renders node action chips and activation text chips", () => {
   assert.equal(app.includes("renderFlowActionChips"), true);
-  assert.equal(app.includes('data-add-node-action="${index}"'), true);
-  assert.equal(app.includes('data-add-activation-action="${index}:${messageIndex}"'), true);
+  assert.equal(app.includes("formatActivationMessageForEditor"), true);
+  assert.equal(app.includes("data-action-target-node"), true);
+  assert.equal(app.includes("data-action-target-activation"), true);
+  assert.equal(app.includes("data-add-node-action"), false);
+  assert.equal(app.includes("data-add-activation-action"), false);
   assert.equal(app.includes("data-node-action-group-name"), true);
-  assert.equal(app.includes("data-activation-action-group-name"), true);
   assert.equal(app.includes("data-remove-node-action"), true);
-  assert.equal(app.includes("data-remove-activation-action"), true);
   assert.equal(css.includes(".flow-action-chips"), true);
   assert.equal(css.includes(".flow-action-editor"), true);
   assert.equal(css.includes(".flow-action-chip"), true);

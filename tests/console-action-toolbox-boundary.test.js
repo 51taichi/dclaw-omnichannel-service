@@ -1,0 +1,39 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
+const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
+
+test("console exposes a fixed universal action toolbox", () => {
+  assert.equal(app.includes("actionToolboxOpen"), true);
+  assert.equal(app.includes("renderActionToolbox"), true);
+  assert.equal(app.includes("openActionToolbox"), true);
+  assert.equal(app.includes("insertActionIntoFocusedTarget"), true);
+  assert.equal(app.includes("邀请进群"), true);
+  assert.equal(css.includes(".action-toolbox"), true);
+  assert.equal(css.includes("position: fixed"), true);
+});
+
+test("toolbox can target node completion or activation textareas", () => {
+  assert.equal(app.includes("focusedActionTarget"), true);
+  assert.equal(app.includes('kind: "node_complete"'), true);
+  assert.equal(app.includes('kind: "activation_message"'), true);
+  assert.equal(app.includes("data-action-target-node"), true);
+  assert.equal(app.includes("data-action-target-activation"), true);
+});
+
+test("activation toolbox insertion uses textual action chips and save strips them", () => {
+  assert.equal(app.includes("serializeActionChipForEditor"), true);
+  assert.equal(app.includes("extractActionChipsFromEditorText"), true);
+  assert.equal(app.includes("stripActionChipsFromEditorText"), true);
+  assert.equal(app.includes("formatActivationMessageForEditor"), true);
+  assert.equal(app.includes("[动作：拉入 "), true);
+  assert.equal(app.includes("setRangeText"), true);
+});
+
+test("local action add buttons are removed in favor of the toolbox", () => {
+  assert.equal(app.includes("data-add-node-action"), false);
+  assert.equal(app.includes("data-add-activation-action"), false);
+  assert.equal(app.includes("activation-message-flow-actions"), false);
+});

@@ -984,6 +984,8 @@ let addressBookTargets = [];
 let currentFlowMachine = null;
 let currentFlowSessions = [];
 let flowDraftNodes = [];
+let focusedActionTarget = null;
+let actionToolboxOpen = false;
 let currentConversationAssets = { fields: [], totalCount: 0, collectedCount: 0 };
 let currentFlowSession = null;
 const collapsedFlowNodes = new Set();
@@ -1385,6 +1387,8 @@ function defaultFlowAction(index = 1) {
   };
 }
 
+const actionChipPattern = /\[动作：拉入\s+([^\]\n\r]+?)\]/g;
+
 function normalizeFlowActionDraft(value = {}, index = 1) {
   const source = value && typeof value === "object" && !Array.isArray(value)
     ? value
@@ -1409,11 +1413,73 @@ function normalizeFlowActionDrafts(actions = []) {
     : [];
 }
 
+function serializeActionChipForEditor(action = {}) {
+  const normalized = normalizeFlowActionDraft(action);
+  const groupName = String(normalized?.groupName || "").trim();
+  return groupName ? `[动作：拉入 ${groupName}]` : "";
+}
+
+function extractActionChipsFromEditorText(text = "") {
+  const actions = [];
+  const seen = new Set();
+  String(text || "").replace(actionChipPattern, (_match, rawGroupName) => {
+    const groupName = String(rawGroupName || "").trim();
+    if (!groupName) return "";
+    const key = `invite_to_group:${groupName}`;
+    if (seen.has(key)) return "";
+    seen.add(key);
+    actions.push({
+      ...defaultFlowAction(actions.length + 1),
+      id: `action_${actions.length + 1}`,
+      groupName
+    });
+    return "";
+  });
+  return actions;
+}
+
+function stripActionChipsFromEditorText(text = "") {
+  return String(text || "")
+    .replace(actionChipPattern, "")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\s+([。！？!?，,；;：:])/g, "$1")
+    .replace(/([。！？!?，,；;：:])\s+/g, "$1")
+    .trim();
+}
+
+function mergeEditorFlowActions(actions = []) {
+  const seen = new Set();
+  return normalizeFlowActionDrafts(actions)
+    .filter((action) => {
+      const groupName = String(action.groupName || "").trim();
+      if (!groupName) return true;
+      const key = `${action.type}:${groupName}:${action.target}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((action, index) => ({
+      ...action,
+      id: String(action.id || `action_${index + 1}`).trim() || `action_${index + 1}`
+    }));
+}
+
+function formatActivationMessageForEditor(message = {}) {
+  const source = typeof message === "string" ? { content: message } : message || {};
+  const content = String(source.content || "").trim();
+  const chips = normalizeFlowActionDrafts(source.actionsAfterSend || [])
+    .map((action) => serializeActionChipForEditor(action))
+    .filter(Boolean);
+  return [content, ...chips].filter(Boolean).join(" ");
+}
+
 function normalizeActivationMessageDraft(value = {}, defaults = defaultActivationMessage()) {
   const source = typeof value === "string" ? { content: value } : value || {};
-  const actionsAfterSend = normalizeFlowActionDrafts(source.actionsAfterSend || []);
+  const inlineActions = extractActionChipsFromEditorText(source.content || "");
+  const structuredActions = Array.isArray(source.actionsAfterSend) ? source.actionsAfterSend : [];
+  const actionsAfterSend = mergeEditorFlowActions([...structuredActions, ...inlineActions]);
   return {
-    content: String(source.content || ""),
+    content: stripActionChipsFromEditorText(source.content || ""),
     intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? defaults.intervalMinutes)),
     maxTimes: Math.max(1, Number(source.maxTimes ?? defaults.maxTimes)),
     ...(actionsAfterSend.length ? { actionsAfterSend } : {})
@@ -1628,7 +1694,14 @@ function updateDraftNodeActivationMessage(input) {
   } else if (input.dataset.activationMessageMaxTimes !== undefined) {
     message.maxTimes = Math.max(1, Number(input.value || message.maxTimes || 1));
   } else {
-    message.content = input.value;
+    activation.messages[messageIndex] = normalizeActivationMessageDraft({
+      ...message,
+      content: input.value,
+      actionsAfterSend: []
+    });
+    node.activation = activation;
+    syncFlowJsonTextarea();
+    return;
   }
   activation.messages[messageIndex] = message;
   node.activation = activation;
@@ -1765,6 +1838,194 @@ function removeActivationAction(nodeIndex, messageIndex, actionIndex) {
   syncFlowJsonTextarea();
 }
 
+function renderActionToolbox() {
+  return `
+    <aside class="action-toolbox" id="actionToolbox" aria-label="动作工具箱">
+      <button class="action-toolbox-toggle" data-action-toolbox-toggle type="button" aria-label="打开动作工具箱" title="动作工具箱">
+        ${icon("link")}
+      </button>
+      <div class="action-toolbox-panel" role="dialog" aria-label="动作工具箱">
+        <div class="action-toolbox-head">
+          <strong>${icon("link")}动作工具箱</strong>
+          <button class="icon-button secondary" data-action-toolbox-close type="button" aria-label="收起动作工具箱" title="收起">
+            ${icon("chevron")}
+          </button>
+        </div>
+        <button class="action-toolbox-tool" data-action-toolbox-tool="invite_to_group" type="button">
+          ${icon("users")}
+          <span>
+            <strong>邀请进群</strong>
+            <small>插入拉群动作 chip</small>
+          </span>
+        </button>
+        <div class="action-toolbox-target">
+          <span data-action-toolbox-target-label>先点击要插入的位置</span>
+        </div>
+        <label class="input-group compact action-toolbox-field">
+          <span>群名</span>
+          <input data-action-toolbox-group-name placeholder="例如 直播课学习群" />
+        </label>
+        <label class="toggle action-toolbox-toggle-row">
+          <input data-action-toolbox-show-history type="checkbox" checked />
+          <span>带聊天记录</span>
+        </label>
+        <button class="primary action-toolbox-insert" data-action-toolbox-insert type="button">
+          ${icon("plus")}插入动作
+        </button>
+      </div>
+    </aside>
+  `;
+}
+
+function ensureActionToolbox() {
+  if (document.querySelector("#actionToolbox")) return;
+  document.body.insertAdjacentHTML("beforeend", renderActionToolbox());
+  const toolbox = document.querySelector("#actionToolbox");
+  toolbox?.querySelector("[data-action-toolbox-toggle]")?.addEventListener("click", () => {
+    actionToolboxOpen = !actionToolboxOpen;
+    syncActionToolbox();
+  });
+  toolbox?.querySelector("[data-action-toolbox-close]")?.addEventListener("click", closeActionToolbox);
+  toolbox?.querySelector("[data-action-toolbox-tool]")?.addEventListener("click", openActionToolbox);
+  toolbox?.querySelector("[data-action-toolbox-insert]")?.addEventListener("click", () => {
+    const action = actionFromToolbox();
+    if (!action) return;
+    if (insertActionIntoFocusedTarget(action)) {
+      toast("动作已插入");
+    }
+  });
+  syncActionToolbox();
+}
+
+function syncActionToolbox() {
+  const toolbox = document.querySelector("#actionToolbox");
+  if (!toolbox) return;
+  toolbox.classList.toggle("is-open", actionToolboxOpen);
+  const targetLabel = toolbox.querySelector("[data-action-toolbox-target-label]");
+  if (targetLabel) {
+    targetLabel.textContent = focusedActionTarget?.kind === "activation_message"
+      ? "插入到激活话术"
+      : focusedActionTarget?.kind === "node_complete"
+        ? "插入到节点完成动作"
+        : "先点击要插入的位置";
+  }
+}
+
+function openActionToolbox() {
+  actionToolboxOpen = true;
+  syncActionToolbox();
+}
+
+function closeActionToolbox() {
+  actionToolboxOpen = false;
+  syncActionToolbox();
+}
+
+function actionFromToolbox() {
+  const toolbox = document.querySelector("#actionToolbox");
+  const groupName = String(toolbox?.querySelector("[data-action-toolbox-group-name]")?.value || "").trim();
+  if (!groupName) {
+    toast("请输入要邀请进入的群名");
+    return null;
+  }
+  return {
+    ...defaultFlowAction(1),
+    type: "invite_to_group",
+    groupName,
+    target: "current_contact",
+    showMessageHistory: toolbox?.querySelector("[data-action-toolbox-show-history]")?.checked !== false,
+    runOnce: true
+  };
+}
+
+function actionTargetElement(target = focusedActionTarget) {
+  if (!target) return null;
+  if (target.kind === "node_complete") {
+    return els.flowNodeList.querySelector(`[data-action-target-node="${target.nodeIndex}"]`);
+  }
+  if (target.kind === "activation_message") {
+    return els.flowNodeList.querySelector(
+      `[data-action-target-activation="${target.nodeIndex}:${target.messageIndex}"]`
+    );
+  }
+  return null;
+}
+
+function setFocusedActionTarget(target, element = null) {
+  focusedActionTarget = target;
+  els.flowNodeList.querySelectorAll("[data-action-target-node], [data-action-target-activation]").forEach((item) => {
+    item.classList.toggle("is-action-target-focused", item === (element || actionTargetElement(target)));
+  });
+  syncActionToolbox();
+}
+
+function insertActionIntoFocusedTarget(action = {}) {
+  const normalizedAction = normalizeFlowActionDraft(action);
+  if (!normalizedAction?.groupName?.trim()) {
+    toast("请输入要邀请进入的群名");
+    return false;
+  }
+  if (!focusedActionTarget) {
+    openActionToolbox();
+    toast("先点击任务节点或激活话术位置");
+    return false;
+  }
+  if (focusedActionTarget.kind === "node_complete") {
+    const nodeIndex = Number(focusedActionTarget.nodeIndex);
+    const node = flowDraftNodes[nodeIndex];
+    if (!node) return false;
+    const actions = normalizeFlowActionDrafts(node.actionsOnComplete || []);
+    node.actionsOnComplete = [
+      ...actions,
+      { ...normalizedAction, id: nextFlowActionId(actions) }
+    ];
+    renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+    setFocusedActionTarget({ kind: "node_complete", nodeIndex });
+    syncFlowJsonTextarea();
+    return true;
+  }
+  if (focusedActionTarget.kind === "activation_message") {
+    const { nodeIndex, messageIndex } = focusedActionTarget;
+    const textarea = els.flowNodeList.querySelector(`[data-action-target-activation="${nodeIndex}:${messageIndex}"]`);
+    if (!textarea) return false;
+    const chip = serializeActionChipForEditor(normalizedAction);
+    const start = textarea.selectionStart ?? textarea.value.length;
+    const end = textarea.selectionEnd ?? textarea.value.length;
+    const prefix = textarea.value && !/[\s\n]$/.test(textarea.value.slice(0, start)) ? " " : "";
+    textarea.setRangeText(`${prefix}${chip}`, start, end, "end");
+    textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    textarea.focus();
+    setFocusedActionTarget({ kind: "activation_message", nodeIndex, messageIndex }, textarea);
+    return true;
+  }
+  return false;
+}
+
+function bindActionTargets() {
+  els.flowNodeList.querySelectorAll("[data-action-target-node]").forEach((section) => {
+    const nodeIndex = Number(section.dataset.actionTargetNode);
+    section.addEventListener("click", () => {
+      setFocusedActionTarget({ kind: "node_complete", nodeIndex }, section);
+      openActionToolbox();
+    });
+    section.addEventListener("focusin", () => {
+      setFocusedActionTarget({ kind: "node_complete", nodeIndex }, section);
+    });
+  });
+  els.flowNodeList.querySelectorAll("[data-action-target-activation]").forEach((input) => {
+    const [nodeIndex, messageIndex] = input.dataset.actionTargetActivation.split(":").map(Number);
+    const focusTarget = () => {
+      setFocusedActionTarget({ kind: "activation_message", nodeIndex, messageIndex }, input);
+    };
+    input.addEventListener("focus", focusTarget);
+    input.addEventListener("click", focusTarget);
+  });
+  const targetElement = actionTargetElement();
+  if (targetElement) {
+    targetElement.classList.add("is-action-target-focused");
+  }
+}
+
 function renderFlowActionChips(actions = [], { nodeIndex, messageIndex } = {}) {
   const normalized = normalizeFlowActionDrafts(actions);
   if (!normalized.length) {
@@ -1789,7 +2050,7 @@ function renderFlowActionChips(actions = [], { nodeIndex, messageIndex } = {}) {
             : `data-remove-node-action="${indexPath}"`;
           return `
             <div class="flow-action-editor">
-              <span class="flow-action-chip">${icon("user-plus")}拉入群</span>
+              <span class="flow-action-chip">${icon("users")}拉入群</span>
               <label class="input-group compact flow-action-group-field">
                 <span>群名</span>
                 <input ${groupAttr} value="${escapeHtml(action.groupName || "")}" placeholder="例如 直播课学习群" />
@@ -1799,7 +2060,7 @@ function renderFlowActionChips(actions = [], { nodeIndex, messageIndex } = {}) {
                 <span>带聊天记录</span>
               </label>
               <button class="danger icon-button flow-action-remove-button" ${removeAttr} type="button" aria-label="删除动作" title="删除动作">
-                ${icon("trash-2")}
+                ${icon("reset")}
               </button>
             </div>
           `;
@@ -2687,12 +2948,10 @@ function renderFlowNodeEditor(entryNodeId = "") {
               <textarea data-flow-node-field="conversationTips" rows="3" placeholder="每行一个，例如：先回应再追问">${escapeHtml(joinLines(node.conversationTips))}</textarea>
             </label>
           </div>
-          <section class="flow-action-section" aria-label="节点完成动作">
+          <section class="flow-action-section" data-action-target-node="${index}" tabindex="0" aria-label="节点完成动作">
             <div class="flow-action-section-head">
-              <span>${icon("zap")}完成动作</span>
-              <button class="secondary icon-button" data-add-node-action="${index}" type="button" aria-label="新增节点动作" title="新增节点动作">
-                ${icon("plus")}
-              </button>
+              <span>${icon("link")}完成动作</span>
+              <small>点击后从右侧工具箱插入动作</small>
             </div>
             ${renderFlowActionChips(node.actionsOnComplete || [], { nodeIndex: index })}
           </section>
@@ -2720,7 +2979,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
               ${activationMessages
                 .map((activationMessage, messageIndex) => `
                   <div class="activation-message-card">
-                    <textarea data-activation-message-index="${messageIndex}" data-activation-message-content rows="2" placeholder="激活话术，例如：再提醒您一下，看到后回我一句就行">${escapeHtml(activationMessage.content)}</textarea>
+                    <textarea data-action-target-activation="${index}:${messageIndex}" data-activation-message-index="${messageIndex}" data-activation-message-content rows="2" placeholder="激活话术，例如：再提醒您一下，看到后回我一句就行">${escapeHtml(formatActivationMessageForEditor(activationMessage))}</textarea>
                     <div class="activation-message-actions">
                       <label class="activation-message-control" title="间隔（分钟）">
                         ${icon("clock")}
@@ -2733,15 +2992,6 @@ function renderFlowNodeEditor(entryNodeId = "") {
                         <span class="activation-message-unit">次</span>
                       </label>
                       <button class="danger icon-button activation-remove-button" data-remove-activation-message="${index}:${messageIndex}" type="button" aria-label="删除激活话术" title="删除激活话术">${icon("reset")}</button>
-                    </div>
-                    <div class="activation-message-flow-actions">
-                      <div class="flow-action-section-head">
-                        <span>${icon("zap")}发送后动作</span>
-                        <button class="secondary icon-button" data-add-activation-action="${index}:${messageIndex}" type="button" aria-label="新增发送后动作" title="新增发送后动作">
-                          ${icon("plus")}
-                        </button>
-                      </div>
-                      ${renderFlowActionChips(activationMessage.actionsAfterSend || [], { nodeIndex: index, messageIndex })}
                     </div>
                   </div>
                 `)
@@ -2810,15 +3060,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
       removeActivationMessage(nodeIndex, messageIndex);
     });
   });
-  els.flowNodeList.querySelectorAll("[data-add-node-action]").forEach((button) => {
-    button.addEventListener("click", () => addNodeAction(Number(button.dataset.addNodeAction)));
-  });
-  els.flowNodeList.querySelectorAll("[data-add-activation-action]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const [nodeIndex, messageIndex] = button.dataset.addActivationAction.split(":").map(Number);
-      addActivationAction(nodeIndex, messageIndex);
-    });
-  });
+  bindActionTargets();
   els.flowNodeList.querySelectorAll("[data-node-action-group-name]").forEach((input) => {
     input.addEventListener("input", () => updateNodeActionInput(input));
   });
@@ -4278,7 +4520,13 @@ els.collapseButtons.forEach((button) => {
     button.setAttribute("aria-expanded", String(!panel?.classList.contains("is-collapsed")));
   });
 });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && actionToolboxOpen) {
+    closeActionToolbox();
+  }
+});
 
+ensureActionToolbox();
 syncRoleVisibility();
 loadBots()
   .catch((error) => {

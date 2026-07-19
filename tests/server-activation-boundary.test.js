@@ -88,9 +88,10 @@ test("activation sends its immutable message snapshot then advances before sched
   const polishedSender = source.slice(polishedStart, processStart);
   const processor = source.slice(processStart, batchStart);
 
-  assert.equal(rawSender.includes("task.messageContent"), true);
+  assert.equal(rawSender.includes("visibleActivationContent"), true);
   assert.equal(rawSender.includes("activationMessageForAttempt"), false);
-  assert.equal(polishedSender.includes("task.messageContent"), true);
+  assert.equal(polishedSender.includes("visibleActivationContent"), true);
+  assert.equal(processor.includes("activationDeliveryForTask(task)"), true);
   assert.equal(processor.includes("finalizeFlowActivationTaskDelivery"), true);
   assert.equal(processor.indexOf("finalizeFlowActivationTaskDelivery") < processor.indexOf("scheduleCurrentActivation"), true);
   assert.equal(processor.includes("anchorAt: sentTask.sentAt"), true);

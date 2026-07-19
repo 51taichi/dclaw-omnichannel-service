@@ -13,7 +13,7 @@ test("flow node editor supports activation settings", () => {
   assert.equal(app.includes("activationEnabled"), true);
   assert.equal(app.includes("activationPolishByAgent"), true);
   assert.equal(app.includes("activationMessages"), true);
-  assert.equal(app.includes("activationMessage.content"), true);
+  assert.equal(app.includes("formatActivationMessageForEditor(activationMessage)"), true);
   assert.equal(app.includes("data-activation-message-interval"), true);
   assert.equal(app.includes("data-activation-message-max-times"), true);
   assert.equal(app.includes("data-add-activation-message"), true);
