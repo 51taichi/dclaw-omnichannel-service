@@ -2980,52 +2980,52 @@ export function listFlowStateEvents({ botId = "", conversationKey, limit = 100 }
 }
 
 export function clearConversationForReset({ botId, conversationKey, reason = "控制台清空会话" }) {
-  const machine = getFlowMachineForBot(botId);
   const timestamp = now();
-  const session = getFlowSessionForBot({ botId, conversationKey });
   const conversation = getConversation(conversationKey);
   if (!conversation || conversation.botId !== botId) throw new Error("flow session not found");
 
-  db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ? AND bot_id = ?")
-    .run(conversationKey, botId);
-  db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
-    .run(conversationKey, botId);
-  const resetNodeId = machine?.entryNodeId || "__conversation__";
-  if (session) {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ? AND bot_id = ?")
+      .run(conversationKey, botId);
+    db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
+      .run(conversationKey, botId);
+    db.prepare("DELETE FROM conversation_tags WHERE conversation_key = ? AND bot_id = ?")
+      .run(conversationKey, botId);
     db.prepare(`
-      UPDATE flow_sessions
-      SET current_node_id = ?,
-          collected_data_json = ?,
-          status = 'active',
-          handoff_status = 'ai',
-          handoff_at = NULL,
-          handoff_by = '',
-          handoff_reason = '',
-          activation_state_json = NULL,
-          last_message_at = ?,
+      UPDATE flow_activation_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = ?,
           updated_at = ?
       WHERE conversation_key = ?
         AND bot_id = ?
-    `).run(resetNodeId, json({}), timestamp, timestamp, conversationKey, botId);
-  } else {
-    getOrCreateConversationSession({
-      botId,
-      conversationKey,
-      currentNodeId: resetNodeId
-    });
+        AND status IN ('pending', 'processing')
+    `).run(timestamp, reason, timestamp, conversationKey, botId);
+    db.prepare(`
+      UPDATE tag_activation_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = ?,
+          updated_at = ?
+      WHERE conversation_key = ?
+        AND bot_id = ?
+        AND status IN ('pending', 'processing')
+    `).run(timestamp, reason, timestamp, conversationKey, botId);
+    db.prepare("DELETE FROM flow_sessions WHERE conversation_key = ? AND bot_id = ?")
+      .run(conversationKey, botId);
+    db.prepare("DELETE FROM conversations WHERE conversation_key = ? AND bot_id = ?")
+      .run(conversationKey, botId);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
-  db.prepare(`
-    UPDATE conversations
-    SET dclaw_session_id = NULL,
-        reset_pending = 1,
-        last_message_at = ?,
-        updated_at = ?
-    WHERE conversation_key = ?
-      AND bot_id = ?
-  `).run(timestamp, timestamp, conversationKey, botId);
 
   return {
-    ...getFlowSessionForBot({ botId, conversationKey }),
+    botId,
+    conversationKey,
+    deleted: true,
     reason
   };
 }

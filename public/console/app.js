@@ -3477,8 +3477,16 @@ async function resetSelectedConversation() {
     });
     if (!isCurrentBotContext(botId, contextVersion)) return;
     toast("会话已清空");
+    state.selectedFlowConversationKey = "";
+    currentFlowSession = null;
+    syncHandoffButton(null);
+    renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
+    renderManualReplyComposer(null);
+    if (els.chatTagList) els.chatTagList.innerHTML = "";
+    els.flowEventsOutput.textContent = "";
+    els.chatTitle.textContent = emptyFlowSessionTitle();
+    els.chatMessages.innerHTML = `<div class="empty-state">${escapeHtml(emptyFlowSessionTitle())}</div>`;
     await loadFlowSessions();
-    await openFlowSession(conversationKey);
   } finally {
     setConversationResetSubmitting(false);
   }

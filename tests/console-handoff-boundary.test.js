@@ -326,6 +326,20 @@ test("conversation reset shows a non-dismissible loading dialog while Agent memo
   assert.match(css, /\.conversation-reset-loading-dialog::before\s*\{[\s\S]*animation:\s*aiTakeoverSheen 3\.8s ease-in-out infinite/);
 });
 
+test("conversation reset clears the selected session instead of reopening the deleted shell", () => {
+  const start = app.indexOf("async function resetSelectedConversation()");
+  const end = app.indexOf("\nfunction setConversationResetSubmitting", start);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const body = app.slice(start, end);
+
+  assert.match(body, /state\.selectedFlowConversationKey = ""/);
+  assert.match(body, /currentFlowSession = null/);
+  assert.match(body, /els\.chatTitle\.textContent = emptyFlowSessionTitle\(\)/);
+  assert.match(body, /await loadFlowSessions\(\)/);
+  assert.equal(body.includes("openFlowSession(conversationKey)"), false);
+});
+
 test("opening a flow session shows a local mascot loading state in the chat pane", () => {
   assert.equal(app.includes("function renderChatLoadingState"), true);
   assert.match(app, /renderChatLoadingState\(session \|\| \{ conversationKey \}\)/);

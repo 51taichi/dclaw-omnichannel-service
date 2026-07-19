@@ -20,7 +20,7 @@ function ensureBotAgent(botId, agentId) {
   db.upsertBotBinding({ botId, botName: botId, agentId, enabled: true });
 }
 
-test("clearConversationForReset resets one flow conversation for a fresh agent run", () => {
+test("clearConversationForReset deletes one flow conversation for a fresh agent run", () => {
   const botId = "bot_test";
   const agentId = "agent_test";
   const conversationKey = `${botId}:private:张三`;
@@ -90,16 +90,50 @@ test("clearConversationForReset resets one flow conversation for a fresh agent r
   });
 
   assert.equal(result.conversationKey, conversationKey);
-  assert.equal(result.currentNodeId, "node_1");
-  assert.deepEqual(result.collectedData, {});
+  assert.equal(result.deleted, true);
+  assert.equal(db.getFlowSessionForBot({ botId, conversationKey }), null);
   assert.equal(db.listConversationMessages({ conversationKey }).length, 0);
   assert.equal(db.listFlowStateEvents({ conversationKey }).length, 0);
-  assert.equal(db.getConversation(conversationKey).dclawSessionId, null);
-  assert.equal(db.getConversationResetPending(conversationKey), true);
-
-  db.markConversationResetHandled(conversationKey);
-
+  assert.equal(db.getConversation(conversationKey), null);
   assert.equal(db.getConversationResetPending(conversationKey), false);
+});
+
+test("clearConversationForReset removes the conversation from visible session lists and clears tags", () => {
+  const botId = "bot_clear_visible";
+  const agentId = "agent_clear_visible";
+  const conversationKey = `${botId}:private:赵六`;
+  ensureBotAgent(botId, agentId);
+  const machine = db.upsertFlowMachine({
+    agentId,
+    enabled: true,
+    config: {
+      name: "清空可见列表状态机",
+      version: "1.0.0",
+      entryNodeId: "node_1",
+      nodes: [{ id: "node_1", name: "入口", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "" }]
+    }
+  });
+  db.upsertAgentTagSchema({ agentId, schema: { dateTag: { enabled: true }, groups: [] } });
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "赵六", groupName: "赵六" }
+  });
+  db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  db.upsertSystemDateTag({ botId, agentId, conversationKey, dateTagId: "20260718" });
+
+  assert.equal(db.listFlowSessionsPage({ botId }).items.length, 1);
+  assert.equal(db.listConversationTags({ botId, agentId, conversationKey }).length, 1);
+
+  const result = db.clearConversationForReset({ botId, conversationKey });
+
+  assert.equal(result.conversationKey, conversationKey);
+  assert.equal(result.deleted, true);
+  assert.equal(db.getConversation(conversationKey), null);
+  assert.equal(db.getFlowSessionForBot({ botId, conversationKey }), null);
+  assert.equal(db.listFlowSessionsPage({ botId }).items.length, 0);
+  assert.deepEqual(db.listConversationTags({ botId, agentId, conversationKey }), []);
 });
 
 test("getConversationAssets only exposes configured collect fields", () => {
@@ -169,7 +203,7 @@ test("getConversationAssets only exposes configured collect fields", () => {
   assert.equal(assets.collectedCount, 1);
 });
 
-test("clearConversationForReset clears a normal conversation without a flow machine", () => {
+test("clearConversationForReset deletes a normal conversation without a flow machine", () => {
   const botId = "bot_without_flow";
   const conversationKey = `${botId}:private:王五`;
 
@@ -196,7 +230,8 @@ test("clearConversationForReset clears a normal conversation without a flow mach
   const result = db.clearConversationForReset({ botId, conversationKey });
 
   assert.equal(result.conversationKey, conversationKey);
+  assert.equal(result.deleted, true);
   assert.equal(db.listConversationMessages({ botId, conversationKey }).length, 0);
-  assert.equal(db.getConversation(conversationKey).dclawSessionId, null);
-  assert.equal(db.getConversationResetPending(conversationKey), true);
+  assert.equal(db.getConversation(conversationKey), null);
+  assert.equal(db.getConversationResetPending(conversationKey), false);
 });
