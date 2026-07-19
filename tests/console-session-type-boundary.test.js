@@ -50,3 +50,21 @@ test("chat message timestamps render as compact date time text", () => {
   assert.match(app, /formatDisplayDateTime\(task\.updatedAt \|\| task\.createdAt\)/);
   assert.doesNotMatch(app, /<time>\$\{escapeHtml\(message\.createdAt \|\| ""\)\}<\/time>/);
 });
+
+test("console loads flow sessions through paginated server queries", () => {
+  assert.match(app, /flowSessionsPagination:\s*\{[\s\S]*page:\s*1[\s\S]*pageSize:\s*20/);
+  assert.match(app, /flowSessionsPaginationEl:\s*document\.querySelector\("#flowSessionsPagination"\)/);
+  assert.match(app, /params\.set\("page", String\(state\.flowSessionsPagination\.page\)\)/);
+  assert.match(app, /params\.set\("pageSize", String\(state\.flowSessionsPagination\.pageSize\)\)/);
+  assert.match(app, /renderPaginationBar\(\{[\s\S]*container:\s*els\.flowSessionsPaginationEl/);
+  assert.doesNotMatch(app, /new URLSearchParams\(\{ botId, limit: "100" \}\)/);
+});
+
+test("console loads proactive tasks through paginated server queries", () => {
+  assert.match(app, /proactiveTasksPagination:\s*\{[\s\S]*page:\s*1[\s\S]*pageSize:\s*20/);
+  assert.match(app, /proactiveTasksPaginationEl:\s*document\.querySelector\("#proactiveTasksPagination"\)/);
+  assert.match(app, /params\.set\("page", String\(state\.proactiveTasksPagination\.page\)\)/);
+  assert.match(app, /params\.set\("pageSize", String\(state\.proactiveTasksPagination\.pageSize\)\)/);
+  assert.match(app, /renderPaginationBar\(\{[\s\S]*container:\s*els\.proactiveTasksPaginationEl/);
+  assert.doesNotMatch(app, /new URLSearchParams\(\{ limit: "20" \}\)/);
+});

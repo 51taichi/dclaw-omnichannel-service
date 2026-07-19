@@ -54,10 +54,13 @@ test("console renders tag chips and tag filters", () => {
   assert.match(js, /function compactDateTagInputValue\(value\)/);
   assert.match(js, /function dateTagFilterKeyFromInput\(value\)/);
   assert.match(js, /tag\.tagType === "date" && tagFilterKey\(tag\) === dateTagFilterKey/);
-  assert.match(js, /if \(tag\.tagType === "date"\) continue/);
   assert.match(js, /els\.flowSessionDateTagFilter\.disabled = !dateTagEnabled/);
   assert.match(js, /els\.flowSessionDateTagFilter\.value = nativeDateValueFromCompactDate\(compactValue\)/);
   assert.doesNotMatch(js, /openFlowSessionDatePicker/);
+  assert.match(js, /for \(const group of enabledManualTagGroups\(\)\)/);
+  assert.match(js, /const key = `\$\{group\.id\}:\$\{tag\.id\}`/);
+  assert.match(js, /const label = `\$\{group\.name \|\| "标签"\}：\$\{tag\.name\}`/);
+  assert.match(js, /if \(!options\.has\(value\)\) options\.set\(value, value\)/);
   assert.match(css, /\.flow-session-filters\s*\{[\s\S]*minmax\(208px,\s*220px\)/);
   assert.match(css, /\.flow-session-filters \.flow-session-date-filter\s*\{[\s\S]*minmax\(122px,\s*1fr\)/);
   assert.match(css, /\.tag-chip/);

@@ -403,6 +403,29 @@ function parseJson(value) {
   return value ? JSON.parse(value) : null;
 }
 
+function normalizePage(value, fallback = 1) {
+  return Math.max(1, Number.parseInt(value, 10) || fallback);
+}
+
+function normalizePageSize(value, fallback = 20, max = 100) {
+  const parsed = Math.max(1, Number.parseInt(value, 10) || fallback);
+  return Math.min(parsed, max);
+}
+
+function paginationResult({ total, page, pageSize }) {
+  const normalizedTotal = Math.max(0, Number.parseInt(total, 10) || 0);
+  const totalPages = Math.max(1, Math.ceil(normalizedTotal / pageSize));
+  const normalizedPage = Math.min(normalizePage(page), totalPages);
+  return {
+    page: normalizedPage,
+    pageSize,
+    total: normalizedTotal,
+    totalPages,
+    hasPrev: normalizedPage > 1,
+    hasNext: normalizedPage < totalPages
+  };
+}
+
 export function buildMessageKey({ botId, conversationKey, message, nowMs = Date.now() }) {
   const messageId = String(message?.messageId || "").trim();
   const isFriendAdded = Number(message?.textType) === 22 && Number(message?.type) === 105;
@@ -1702,6 +1725,179 @@ export function listFlowSessions({ botId, limit = 100 } = {}) {
   }));
 }
 
+function normalizeFlowSessionType(value) {
+  return ["private", "group"].includes(value) ? value : "all";
+}
+
+function normalizeNormalTagFilters(values = []) {
+  const rawValues = Array.isArray(values) ? values : String(values || "").split(",");
+  return rawValues
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .map((value) => {
+      const separatorIndex = value.indexOf(":");
+      if (separatorIndex <= 0 || separatorIndex === value.length - 1) return null;
+      return {
+        groupId: value.slice(0, separatorIndex),
+        tagId: value.slice(separatorIndex + 1)
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeDateTagFilter(value = "") {
+  const raw = String(value || "").trim();
+  const candidate = raw.startsWith("date:") ? raw.slice(5) : raw;
+  const digits = candidate.replace(/\D/g, "").slice(0, 8);
+  return digits.length === 8 ? digits : "";
+}
+
+function flowSessionPageWhere({
+  botId,
+  type = "all",
+  query = "",
+  nodeId = "",
+  tagFilters = [],
+  dateTag = ""
+} = {}) {
+  const filters = [];
+  const values = [];
+  if (botId) {
+    filters.push("fs.bot_id = ?");
+    values.push(botId);
+  }
+
+  const normalizedType = normalizeFlowSessionType(type);
+  if (normalizedType === "private") {
+    filters.push("fs.conversation_key LIKE ?");
+    values.push("%:private:%");
+  } else if (normalizedType === "group") {
+    filters.push("fs.conversation_key LIKE ?");
+    values.push("%:group:%");
+  }
+
+  const normalizedQuery = String(query || "").trim();
+  if (normalizedQuery) {
+    filters.push(`(
+      COALESCE(c.received_name, '') LIKE ?
+      OR COALESCE(c.group_name, '') LIKE ?
+      OR fs.conversation_key LIKE ?
+    )`);
+    const likeQuery = `%${normalizedQuery}%`;
+    values.push(likeQuery, likeQuery, likeQuery);
+  }
+
+  const normalizedNodeId = String(nodeId || "").trim();
+  if (normalizedNodeId && normalizedNodeId !== "all") {
+    filters.push(`(
+      fs.conversation_key LIKE '%:group:%'
+      OR fs.current_node_id = ?
+    )`);
+    values.push(normalizedNodeId);
+  }
+
+  const normalizedTagFilters = normalizeNormalTagFilters(tagFilters);
+  if (normalizedTagFilters.length) {
+    const tagClauses = normalizedTagFilters
+      .map(() => "(ct.group_id = ? AND ct.tag_id = ?)")
+      .join(" OR ");
+    filters.push(`
+      EXISTS (
+        SELECT 1
+        FROM conversation_tags ct
+        WHERE ct.bot_id = fs.bot_id
+          AND ct.agent_id = bab.agent_id
+          AND ct.conversation_key = fs.conversation_key
+          AND ct.tag_type = 'normal'
+          AND (${tagClauses})
+      )
+    `);
+    for (const tag of normalizedTagFilters) {
+      values.push(tag.groupId, tag.tagId);
+    }
+  }
+
+  const normalizedDateTag = normalizeDateTagFilter(dateTag);
+  if (normalizedDateTag) {
+    filters.push(`
+      EXISTS (
+        SELECT 1
+        FROM conversation_tags ct_date
+        WHERE ct_date.bot_id = fs.bot_id
+          AND ct_date.agent_id = bab.agent_id
+          AND ct_date.conversation_key = fs.conversation_key
+          AND ct_date.tag_type = 'date'
+          AND ct_date.tag_id = ?
+      )
+    `);
+    values.push(normalizedDateTag);
+  }
+
+  return {
+    where: filters.length ? `WHERE ${filters.join(" AND ")}` : "",
+    values
+  };
+}
+
+export function listFlowSessionsPage({
+  botId,
+  page = 1,
+  pageSize = 20,
+  type = "all",
+  query = "",
+  nodeId = "",
+  tagFilters = [],
+  dateTag = ""
+} = {}) {
+  const normalizedPageSize = normalizePageSize(pageSize, 20, 100);
+  const requestedPage = normalizePage(page);
+  const { where, values } = flowSessionPageWhere({
+    botId,
+    type,
+    query,
+    nodeId,
+    tagFilters,
+    dateTag
+  });
+  const from = `
+    FROM flow_sessions fs
+    LEFT JOIN conversations c ON c.conversation_key = fs.conversation_key
+    LEFT JOIN bot_agent_bindings bab ON bab.bot_id = fs.bot_id
+    LEFT JOIN agent_flow_machines fm ON fm.agent_id = bab.agent_id
+  `;
+  const total = db.prepare(`SELECT COUNT(*) AS total ${from} ${where}`).get(...values)?.total || 0;
+  const pagination = paginationResult({
+    total,
+    page: requestedPage,
+    pageSize: normalizedPageSize
+  });
+  const offset = (pagination.page - 1) * pagination.pageSize;
+  const items = db.prepare(`
+    SELECT
+      fs.*,
+      c.received_name,
+      c.group_name,
+      c.room_type,
+      fm.name AS flow_name
+    ${from}
+    ${where}
+    ORDER BY fs.last_message_at DESC, fs.id DESC
+    LIMIT ? OFFSET ?
+  `).all(...values, pagination.pageSize, offset).map((row) => ({
+    ...rowToFlowSession(row),
+    receivedName: row.received_name,
+    groupName: row.group_name,
+    roomType: row.room_type,
+    flowName: row.flow_name,
+    assets: getConversationAssets({
+      botId: row.bot_id,
+      conversationKey: row.conversation_key
+    })
+  }));
+
+  return { items, pagination };
+}
+
 export function updateFlowSessionNode({ botId, conversationKey, nextNodeId, reason, decision = null }) {
   const session = getFlowSessionForBot({ botId, conversationKey });
   if (!session) throw new Error("flow session not found");
@@ -2983,6 +3179,51 @@ export function listProactiveTasks({ limit = 20, botId = "", dateFrom = "", date
     .prepare(`SELECT * FROM proactive_tasks ${where} ORDER BY id DESC LIMIT ?`)
     .all(...values, Number(limit))
     .map(rowToProactiveTask);
+}
+
+function proactiveTasksWhere({ botId = "", dateFrom = "", dateTo = "" } = {}) {
+  const filters = [];
+  const values = [];
+  if (botId) {
+    filters.push("bot_id = ?");
+    values.push(botId);
+  }
+  if (dateFrom) {
+    filters.push("created_at >= ?");
+    values.push(dateFrom);
+  }
+  if (dateTo) {
+    filters.push("created_at < ?");
+    values.push(dateTo);
+  }
+  return {
+    where: filters.length ? `WHERE ${filters.join(" AND ")}` : "",
+    values
+  };
+}
+
+export function listProactiveTasksPage({
+  page = 1,
+  pageSize = 20,
+  botId = "",
+  dateFrom = "",
+  dateTo = ""
+} = {}) {
+  const normalizedPageSize = normalizePageSize(pageSize, 20, 100);
+  const requestedPage = normalizePage(page);
+  const { where, values } = proactiveTasksWhere({ botId, dateFrom, dateTo });
+  const total = db.prepare(`SELECT COUNT(*) AS total FROM proactive_tasks ${where}`).get(...values)?.total || 0;
+  const pagination = paginationResult({
+    total,
+    page: requestedPage,
+    pageSize: normalizedPageSize
+  });
+  const offset = (pagination.page - 1) * pagination.pageSize;
+  const items = db
+    .prepare(`SELECT * FROM proactive_tasks ${where} ORDER BY id DESC LIMIT ? OFFSET ?`)
+    .all(...values, pagination.pageSize, offset)
+    .map(rowToProactiveTask);
+  return { items, pagination };
 }
 
 export function listProactiveTaskTargets(taskId) {

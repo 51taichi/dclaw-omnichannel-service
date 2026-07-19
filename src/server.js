@@ -77,11 +77,11 @@ import {
   listConversationMessages,
   listConversationTags,
   listFlowMachines,
-  listFlowSessions,
+  listFlowSessionsPage,
   listFlowStateEvents,
   listTagActivationTasks,
   listProactiveAddressBookTargets,
-  listProactiveTasks,
+  listProactiveTasksPage,
   listProactiveTaskTargets,
   listAgents,
   listBotBindings,
@@ -3947,10 +3947,22 @@ app.get(
     const botId = String(req.query.botId || "").trim();
     assertBotAccess(req, botId);
     const binding = getBotBinding(botId);
-    const sessions = listFlowSessions({
+    const tagFilters = []
+      .concat(req.query.tag || req.query.tags || [])
+      .flatMap((value) => String(value || "").split(","))
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const page = listFlowSessionsPage({
       botId,
-      limit: Number(req.query.limit || 100)
-    }).map((session) => ({
+      page: Number(req.query.page || 1),
+      pageSize: Number(req.query.pageSize || req.query.limit || 20),
+      type: String(req.query.type || "all").trim(),
+      query: String(req.query.query || "").trim(),
+      nodeId: String(req.query.nodeId || "").trim(),
+      tagFilters,
+      dateTag: String(req.query.dateTag || "").trim()
+    });
+    const sessions = page.items.map((session) => ({
       ...session,
       ...(binding
         ? { tags: listConversationTags({ botId, agentId: binding.agentId, conversationKey: session.conversationKey }) }
@@ -3958,7 +3970,8 @@ app.get(
     }));
     res.json({
       ok: true,
-      sessions
+      sessions,
+      pagination: page.pagination
     });
   })
 );
@@ -4234,15 +4247,19 @@ app.post(
 app.get(
   "/api/proactive/tasks",
   asyncHandler(async (req, res) => {
-    assertBotAccess(req, String(req.query.botId || "").trim());
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
+    const page = listProactiveTasksPage({
+      page: Number(req.query.page || 1),
+      pageSize: Number(req.query.pageSize || req.query.limit || 20),
+      botId,
+      dateFrom: String(req.query.dateFrom || "").trim(),
+      dateTo: String(req.query.dateTo || "").trim()
+    });
     res.json({
       ok: true,
-      tasks: listProactiveTasks({
-        limit: Number(req.query.limit || 20),
-        botId: String(req.query.botId || "").trim(),
-        dateFrom: String(req.query.dateFrom || "").trim(),
-        dateTo: String(req.query.dateTo || "").trim()
-      })
+      tasks: page.items,
+      pagination: page.pagination
     });
   })
 );

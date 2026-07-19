@@ -1,5 +1,6 @@
 const PROACTIVE_MAX_ATTACHMENTS = 5;
 const BEIJING_TIME_ZONE = "Asia/Shanghai";
+const PAGE_SIZE_OPTIONS = [20, 50, 100];
 
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
@@ -16,6 +17,8 @@ const state = {
   pendingAdminKeyResolve: null,
   proactiveSubmitting: false,
   proactiveUploadFiles: [],
+  flowSessionsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
+  proactiveTasksPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   tagSchema: { dateTag: { enabled: false }, groups: [] }
 };
 
@@ -57,6 +60,7 @@ const els = {
   exportFlowButton: document.querySelector("#exportFlowButton"),
   refreshFlowSessionsButton: document.querySelector("#refreshFlowSessionsButton"),
   flowSessionList: document.querySelector("#flowSessionList"),
+  flowSessionsPaginationEl: document.querySelector("#flowSessionsPagination"),
   flowSessionTypeButtons: document.querySelectorAll("[data-flow-session-type]"),
   flowSessionSearchInput: document.querySelector("#flowSessionSearchInput"),
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
@@ -109,6 +113,7 @@ const els = {
   botsTable: document.querySelector("#botsTable"),
   botCount: document.querySelector("#botCount"),
   proactiveTasksTable: document.querySelector("#proactiveTasksTable"),
+  proactiveTasksPaginationEl: document.querySelector("#proactiveTasksPagination"),
   logType: document.querySelector("#logType"),
   loadLogsButton: document.querySelector("#loadLogsButton"),
   logsOutput: document.querySelector("#logsOutput"),
@@ -508,6 +513,8 @@ function isCurrentBotContext(botId, contextVersion) {
 
 function clearBotScopedContent() {
   state.selectedFlowConversationKey = "";
+  state.flowSessionsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
+  state.proactiveTasksPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   selectedTargets.clear();
   addressBookTargets = [];
   currentFlowMachine = null;
@@ -550,6 +557,14 @@ function clearBotScopedContent() {
   renderSelectedTargets();
   renderTargetList();
   renderProactiveTasks([]);
+  renderPaginationBar({
+    container: els.flowSessionsPaginationEl,
+    pagination: state.flowSessionsPagination
+  });
+  renderPaginationBar({
+    container: els.proactiveTasksPaginationEl,
+    pagination: state.proactiveTasksPagination
+  });
   els.logsOutput.textContent = "";
   renderAgentOptions();
   syncFlowJsonTextarea();
@@ -1609,6 +1624,75 @@ function normalizeFlowSessionDateTagFilter() {
   setFlowSessionDateTagFilterValue(els.flowSessionDateTagFilter?.value || "");
 }
 
+function normalizePagination(pagination = {}, fallback = { page: 1, pageSize: 20, total: 0, totalPages: 1 }) {
+  const fallbackPageSize = Number(fallback.pageSize || 20);
+  const rawPageSize = Number(pagination.pageSize || fallbackPageSize);
+  const pageSize = PAGE_SIZE_OPTIONS.includes(rawPageSize) ? rawPageSize : fallbackPageSize;
+  const total = Math.max(0, Number(pagination.total || 0));
+  const totalPages = Math.max(1, Number(pagination.totalPages || Math.ceil(total / pageSize) || 1));
+  const page = Math.min(
+    Math.max(1, Number(pagination.page || fallback.page || 1)),
+    totalPages
+  );
+  return {
+    page,
+    pageSize,
+    total,
+    totalPages,
+    hasPrev: page > 1,
+    hasNext: page < totalPages
+  };
+}
+
+function renderPaginationBar({ container, pagination, onPage, onPageSize }) {
+  if (!container) return;
+  const current = normalizePagination(pagination, pagination);
+  container.innerHTML = `
+    <span class="pagination-summary">共 ${current.total} 条</span>
+    <label class="pagination-size">
+      <span>每页</span>
+      <select data-pagination-size>
+        ${PAGE_SIZE_OPTIONS.map((size) => `<option value="${size}" ${size === current.pageSize ? "selected" : ""}>${size}</option>`).join("")}
+      </select>
+    </label>
+    <button class="secondary pagination-button" data-pagination-page="${current.page - 1}" type="button" ${current.hasPrev ? "" : "disabled"}>上一页</button>
+    <span class="pagination-current">第 ${current.page} / ${current.totalPages} 页</span>
+    <button class="secondary pagination-button" data-pagination-page="${current.page + 1}" type="button" ${current.hasNext ? "" : "disabled"}>下一页</button>
+  `;
+  container.querySelector("[data-pagination-size]")?.addEventListener("change", (event) => {
+    onPageSize?.(Number(event.target.value));
+  });
+  container.querySelectorAll("[data-pagination-page]").forEach((button) => {
+    button.addEventListener("click", () => {
+      onPage?.(Number(button.dataset.paginationPage));
+    });
+  });
+}
+
+function resetFlowSessionsPagination() {
+  state.flowSessionsPagination = {
+    ...state.flowSessionsPagination,
+    page: 1
+  };
+}
+
+function reloadFlowSessionsFromFirstPage() {
+  resetFlowSessionsPagination();
+  return loadFlowSessions();
+}
+
+function resetProactiveTasksPagination() {
+  state.proactiveTasksPagination = {
+    ...state.proactiveTasksPagination,
+    page: 1
+  };
+}
+
+function reloadProactiveTasksFromFirstPage() {
+  resetProactiveTasksPagination();
+  return loadProactiveTasks();
+}
+
 function sortConversationTagsForDisplay(tags = []) {
   return [...tags].sort((a, b) => {
     const aDate = a?.tagType === "date" ? 0 : 1;
@@ -2588,14 +2672,41 @@ function exportFlowMachine() {
 async function loadFlowSessions({ contextVersion = state.botContextVersion } = {}) {
   const botId = state.selectedBotId;
   if (!botId) return;
-  const params = new URLSearchParams({ botId, limit: "100" });
+  const params = new URLSearchParams();
+  params.set("botId", botId);
+  params.set("page", String(state.flowSessionsPagination.page));
+  params.set("pageSize", String(state.flowSessionsPagination.pageSize));
+  params.set("type", currentFlowSessionTypeFilter());
+  const query = String(els.flowSessionSearchInput?.value || "").trim();
+  if (query) params.set("query", query);
+  const nodeFilter = String(els.flowSessionNodeFilter?.value || "").trim();
+  if (nodeFilter && nodeFilter !== "all") params.set("nodeId", nodeFilter);
+  for (const tagFilter of selectedFlowSessionTagFilterValues()) {
+    params.append("tag", tagFilter);
+  }
+  const dateTagFilter = dateTagFilterKeyFromInput(els.flowSessionDateTagFilter?.value || "");
+  if (dateTagFilter !== "all") params.set("dateTag", dateTagFilter);
   const data = await request(`/api/flow-sessions?${params.toString()}`);
   if (!isCurrentBotContext(botId, contextVersion)) return;
   currentFlowSessions = data.sessions || [];
+  state.flowSessionsPagination = normalizePagination(data.pagination, state.flowSessionsPagination);
   renderFlowSessionNodeFilter();
   renderFlowSessionTagFilter();
   renderFlowSessionDateTagFilter();
   renderFlowSessions();
+  renderPaginationBar({
+    container: els.flowSessionsPaginationEl,
+    pagination: state.flowSessionsPagination,
+    onPage: (page) => {
+      state.flowSessionsPagination.page = page;
+      loadFlowSessions().catch(toastError);
+    },
+    onPageSize: (pageSize) => {
+      state.flowSessionsPagination.page = 1;
+      state.flowSessionsPagination.pageSize = pageSize;
+      loadFlowSessions().catch(toastError);
+    }
+  });
 }
 
 function sortFlowSessions(sessions) {
@@ -2681,14 +2792,15 @@ function renderFlowSessionTagFilter() {
   if (!els.flowSessionTagFilter) return;
   const current = new Set(selectedFlowSessionTagFilterValues());
   const options = new Map([["all", "全部"]]);
-  for (const session of currentFlowSessions) {
-    for (const tag of session.tags || []) {
-      if (tag.tagType === "date") continue;
-      const key = tagFilterKey(tag);
-      if (!key) continue;
-      const label = `${tag.groupName || "标签"}：${tag.tagName}`;
+  for (const group of enabledManualTagGroups()) {
+    for (const tag of group.tags || []) {
+      const key = `${group.id}:${tag.id}`;
+      const label = `${group.name || "标签"}：${tag.name}`;
       options.set(key, label);
     }
+  }
+  for (const value of current) {
+    if (!options.has(value)) options.set(value, value);
   }
   const selected = [...current].filter((value) => options.has(value));
   els.flowSessionTagFilter.innerHTML = [...options]
@@ -2746,7 +2858,7 @@ function setFlowSessionTagFilterValues(values) {
     option.selected = option.value === "all" ? selected.size === 0 : selected.has(option.value);
   });
   renderFlowSessionTagFilter();
-  renderFlowSessions();
+  reloadFlowSessionsFromFirstPage().catch(toastError);
 }
 
 function renderFlowSessionDateTagFilter() {
@@ -3568,6 +3680,7 @@ async function createProactiveTask(event) {
     if (els.proactiveContent) els.proactiveContent.value = "";
     if (els.proactiveFileUrl) els.proactiveFileUrl.value = "";
     clearProactiveUpload();
+    resetProactiveTasksPagination();
     await loadProactiveTasks();
   } finally {
     setProactiveSubmitting(false);
@@ -3592,15 +3705,31 @@ async function loadProactiveTasks({ contextVersion = state.botContextVersion } =
     renderProactiveTasks([]);
     return;
   }
-  const params = new URLSearchParams({ limit: "20" });
+  const params = new URLSearchParams();
   params.set("botId", botId);
+  params.set("page", String(state.proactiveTasksPagination.page));
+  params.set("pageSize", String(state.proactiveTasksPagination.pageSize));
   const dateFrom = dateToLocalIsoStart(els.taskDateFrom.value);
   const dateTo = dateToLocalIsoNextDay(els.taskDateTo.value || els.taskDateFrom.value);
   if (dateFrom) params.set("dateFrom", dateFrom);
   if (dateTo) params.set("dateTo", dateTo);
   const data = await request(`/api/proactive/tasks?${params.toString()}`);
   if (!isCurrentBotContext(botId, contextVersion)) return;
+  state.proactiveTasksPagination = normalizePagination(data.pagination, state.proactiveTasksPagination);
   renderProactiveTasks(data.tasks || []);
+  renderPaginationBar({
+    container: els.proactiveTasksPaginationEl,
+    pagination: state.proactiveTasksPagination,
+    onPage: (page) => {
+      state.proactiveTasksPagination.page = page;
+      loadProactiveTasks().catch(toastError);
+    },
+    onPageSize: (pageSize) => {
+      state.proactiveTasksPagination.page = 1;
+      state.proactiveTasksPagination.pageSize = pageSize;
+      loadProactiveTasks().catch(toastError);
+    }
+  });
 }
 
 function renderProactiveTasks(tasks) {
@@ -3717,14 +3846,16 @@ els.flowSessionTypeButtons.forEach((button) => {
     if (!state.selectedFlowConversationKey) {
       els.chatTitle.textContent = emptyFlowSessionTitle();
     }
-    renderFlowSessions();
+    reloadFlowSessionsFromFirstPage().catch(toastError);
   });
 });
 [
   els.flowSessionNodeFilter,
   els.flowSessionTagFilter
 ].forEach((control) => {
-  control?.addEventListener("change", renderFlowSessions);
+  control?.addEventListener("change", () =>
+    reloadFlowSessionsFromFirstPage().catch(toastError)
+  );
 });
 els.flowSessionTagFilterButton?.addEventListener("click", (event) => {
   event.stopPropagation();
@@ -3758,20 +3889,22 @@ document.addEventListener("keydown", (event) => {
 });
 els.flowSessionDateTagFilter?.addEventListener("input", () => {
   normalizeFlowSessionDateTagFilter();
-  renderFlowSessions();
+  reloadFlowSessionsFromFirstPage().catch(toastError);
 });
 els.flowSessionDateTagFilter?.addEventListener("change", () => {
   normalizeFlowSessionDateTagFilter();
-  renderFlowSessions();
+  reloadFlowSessionsFromFirstPage().catch(toastError);
 });
-els.flowSessionSearchInput.addEventListener("input", renderFlowSessions);
+els.flowSessionSearchInput.addEventListener("input", () =>
+  reloadFlowSessionsFromFirstPage().catch(toastError)
+);
 els.dateTagEnabled?.addEventListener("change", () => {
   state.tagSchema = normalizeTagSchemaDraft({
     ...state.tagSchema,
     dateTag: { enabled: els.dateTagEnabled.checked }
   });
   renderFlowSessionDateTagFilter();
-  renderFlowSessions();
+  reloadFlowSessionsFromFirstPage().catch(toastError);
 });
 els.addTagGroupButton?.addEventListener("click", addTagGroup);
 els.saveTagsButton?.addEventListener("click", () => saveTagSchema().catch(toastError));
@@ -3804,10 +3937,10 @@ bindProactiveUploadDropzone();
 renderProactiveAttachments();
 els.messageTypeInput?.addEventListener("change", syncMessageTypeFields);
 els.taskDateFrom.addEventListener("change", () =>
-  loadProactiveTasks().catch(toastError)
+  reloadProactiveTasksFromFirstPage().catch(toastError)
 );
 els.taskDateTo.addEventListener("change", () =>
-  loadProactiveTasks().catch(toastError)
+  reloadProactiveTasksFromFirstPage().catch(toastError)
 );
 els.targetSearchInput.addEventListener("input", () => renderTargetList());
 els.loadTargetsButton.addEventListener("click", () =>
