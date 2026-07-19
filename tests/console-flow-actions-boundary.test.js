@@ -17,7 +17,7 @@ test("console flow drafts preserve node and activation actions", () => {
 test("console renders node action chips and activation text chips", () => {
   assert.equal(app.includes("renderFlowActionChips"), true);
   assert.equal(app.includes("formatActivationMessageForEditor"), true);
-  assert.equal(app.includes("data-action-target-node"), true);
+  assert.equal(app.includes("data-action-target-node"), false);
   assert.equal(app.includes("data-action-target-activation"), true);
   assert.equal(app.includes("data-add-node-action"), false);
   assert.equal(app.includes("data-add-activation-action"), false);

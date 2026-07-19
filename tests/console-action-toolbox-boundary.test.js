@@ -22,12 +22,14 @@ test("console exposes a fixed universal action toolbox", () => {
   assert.equal(css.includes("position: fixed"), true);
 });
 
-test("toolbox can target node completion or activation textareas", () => {
+test("toolbox targets activation textareas without rendering node completion action panels", () => {
   assert.equal(app.includes("focusedActionTarget"), true);
-  assert.equal(app.includes('kind: "node_complete"'), true);
+  assert.equal(app.includes('kind: "node_complete"'), false);
   assert.equal(app.includes('kind: "activation_message"'), true);
-  assert.equal(app.includes("data-action-target-node"), true);
+  assert.equal(app.includes("data-action-target-node"), false);
   assert.equal(app.includes("data-action-target-activation"), true);
+  assert.equal(app.includes("完成动作"), false);
+  assert.equal(app.includes("点击后从右侧工具箱插入动作"), false);
 });
 
 test("activation toolbox insertion uses textual action chips and save strips them", () => {

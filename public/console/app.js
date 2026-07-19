@@ -1917,9 +1917,6 @@ function actionFromToolbox() {
 
 function actionTargetElement(target = focusedActionTarget) {
   if (!target) return null;
-  if (target.kind === "node_complete") {
-    return els.flowNodeList.querySelector(`[data-action-target-node="${target.nodeIndex}"]`);
-  }
   if (target.kind === "activation_message") {
     return els.flowNodeList.querySelector(
       `[data-action-target-activation="${target.nodeIndex}:${target.messageIndex}"]`
@@ -1930,7 +1927,7 @@ function actionTargetElement(target = focusedActionTarget) {
 
 function setFocusedActionTarget(target, element = null) {
   focusedActionTarget = target;
-  els.flowNodeList.querySelectorAll("[data-action-target-node], [data-action-target-activation]").forEach((item) => {
+  els.flowNodeList.querySelectorAll("[data-action-target-activation]").forEach((item) => {
     item.classList.toggle("is-action-target-focused", item === (element || actionTargetElement(target)));
   });
   syncActionToolbox();
@@ -1944,22 +1941,8 @@ function insertActionIntoFocusedTarget(action = {}) {
   }
   if (!focusedActionTarget) {
     openActionToolbox();
-    toast("先点击任务节点或激活话术位置");
+    toast("先点击激活话术位置");
     return false;
-  }
-  if (focusedActionTarget.kind === "node_complete") {
-    const nodeIndex = Number(focusedActionTarget.nodeIndex);
-    const node = flowDraftNodes[nodeIndex];
-    if (!node) return false;
-    const actions = normalizeFlowActionDrafts(node.actionsOnComplete || []);
-    node.actionsOnComplete = [
-      ...actions,
-      { ...normalizedAction, id: nextFlowActionId(actions) }
-    ];
-    renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
-    setFocusedActionTarget({ kind: "node_complete", nodeIndex });
-    syncFlowJsonTextarea();
-    return true;
   }
   if (focusedActionTarget.kind === "activation_message") {
     const { nodeIndex, messageIndex } = focusedActionTarget;
@@ -1979,16 +1962,6 @@ function insertActionIntoFocusedTarget(action = {}) {
 }
 
 function bindActionTargets() {
-  els.flowNodeList.querySelectorAll("[data-action-target-node]").forEach((section) => {
-    const nodeIndex = Number(section.dataset.actionTargetNode);
-    section.addEventListener("click", () => {
-      setFocusedActionTarget({ kind: "node_complete", nodeIndex }, section);
-      openActionToolbox();
-    });
-    section.addEventListener("focusin", () => {
-      setFocusedActionTarget({ kind: "node_complete", nodeIndex }, section);
-    });
-  });
   els.flowNodeList.querySelectorAll("[data-action-target-activation]").forEach((input) => {
     const [nodeIndex, messageIndex] = input.dataset.actionTargetActivation.split(":").map(Number);
     const focusTarget = () => {
@@ -2925,13 +2898,6 @@ function renderFlowNodeEditor(entryNodeId = "") {
               <textarea data-flow-node-field="conversationTips" rows="3" placeholder="每行一个，例如：先回应再追问">${escapeHtml(joinLines(node.conversationTips))}</textarea>
             </label>
           </div>
-          <section class="flow-action-section" data-action-target-node="${index}" tabindex="0" aria-label="节点完成动作">
-            <div class="flow-action-section-head">
-              <span>${icon("link")}完成动作</span>
-              <small>点击后从右侧工具箱插入动作</small>
-            </div>
-            ${renderFlowActionChips(node.actionsOnComplete || [], { nodeIndex: index })}
-          </section>
           <section class="activation-editor ${activationEnabled ? "is-active" : ""}" aria-label="客户激活设置">
             <div class="activation-toolbar">
               <div class="activation-toolbar-main">

@@ -1874,7 +1874,6 @@ button.danger:hover {
 }
 
 .flow-node-card.is-collapsed .flow-node-grid,
-.flow-node-card.is-collapsed .flow-action-section,
 .flow-node-card.is-collapsed .activation-editor {
   display: none;
 }
@@ -1885,53 +1884,10 @@ button.danger:hover {
   gap: 10px;
 }
 
-.flow-action-section {
-  display: grid;
-  gap: 8px;
-  padding: 8px;
-  border: 1px dashed color-mix(in srgb, var(--accent) 22%, var(--line));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--accent) 3%, #ffffff);
-  cursor: pointer;
-  transition: border-color 160ms ease, box-shadow 160ms ease, background 160ms ease;
-}
-
-.flow-action-section:hover,
-.flow-action-section:focus-visible,
-.flow-action-section.is-action-target-focused,
 textarea[data-action-target-activation].is-action-target-focused {
   border-color: color-mix(in srgb, var(--primary) 70%, var(--accent));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
   background: color-mix(in srgb, var(--primary) 3%, #ffffff);
-}
-
-.flow-action-section-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-}
-
-.flow-action-section-head > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  color: var(--accent);
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.flow-action-section-head .icon {
-  width: 14px;
-  height: 14px;
-}
-
-.flow-action-section-head small {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 800;
 }
 
 .flow-action-chips {
