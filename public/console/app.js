@@ -1374,12 +1374,49 @@ function defaultActivationMessage() {
   return { content: "", intervalMinutes: 30, maxTimes: 1 };
 }
 
+function defaultFlowAction(index = 1) {
+  return {
+    id: `action_${index}`,
+    type: "invite_to_group",
+    groupName: "",
+    target: "current_contact",
+    showMessageHistory: true,
+    runOnce: true
+  };
+}
+
+function normalizeFlowActionDraft(value = {}, index = 1) {
+  const source = value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : {};
+  const type = String(source.type || "invite_to_group").trim();
+  if (type !== "invite_to_group") return null;
+  return {
+    id: String(source.id || `action_${index}`).trim() || `action_${index}`,
+    type: "invite_to_group",
+    groupName: String(source.groupName || ""),
+    target: "current_contact",
+    showMessageHistory: source.showMessageHistory !== false,
+    runOnce: source.runOnce !== false
+  };
+}
+
+function normalizeFlowActionDrafts(actions = []) {
+  return Array.isArray(actions)
+    ? actions
+      .map((action, index) => normalizeFlowActionDraft(action, index + 1))
+      .filter(Boolean)
+    : [];
+}
+
 function normalizeActivationMessageDraft(value = {}, defaults = defaultActivationMessage()) {
   const source = typeof value === "string" ? { content: value } : value || {};
+  const actionsAfterSend = normalizeFlowActionDrafts(source.actionsAfterSend || []);
   return {
     content: String(source.content || ""),
     intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? defaults.intervalMinutes)),
-    maxTimes: Math.max(1, Number(source.maxTimes ?? defaults.maxTimes))
+    maxTimes: Math.max(1, Number(source.maxTimes ?? defaults.maxTimes)),
+    ...(actionsAfterSend.length ? { actionsAfterSend } : {})
   };
 }
 
@@ -1470,6 +1507,7 @@ function createBlankFlowNode(index = flowDraftNodes.length + 1) {
     completionCriteria: "",
     collectFields: [],
     conversationTips: [],
+    actionsOnComplete: [],
     activation: { ...defaultActivationConfig(), messages: [defaultActivationMessage()] },
     nextNodeId: "",
     transitions: []
@@ -1499,6 +1537,7 @@ function setFlowEditorFromConfig(config = {}) {
         completionCriteria: node.completionCriteria || "",
         collectFields: Array.isArray(node.collectFields) ? node.collectFields : [],
         conversationTips: Array.isArray(node.conversationTips) ? node.conversationTips : [],
+        actionsOnComplete: normalizeFlowActionDrafts(node.actionsOnComplete || []),
         activation: normalizeActivationDraft(node.activation || defaultActivationConfig()),
         nextNodeId: node.nextNodeId || "",
         transitions: Array.isArray(node.transitions) ? node.transitions : []
@@ -1519,6 +1558,7 @@ function buildFlowConfigFromEditor() {
     completionCriteria: String(node.completionCriteria || "").trim(),
     collectFields: Array.isArray(node.collectFields) ? node.collectFields : [],
     conversationTips: Array.isArray(node.conversationTips) ? node.conversationTips : [],
+    actionsOnComplete: normalizeFlowActionDrafts(node.actionsOnComplete),
     activation: normalizeActivationDraft(node.activation),
     nextNodeId: String(node.nextNodeId || "").trim(),
     transitions: Array.isArray(node.transitions) ? node.transitions : []
@@ -1631,6 +1671,142 @@ function splitPastedActivationMessages(event, nodeIndex, messageIndex) {
   node.activation = activation;
   renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
   syncFlowJsonTextarea();
+}
+
+function nextFlowActionId(actions = []) {
+  const used = new Set(actions.map((action) => String(action.id || "")));
+  let index = actions.length + 1;
+  while (used.has(`action_${index}`)) index += 1;
+  return `action_${index}`;
+}
+
+function addNodeAction(nodeIndex) {
+  const node = flowDraftNodes[nodeIndex];
+  if (!node) return;
+  const actions = normalizeFlowActionDrafts(node.actionsOnComplete || []);
+  actions.push({ ...defaultFlowAction(actions.length + 1), id: nextFlowActionId(actions) });
+  node.actionsOnComplete = actions;
+  renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+  syncFlowJsonTextarea();
+}
+
+function addActivationAction(nodeIndex, messageIndex) {
+  const node = flowDraftNodes[nodeIndex];
+  if (!node) return;
+  const activation = activationDraftForEditor(node.activation);
+  const message = normalizeActivationMessageDraft(activation.messages[messageIndex]);
+  const actions = normalizeFlowActionDrafts(message.actionsAfterSend || []);
+  actions.push({ ...defaultFlowAction(actions.length + 1), id: nextFlowActionId(actions) });
+  message.actionsAfterSend = actions;
+  activation.messages[messageIndex] = message;
+  node.activation = activation;
+  renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+  syncFlowJsonTextarea();
+}
+
+function updateNodeActionInput(input) {
+  const [nodeIndex, actionIndex] = input.dataset.nodeActionGroupName
+    ? input.dataset.nodeActionGroupName.split(":").map(Number)
+    : input.dataset.nodeActionShowHistory.split(":").map(Number);
+  const node = flowDraftNodes[nodeIndex];
+  if (!node) return;
+  const actions = normalizeFlowActionDrafts(node.actionsOnComplete || []);
+  const action = actions[actionIndex];
+  if (!action) return;
+  if (input.dataset.nodeActionGroupName !== undefined) {
+    action.groupName = input.value;
+  } else {
+    action.showMessageHistory = input.checked;
+  }
+  node.actionsOnComplete = actions;
+  syncFlowJsonTextarea();
+}
+
+function updateActivationActionInput(input) {
+  const rawIndex = input.dataset.activationActionGroupName || input.dataset.activationActionShowHistory || "";
+  const [nodeIndex, messageIndex, actionIndex] = rawIndex.split(":").map(Number);
+  const node = flowDraftNodes[nodeIndex];
+  if (!node) return;
+  const activation = activationDraftForEditor(node.activation);
+  const message = normalizeActivationMessageDraft(activation.messages[messageIndex]);
+  const actions = normalizeFlowActionDrafts(message.actionsAfterSend || []);
+  const action = actions[actionIndex];
+  if (!action) return;
+  if (input.dataset.activationActionGroupName !== undefined) {
+    action.groupName = input.value;
+  } else {
+    action.showMessageHistory = input.checked;
+  }
+  message.actionsAfterSend = actions;
+  activation.messages[messageIndex] = message;
+  node.activation = activation;
+  syncFlowJsonTextarea();
+}
+
+function removeNodeAction(nodeIndex, actionIndex) {
+  const node = flowDraftNodes[nodeIndex];
+  if (!node) return;
+  node.actionsOnComplete = normalizeFlowActionDrafts(node.actionsOnComplete || [])
+    .filter((_, index) => index !== actionIndex);
+  renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+  syncFlowJsonTextarea();
+}
+
+function removeActivationAction(nodeIndex, messageIndex, actionIndex) {
+  const node = flowDraftNodes[nodeIndex];
+  if (!node) return;
+  const activation = activationDraftForEditor(node.activation);
+  const message = normalizeActivationMessageDraft(activation.messages[messageIndex]);
+  message.actionsAfterSend = normalizeFlowActionDrafts(message.actionsAfterSend || [])
+    .filter((_, index) => index !== actionIndex);
+  activation.messages[messageIndex] = message;
+  node.activation = activation;
+  renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+  syncFlowJsonTextarea();
+}
+
+function renderFlowActionChips(actions = [], { nodeIndex, messageIndex } = {}) {
+  const normalized = normalizeFlowActionDrafts(actions);
+  if (!normalized.length) {
+    return '<div class="flow-action-empty">暂无动作</div>';
+  }
+  const isActivationAction = messageIndex !== undefined;
+  return `
+    <div class="flow-action-chips">
+      ${normalized
+        .map((action, actionIndex) => {
+          const indexPath = isActivationAction
+            ? `${nodeIndex}:${messageIndex}:${actionIndex}`
+            : `${nodeIndex}:${actionIndex}`;
+          const groupAttr = isActivationAction
+            ? `data-activation-action-group-name="${indexPath}"`
+            : `data-node-action-group-name="${indexPath}"`;
+          const historyAttr = isActivationAction
+            ? `data-activation-action-show-history="${indexPath}"`
+            : `data-node-action-show-history="${indexPath}"`;
+          const removeAttr = isActivationAction
+            ? `data-remove-activation-action="${indexPath}"`
+            : `data-remove-node-action="${indexPath}"`;
+          return `
+            <div class="flow-action-editor">
+              <span class="flow-action-chip">${icon("user-plus")}拉入群</span>
+              <label class="input-group compact flow-action-group-field">
+                <span>群名</span>
+                <input ${groupAttr} value="${escapeHtml(action.groupName || "")}" placeholder="例如 直播课学习群" />
+              </label>
+              <label class="toggle flow-action-history-toggle">
+                <input ${historyAttr} type="checkbox" ${action.showMessageHistory === false ? "" : "checked"} />
+                <span>带聊天记录</span>
+              </label>
+              <button class="danger icon-button flow-action-remove-button" ${removeAttr} type="button" aria-label="删除动作" title="删除动作">
+                ${icon("trash-2")}
+              </button>
+            </div>
+          `;
+        })
+        .join("")}
+    </div>
+  `;
 }
 
 function tagFilterKey(tag) {
@@ -2511,6 +2687,15 @@ function renderFlowNodeEditor(entryNodeId = "") {
               <textarea data-flow-node-field="conversationTips" rows="3" placeholder="每行一个，例如：先回应再追问">${escapeHtml(joinLines(node.conversationTips))}</textarea>
             </label>
           </div>
+          <section class="flow-action-section" aria-label="节点完成动作">
+            <div class="flow-action-section-head">
+              <span>${icon("zap")}完成动作</span>
+              <button class="secondary icon-button" data-add-node-action="${index}" type="button" aria-label="新增节点动作" title="新增节点动作">
+                ${icon("plus")}
+              </button>
+            </div>
+            ${renderFlowActionChips(node.actionsOnComplete || [], { nodeIndex: index })}
+          </section>
           <section class="activation-editor ${activationEnabled ? "is-active" : ""}" aria-label="客户激活设置">
             <div class="activation-toolbar">
               <div class="activation-toolbar-main">
@@ -2548,6 +2733,15 @@ function renderFlowNodeEditor(entryNodeId = "") {
                         <span class="activation-message-unit">次</span>
                       </label>
                       <button class="danger icon-button activation-remove-button" data-remove-activation-message="${index}:${messageIndex}" type="button" aria-label="删除激活话术" title="删除激活话术">${icon("reset")}</button>
+                    </div>
+                    <div class="activation-message-flow-actions">
+                      <div class="flow-action-section-head">
+                        <span>${icon("zap")}发送后动作</span>
+                        <button class="secondary icon-button" data-add-activation-action="${index}:${messageIndex}" type="button" aria-label="新增发送后动作" title="新增发送后动作">
+                          ${icon("plus")}
+                        </button>
+                      </div>
+                      ${renderFlowActionChips(activationMessage.actionsAfterSend || [], { nodeIndex: index, messageIndex })}
                     </div>
                   </div>
                 `)
@@ -2614,6 +2808,39 @@ function renderFlowNodeEditor(entryNodeId = "") {
     button.addEventListener("click", () => {
       const [nodeIndex, messageIndex] = button.dataset.removeActivationMessage.split(":").map(Number);
       removeActivationMessage(nodeIndex, messageIndex);
+    });
+  });
+  els.flowNodeList.querySelectorAll("[data-add-node-action]").forEach((button) => {
+    button.addEventListener("click", () => addNodeAction(Number(button.dataset.addNodeAction)));
+  });
+  els.flowNodeList.querySelectorAll("[data-add-activation-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [nodeIndex, messageIndex] = button.dataset.addActivationAction.split(":").map(Number);
+      addActivationAction(nodeIndex, messageIndex);
+    });
+  });
+  els.flowNodeList.querySelectorAll("[data-node-action-group-name]").forEach((input) => {
+    input.addEventListener("input", () => updateNodeActionInput(input));
+  });
+  els.flowNodeList.querySelectorAll("[data-node-action-show-history]").forEach((input) => {
+    input.addEventListener("change", () => updateNodeActionInput(input));
+  });
+  els.flowNodeList.querySelectorAll("[data-activation-action-group-name]").forEach((input) => {
+    input.addEventListener("input", () => updateActivationActionInput(input));
+  });
+  els.flowNodeList.querySelectorAll("[data-activation-action-show-history]").forEach((input) => {
+    input.addEventListener("change", () => updateActivationActionInput(input));
+  });
+  els.flowNodeList.querySelectorAll("[data-remove-node-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [nodeIndex, actionIndex] = button.dataset.removeNodeAction.split(":").map(Number);
+      removeNodeAction(nodeIndex, actionIndex);
+    });
+  });
+  els.flowNodeList.querySelectorAll("[data-remove-activation-action]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const [nodeIndex, messageIndex, actionIndex] = button.dataset.removeActivationAction.split(":").map(Number);
+      removeActivationAction(nodeIndex, messageIndex, actionIndex);
     });
   });
   els.flowNodeList.querySelectorAll("[data-remove-flow-node]").forEach((button) => {
