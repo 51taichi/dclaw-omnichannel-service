@@ -3476,7 +3476,7 @@ async function resetSelectedConversation() {
       })
     });
     if (!isCurrentBotContext(botId, contextVersion)) return;
-    toast("会话已清空");
+    toast("会话已删除");
     state.selectedFlowConversationKey = "";
     currentFlowSession = null;
     syncHandoffButton(null);

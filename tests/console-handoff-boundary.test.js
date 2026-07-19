@@ -317,13 +317,35 @@ test("proactive submit locks message fields while uploading attachments", () => 
 });
 
 test("conversation reset shows a non-dismissible loading dialog while Agent memory sync runs", () => {
-  assert.match(html, /id="conversationResetLoadingDialog"[\s\S]*src="assets\/sorry\.png"[\s\S]*正在清空会话并同步 Agent 记录/);
+  assert.match(html, /id="conversationResetLoadingDialog"[\s\S]*src="assets\/sorry\.png"[\s\S]*正在删除会话并同步 Agent 记录/);
   assert.match(app, /function setConversationResetSubmitting\(submitting\)/);
   assert.match(app, /els\.conversationResetLoadingDialog\.hidden = !submitting/);
   assert.match(app, /setConversationResetSubmitting\(true\)[\s\S]*finally[\s\S]*setConversationResetSubmitting\(false\)/);
   assert.doesNotMatch(app, /conversationResetLoadingDialog[\s\S]*event\.target === els\.conversationResetLoadingDialog/);
   assert.match(css, /\.conversation-reset-loading-dialog\s*\{[\s\S]*grid-template-columns:\s*78px minmax\(0, max-content\)/);
   assert.match(css, /\.conversation-reset-loading-dialog::before\s*\{[\s\S]*animation:\s*aiTakeoverSheen 3\.8s ease-in-out infinite/);
+});
+
+test("conversation delete uses destructive delete wording in button and confirm dialog", () => {
+  const chatHeadStart = html.indexOf('class="chat-head"');
+  const chatHeadEnd = html.indexOf('<div id="assetsPanel"', chatHeadStart);
+  assert.notEqual(chatHeadStart, -1);
+  assert.notEqual(chatHeadEnd, -1);
+  const chatHead = html.slice(chatHeadStart, chatHeadEnd);
+  const confirmStart = html.indexOf('id="confirmDialog"');
+  const confirmEnd = html.indexOf('id="conversationResetLoadingDialog"', confirmStart);
+  assert.notEqual(confirmStart, -1);
+  assert.notEqual(confirmEnd, -1);
+  const confirmDialog = html.slice(confirmStart, confirmEnd);
+
+  assert.match(chatHead, /删除会话/);
+  assert.doesNotMatch(chatHead, /清空会话/);
+  assert.match(confirmDialog, /<strong id="confirmTitle">删除会话？<\/strong>/);
+  assert.match(confirmDialog, /确认后会删除并清空当前会话记录。/);
+  assert.match(confirmDialog, /确认删除/);
+  assert.doesNotMatch(confirmDialog, /确认后会清空当前会话记录，并让下一次 Agent 调用从头开始。/);
+  assert.doesNotMatch(confirmDialog, /确认清空/);
+  assert.match(app, /toast\("会话已删除"\)/);
 });
 
 test("conversation reset clears the selected session instead of reopening the deleted shell", () => {
