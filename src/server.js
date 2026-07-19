@@ -72,6 +72,7 @@ import {
   insertOutgoingMessage,
   insertMockProactiveTargets,
   resetBotFlowStateForAgentRebind,
+  resetConversationForFriendGreeting,
   applyConversationTagChanges,
   getAgentTagSchema,
   listConversationMessages,
@@ -1391,21 +1392,26 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
   }
 
   const existingConversation = getConversation(conversationKey);
-  const conversation = recordSystemFriendGreeting({ botId, binding, conversationKey, message });
+  const entryAnchorAt = new Date().toISOString();
   if (existingConversation) {
-    logInfo("friend_added.skipped", {
+    resetConversationForFriendGreeting({
+      botId,
+      agentId: binding.agentId,
+      conversationKey,
+      timestamp: entryAnchorAt
+    });
+    logInfo("friend_added.conversation_reset", {
       ...logContext,
       friendName,
-      conversationKey,
-      reason: "system_friend_greeting_existing_conversation"
+      conversationKey
     });
-    return "skipped";
   }
+  const conversation = recordSystemFriendGreeting({ botId, binding, conversationKey, message });
   const dateTags = applySystemDateTag({
     botId,
     binding,
     conversationKey,
-    firstSeenAt: conversation.createdAt
+    firstSeenAt: entryAnchorAt || conversation.createdAt
   });
   if (dateTags) {
     logInfo("friend_added.date_tag.applied", {
@@ -1428,13 +1434,13 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
   const entryNode = getFlowNode(machine, machine.entryNodeId);
   const activation = normalizeActivationConfig(entryNode?.activation || {});
   const canScheduleActivation = activation.enabled && activation.messages.length > 0;
-  const entryAnchorAt = new Date().toISOString();
   const entryResult = beginFriendAddedFlowEntry({
     botId,
     conversationKey,
     machine,
     cooldownMs: friendAddedReentryCooldownMs,
     occurredAt: entryAnchorAt,
+    forceReentry: Boolean(existingConversation),
     activationTask: canScheduleActivation
       ? {
           agentId: binding.agentId,

@@ -1,6 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import {
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { dateTagIdFor } from "../src/tags.js";
+
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-tags-test-"));
+process.env.DATA_DIR = dataDir;
+
+const {
   applyConversationTagChanges,
   cancelTagActivationTasks,
   claimDueTagActivationTasks,
@@ -13,8 +21,7 @@ import {
   upsertConversation,
   upsertAgentTagSchema,
   upsertSystemDateTag
-} from "../src/db.js";
-import { dateTagIdFor } from "../src/tags.js";
+} = await import("../src/db.js");
 
 test("agent tag schemas are stored by agent id", () => {
   const schema = upsertAgentTagSchema({

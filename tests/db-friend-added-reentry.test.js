@@ -201,7 +201,7 @@ test("friend-added re-entry never advances an old delivery into the new generati
   assert.equal(db.listFlowActivationTasks({ conversationKey }).at(-1).messageContent, "新提醒");
 });
 
-test("friend-added entry creates, deduplicates, then re-enters without clearing assets", () => {
+test("friend-added re-entry clears prior business state before scheduling entry activation", () => {
   const { botId, agentId, conversationKey, machine } = setup();
   const firstAt = "2026-07-16T10:00:00.000Z";
   const first = db.beginFriendAddedFlowEntry({
@@ -234,6 +234,31 @@ test("friend-added entry creates, deduplicates, then re-enters without clearing 
     dueAt: "2026-07-16T10:05:00.000Z"
   });
   assert.equal(task.status, "pending");
+  db.insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: "道友",
+    content: "旧消息",
+    rawPayload: { spoken: "旧消息" }
+  });
+  db.applyConversationTagChanges({
+    botId,
+    agentId,
+    conversationKey,
+    nextTags: [{ groupId: "intent", groupName: "意向", tagId: "a", tagName: "A类", reason: "旧标签" }],
+    source: "test"
+  });
+  const tagTask = db.scheduleTagActivationTask({
+    botId,
+    agentId,
+    conversationKey,
+    groupId: "intent",
+    tagId: "a",
+    activation: { enabled: true, polishByAgent: false, messages: [{ content: "旧标签提醒", intervalMinutes: 1, maxTimes: 1 }] },
+    dueAt: "2026-07-16T10:06:00.000Z"
+  });
+  assert.equal(tagTask.status, "pending");
 
   const duplicate = db.beginFriendAddedFlowEntry({
     botId,
@@ -246,20 +271,45 @@ test("friend-added entry creates, deduplicates, then re-enters without clearing 
   assert.equal(duplicate.session.currentNodeId, "node_2");
   assert.equal(db.listFlowActivationTasks({ conversationKey }).at(-1).status, "pending");
 
+  db.resetConversationForFriendGreeting({
+    botId,
+    agentId,
+    conversationKey,
+    timestamp: "2026-07-16T10:11:00.000Z"
+  });
   const reentry = db.beginFriendAddedFlowEntry({
     botId,
     conversationKey,
     machine,
+    forceReentry: true,
     cooldownMs: 10 * 60 * 1000,
-    occurredAt: "2026-07-16T10:11:00.000Z"
+    occurredAt: "2026-07-16T10:11:00.000Z",
+    activationTask: {
+      agentId,
+      activation: { enabled: true, polishByAgent: false, messages: [{ content: "新提醒", intervalMinutes: 2, maxTimes: 1 }] },
+      anchorAt: "2026-07-16T10:11:00.000Z",
+      dueAt: "2026-07-16T10:13:00.000Z"
+    }
   });
   assert.equal(reentry.status, "reentered");
   assert.equal(reentry.session.currentNodeId, "node_1");
   assert.equal(reentry.session.handoffStatus, "ai");
-  assert.deepEqual(reentry.session.collectedData, { 城市: "长沙" });
+  assert.deepEqual(reentry.session.collectedData, {});
   assert.equal(reentry.session.activationState, null);
   assert.equal(reentry.session.activationGeneration, 2);
-  assert.equal(db.listFlowActivationTasks({ conversationKey }).at(-1).status, "canceled");
+  assert.deepEqual(db.listConversationMessages({ conversationKey }), []);
+  assert.deepEqual(db.listConversationTags({ botId, agentId, conversationKey }), []);
+  assert.deepEqual(
+    db.listFlowActivationTasks({ conversationKey }).map(({ messageContent, status }) => ({ messageContent, status })),
+    [
+      { messageContent: "旧提醒", status: "canceled" },
+      { messageContent: "新提醒", status: "pending" }
+    ]
+  );
+  assert.deepEqual(
+    db.listTagActivationTasks({ botId, agentId, conversationKey }).map(({ messageContent, status, cancelReason }) => ({ messageContent, status, cancelReason })),
+    [{ messageContent: "旧标签提醒", status: "canceled", cancelReason: "friend_added_reentry" }]
+  );
 });
 
 test("friend-added re-entry has no default cooldown after leaving the entry node", () => {

@@ -1514,13 +1514,90 @@ export function getOrCreateFlowSession({ botId, conversationKey, machine }) {
   return session;
 }
 
+export function resetConversationForFriendGreeting({
+  botId,
+  agentId,
+  conversationKey,
+  timestamp = now()
+}) {
+  const normalizedBotId = String(botId || "").trim();
+  const normalizedAgentId = String(agentId || "").trim();
+  const normalizedConversationKey = String(conversationKey || "").trim();
+  if (!normalizedBotId || !normalizedAgentId || !normalizedConversationKey) {
+    throw new Error("botId, agentId, and conversationKey are required");
+  }
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ? AND bot_id = ?")
+      .run(normalizedConversationKey, normalizedBotId);
+    db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
+      .run(normalizedConversationKey, normalizedBotId);
+    db.prepare(`
+      DELETE FROM conversation_tags
+      WHERE bot_id = ?
+        AND agent_id = ?
+        AND conversation_key = ?
+    `).run(normalizedBotId, normalizedAgentId, normalizedConversationKey);
+    db.prepare(`
+      UPDATE flow_activation_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = 'friend_added_reentry',
+          updated_at = ?
+      WHERE conversation_key = ?
+        AND bot_id = ?
+        AND status IN ('pending', 'processing')
+    `).run(timestamp, timestamp, normalizedConversationKey, normalizedBotId);
+    db.prepare(`
+      UPDATE tag_activation_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = 'friend_added_reentry',
+          updated_at = ?
+      WHERE bot_id = ?
+        AND agent_id = ?
+        AND conversation_key = ?
+        AND status IN ('pending', 'processing')
+    `).run(timestamp, timestamp, normalizedBotId, normalizedAgentId, normalizedConversationKey);
+    db.prepare(`
+      UPDATE flow_sessions
+      SET collected_data_json = ?,
+          status = 'active',
+          handoff_status = 'ai',
+          handoff_at = NULL,
+          handoff_by = '',
+          handoff_reason = '',
+          activation_state_json = NULL,
+          last_message_at = ?,
+          updated_at = ?
+      WHERE conversation_key = ?
+        AND bot_id = ?
+    `).run(json({}), timestamp, timestamp, normalizedConversationKey, normalizedBotId);
+    db.prepare(`
+      UPDATE conversations
+      SET dclaw_session_id = NULL,
+          reset_pending = 1,
+          last_message_at = ?,
+          updated_at = ?
+      WHERE conversation_key = ?
+        AND bot_id = ?
+    `).run(timestamp, timestamp, normalizedConversationKey, normalizedBotId);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function beginFriendAddedFlowEntry({
   botId,
   conversationKey,
   machine,
   cooldownMs = 0,
   occurredAt = now(),
-  activationTask = null
+  activationTask = null,
+  forceReentry = false
 }) {
   const normalizedBotId = String(botId || "").trim();
   const normalizedConversationKey = String(conversationKey || "").trim();
@@ -1582,7 +1659,7 @@ export function beginFriendAddedFlowEntry({
       db.exec("COMMIT");
       return { status: "cooldown", session: rowToFlowSession(row), task: null };
     }
-    if (row.current_node_id === entryNodeId) {
+    if (row.current_node_id === entryNodeId && !forceReentry) {
       db.exec("COMMIT");
       return { status: "duplicate", session: rowToFlowSession(row), task: null };
     }
@@ -1600,6 +1677,7 @@ export function beginFriendAddedFlowEntry({
     db.prepare(`
       UPDATE flow_sessions
       SET current_node_id = ?,
+          collected_data_json = ?,
           status = 'active',
           handoff_status = 'ai',
           handoff_at = NULL,
@@ -1614,6 +1692,7 @@ export function beginFriendAddedFlowEntry({
         AND bot_id = ?
     `).run(
       entryNodeId,
+      json({}),
       timestamp,
       timestamp,
       timestamp,

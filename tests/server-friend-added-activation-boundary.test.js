@@ -83,3 +83,14 @@ test("friend-added callback delegates existing session handling to the durable r
   assert.equal(handler.includes("existing_session_not_at_entry"), false);
   assert.equal(handler.includes("getFlowSession(conversationKey)"), false);
 });
+
+test("friend-added callback resets an existing conversation instead of skipping it", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+
+  assert.equal(handler.includes("resetConversationForFriendGreeting"), true);
+  assert.equal(handler.includes("friend_added.conversation_reset"), true);
+  assert.equal(handler.includes("system_friend_greeting_existing_conversation"), false);
+  assert.equal(handler.includes("forceReentry: Boolean(existingConversation)"), true);
+});
