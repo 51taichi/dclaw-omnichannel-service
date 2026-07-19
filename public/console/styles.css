@@ -2384,7 +2384,7 @@ button.danger:hover {
 }
 
 .chat-tag-list .conversation-tags {
-  max-width: 360px;
+  max-width: none;
 }
 
 .danger-text {
@@ -2941,7 +2941,7 @@ button.danger:hover {
 
 .chat-title-wrap {
   display: grid;
-  grid-template-columns: 34px minmax(0, max-content) auto;
+  grid-template-columns: 34px minmax(0, max-content) minmax(0, 1fr);
   align-items: center;
   gap: 9px;
   min-width: 0;

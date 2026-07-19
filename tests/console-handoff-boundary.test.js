@@ -105,6 +105,8 @@ test("flow session status labels do not change card or chat header layout", () =
   assert.match(css, /\.chat-head\s*\{[\s\S]*grid-template-columns:\s*minmax\(180px,\s*1fr\) minmax\(112px,\s*180px\) auto/);
   assert.match(css, /\.chat-status-slot\s*\{[\s\S]*display:\s*flex[\s\S]*justify-content:\s*center/);
   assert.match(css, /\.chat-status-badge\s*\{[\s\S]*min-width:\s*48px/);
+  assert.match(css, /\.chat-title-wrap\s*\{[\s\S]*grid-template-columns:\s*34px minmax\(0,\s*max-content\) minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.chat-tag-list \.conversation-tags\s*\{[\s\S]*max-width:\s*none/);
   assert.match(html, /class="chat-title-wrap"[\s\S]*id="chatStatusSlot" class="chat-status-slot"[\s\S]*class="chat-head-actions"/);
 });
 
