@@ -81,6 +81,16 @@ test("console loads proactive targets through the shared pagination bar", () => 
   assert.doesNotMatch(app, /new URLSearchParams\(\{ botId, limit: "300" \}\)/);
 });
 
+test("bulk target buttons select matching targets across every page", () => {
+  assert.match(app, /async function fetchAllAddressBookTargetsByType\(type/);
+  assert.match(app, /params\.set\("pageSize", "100"\)/);
+  assert.match(app, /for \(let page = 2; page <= totalPages; page \+= 1\)/);
+  assert.match(app, /const allSelected = targets\.length > 0 && targets\.every\(\(target\) => selectedTargets\.has\(targetKey\(target\)\)\)/);
+  assert.match(app, /selectTargetsByTypeAcrossPages\("private"\)\.catch\(toastError\)/);
+  assert.match(app, /selectTargetsByTypeAcrossPages\("group"\)\.catch\(toastError\)/);
+  assert.doesNotMatch(app, /function toggleTargetsByType\(type\)\s*\{[\s\S]*targetsByType\(type\)/);
+});
+
 test("pagination controls use compact icon buttons", () => {
   assert.match(app, /aria-label="上一页"/);
   assert.match(app, /aria-label="下一页"/);

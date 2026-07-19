@@ -1011,50 +1011,82 @@ function getSelectedTargets() {
   return Array.from(selectedTargets.values());
 }
 
-function targetsByType(type) {
-  return addressBookTargets.filter((target) => target.targetType === type);
-}
-
-function areTargetsByTypeSelected(type) {
-  const targets = targetsByType(type);
-  return targets.length > 0 && targets.every((target) => selectedTargets.has(targetKey(target)));
+function selectedTargetCountByType(type) {
+  return getSelectedTargets().filter((target) => target.targetType === type).length;
 }
 
 function updateBulkActionButtons() {
-  const privateSelected = areTargetsByTypeSelected("private");
-  const groupSelected = areTargetsByTypeSelected("group");
+  const privateSelected = selectedTargetCountByType("private") > 0;
+  const groupSelected = selectedTargetCountByType("group") > 0;
   els.selectPrivateTargetsButton.classList.toggle("selected", privateSelected);
   els.selectGroupTargetsButton.classList.toggle("selected", groupSelected);
   els.selectPrivateTargetsButton.setAttribute("aria-pressed", String(privateSelected));
   els.selectGroupTargetsButton.setAttribute("aria-pressed", String(groupSelected));
-  els.selectPrivateTargetsButton.textContent = privateSelected ? "取消私聊" : "全选私聊";
-  els.selectGroupTargetsButton.textContent = groupSelected ? "取消群组" : "全选群组";
+  els.selectPrivateTargetsButton.textContent = "全选私聊";
+  els.selectGroupTargetsButton.textContent = "全选群组";
 }
 
-function toggleTargetsByType(type) {
-  const targets = targetsByType(type);
-  const allSelected = areTargetsByTypeSelected(type);
-  targets.forEach((target) => {
-    const key = targetKey(target);
-    if (allSelected) {
-      selectedTargets.delete(key);
-    } else {
-      selectedTargets.set(key, target);
-    }
-  });
-  renderSelectedTargets();
-  renderTargetList();
-  if (!targets.length) {
-    toast(`暂无${targetTypeLabel(type)}目标`);
-    return;
+async function fetchAllAddressBookTargetsByType(type, { contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (!botId) throw new Error("请先选择 Bot");
+  const query = String(els.targetSearchInput.value || "").trim();
+  const fetchPage = async (page) => {
+    const params = new URLSearchParams();
+    params.set("botId", botId);
+    params.set("targetType", type);
+    params.set("page", String(page));
+    params.set("pageSize", "100");
+    if (query) params.set("q", query);
+    return request(`/api/proactive/targets?${params.toString()}`);
+  };
+
+  const firstPage = await fetchPage(1);
+  if (!isCurrentBotContext(botId, contextVersion)) return [];
+  const targets = [...(firstPage.targets || [])];
+  const totalPages = normalizePagination(firstPage.pagination, { page: 1, pageSize: 100, total: targets.length, totalPages: 1 }).totalPages;
+  for (let page = 2; page <= totalPages; page += 1) {
+    const data = await fetchPage(page);
+    if (!isCurrentBotContext(botId, contextVersion)) return [];
+    targets.push(...(data.targets || []));
   }
-  toast(`${allSelected ? "已取消" : "已选择"} ${targets.length} 个${targetTypeLabel(type)}目标`);
+  return targets;
+}
+
+async function selectTargetsByTypeAcrossPages(type) {
+  const contextVersion = state.botContextVersion;
+  const botId = state.selectedBotId;
+  const button = type === "group" ? els.selectGroupTargetsButton : els.selectPrivateTargetsButton;
+  button.disabled = true;
+  button.textContent = "加载中";
+  try {
+    const targets = await fetchAllAddressBookTargetsByType(type, { contextVersion });
+    if (!isCurrentBotContext(botId, contextVersion)) return;
+    const allSelected = targets.length > 0 && targets.every((target) => selectedTargets.has(targetKey(target)));
+    targets.forEach((target) => {
+      if (allSelected) {
+        selectedTargets.delete(targetKey(target));
+      } else {
+        selectedTargets.set(targetKey(target), target);
+      }
+    });
+    renderSelectedTargets();
+    renderTargetList();
+    if (!targets.length) {
+      toast(`暂无${targetTypeLabel(type)}目标`);
+      return;
+    }
+    toast(`${allSelected ? "已取消" : "已选择"} ${targets.length} 个${targetTypeLabel(type)}目标`);
+  } finally {
+    button.disabled = false;
+    updateBulkActionButtons();
+  }
 }
 
 function clearSelectedTargets() {
   selectedTargets.clear();
   renderSelectedTargets();
   renderTargetList();
+  toast("已清空全部已选目标");
 }
 
 function renderSelectedTargets() {
@@ -3977,8 +4009,12 @@ els.targetSearchInput.addEventListener("input", () =>
 els.loadTargetsButton.addEventListener("click", () =>
   reloadProactiveTargetsFromFirstPage().catch(toastError)
 );
-els.selectPrivateTargetsButton.addEventListener("click", () => toggleTargetsByType("private"));
-els.selectGroupTargetsButton.addEventListener("click", () => toggleTargetsByType("group"));
+els.selectPrivateTargetsButton.addEventListener("click", () =>
+  selectTargetsByTypeAcrossPages("private").catch(toastError)
+);
+els.selectGroupTargetsButton.addEventListener("click", () =>
+  selectTargetsByTypeAcrossPages("group").catch(toastError)
+);
 els.clearTargetsButton.addEventListener("click", clearSelectedTargets);
 document.querySelectorAll("[data-target-filter]").forEach((button) => {
   button.addEventListener("click", () => {
