@@ -35,6 +35,19 @@ test("server applies tag decisions only after valid agent replies", () => {
   assert.match(functionBody("applyAgentTagDecision"), /agentReply\?\.tagDecision/);
 });
 
+test("private inbound messages persist their session before coalesced agent work", () => {
+  const incomingBody = functionBody("processIncomingMessage");
+  const coalescedBody = functionBody("processCoalescedIncomingBatch");
+  assert.match(source, /function persistInboundConversation\(\{ botId, binding, conversationKey, message \}\)/);
+  assert.match(incomingBody, /persistInboundConversation\(\{[\s\S]*message\n\s+\}\);/);
+  assert.ok(
+    incomingBody.indexOf("persistInboundConversation") < incomingBody.indexOf("inboundCoalescer.push"),
+    "conversation persistence must happen before the coalescer waits or invokes the Agent"
+  );
+  assert.match(coalescedBody, /const conversation = getConversation\(conversationKey\);/);
+  assert.doesNotMatch(coalescedBody, /const conversation = upsertConversation\(/);
+});
+
 test("tag decisions cancel activation work for tags made inactive", () => {
   const cancelBody = functionBody("cancelTagTasksForAcceptedChanges");
   const applyBody = functionBody("applyAgentTagDecision");

@@ -11,10 +11,10 @@ test("server records invoked group chats as lightweight conversation history", (
   assert.equal(serverSource.includes("isPrivateMessage(message) || isGroupMessage(message)"), true);
 });
 
-test("server still skips unmentioned group messages before conversation history is recorded", () => {
+test("server records unmentioned group messages before agent mention filtering", () => {
   assert.equal(
-    processIncomingSource.indexOf("group_message_without_mention") <
-      processIncomingSource.indexOf("shouldRecordConversationHistory(message)"),
+    processIncomingSource.indexOf("persistInboundConversation({") <
+      processIncomingSource.indexOf("group_message_without_mention"),
     true
   );
 });

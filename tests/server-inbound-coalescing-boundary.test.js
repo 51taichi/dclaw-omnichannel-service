@@ -23,9 +23,26 @@ test("callbacks persist and cancel old activation before entering the buffer", (
   const handlerStart = source.indexOf("async function processIncomingMessage");
   const push = source.indexOf("inboundCoalescer.push", handlerStart);
   assert.ok(handlerStart >= 0 && push > handlerStart);
-  assert.ok(source.indexOf("insertIncomingMessage", handlerStart) < push);
-  assert.ok(source.indexOf("insertConversationMessage", handlerStart) < push);
+  assert.match(source, /function ingestIncomingMessage\([\s\S]*insertIncomingMessage\([\s\S]*beginMessageProcessing\(/);
+  assert.ok(source.indexOf("ingestIncomingMessage", handlerStart) < push);
+  assert.ok(source.indexOf("persistInboundConversation", handlerStart) < push);
+  assert.match(source, /function persistInboundConversation\([\s\S]*insertConversationMessage\(/);
   assert.ok(source.indexOf("invalidateFlowActivation", handlerStart) < push);
+});
+
+test("message callback persists before acknowledging WorkTool", () => {
+  assert.match(source, /function ingestIncomingMessage\(\{ botId, message \}\)/);
+  assert.match(source, /function ingestIncomingMessage\([\s\S]*insertIncomingMessage\([\s\S]*beginMessageProcessing\(/);
+  for (const route of [
+    'app.post("/worktool/:botId/message-callback"',
+    'app.post("/worktool/message-callback"'
+  ]) {
+    const start = source.indexOf(route);
+    const end = source.indexOf("\n});", start);
+    const handler = source.slice(start, end);
+    assert.ok(start >= 0 && end > start);
+    assert.ok(handler.indexOf("ingestIncomingMessage") < handler.indexOf("res.json"));
+  }
 });
 
 test("system friend greeting, unsupported, human handoff, and debug replies finish before buffering", () => {

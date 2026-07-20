@@ -440,10 +440,9 @@ function shouldRecordConversationHistory(message) {
 }
 
 function recordSystemFriendGreeting({ botId, binding, conversationKey, message }) {
-  if (!binding?.agentId) return null;
   const conversation = upsertConversation({
     botId,
-    agentId: binding.agentId,
+    agentId: binding?.agentId || "",
     conversationKey,
     message
   });
@@ -572,6 +571,39 @@ function normalizeMessageForAgent(message, binding) {
 function getFlowNode(machine, nodeId) {
   const nodes = machine?.config?.nodes || machine?.nodes || [];
   return nodes.find((node) => node.id === nodeId) || null;
+}
+
+function persistInboundConversation({ botId, binding, conversationKey, message }) {
+  const conversation = upsertConversation({
+    botId,
+    agentId: binding?.agentId || "",
+    conversationKey,
+    message
+  });
+  const flowMachine = getFlowMachineForBot(botId);
+  if (binding?.enabled) {
+    if (isGroupMessage(message)) {
+      getOrCreateConversationSession({ botId, conversationKey });
+    } else if (flowMachine?.enabled) {
+      getOrCreateFlowSession({
+        botId,
+        conversationKey,
+        machine: flowMachine.config
+      });
+      touchFlowSession(conversationKey);
+    }
+  }
+  if (shouldRecordConversationHistory(message)) {
+    insertConversationMessage({
+      botId,
+      conversationKey,
+      direction: "inbound",
+      senderName: message.receivedName || "",
+      content: message.spoken || message.rawSpoken || "",
+      rawPayload: message
+    });
+  }
+  return conversation;
 }
 
 function buildFlowContext({ botId, conversationKey, message }) {
@@ -2891,26 +2923,34 @@ if (tagActivationWorkerConfig.enabled) {
   }, tagActivationWorkerConfig.intervalMs).unref();
 }
 
-async function processIncomingMessage({ botId, message }) {
-  const startedAt = Date.now();
-  const binding = getBotBinding(botId);
+function ingestIncomingMessage({ botId, message }) {
   const conversationKey = getConversationKey(botId, message);
   const messageKey = buildMessageKey({ botId, conversationKey, message });
-  const baseLog = messageLogFields({ botId, conversationKey, message });
-  const logContext = { ...baseLog, messageKey };
-  logInfo("incoming.received", logContext);
-
-  if (!beginMessageProcessing({
+  // Keep every WorkTool callback for audit and recovery, including callbacks
+  // that are later recognized as duplicates for business processing.
+  insertIncomingMessage({ botId, conversationKey, payload: message });
+  const accepted = beginMessageProcessing({
     messageKey,
     botId,
     conversationKey,
     messageId: message.messageId
-  })) {
+  });
+  return { conversationKey, messageKey, accepted };
+}
+
+async function processIncomingMessage({ botId, message, intake = null }) {
+  const startedAt = Date.now();
+  const binding = getBotBinding(botId);
+  const received = intake || ingestIncomingMessage({ botId, message });
+  const { conversationKey, messageKey } = received;
+  const baseLog = messageLogFields({ botId, conversationKey, message });
+  const logContext = { ...baseLog, messageKey };
+  logInfo("incoming.received", logContext);
+
+  if (!received.accepted) {
     logWarn("incoming.duplicate_skipped", logContext);
     return;
   }
-
-  insertIncomingMessage({ botId, conversationKey, payload: message });
 
   if (isSystemFriendGreeting(message)) {
     await handleFriendAddedEvent({ botId, binding, message, logContext, conversationKey });
@@ -2926,6 +2966,15 @@ async function processIncomingMessage({ botId, message }) {
   // payload cannot be passed to the Agent (for example an unsupported image).
   if (isPrivateMessage(message)) {
     invalidateFlowActivation({ conversationKey, reason: "customer_replied" });
+  }
+
+  if (isPrivateMessage(message) || isGroupMessage(message)) {
+    persistInboundConversation({
+      botId,
+      binding,
+      conversationKey,
+      message
+    });
   }
 
   if (!shouldProcessInboundForAgent(message)) {
@@ -2957,25 +3006,7 @@ async function processIncomingMessage({ botId, message }) {
     return;
   }
 
-  const conversation = upsertConversation({
-    botId,
-    agentId: binding.agentId,
-    conversationKey,
-    message
-  });
-  if (isGroupMessage(message)) {
-    getOrCreateConversationSession({ botId, conversationKey });
-  }
-  if (shouldRecordConversationHistory(message)) {
-    insertConversationMessage({
-      botId,
-      conversationKey,
-      direction: "inbound",
-      senderName: message.receivedName || "",
-      content: message.spoken || message.rawSpoken || "",
-      rawPayload: message
-    });
-  }
+  const conversation = getConversation(conversationKey);
   const flow = buildFlowContext({ botId, conversationKey, message });
   const conversationReset = getConversationResetPending(conversationKey);
   if (isPrivateMessage(message) && flow?.session?.handoffStatus === "human") {
@@ -3101,12 +3132,15 @@ async function processCoalescedIncomingBatch(batch) {
     return;
   }
 
-  const conversation = upsertConversation({
-    botId,
-    agentId: binding.agentId,
-    conversationKey,
-    message
-  });
+  const conversation = getConversation(conversationKey);
+  if (!conversation || conversation.botId !== botId) {
+    logWarn("incoming.skipped", {
+      ...logContext,
+      reason: "conversation_removed_before_coalesce"
+    });
+    finishCoalescedMessageProcessing({ batch, status: "conversation_removed" });
+    return;
+  }
   const flow = buildFlowContext({ botId, conversationKey, message });
   const conversationReset = getConversationResetPending(conversationKey);
   if (isPrivateMessage(message) && flow?.session?.handoffStatus === "human") {
@@ -3666,15 +3700,26 @@ app.post("/worktool/:botId/message-callback", (req, res) => {
     return;
   }
 
+  const botId = req.params.botId;
+  const message = req.body || {};
+  let intake;
+  try {
+    intake = ingestIncomingMessage({ botId, message });
+  } catch (error) {
+    logError("message_callback.persist_failed", { botId, messageId: message.messageId || "", error });
+    res.status(500).json({ code: -1, message: "消息入库失败" });
+    return;
+  }
   res.json({ code: 0, message: "参数接收成功" });
 
   void processIncomingMessage({
-    botId: req.params.botId,
-    message: req.body || {}
+    botId,
+    message,
+    intake
   }).catch((error) => {
     logError("message_callback.process_failed", {
-      botId: req.params.botId,
-      messageId: req.body?.messageId || "",
+      botId,
+      messageId: message.messageId || "",
       error
     });
   });
@@ -3694,15 +3739,25 @@ app.post("/worktool/message-callback", (req, res) => {
     return;
   }
 
+  const message = req.body || {};
+  let intake;
+  try {
+    intake = ingestIncomingMessage({ botId, message });
+  } catch (error) {
+    logError("message_callback.persist_failed", { botId, messageId: message.messageId || "", error });
+    res.status(500).json({ code: -1, message: "消息入库失败" });
+    return;
+  }
   res.json({ code: 0, message: "参数接收成功" });
 
   void processIncomingMessage({
     botId,
-    message: req.body || {}
+    message,
+    intake
   }).catch((error) => {
     logError("message_callback.process_failed", {
       botId,
-      messageId: req.body?.messageId || "",
+      messageId: message.messageId || "",
       error
     });
   });
