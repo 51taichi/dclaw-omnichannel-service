@@ -766,8 +766,30 @@ h2 {
   padding-bottom: 9px;
 }
 
+.flow-general-rule {
+  --flow-rule-label-width: 132px;
+  position: relative;
+  overflow: visible;
+  z-index: 1;
+}
+
 .flow-general-rule:focus-within textarea {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--flow-rule-label-width);
+  z-index: 3;
+  height: 112px;
+  max-height: 112px;
   overflow: auto;
+  border: 1px solid var(--accent);
+  border-radius: 0 7px 7px 0;
+  background: #ffffff;
+  box-shadow: 0 12px 24px rgba(42, 48, 216, 0.18);
+}
+
+.flow-general-rule:focus-within {
+  z-index: 20;
 }
 
 .compact-form {
@@ -4513,6 +4535,10 @@ td .muted {
 
   label {
     grid-template-columns: 108px minmax(0, 1fr);
+  }
+
+  .flow-general-rule {
+    --flow-rule-label-width: 108px;
   }
 
   .auth-form label {
