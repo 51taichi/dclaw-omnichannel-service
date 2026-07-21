@@ -62,6 +62,16 @@ test("flow editor preserves the top-level general business rule", () => {
   assert.equal(css.includes(".flow-general-rule:focus-within textarea"), false);
 });
 
+test("node text fields reuse the fixed-slot expanding textarea", () => {
+  assert.equal(app.includes("function renderFlowNodeExpandableField(node, definition)"), true);
+  assert.equal(app.includes('class="expand-field-slot" data-flow-node-expand-field="${escapeHtml(definition.field)}"'), true);
+  assert.equal(app.includes('class="expand-on-focus" data-flow-node-field="${escapeHtml(definition.field)}"'), true);
+  assert.equal(app.includes('flowNodeQuickFields.map((definition) => renderFlowNodeExpandableField(node, definition))'), true);
+  for (const field of ["goal", "completionCriteria", "collectFields", "conversationTips"]) {
+    assert.equal(app.includes(`field: "${field}"`), true);
+  }
+});
+
 test("legacy console string scripts inherit their activation timing defaults", () => {
   assert.equal(app.includes("normalizeActivationMessageDraft(item, defaults)"), true);
   assert.equal(app.includes("intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? defaults.intervalMinutes))"), true);

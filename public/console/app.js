@@ -2745,6 +2745,19 @@ function flowNodeFieldSummary(node, definition) {
   return value || "未填写";
 }
 
+function renderFlowNodeExpandableField(node, definition) {
+  const value = flowNodeFieldValue(node, definition.field);
+  const rows = definition.list ? 3 : 2;
+  return `
+    <div class="expand-field-slot" data-flow-node-expand-field="${escapeHtml(definition.field)}">
+      <label>
+        ${flowNodeFieldLabel(definition.field, definition.label)}
+        <textarea class="expand-on-focus" data-flow-node-field="${escapeHtml(definition.field)}" rows="${rows}" placeholder="${escapeHtml(definition.placeholder || "")}">${escapeHtml(value)}</textarea>
+      </label>
+    </div>
+  `;
+}
+
 function renderFlowNodeQuickFields(node, index) {
   return `
     <div class="flow-node-quick-fields" aria-label="节点字段快捷编辑">
@@ -2918,22 +2931,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
           <div class="flow-node-card-body">
             <div class="flow-node-card-body-inner">
               <div class="flow-node-grid">
-                <label>
-                  ${flowNodeFieldLabel("goal", "节点目标")}
-                  <textarea data-flow-node-field="goal" rows="2" placeholder="这个阶段要让 AI 完成什么">${escapeHtml(node.goal)}</textarea>
-                </label>
-                <label>
-                  ${flowNodeFieldLabel("completionCriteria", "完成条件")}
-                  <textarea data-flow-node-field="completionCriteria" rows="2" placeholder="什么情况下可以进入下一节点">${escapeHtml(node.completionCriteria)}</textarea>
-                </label>
-                <label>
-                  ${flowNodeFieldLabel("collectFields", "收集字段")}
-                  <textarea data-flow-node-field="collectFields" rows="3" placeholder="每行一个，例如：手机号">${escapeHtml(joinLines(node.collectFields))}</textarea>
-                </label>
-                <label>
-                  ${flowNodeFieldLabel("conversationTips", "交流技巧")}
-                  <textarea data-flow-node-field="conversationTips" rows="3" placeholder="每行一个，例如：先回应再追问">${escapeHtml(joinLines(node.conversationTips))}</textarea>
-                </label>
+                ${flowNodeQuickFields.map((definition) => renderFlowNodeExpandableField(node, definition)).join("")}
               </div>
               <section class="activation-editor ${activationEnabled ? "is-active" : ""}" aria-label="客户激活设置">
             <div class="activation-toolbar">
