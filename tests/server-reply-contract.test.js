@@ -9,13 +9,15 @@ const serverSource = fs.readFileSync(path.join(currentDir, "../src/server.js"), 
 
 test("server retries malformed agent replies once and never forwards the raw response", () => {
   assert.match(serverSource, /async function invokeStrictAgentReply/);
-  assert.match(serverSource, /buildDclawReplyFormatRetryRequest\(request\)/);
+  assert.match(serverSource, /buildAgentResponseValidationRetryRequest\(request,\s*validation\.errors\)/);
+  assert.match(serverSource, /validateAgentResponseText/);
+  assert.match(serverSource, /recordAgentResponseValidationFailures/);
   assert.match(serverSource, /getDclawFormatRetryTimeoutMs\(\)/);
   assert.match(serverSource, /agent\.reply\.format_retry/);
-  assert.match(serverSource, /agent\.reply\.degraded/);
+  assert.match(serverSource, /agent\.reply\.validation_failed/);
   assert.match(serverSource, /agent\.reply\.invalid_format/);
   assert.match(serverSource, /activation\.agent\.format_retry/);
-  assert.match(serverSource, /activation\.agent\.degraded/);
+  assert.match(serverSource, /activation\.agent\.validation_failed/);
   assert.match(serverSource, /activation\.agent\.invalid_format/);
 });
 

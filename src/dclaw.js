@@ -647,7 +647,7 @@ export async function invokeDclawAgent({ binding, request, timeoutMs = getDclawA
   try {
     data = text ? JSON.parse(text) : {};
   } catch {
-    data = { reply: text };
+    data = null;
   }
 
   return {
@@ -657,8 +657,8 @@ export async function invokeDclawAgent({ binding, request, timeoutMs = getDclawA
       data && typeof data === "object" && !Array.isArray(data) &&
       (data.flowDecision || data.stateUpdate || data.reply || data.message || data.content)
         ? JSON.stringify(data)
-        : extractReply(data),
-    sessionId: data.sessionId || data.session_id || data.conversationId || data.data?.sessionId || null
+        : text,
+    sessionId: data?.sessionId || data?.session_id || data?.conversationId || data?.data?.sessionId || null
   };
 }
 
@@ -949,7 +949,7 @@ async function readSseText(response, signal) {
   try {
     responseData = text ? JSON.parse(text) : null;
   } catch {
-    responseData = text ? { reply: text } : null;
+    responseData = null;
   }
 
   return {

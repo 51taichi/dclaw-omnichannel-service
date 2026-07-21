@@ -108,6 +108,25 @@ db.exec(`
     finished_at TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS agent_response_validation_failures (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invocation_id INTEGER,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    incoming_message_id TEXT,
+    attempt_number INTEGER NOT NULL,
+    stage TEXT NOT NULL,
+    error_type TEXT NOT NULL,
+    error_path TEXT,
+    error_message TEXT NOT NULL,
+    line INTEGER,
+    column INTEGER,
+    raw_response_text TEXT,
+    retry_requested INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value_json TEXT NOT NULL,
@@ -1125,6 +1144,49 @@ export function finishAgentInvocation({ id, response, status = "success", error 
     SET response_json = ?, status = ?, error_message = ?, finished_at = ?
     WHERE id = ?
   `).run(json(response), status, error || "", now(), id);
+}
+
+export function insertAgentResponseValidationFailure({
+  invocationId,
+  botId,
+  agentId,
+  conversationKey,
+  incomingMessageId,
+  attemptNumber,
+  stage,
+  errorType,
+  errorPath = "",
+  errorMessage,
+  line = null,
+  column = null,
+  rawResponseText = "",
+  retryRequested = false
+}) {
+  const result = db.prepare(`
+    INSERT INTO agent_response_validation_failures (
+      invocation_id, bot_id, agent_id, conversation_key, incoming_message_id,
+      attempt_number, stage, error_type, error_path, error_message,
+      line, column, raw_response_text, retry_requested, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    invocationId ?? null,
+    botId,
+    agentId,
+    conversationKey,
+    incomingMessageId || "",
+    Math.max(1, Number.parseInt(attemptNumber, 10) || 1),
+    stage || "initial",
+    errorType || "validation",
+    errorPath || "",
+    errorMessage || "Agent response validation failed",
+    Number.isFinite(Number(line)) ? Number(line) : null,
+    Number.isFinite(Number(column)) ? Number(column) : null,
+    String(rawResponseText || ""),
+    retryRequested ? 1 : 0,
+    now()
+  );
+  return result.lastInsertRowid;
 }
 
 function rowToProactiveTask(row) {
@@ -3777,6 +3839,23 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
         ...row,
         request: parseJson(row.request_json),
         response: parseJson(row.response_json)
+      })
+    },
+    "agent-response-validation-failures": {
+      table: "agent_response_validation_failures",
+      mapper: (row) => ({
+        ...row,
+        invocationId: row.invocation_id,
+        botId: row.bot_id,
+        agentId: row.agent_id,
+        conversationKey: row.conversation_key,
+        incomingMessageId: row.incoming_message_id,
+        attemptNumber: row.attempt_number,
+        errorType: row.error_type,
+        errorPath: row.error_path,
+        errorMessage: row.error_message,
+        rawResponseText: row.raw_response_text,
+        retryRequested: Boolean(row.retry_requested)
       })
     },
     "message-processing": {

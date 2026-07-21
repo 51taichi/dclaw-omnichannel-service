@@ -13,18 +13,20 @@ import {
   buildDclawConversationResetRequest,
   buildDclawHandoffTranscriptRequest,
   buildDclawProactiveEventRequest,
-  buildDclawReplyFormatRetryRequest,
   buildDclawRequest,
   buildDclawTagActivationRequest,
-  degradeAgentReply,
   getDclawAgentMaxAttempts,
   getDclawFormatRetryTimeoutMs,
   getDclawAgentTimeoutMs,
   getAgentReplySendabilityIssue,
   invokeDclawAgentWithRetry,
-  parseConversationResetAcknowledgement,
-  parseAgentReply
+  parseConversationResetAcknowledgement
 } from "./dclaw.js";
+import {
+  buildAgentResponseValidationRetryRequest,
+  sendabilityIssueToValidationError,
+  validateAgentResponseText
+} from "./agent-response-gateway.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
   createBotSession,
@@ -67,6 +69,7 @@ import {
   getProactiveTask,
   incrementFlowActivationGeneration,
   insertAgentInvocationStart,
+  insertAgentResponseValidationFailure,
   insertConversationMessage,
   insertCommandCallback,
   insertIncomingMessage,
@@ -1227,6 +1230,76 @@ function invalidSendabilityAgentReply(rawReply, sendabilityIssue) {
   };
 }
 
+function invalidValidationAgentReply(rawReply, validationErrors) {
+  return {
+    valid: false,
+    reply: "",
+    attachments: [],
+    sources: [],
+    flowDecision: null,
+    tagDecision: { add: [], remove: [] },
+    raw: rawReply,
+    validationErrors
+  };
+}
+
+function agentResponseValidationOptions(request) {
+  return {
+    requireFlowDecision: Boolean(request?.metadata?.flow),
+    allowTagDecision: Boolean(request?.metadata?.tagRules),
+    flow: request?.metadata?.flow || null,
+    tagContext: request?.metadata?.tagRules || null
+  };
+}
+
+function validateStrictAgentReply({ invocation, request, attemptNumber, stage, retryRequested, onValidationFailure }) {
+  const result = validateAgentResponseText(invocation?.reply || "", agentResponseValidationOptions(request));
+  if (!result.valid) {
+    onValidationFailure?.({
+      attemptNumber,
+      stage,
+      retryRequested,
+      errors: result.errors,
+      rawReply: result.rawText,
+      rawReplyLength: String(result.rawText || "").length,
+      normalizations: result.normalizations
+    });
+  }
+  return result;
+}
+
+function recordAgentResponseValidationFailures({
+  invocationId,
+  botId,
+  agentId,
+  conversationKey,
+  incomingMessageId,
+  attemptNumber,
+  stage,
+  retryRequested,
+  errors,
+  rawReply
+}) {
+  for (const error of errors || []) {
+    insertAgentResponseValidationFailure({
+      invocationId,
+      botId,
+      agentId,
+      conversationKey,
+      incomingMessageId,
+      attemptNumber,
+      stage,
+      errorType: error.type,
+      errorPath: error.path,
+      errorMessage: error.message,
+      line: error.line,
+      column: error.column,
+      rawResponseText: rawReply,
+      retryRequested
+    });
+  }
+}
+
 async function invokeStrictAgentReply({
   binding,
   request,
@@ -1234,178 +1307,163 @@ async function invokeStrictAgentReply({
   onFormatRetry,
   onAttachmentSourceRetry,
   onInvalidAttachmentSource,
-  onDegrade
+  onValidationFailure
 }) {
   const first = await enqueueAgentInvocation(() =>
     invokeDclawAgentWithRetry({ binding, request, onRetry })
   );
-  let agentReply = parseAgentReply(first.reply);
-  if (agentReply.valid) {
-    const sendabilityIssue = getAgentReplySendabilityIssue(agentReply);
-    if (!sendabilityIssue) {
-      return { invocation: first, agentReply, formatAttempts: 1, attachmentSourceAttempts: 1 };
-    }
-    onAttachmentSourceRetry?.({
-      rawReplyLength: String(first.reply || "").length,
-      issue: sendabilityIssue
-    });
-    const attachmentRetryRequest = buildDclawAttachmentSourceRetryRequest(request, sendabilityIssue);
-    const retried = await enqueueAgentInvocation(() =>
+  let formatAttempts = 1;
+  let attachmentSourceAttempts = 1;
+  let totalAttempts = Number(first.attempts || 1);
+  let responseChain = null;
+  let currentInvocation = first;
+  let validation = validateStrictAgentReply({
+    invocation: first,
+    request,
+    attemptNumber: 1,
+    stage: "initial",
+    retryRequested: false,
+    onValidationFailure
+  });
+
+  if (!validation.valid) {
+    onFormatRetry?.({ rawReplyLength: String(first.reply || "").length });
+    const validationRetryRequest = buildAgentResponseValidationRetryRequest(request, validation.errors);
+    const repaired = await enqueueAgentInvocation(() =>
       invokeDclawAgentWithRetry({
         binding,
-        request: attachmentRetryRequest,
+        request: validationRetryRequest,
         timeoutMs: getDclawFormatRetryTimeoutMs(),
         onRetry
       })
     );
-    agentReply = parseAgentReply(retried.reply);
-    if (!agentReply.valid) {
-      const degraded = degradeAgentReply(retried.reply);
-      if (degraded.valid) {
-        onDegrade?.({
-          rawReplyLength: String(retried.reply || "").length,
-          reason: "attachment_source_retry_invalid"
-        });
-        agentReply = degraded;
-      }
+    formatAttempts = 2;
+    totalAttempts += Number(repaired.attempts || 1);
+    currentInvocation = repaired;
+    responseChain = {
+      initial: first.response,
+      validationRetry: repaired.response
+    };
+    validation = validateStrictAgentReply({
+      invocation: repaired,
+      request,
+      attemptNumber: 2,
+      stage: "validation_retry",
+      retryRequested: true,
+      onValidationFailure
+    });
+    if (!validation.valid) {
+      return {
+        invocation: {
+          ...repaired,
+          request,
+          response: responseChain,
+          attempts: totalAttempts
+        },
+        agentReply: invalidValidationAgentReply(repaired.reply, validation.errors),
+        formatAttempts,
+        attachmentSourceAttempts
+      };
     }
-    const retryIssue = getAgentReplySendabilityIssue(agentReply);
-    if (retryIssue) {
-      onInvalidAttachmentSource?.({
-        rawReplyLength: String(retried.reply || "").length,
-        issue: retryIssue
-      });
-      agentReply = invalidSendabilityAgentReply(retried.reply, retryIssue);
-    }
+  }
+
+  let agentReply = validation.agentReply;
+  const sendabilityIssue = getAgentReplySendabilityIssue(agentReply);
+  if (!sendabilityIssue) {
     return {
       invocation: {
-        ...retried,
+        ...currentInvocation,
         request,
-        response: {
-          initial: first.response,
-          attachmentSourceRetry: retried.response
-        },
-        attempts: Number(first.attempts || 1) + Number(retried.attempts || 1)
+        response: responseChain || currentInvocation.response,
+        attempts: totalAttempts
       },
       agentReply,
-      formatAttempts: 1,
-      attachmentSourceAttempts: 2
+      formatAttempts,
+      attachmentSourceAttempts
     };
   }
 
-  onFormatRetry?.({ rawReplyLength: String(first.reply || "").length });
-  const formatRetryRequest = buildDclawReplyFormatRetryRequest(request);
-  let repaired;
-  try {
-    repaired = await enqueueAgentInvocation(() =>
-      invokeDclawAgentWithRetry({
-        binding,
-        request: formatRetryRequest,
-        timeoutMs: getDclawFormatRetryTimeoutMs(),
-        onRetry
-      })
-    );
-  } catch (error) {
-    const degraded = degradeAgentReply(first.reply);
-    if (degraded.valid) {
-      onDegrade?.({
-        rawReplyLength: String(first.reply || "").length,
-        reason: "format_retry_failed",
-        error: error.message
-      });
-      return {
-        invocation: {
-          ...first,
-          request,
-          response: {
-            initial: first.response,
-            formatRetryError: error.message
-          },
-          attempts: Number(first.attempts || 1) + 1
-        },
-        agentReply: degraded,
-        formatAttempts: 2
-      };
-    }
-    throw error;
-  }
-  agentReply = parseAgentReply(repaired.reply);
-  if (!agentReply.valid) {
-    const degraded = degradeAgentReply(repaired.reply);
-    if (degraded.valid) {
-      onDegrade?.({
-        rawReplyLength: String(repaired.reply || "").length,
-        reason: "format_retry_invalid"
-      });
-      agentReply = degraded;
-    }
-  }
-  const sendabilityIssue = getAgentReplySendabilityIssue(agentReply);
-  if (sendabilityIssue) {
-    onAttachmentSourceRetry?.({
-      rawReplyLength: String(repaired.reply || "").length,
-      issue: sendabilityIssue
-    });
-    const attachmentRetryRequest = buildDclawAttachmentSourceRetryRequest(request, sendabilityIssue);
-    const retried = await enqueueAgentInvocation(() =>
-      invokeDclawAgentWithRetry({
-        binding,
-        request: attachmentRetryRequest,
-        timeoutMs: getDclawFormatRetryTimeoutMs(),
-        onRetry
-      })
-    );
-    agentReply = parseAgentReply(retried.reply);
-    if (!agentReply.valid) {
-      const degraded = degradeAgentReply(retried.reply);
-      if (degraded.valid) {
-        onDegrade?.({
-          rawReplyLength: String(retried.reply || "").length,
-          reason: "attachment_source_retry_invalid"
-        });
-        agentReply = degraded;
-      }
-    }
-    const retryIssue = getAgentReplySendabilityIssue(agentReply);
-    if (retryIssue) {
-      onInvalidAttachmentSource?.({
-        rawReplyLength: String(retried.reply || "").length,
-        issue: retryIssue
-      });
-      agentReply = invalidSendabilityAgentReply(retried.reply, retryIssue);
-    }
+  onAttachmentSourceRetry?.({
+    rawReplyLength: String(currentInvocation.reply || "").length,
+    issue: sendabilityIssue
+  });
+  onValidationFailure?.({
+    attemptNumber: formatAttempts,
+    stage: "sendability",
+    retryRequested: true,
+    errors: [sendabilityIssueToValidationError(sendabilityIssue)],
+    rawReply: currentInvocation.reply || "",
+    rawReplyLength: String(currentInvocation.reply || "").length,
+    normalizations: validation.normalizations
+  });
+
+  const attachmentRetryRequest = buildDclawAttachmentSourceRetryRequest(request, sendabilityIssue);
+  const retried = await enqueueAgentInvocation(() =>
+    invokeDclawAgentWithRetry({
+      binding,
+      request: attachmentRetryRequest,
+      timeoutMs: getDclawFormatRetryTimeoutMs(),
+      onRetry
+    })
+  );
+  attachmentSourceAttempts = 2;
+  totalAttempts += Number(retried.attempts || 1);
+  responseChain = {
+    initial: first.response,
+    ...(responseChain?.validationRetry ? { validationRetry: responseChain.validationRetry } : {}),
+    attachmentSourceRetry: retried.response
+  };
+  validation = validateStrictAgentReply({
+    invocation: retried,
+    request,
+    attemptNumber: formatAttempts + 1,
+    stage: "attachment_source_retry",
+    retryRequested: true,
+    onValidationFailure
+  });
+  if (!validation.valid) {
     return {
       invocation: {
         ...retried,
         request,
-        response: {
-          initial: first.response,
-          formatRetry: repaired.response,
-          attachmentSourceRetry: retried.response
-        },
-        attempts:
-          Number(first.attempts || 1) +
-          Number(repaired.attempts || 1) +
-          Number(retried.attempts || 1)
+        response: responseChain,
+        attempts: totalAttempts
       },
-      agentReply,
-      formatAttempts: 2,
-      attachmentSourceAttempts: 2
+      agentReply: invalidValidationAgentReply(retried.reply, validation.errors),
+      formatAttempts,
+      attachmentSourceAttempts
     };
   }
+
+  agentReply = validation.agentReply;
+  const retryIssue = getAgentReplySendabilityIssue(agentReply);
+  if (retryIssue) {
+    onInvalidAttachmentSource?.({
+      rawReplyLength: String(retried.reply || "").length,
+      issue: retryIssue
+    });
+    onValidationFailure?.({
+      attemptNumber: formatAttempts + 1,
+      stage: "attachment_source_retry_sendability",
+      retryRequested: false,
+      errors: [sendabilityIssueToValidationError(retryIssue)],
+      rawReply: retried.reply || "",
+      rawReplyLength: String(retried.reply || "").length,
+      normalizations: validation.normalizations
+    });
+    agentReply = invalidSendabilityAgentReply(retried.reply, retryIssue);
+  }
+
   return {
     invocation: {
-      ...repaired,
+      ...retried,
       request,
-      response: {
-        initial: first.response,
-        formatRetry: repaired.response
-      },
-      attempts: Number(first.attempts || 1) + Number(repaired.attempts || 1)
+      response: responseChain,
+      attempts: totalAttempts
     },
     agentReply,
-    formatAttempts: 2,
-    attachmentSourceAttempts: 1
+    formatAttempts,
+    attachmentSourceAttempts
   };
 }
 
@@ -2270,16 +2328,36 @@ async function sendActivationPolishedMessage({ task, binding, delivery }) {
           attachmentUrls: issue?.attachmentUrls || []
         });
       },
-      onDegrade: ({ rawReplyLength, reason, error }) => {
-        logWarn("activation.agent.degraded", {
+      onValidationFailure: ({ attemptNumber, stage, retryRequested, errors, rawReply, rawReplyLength }) => {
+        recordAgentResponseValidationFailures({
+          invocationId,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          incomingMessageId: `activation:${task.id}`,
+          attemptNumber,
+          stage,
+          retryRequested,
+          errors,
+          rawReply
+        });
+        logWarn("activation.agent.validation_failed", {
           activationTaskId: task.id,
           botId: task.botId,
           agentId: binding.agentId,
           conversationKey: task.conversationKey,
           invocationId,
+          attemptNumber,
+          stage,
+          retryRequested,
           rawReplyLength,
-          reason,
-          error: error || ""
+          errors: (errors || []).map((error) => ({
+            type: error.type,
+            path: error.path,
+            message: error.message,
+            line: error.line || null,
+            column: error.column || null
+          }))
         });
       }
     });
@@ -2583,16 +2661,36 @@ async function buildPolishedTagActivationContent({ binding, task }) {
           attachmentUrls: issue?.attachmentUrls || []
         });
       },
-      onDegrade: ({ rawReplyLength, reason, error }) => {
-        logWarn("tag.activation.agent.degraded", {
+      onValidationFailure: ({ attemptNumber, stage, retryRequested, errors, rawReply, rawReplyLength }) => {
+        recordAgentResponseValidationFailures({
+          invocationId,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          incomingMessageId: `tag_activation:${task.id}`,
+          attemptNumber,
+          stage,
+          retryRequested,
+          errors,
+          rawReply
+        });
+        logWarn("tag.activation.agent.validation_failed", {
           tagActivationTaskId: task.id,
           botId: task.botId,
           agentId: binding.agentId,
           conversationKey: task.conversationKey,
           invocationId,
+          attemptNumber,
+          stage,
+          retryRequested,
           rawReplyLength,
-          reason,
-          error: error || ""
+          errors: (errors || []).map((error) => ({
+            type: error.type,
+            path: error.path,
+            message: error.message,
+            line: error.line || null,
+            column: error.column || null
+          }))
         });
       }
     });
@@ -2606,11 +2704,9 @@ async function buildPolishedTagActivationContent({ binding, task }) {
     throw error;
   }
 
-  if (!strictInvocation.agentReply.valid || strictInvocation.agentReply.degraded) {
+  if (!strictInvocation.agentReply.valid) {
     const sendabilityIssue = strictInvocation.agentReply.sendabilityIssue;
-    const errorCode = strictInvocation.agentReply.degraded
-      ? "degraded_tag_activation_reply"
-      : sendabilityIssue ? "invalid_agent_attachment_source" : "invalid_agent_reply_format";
+    const errorCode = sendabilityIssue ? "invalid_agent_attachment_source" : "invalid_agent_reply_format";
     finishAgentInvocation({
       id: invocationId,
       response: strictInvocation.invocation.response,
@@ -2618,9 +2714,7 @@ async function buildPolishedTagActivationContent({ binding, task }) {
       error: errorCode
     });
     logWarn(
-      strictInvocation.agentReply.degraded
-        ? "tag.activation.agent.degraded_rejected"
-        : sendabilityIssue ? "tag.activation.agent.invalid_attachment_source" : "tag.activation.agent.invalid_format",
+      sendabilityIssue ? "tag.activation.agent.invalid_attachment_source" : "tag.activation.agent.invalid_format",
       {
         tagActivationTaskId: task.id,
         botId: task.botId,
@@ -3227,14 +3321,34 @@ async function processCoalescedIncomingBatch(batch) {
           attachmentUrls: issue?.attachmentUrls || []
         });
       },
-      onDegrade: ({ rawReplyLength, reason, error }) => {
-        logWarn("agent.reply.degraded", {
+      onValidationFailure: ({ attemptNumber, stage, retryRequested, errors, rawReply, rawReplyLength }) => {
+        recordAgentResponseValidationFailures({
+          invocationId,
+          botId,
+          agentId: binding.agentId,
+          conversationKey,
+          incomingMessageId: message.messageId,
+          attemptNumber,
+          stage,
+          retryRequested,
+          errors,
+          rawReply
+        });
+        logWarn("agent.reply.validation_failed", {
           ...logContext,
           agentId: binding.agentId,
           invocationId,
+          attemptNumber,
+          stage,
+          retryRequested,
           rawReplyLength,
-          reason,
-          error: error || ""
+          errors: (errors || []).map((error) => ({
+            type: error.type,
+            path: error.path,
+            message: error.message,
+            line: error.line || null,
+            column: error.column || null
+          }))
         });
       }
     });

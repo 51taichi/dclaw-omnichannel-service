@@ -22,16 +22,17 @@ test("tag activation checks tag is still active before sending", () => {
   assert.match(server, /tag\.activation\.stale_skipped/);
 });
 
-test("tag activation polish rejects degraded fallback replies", () => {
+test("tag activation polish records validation failures before rejecting replies", () => {
   const polishHandler = server.slice(
     server.indexOf("async function buildPolishedTagActivationContent"),
     server.indexOf("async function processTagActivationTask")
   );
-  assert.match(polishHandler, /agentReply\.degraded/);
-  assert.match(polishHandler, /degraded_tag_activation_reply/);
+  assert.match(polishHandler, /tag\.activation\.agent\.validation_failed/);
+  assert.match(polishHandler, /recordAgentResponseValidationFailures/);
+  assert.match(polishHandler, /invalid_agent_reply_format/);
   assert.ok(
-    polishHandler.indexOf("agentReply.degraded") < polishHandler.lastIndexOf('status: "success"'),
-    "degraded replies must fail before successful agent invocation finish"
+    polishHandler.indexOf("!strictInvocation.agentReply.valid") < polishHandler.lastIndexOf('status: "success"'),
+    "invalid replies must fail before successful agent invocation finish"
   );
 });
 
