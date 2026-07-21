@@ -2406,10 +2406,12 @@ function renderTagSchemaEditor() {
                                 </div>
                               </div>
                               <div class="tag-row-body">
-                                <label class="wide">
-                                  <span class="field-label">${icon("check")}达标条件</span>
-                                  <textarea data-tag-field="condition" rows="2" placeholder="例如：客户明确表示愿意合作或留下联系方式">${escapeHtml(tag.condition)}</textarea>
-                                </label>
+                                <div class="expand-field-slot" data-tag-expand-field="condition">
+                                  <label class="wide">
+                                    <span class="field-label">${icon("check")}达标条件</span>
+                                    <textarea class="expand-on-focus" data-tag-field="condition" rows="2" placeholder="例如：客户明确表示愿意合作或留下联系方式">${escapeHtml(tag.condition)}</textarea>
+                                  </label>
+                                </div>
                                 <section class="activation-editor tag-activation-editor ${activation.enabled ? "is-active" : ""}" aria-label="标签触发任务">
                                   <div class="activation-toolbar">
                                     <div class="activation-toolbar-main">

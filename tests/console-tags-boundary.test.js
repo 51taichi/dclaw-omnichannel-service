@@ -139,6 +139,13 @@ test("tag group and tag item labels use the unified tag icon", () => {
   assert.match(js, /icon\("check"\)\}达标条件/);
 });
 
+test("tag conditions reuse the fixed-slot expanding textarea", () => {
+  assert.match(js, /<div class="expand-field-slot" data-tag-expand-field="condition">/);
+  assert.match(js, /<textarea class="expand-on-focus" data-tag-field="condition"/);
+  assert.match(css, /\.expand-field-slot > label\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(css, /\.expand-field-slot > label:focus-within\s*\{[\s\S]*height:\s*112px/);
+});
+
 test("tag activation message controls stay on one row beside the text", () => {
   assert.match(css, /\.tag-activation-editor \.activation-message-card\s*\{[\s\S]*grid-template-columns: minmax\(140px, 1fr\) max-content;/);
   assert.match(css, /\.tag-activation-editor \.activation-message-actions\s*\{[\s\S]*flex-wrap: nowrap;/);
