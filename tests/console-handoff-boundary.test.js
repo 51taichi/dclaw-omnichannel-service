@@ -220,6 +220,11 @@ test("task and tag workspaces keep their content scrollable above fixed footers"
 });
 
 test("task nodes animate and keep only one node expanded", () => {
+  assert.match(css, /\.collapsible-panel > \.collapsible-content\s*\{[\s\S]*max-height:\s*10000px[\s\S]*transition:[\s\S]*max-height 220ms/);
+  assert.match(css, /\.collapsible-panel\.is-collapsed > \.collapsible-content\s*\{[\s\S]*max-height:\s*0[\s\S]*opacity:\s*0/);
+  assert.doesNotMatch(css, /\.collapsible-panel\.is-collapsed \.collapsible-content\s*\{[\s\S]*display:\s*none/);
+  assert.match(css, /\.collapsible-content\.is-slide-down[\s\S]*animation:\s*slideDown 220ms/);
+  assert.match(css, /\.collapsible-content\.is-slide-up[\s\S]*animation:\s*slideUp 220ms/);
   assert.match(css, /\.flow-node-card-body\s*\{[\s\S]*max-height:\s*10000px[\s\S]*transition:[\s\S]*max-height 220ms/);
   assert.match(css, /\.flow-node-card-body\.is-slide-down[\s\S]*animation:\s*slideDown 220ms/);
   assert.match(css, /\.flow-node-card-body\.is-slide-up[\s\S]*animation:\s*slideUp 220ms/);
@@ -233,6 +238,8 @@ test("task nodes animate and keep only one node expanded", () => {
   assert.match(app, /function collapseAllFlowNodes\(\)[\s\S]*collapsedFlowNodes\.clear\(\)[\s\S]*flowDraftNodes\.forEach/);
   assert.match(app, /if \(collapsedFlowNodes\.has\(collapseKey\)\) \{[\s\S]*collapseAllFlowNodes\(\)[\s\S]*collapsedFlowNodes\.delete\(collapseKey\)/);
   assert.match(app, /function updateCollapseCardVisual\(card, isCollapsed/);
+  assert.match(app, /function updateCollapsiblePanelVisual\(panel, isCollapsed/);
+  assert.match(app, /updateCollapsiblePanelVisual\(panel, !panel\?\.classList\.contains\("is-collapsed"\)\)/);
   assert.match(app, /function toggleTagGroupCollapse\(groupIndex\)[\s\S]*collapsedTagGroups\.clear\(\)[\s\S]*updateCollapseCardVisual\(groupCard, isCollapsed/);
   assert.match(app, /updateCollapseCardVisual\(nodeCard, isCollapsed/);
 });

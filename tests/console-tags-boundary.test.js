@@ -143,6 +143,8 @@ test("tag conditions reuse the fixed-slot expanding textarea", () => {
   assert.match(js, /<div class="expand-field-slot" data-tag-expand-field="condition">/);
   assert.match(js, /<textarea class="expand-on-focus" data-tag-field="condition"/);
   assert.match(css, /\.expand-field-slot > label\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(css, /\.expand-field-slot > label\s*\{[\s\S]*transition:[\s\S]*height 220ms/);
+  assert.match(css, /\.expand-on-focus\s*\{[\s\S]*transition:[\s\S]*height 220ms[\s\S]*max-height 220ms/);
   assert.match(css, /\.expand-field-slot > label:focus-within\s*\{[\s\S]*height:\s*112px/);
 });
 

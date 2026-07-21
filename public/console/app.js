@@ -2340,6 +2340,17 @@ function updateCollapseCardVisual(card, isCollapsed, { bodySelector, toggleSelec
   }
 }
 
+function updateCollapsiblePanelVisual(panel, isCollapsed) {
+  if (!panel) return;
+  const wasCollapsed = panel.classList.contains("is-collapsed");
+  panel.classList.toggle("is-collapsed", isCollapsed);
+  const button = panel.querySelector("[data-collapse-target]");
+  button?.setAttribute("aria-expanded", String(!isCollapsed));
+  if (wasCollapsed !== isCollapsed) {
+    playCollapseAnimation(panel.querySelector(".collapsible-content"), isCollapsed);
+  }
+}
+
 function collapseAllTagCards() {
   collapsedTagGroups.clear();
   (state.tagSchema.groups || []).forEach((group, groupIndex) => {
@@ -4503,8 +4514,7 @@ els.collapseButtons.forEach((button) => {
   const panel = document.querySelector(`#${button.dataset.collapseTarget}`);
   button.setAttribute("aria-expanded", "true");
   button.addEventListener("click", () => {
-    panel?.classList.toggle("is-collapsed");
-    button.setAttribute("aria-expanded", String(!panel?.classList.contains("is-collapsed")));
+    updateCollapsiblePanelVisual(panel, !panel?.classList.contains("is-collapsed"));
   });
 });
 document.addEventListener("keydown", (event) => {
