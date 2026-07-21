@@ -767,30 +767,13 @@ h2 {
   transition: height 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 
-.expand-on-focus-field {
-  --expand-on-focus-label-width: 132px;
-  position: relative;
-}
-
 .expand-on-focus:focus {
   height: 112px;
   max-height: 112px;
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: var(--expand-on-focus-label-width);
-  z-index: 3;
   overflow: auto;
-  resize: none;
+  resize: vertical;
   border-color: var(--accent);
-  border-radius: 0 7px 7px 0;
-  background: #ffffff;
   box-shadow: 0 0 0 3px rgba(42, 48, 216, 0.13);
-}
-
-.expand-on-focus-field:focus-within {
-  z-index: 20;
-  overflow: visible;
 }
 
 .compact-form {
@@ -4536,10 +4519,6 @@ td .muted {
 
   label {
     grid-template-columns: 108px minmax(0, 1fr);
-  }
-
-  .expand-on-focus-field {
-    --expand-on-focus-label-width: 108px;
   }
 
   .auth-form label {
