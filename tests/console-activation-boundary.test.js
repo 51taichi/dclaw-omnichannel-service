@@ -49,6 +49,7 @@ test("flow editor preserves the top-level general business rule", () => {
   assert.equal(app.includes('els.flowMachineForm.generalRule?.addEventListener("input", syncFlowJsonTextarea)'), true);
   assert.equal(db.includes('generalRule: String(config.generalRule || "").trim()'), true);
   assert.equal(html.includes('name="generalRule"'), true);
+  assert.match(html, /field-label"><svg class="icon"[^>]*><use href="#icon-briefcase"><\/use><\/svg>任务名称/);
   assert.match(html, /field-label"><svg class="icon"[^>]*><use href="#icon-info"><\/use><\/svg>通用规则/);
   assert.equal(css.includes(".flow-general-rule:focus-within textarea"), true);
   assert.equal(css.includes("position: absolute;"), true);
