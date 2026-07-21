@@ -101,7 +101,7 @@ export function buildDclawRequest({
         conversationReset
       }, null, 2)
     ].join("\n"),
-    stream: false,
+    stream: true,
     metadata: {
       source: "worktool",
       botId: worktoolMessage.botId,
@@ -223,7 +223,7 @@ export function buildDclawHandoffTranscriptRequest({
         conversationReset
       }, null, 2)
     ].join("\n"),
-    stream: false,
+    stream: true,
     metadata: {
       source: "worktool",
       eventType: worktoolMessage.eventType,
@@ -282,7 +282,7 @@ export function buildDclawConversationResetRequest({
       "",
       JSON.stringify(worktoolMessage, null, 2)
     ].join("\n"),
-    stream: false,
+    stream: true,
     metadata: {
       source: "worktool",
       eventType: "conversation_reset",
@@ -360,7 +360,7 @@ export function buildDclawProactiveEventRequest({
       "",
       JSON.stringify(worktoolMessage, null, 2)
     ].join("\n"),
-    stream: false,
+    stream: true,
     metadata: {
       source: "worktool",
       botId: worktoolMessage.botId,
@@ -429,7 +429,7 @@ export function buildDclawActivationRequest({
       "",
       JSON.stringify({ worktoolMessage, flow: agentFlow, recentMessages: agentRecentMessages, generalRule: normalizedGeneralRule }, null, 2)
     ].join("\n"),
-    stream: false,
+    stream: true,
     metadata: {
       source: "worktool",
       eventType: "flow_activation_due",
@@ -490,7 +490,7 @@ export function buildDclawTagActivationRequest({
       "",
       JSON.stringify({ worktoolMessage, generalRule: normalizedGeneralRule }, null, 2)
     ].join("\n"),
-    stream: false,
+    stream: true,
     metadata: {
       source: "worktool",
       eventType: "tag_activation_due",
