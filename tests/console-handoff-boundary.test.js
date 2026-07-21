@@ -221,12 +221,20 @@ test("task and tag workspaces keep their content scrollable above fixed footers"
 
 test("task nodes animate and keep only one node expanded", () => {
   assert.match(css, /\.flow-node-card-body\s*\{[\s\S]*max-height:\s*10000px[\s\S]*transition:[\s\S]*max-height 220ms/);
+  assert.match(css, /\.flow-node-card-body\.is-slide-down[\s\S]*animation:\s*slideDown 220ms/);
+  assert.match(css, /\.flow-node-card-body\.is-slide-up[\s\S]*animation:\s*slideUp 220ms/);
+  assert.match(css, /@keyframes slideDown[\s\S]*@keyframes slideUp/);
   assert.match(css, /\.flow-node-card\.is-collapsed \.flow-node-card-body\s*\{[\s\S]*(?:max-height:\s*0[\s\S]*grid-template-rows:\s*0fr|grid-template-rows:\s*0fr[\s\S]*max-height:\s*0)/);
   assert.match(css, /\.tag-group-body\s*\{[\s\S]*max-height:\s*10000px[\s\S]*transition:[\s\S]*max-height 220ms/);
+  assert.match(css, /\.tag-group-body\.is-slide-down[\s\S]*animation:\s*slideDown 220ms/);
+  assert.match(css, /\.tag-group-body\.is-slide-up[\s\S]*animation:\s*slideUp 220ms/);
   assert.match(css, /\.tag-group-card\.is-collapsed \.tag-group-body\s*\{[\s\S]*(?:max-height:\s*0[\s\S]*grid-template-rows:\s*0fr|grid-template-rows:\s*0fr[\s\S]*max-height:\s*0)/);
   assert.match(app, /flowDraftNodes\.forEach\(\(node, index\) => \{[\s\S]*collapsedFlowNodes\.add\(flowNodeCollapseKey\(node, index\)\)/);
-  assert.match(app, /nodeCard\.classList\.toggle\("is-collapsed", isCollapsed\)/);
-  assert.match(app, /function toggleTagGroupCollapse\(groupIndex\)[\s\S]*collapsedTagGroups\.clear\(\)[\s\S]*groupCard\.classList\.toggle\("is-collapsed", isCollapsed\)/);
+  assert.match(app, /function collapseAllFlowNodes\(\)[\s\S]*collapsedFlowNodes\.clear\(\)[\s\S]*flowDraftNodes\.forEach/);
+  assert.match(app, /if \(collapsedFlowNodes\.has\(collapseKey\)\) \{[\s\S]*collapseAllFlowNodes\(\)[\s\S]*collapsedFlowNodes\.delete\(collapseKey\)/);
+  assert.match(app, /function updateCollapseCardVisual\(card, isCollapsed/);
+  assert.match(app, /function toggleTagGroupCollapse\(groupIndex\)[\s\S]*collapsedTagGroups\.clear\(\)[\s\S]*updateCollapseCardVisual\(groupCard, isCollapsed/);
+  assert.match(app, /updateCollapseCardVisual\(nodeCard, isCollapsed/);
 });
 
 test("proactive panel keeps send action pinned while content scrolls", () => {

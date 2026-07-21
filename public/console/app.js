@@ -1558,6 +1558,13 @@ function flowNodeCollapseKey(node, index) {
   return String(node?.id || `index_${index}`);
 }
 
+function collapseAllFlowNodes() {
+  collapsedFlowNodes.clear();
+  flowDraftNodes.forEach((node, index) => {
+    collapsedFlowNodes.add(flowNodeCollapseKey(node, index));
+  });
+}
+
 function nextFlowNodeId(start = flowDraftNodes.length + 1) {
   let index = Math.max(1, start);
   const used = new Set(flowDraftNodes.map((node) => String(node.id || "")));
@@ -1612,8 +1619,7 @@ function setFlowEditorFromConfig(config = {}) {
         transitions: Array.isArray(node.transitions) ? node.transitions : []
       }))
     : [createBlankFlowNode(1)];
-  collapsedFlowNodes.clear();
-  flowDraftNodes.forEach((node, index) => collapsedFlowNodes.add(flowNodeCollapseKey(node, index)));
+  collapseAllFlowNodes();
   const configuredEntryNodeId = String(config.entryNodeId || "").trim();
   renderFlowNodeEditor(configuredEntryNodeId);
   syncFlowJsonTextarea();
@@ -2309,6 +2315,31 @@ function tagGroupCollapseKey(group, groupIndex) {
   return String(group?.id || `group_${groupIndex + 1}`);
 }
 
+function playCollapseAnimation(body, isCollapsed) {
+  if (!body || window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  const animationClass = isCollapsed ? "is-slide-up" : "is-slide-down";
+  body.classList.remove("is-slide-up", "is-slide-down");
+  void body.offsetWidth;
+  body.classList.add(animationClass);
+  body.addEventListener(
+    "animationend",
+    () => body.classList.remove("is-slide-up", "is-slide-down"),
+    { once: true }
+  );
+}
+
+function updateCollapseCardVisual(card, isCollapsed, { bodySelector, toggleSelector, expandLabel, collapseLabel } = {}) {
+  if (!card) return;
+  const wasCollapsed = card.classList.contains("is-collapsed");
+  card.classList.toggle("is-collapsed", isCollapsed);
+  const toggle = card.querySelector(toggleSelector);
+  toggle?.setAttribute("aria-expanded", String(!isCollapsed));
+  toggle?.setAttribute("aria-label", isCollapsed ? expandLabel : collapseLabel);
+  if (wasCollapsed !== isCollapsed) {
+    playCollapseAnimation(card.querySelector(bodySelector), isCollapsed);
+  }
+}
+
 function collapseAllTagCards() {
   collapsedTagGroups.clear();
   (state.tagSchema.groups || []).forEach((group, groupIndex) => {
@@ -2495,10 +2526,12 @@ function toggleTagGroupCollapse(groupIndex) {
   }
   els.tagGroupList.querySelectorAll("[data-tag-group-collapse-key]").forEach((groupCard) => {
     const isCollapsed = collapsedTagGroups.has(groupCard.dataset.tagGroupCollapseKey || "");
-    groupCard.classList.toggle("is-collapsed", isCollapsed);
-    const toggle = groupCard.querySelector("[data-toggle-tag-group]");
-    toggle?.setAttribute("aria-expanded", String(!isCollapsed));
-    toggle?.setAttribute("aria-label", isCollapsed ? "展开标签组" : "收起标签组");
+    updateCollapseCardVisual(groupCard, isCollapsed, {
+      bodySelector: ".tag-group-body",
+      toggleSelector: "[data-toggle-tag-group]",
+      expandLabel: "展开标签组",
+      collapseLabel: "收起标签组"
+    });
   });
 }
 
@@ -3046,20 +3079,20 @@ function renderFlowNodeEditor(entryNodeId = "") {
       const collapseKey = card?.dataset.flowNodeCollapseKey || "";
       if (!collapseKey) return;
       if (collapsedFlowNodes.has(collapseKey)) {
+        collapseAllFlowNodes();
         collapsedFlowNodes.delete(collapseKey);
       } else {
-        flowDraftNodes.forEach((node, index) => {
-          collapsedFlowNodes.add(flowNodeCollapseKey(node, index));
-        });
+        collapseAllFlowNodes();
         collapsedFlowNodes.add(collapseKey);
-        collapsedFlowNodes.delete(collapseKey);
       }
       els.flowNodeList.querySelectorAll("[data-flow-node-collapse-key]").forEach((nodeCard) => {
         const isCollapsed = collapsedFlowNodes.has(nodeCard.dataset.flowNodeCollapseKey || "");
-        nodeCard.classList.toggle("is-collapsed", isCollapsed);
-        const toggle = nodeCard.querySelector("[data-toggle-flow-node]");
-        toggle?.setAttribute("aria-expanded", String(!isCollapsed));
-        toggle?.setAttribute("aria-label", isCollapsed ? "展开任务节点" : "收起任务节点");
+        updateCollapseCardVisual(nodeCard, isCollapsed, {
+          bodySelector: ".flow-node-card-body",
+          toggleSelector: "[data-toggle-flow-node]",
+          expandLabel: "展开任务节点",
+          collapseLabel: "收起任务节点"
+        });
       });
     });
   });
