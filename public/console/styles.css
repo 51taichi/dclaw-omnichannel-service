@@ -767,8 +767,7 @@ h2 {
   transition: height 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 
-.flow-general-rule,
-label:has(> .expand-on-focus) {
+.expand-on-focus-field {
   --expand-on-focus-label-width: 132px;
   position: relative;
 }
@@ -789,7 +788,7 @@ label:has(> .expand-on-focus) {
   box-shadow: 0 0 0 3px rgba(42, 48, 216, 0.13);
 }
 
-label:has(> .expand-on-focus:focus) {
+.expand-on-focus-field:focus-within {
   z-index: 20;
   overflow: visible;
 }
@@ -4539,7 +4538,7 @@ td .muted {
     grid-template-columns: 108px minmax(0, 1fr);
   }
 
-  label:has(> .expand-on-focus) {
+  .expand-on-focus-field {
     --expand-on-focus-label-width: 108px;
   }
 
