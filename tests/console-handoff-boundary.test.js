@@ -244,6 +244,11 @@ test("task nodes animate and keep only one node expanded", () => {
   assert.match(app, /updateCollapseCardVisual\(nodeCard, isCollapsed/);
 });
 
+test("task node textareas truncate to one line until focused", () => {
+  assert.match(css, /\.flow-node-grid textarea\s*\{[\s\S]*height:\s*40px[\s\S]*white-space:\s*nowrap[\s\S]*text-overflow:\s*ellipsis[\s\S]*overflow:\s*hidden/);
+  assert.match(css, /\.flow-node-grid label:focus-within textarea\s*\{[\s\S]*height:\s*96px[\s\S]*white-space:\s*pre-wrap[\s\S]*text-overflow:\s*clip[\s\S]*overflow:\s*auto/);
+});
+
 test("proactive panel keeps send action pinned while content scrolls", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
