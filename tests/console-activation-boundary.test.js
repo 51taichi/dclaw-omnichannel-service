@@ -43,6 +43,14 @@ test("flow config preserves node activation JSON through console and server norm
   assert.equal(db.includes("activation: normalizeActivationConfig(node.activation)"), true);
 });
 
+test("flow editor preserves the top-level general business rule", () => {
+  assert.equal(app.includes('els.flowMachineForm.generalRule.value = config.generalRule || "";'), true);
+  assert.equal(app.includes('generalRule: String(els.flowMachineForm.generalRule?.value || "").trim()'), true);
+  assert.equal(app.includes('els.flowMachineForm.generalRule?.addEventListener("input", syncFlowJsonTextarea)'), true);
+  assert.equal(db.includes('generalRule: String(config.generalRule || "").trim()'), true);
+  assert.equal(html.includes('name="generalRule"'), true);
+});
+
 test("legacy console string scripts inherit their activation timing defaults", () => {
   assert.equal(app.includes("normalizeActivationMessageDraft(item, defaults)"), true);
   assert.equal(app.includes("intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? defaults.intervalMinutes))"), true);

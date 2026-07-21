@@ -69,6 +69,24 @@ test("activation normalization ignores legacy trigger values", () => {
   assert.equal("trigger" in normalized, false);
 });
 
+test("flow machine persists the top-level general business rule", () => {
+  const agentId = "agent_general_rule";
+  ensureBotAgent("bot_general_rule", agentId);
+  const machine = db.upsertFlowMachine({
+    agentId,
+    enabled: true,
+    config: {
+      name: "通用规则测试",
+      version: "1.0.0",
+      entryNodeId: "node_1",
+      generalRule: "回复内容不要发送历史课程链接",
+      nodes: [{ id: "node_1", name: "开始", goal: "", completionCriteria: "", collectFields: [], conversationTips: [], nextNodeId: "" }]
+    }
+  });
+
+  assert.equal(machine.config.generalRule, "回复内容不要发送历史课程链接");
+});
+
 test("activation tasks can be scheduled, claimed, sent, failed, and canceled", () => {
   const botId = "bot_activation";
   const agentId = "agent_activation";

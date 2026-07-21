@@ -31,3 +31,22 @@ test("buildDclawActivationRequest creates a flow activation event", () => {
   assert.match(request.message, /"reply":"发给客户的激活话术"/);
   assert.match(request.message, /再提醒您一下/);
 });
+
+test("buildDclawActivationRequest carries the highest-priority business rule", () => {
+  const request = buildDclawActivationRequest({
+    binding: { botId: "bot_1", agentId: "agent_1" },
+    conversationKey: "bot_1:private:张三",
+    task: { id: 8, nodeId: "node_1", attemptNumber: 1, maxTimes: 1, messages: ["提醒一下"] },
+    flow: {
+      machine: {
+        generalRule: "回复内容不要有历史记录的课程链接",
+        nodes: []
+      }
+    },
+    recentMessages: []
+  });
+
+  assert.equal(request.metadata.generalRule, "回复内容不要有历史记录的课程链接");
+  assert.match(request.message, /最高优先级业务规则/);
+  assert.match(request.message, /不要有历史记录的课程链接/);
+});

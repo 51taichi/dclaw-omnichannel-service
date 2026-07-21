@@ -619,6 +619,7 @@ function buildFlowContext({ botId, conversationKey, message }) {
       name: machine.name,
       version: machine.version,
       entryNodeId: machine.entryNodeId,
+      generalRule: machine.config.generalRule || "",
       nodes: machine.config.nodes
     },
     session,
@@ -1162,7 +1163,8 @@ export async function syncConversationResetToAgent({
   const request = buildDclawConversationResetRequest({
     binding,
     conversationKey,
-    reason
+    reason,
+    generalRule: getFlowMachineForBot(binding.botId)?.config?.generalRule || ""
   });
   const invocationId = insertAgentInvocationStart({
     botId: binding.botId,
@@ -1993,7 +1995,8 @@ async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse 
     conversationKey,
     target,
     worktoolMessageId: messageId,
-    worktoolResponse
+    worktoolResponse,
+    generalRule: getFlowMachineForBot(target.botId)?.config?.generalRule || ""
   });
   const invocationId = insertAgentInvocationStart({
     botId: target.botId,
@@ -2186,6 +2189,7 @@ async function sendActivationPolishedMessage({ task, binding, delivery }) {
           name: machine.name,
           version: machine.version,
           entryNodeId: machine.entryNodeId,
+          generalRule: machine.config.generalRule || "",
           nodes: machine.config.nodes
         },
         session,
@@ -2517,7 +2521,8 @@ async function buildPolishedTagActivationContent({ binding, task }) {
     binding,
     conversationKey: task.conversationKey,
     task,
-    recentMessages
+    recentMessages,
+    generalRule: getFlowMachineForBot(task.botId)?.config?.generalRule || ""
   });
   const invocationId = insertAgentInvocationStart({
     botId: task.botId,
@@ -3015,7 +3020,8 @@ async function processIncomingMessage({ botId, message, intake = null }) {
       conversation,
       message,
       flow,
-      conversationReset
+      conversationReset,
+      generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
     });
     const invocationId = insertAgentInvocationStart({
       botId,
@@ -3160,7 +3166,8 @@ async function processCoalescedIncomingBatch(batch) {
     message: agentMessage,
     flow,
     tagContext,
-    conversationReset
+    conversationReset,
+    generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
   });
   const invocationId = insertAgentInvocationStart({
     botId,

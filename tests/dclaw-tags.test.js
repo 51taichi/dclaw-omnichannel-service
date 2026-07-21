@@ -4,6 +4,7 @@ import {
   buildDclawAttachmentSourceRetryRequest,
   buildDclawReplyFormatRetryRequest,
   buildDclawRequest,
+  buildDclawTagActivationRequest,
   parseAgentReply
 } from "../src/dclaw.js";
 
@@ -41,6 +42,49 @@ test("buildDclawRequest includes tag rules in message and metadata", () => {
   assert.match(request.message, /tagRules/);
   assert.match(request.message, /tagDecision/);
   assert.equal(request.metadata.tagRules.groups[0].id, "intent");
+});
+
+test("buildDclawRequest carries the flow general rule", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    flow: {
+      machine: {
+        generalRule: "回复内容不要发送未确认的课程链接",
+        nodes: []
+      }
+    }
+  });
+
+  assert.equal(request.metadata.generalRule, "回复内容不要发送未确认的课程链接");
+  assert.match(request.message, /最高优先级业务规则/);
+  assert.match(request.message, /不要发送未确认的课程链接/);
+});
+
+test("buildDclawRequest carries the rule even when no flow context is active", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    generalRule: "回复内容不要出现内部处理说明"
+  });
+
+  assert.equal(request.metadata.generalRule, "回复内容不要出现内部处理说明");
+  assert.match(request.message, /不要出现内部处理说明/);
+});
+
+test("buildDclawTagActivationRequest carries the general rule", () => {
+  const request = buildDclawTagActivationRequest({
+    binding,
+    conversationKey: conversation.conversationKey,
+    task: { id: 3, messageContent: "跟进一下" },
+    generalRule: "回复不要附带未确认链接"
+  });
+
+  assert.equal(request.metadata.generalRule, "回复不要附带未确认链接");
+  assert.match(request.message, /最高优先级业务规则/);
+  assert.match(request.message, /不要附带未确认链接/);
 });
 
 test("parseAgentReply extracts tagDecision", () => {

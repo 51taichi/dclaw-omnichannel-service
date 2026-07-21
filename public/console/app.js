@@ -1582,7 +1582,9 @@ function createBlankFlowNode(index = flowDraftNodes.length + 1) {
 
 function setFlowEditorFromConfig(config = {}) {
   els.flowMachineForm.flowName.value = config.name || "";
-  els.flowMachineForm.generalRule.value = config.generalRule || "";
+  if (els.flowMachineForm.generalRule) {
+    els.flowMachineForm.generalRule.value = config.generalRule || "";
+  }
   els.flowMachineForm.flowVersion.value = config.version || "1.0.0";
   const usedNodeIds = new Set();
   const assignNodeId = (preferredId, fallbackIndex) => {
@@ -1634,7 +1636,7 @@ function buildFlowConfigFromEditor() {
   return {
     name: String(els.flowMachineForm.flowName.value || "客服状态机").trim(),
     version: String(els.flowMachineForm.flowVersion.value || "1.0.0").trim(),
-    generalRule: String(els.flowMachineForm.generalRule.value || "").trim(),
+    generalRule: String(els.flowMachineForm.generalRule?.value || "").trim(),
     entryNodeId: nodes.some((node) => node.id === selectedEntryNodeId)
       ? selectedEntryNodeId
       : nodes[0]?.id || "",
@@ -4302,7 +4304,7 @@ els.importFlowFile?.addEventListener("change", () =>
     .catch(toastError)
 );
 els.flowMachineForm.entryNodeId.addEventListener("change", syncFlowJsonTextarea);
-els.flowMachineForm.generalRule.addEventListener("input", syncFlowJsonTextarea);
+els.flowMachineForm.generalRule?.addEventListener("input", syncFlowJsonTextarea);
 els.loadDefaultFlowButton.addEventListener("click", () =>
   loadDefaultFlowMachine().catch(toastError)
 );

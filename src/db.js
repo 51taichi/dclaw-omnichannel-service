@@ -1233,6 +1233,7 @@ function normalizeFlowConfig(input) {
     name: String(config.name || "默认客服流程").trim(),
     version: String(config.version || "1.0.0").trim(),
     entryNodeId,
+    generalRule: String(config.generalRule || "").trim(),
     nodes: normalizedNodes
   };
 }

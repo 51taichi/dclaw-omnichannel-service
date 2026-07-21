@@ -416,15 +416,19 @@
       <section id="flowMachinePanel" class="panel bot-context-panel collapsible-panel">
         <div class="collapsible-content">
           <form id="flowMachineForm" class="form-grid">
-            <label class="toggle switch-toggle">
-              <input name="enabled" type="checkbox" />
-              <span class="switch-slider" aria-hidden="true"></span>
-              <span class="switch-label">启用私聊状态机</span>
-            </label>
             <div class="flow-name-row">
-              <label>
+              <label class="toggle switch-toggle">
+                <input name="enabled" type="checkbox" />
+                <span class="switch-slider" aria-hidden="true"></span>
+                <span class="switch-label">启用私聊状态机</span>
+              </label>
+              <label class="flow-task-name">
                 <span class="field-label">任务名称</span>
                 <input name="flowName" placeholder="例如 线上培训客服任务" />
+              </label>
+              <label class="flow-general-rule">
+                <span class="field-label">通用规则</span>
+                <textarea name="generalRule" rows="1" placeholder="例如：回复内容不要有历史记录的课程链接"></textarea>
               </label>
               <button id="addFlowNodeButton" class="secondary" type="button">
                 <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
