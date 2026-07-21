@@ -1587,6 +1587,25 @@ function createBlankFlowNode(index = flowDraftNodes.length + 1) {
   };
 }
 
+function relinkFlowDraftNodesSequentially() {
+  flowDraftNodes.forEach((node, index) => {
+    node.nextNodeId = flowDraftNodes[index + 1]?.id || "";
+  });
+  if (els.flowMachineForm.entryNodeId && flowDraftNodes[0]?.id) {
+    els.flowMachineForm.entryNodeId.value = flowDraftNodes[0].id;
+  }
+}
+
+function moveFlowDraftNode(fromIndex, toIndex) {
+  if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return false;
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return false;
+  if (fromIndex >= flowDraftNodes.length || toIndex >= flowDraftNodes.length) return false;
+  const [node] = flowDraftNodes.splice(fromIndex, 1);
+  flowDraftNodes.splice(toIndex, 0, node);
+  relinkFlowDraftNodesSequentially();
+  return true;
+}
+
 function setFlowEditorFromConfig(config = {}) {
   els.flowMachineForm.flowName.value = config.name || "";
   if (els.flowMachineForm.generalRule) {
@@ -2923,8 +2942,11 @@ function renderFlowNodeEditor(entryNodeId = "") {
       const activationPolishByAgent = activation.polishByAgent;
       const activationMessages = activation.messages.length ? activation.messages : [defaultActivationMessage()];
       return `
-        <article class="flow-node-card ${isCollapsed ? "is-collapsed" : ""}" data-flow-node-index="${index}" data-flow-node-collapse-key="${escapeHtml(collapseKey)}">
+        <article class="flow-node-card ${isCollapsed ? "is-collapsed" : ""}" data-flow-node-index="${index}" data-flow-node-collapse-key="${escapeHtml(collapseKey)}" data-flow-node-draggable>
           <div class="flow-node-card-head">
+            <button class="flow-node-drag-handle" data-flow-node-drag-handle="${index}" type="button" draggable="true" aria-label="拖拽调整节点顺序" title="拖拽调整节点顺序">
+              ${icon("grip")}
+            </button>
             <button class="flow-node-title" data-edit-flow-node-name="${index}" type="button" title="双击编辑节点名称" aria-label="双击编辑节点名称：${escapeHtml(node.name || `节点 ${index + 1}`)}">
               <span class="flow-node-title-icon">${icon("link")}</span>
               <strong>${escapeHtml(node.name || `节点 ${index + 1}`)}</strong>
@@ -3003,6 +3025,40 @@ function renderFlowNodeEditor(entryNodeId = "") {
       if (input.dataset.flowNodeField === "name") {
         renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
       }
+    });
+  });
+  els.flowNodeList.querySelectorAll("[data-flow-node-drag-handle]").forEach((handle) => {
+    handle.addEventListener("dragstart", (event) => {
+      const card = handle.closest("[data-flow-node-index]");
+      if (!card) return;
+      card.classList.add("is-dragging");
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", card.dataset.flowNodeIndex || "");
+    });
+    handle.addEventListener("dragend", () => {
+      els.flowNodeList.querySelectorAll(".flow-node-card").forEach((card) => {
+        card.classList.remove("is-dragging", "is-drag-over");
+      });
+    });
+  });
+  els.flowNodeList.querySelectorAll("[data-flow-node-draggable]").forEach((card) => {
+    card.addEventListener("dragover", (event) => {
+      event.preventDefault();
+      if (!event.dataTransfer) return;
+      event.dataTransfer.dropEffect = "move";
+      card.classList.add("is-drag-over");
+    });
+    card.addEventListener("dragleave", () => {
+      card.classList.remove("is-drag-over");
+    });
+    card.addEventListener("drop", (event) => {
+      event.preventDefault();
+      const fromIndex = Number(event.dataTransfer?.getData("text/plain"));
+      const toIndex = Number(card.dataset.flowNodeIndex);
+      card.classList.remove("is-drag-over");
+      if (!moveFlowDraftNode(fromIndex, toIndex)) return;
+      renderFlowNodeEditor(flowDraftNodes[0]?.id || "");
+      syncFlowJsonTextarea();
     });
   });
   els.flowNodeList.querySelectorAll("[data-edit-flow-node-name]").forEach((button) => {

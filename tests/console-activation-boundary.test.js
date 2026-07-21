@@ -106,3 +106,17 @@ test("flow editor preserves a configured entry node that is not the first node",
   assert.equal(app.includes("const selectedEntryNodeId = String(els.flowMachineForm.entryNodeId.value || \"\").trim();"), true);
   assert.equal(app.includes("entryNodeId: nodes.some((node) => node.id === selectedEntryNodeId)"), true);
 });
+
+test("flow nodes can be reordered by dragging and then relink sequentially", () => {
+  assert.equal(html.includes('id="icon-grip"'), true);
+  assert.equal(app.includes("function relinkFlowDraftNodesSequentially()"), true);
+  assert.match(app, /node\.nextNodeId = flowDraftNodes\[index \+ 1\]\?\.id \|\| ""/);
+  assert.equal(app.includes("function moveFlowDraftNode(fromIndex, toIndex)"), true);
+  assert.equal(app.includes("data-flow-node-drag-handle"), true);
+  assert.equal(app.includes("draggable=\"true\""), true);
+  assert.equal(app.includes("event.dataTransfer.setData(\"text/plain\", card.dataset.flowNodeIndex || \"\")"), true);
+  assert.equal(app.includes("moveFlowDraftNode(fromIndex, toIndex)"), true);
+  assert.match(css, /\.flow-node-card-head\s*\{[\s\S]*grid-template-columns:\s*28px minmax\(120px,\s*220px\) minmax\(0,\s*1fr\) auto/);
+  assert.equal(css.includes(".flow-node-drag-handle"), true);
+  assert.equal(css.includes(".flow-node-card.is-drag-over"), true);
+});
