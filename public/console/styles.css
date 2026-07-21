@@ -147,7 +147,7 @@ h2 {
 
 .layout {
   width: min(1440px, calc(100% - 16px));
-  margin: 22px auto 48px;
+  margin: 22px auto 0;
   display: grid;
   gap: 10px;
   min-width: 0;
@@ -162,7 +162,7 @@ h2 {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
-  height: max(560px, calc(100vh - 178px));
+  height: max(560px, calc(100vh - 108px));
   min-height: 0;
   min-width: 0;
 }
@@ -1545,7 +1545,7 @@ button.danger:hover {
 #proactivePanel {
   display: grid;
   grid-template-rows: minmax(0, 1fr);
-  height: max(560px, calc(100vh - 178px));
+  height: max(560px, calc(100vh - 108px));
   overflow: hidden;
 }
 
@@ -2324,7 +2324,13 @@ textarea[data-action-target-activation].is-action-target-focused {
 }
 
 .flow-config-footer {
+  position: relative;
+  z-index: 2;
   justify-content: space-between;
+  margin-top: 4px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
 }
 
 .flow-config-footer-actions {
@@ -2403,11 +2409,15 @@ textarea[data-action-target-activation].is-action-target-focused {
 }
 
 .tag-schema-footer {
+  position: relative;
+  z-index: 2;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 4px;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
 }
 
 .tag-schema-footer-actions {
@@ -2486,8 +2496,26 @@ textarea[data-action-target-activation].is-action-target-focused {
   transform: rotate(-90deg);
 }
 
+.tag-group-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
+}
+
+.tag-group-body-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
 .tag-group-card.is-collapsed .tag-group-body {
-  display: none;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .tag-row-body {
@@ -2615,7 +2643,7 @@ textarea[data-action-target-activation].is-action-target-focused {
 #flowSessionsPanel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  height: max(560px, calc(100vh - 178px));
+  height: max(560px, calc(100vh - 108px));
   overflow: hidden;
 }
 
@@ -2623,6 +2651,15 @@ textarea[data-action-target-activation].is-action-target-focused {
 #proactivePanel {
   height: 100%;
   min-height: 0;
+}
+
+.proactive-actions {
+  position: relative;
+  z-index: 2;
+  margin-top: 0;
+  padding: 12px 0 0;
+  border-top: 1px solid var(--line);
+  background: #ffffff;
 }
 
 .flow-session-head {

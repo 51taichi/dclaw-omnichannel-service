@@ -18,6 +18,7 @@ test("console loads and saves tag schemas", () => {
   assert.match(js, /loadTagSchema/);
   assert.match(js, /saveTagSchema/);
   assert.match(js, /\/api\/tag-schemas\//);
+  assert.match(js, /state\.tagSchema = normalizeTagSchemaDraft\(data\.schema \|\| defaultTagSchema\(\)\);[\s\S]*collapseAllTagCards\(\);[\s\S]*renderTagSchemaEditor\(\)/);
 });
 
 test("console renders tag chips and tag filters", () => {

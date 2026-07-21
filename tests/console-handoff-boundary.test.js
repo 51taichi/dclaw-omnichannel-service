@@ -176,7 +176,7 @@ test("conversation assets open as a popover without affecting chat layout", () =
 });
 
 test("conversation workspace keeps messages scrollable and reply composer visible", () => {
-  assert.match(css, /#flowSessionsPanel\s*\{[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 178px\)\)/);
+  assert.match(css, /#flowSessionsPanel\s*\{[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 108px\)\)/);
   assert.match(css, /\.flow-workbench\s*\{[\s\S]*height:\s*100%[\s\S]*overflow:\s*hidden/);
   assert.match(css, /\.chat-view\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto[\s\S]*height:\s*100%/);
   assert.match(css, /\.chat-messages\s*\{[\s\S]*overflow:\s*auto/);
@@ -203,31 +203,36 @@ test("flow machine and proactive panels use compact title-free layouts", () => {
   assert.match(proactiveTasksPanel, /<h2 class="module-title"[\s\S]*主动推送查询/);
   assert.doesNotMatch(sessionsPanel, /<h2 class="module-title"[\s\S]*客户会话/);
   assert.match(sessionsPanel, /class="section-head flow-session-head"[\s\S]*flowSessionSearchInput[\s\S]*refreshFlowSessionsButton/);
-  assert.match(css, /#proactivePanel\s*\{[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 178px\)\)/);
+  assert.match(css, /#proactivePanel\s*\{[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 108px\)\)/);
   assert.match(css, /#proactivePanel\s+\.collapsible-content\s*\{[\s\S]*overflow:\s*hidden/);
   assert.match(css, /#flowSessionsPanel\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)/);
 });
 
 test("task and tag workspaces keep their content scrollable above fixed footers", () => {
-  assert.match(css, /\.workspace\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 178px\)\)/);
+  assert.match(css, /\.workspace\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 108px\)\)/);
   assert.match(css, /#flowMachinePanel #flowMachineForm\s*\{[\s\S]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\) auto/);
   assert.match(css, /\.flow-node-list\s*\{[\s\S]*overflow-y:\s*auto/);
   assert.match(css, /#tagSchemaPanel \.tag-schema-editor\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto/);
   assert.match(css, /#tagSchemaPanel \.tag-group-list\s*\{[\s\S]*overflow-y:\s*auto/);
+  assert.match(css, /\.flow-config-footer\s*\{[\s\S]*background:\s*#ffffff/);
+  assert.match(css, /\.tag-schema-footer\s*\{[\s\S]*background:\s*#ffffff/);
+  assert.match(css, /\.proactive-actions\s*\{[\s\S]*background:\s*#ffffff/);
 });
 
 test("task nodes animate and keep only one node expanded", () => {
   assert.match(css, /\.flow-node-card-body\s*\{[\s\S]*transition:[\s\S]*grid-template-rows 220ms/);
   assert.match(css, /\.flow-node-card\.is-collapsed \.flow-node-card-body\s*\{[\s\S]*grid-template-rows:\s*0fr/);
+  assert.match(css, /\.tag-group-card\.is-collapsed \.tag-group-body\s*\{[\s\S]*grid-template-rows:\s*0fr/);
   assert.match(app, /flowDraftNodes\.forEach\(\(node, index\) => \{[\s\S]*collapsedFlowNodes\.add\(flowNodeCollapseKey\(node, index\)\)/);
   assert.match(app, /nodeCard\.classList\.toggle\("is-collapsed", isCollapsed\)/);
+  assert.match(app, /function toggleTagGroupCollapse\(groupIndex\)[\s\S]*collapsedTagGroups\.clear\(\)[\s\S]*groupCard\.classList\.toggle\("is-collapsed", isCollapsed\)/);
 });
 
 test("proactive panel keeps send action pinned while content scrolls", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
   assert.match(proactivePanel, /class="proactive-form-body"[\s\S]*class="actions proactive-actions"/);
-  assert.match(css, /#proactivePanel\s*\{[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 178px\)\)/);
+  assert.match(css, /#proactivePanel\s*\{[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 108px\)\)/);
   assert.match(css, /#proactivePanel\s+\.collapsible-content\s*\{[\s\S]*overflow:\s*hidden/);
   assert.match(css, /\.proactive-form-body\s*\{[\s\S]*overflow:\s*auto/);
   assert.match(css, /\.proactive-actions\s*\{[\s\S]*align-self:\s*end/);

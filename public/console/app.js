@@ -2356,7 +2356,8 @@ function renderTagSchemaEditor() {
                 </div>
               </div>
               <div class="tag-group-body">
-                <div class="tag-row-list">
+                <div class="tag-group-body-inner">
+                  <div class="tag-row-list">
                   ${tagCount
                     ? (group.tags || [])
                         .map((tag, tagIndex) => {
@@ -2422,6 +2423,7 @@ function renderTagSchemaEditor() {
                         })
                         .join("")
                     : `<div class="empty-state">这个标签组还没有标签。</div>`}
+                  </div>
                 </div>
               </div>
             </article>
@@ -2483,11 +2485,21 @@ function toggleTagGroupCollapse(groupIndex) {
   if (!group) return;
   const collapseKey = tagGroupCollapseKey(group, groupIndex);
   if (collapsedTagGroups.has(collapseKey)) {
+    collapsedTagGroups.clear();
+    (state.tagSchema.groups || []).forEach((item, index) => {
+      collapsedTagGroups.add(tagGroupCollapseKey(item, index));
+    });
     collapsedTagGroups.delete(collapseKey);
   } else {
     collapsedTagGroups.add(collapseKey);
   }
-  renderTagSchemaEditor();
+  els.tagGroupList.querySelectorAll("[data-tag-group-collapse-key]").forEach((groupCard) => {
+    const isCollapsed = collapsedTagGroups.has(groupCard.dataset.tagGroupCollapseKey || "");
+    groupCard.classList.toggle("is-collapsed", isCollapsed);
+    const toggle = groupCard.querySelector("[data-toggle-tag-group]");
+    toggle?.setAttribute("aria-expanded", String(!isCollapsed));
+    toggle?.setAttribute("aria-label", isCollapsed ? "展开标签组" : "收起标签组");
+  });
 }
 
 function tagGroupForInput(input) {
@@ -2553,6 +2565,7 @@ function addTagGroup() {
   const index = state.tagSchema.groups.length + 1;
   const group = { ...defaultTagGroup(index), id: nextTagGroupId(index) };
   state.tagSchema.groups.push(group);
+  collapseAllTagCards();
   collapsedTagGroups.delete(tagGroupCollapseKey(group, state.tagSchema.groups.length - 1));
   renderTagSchemaEditor();
 }
@@ -2572,6 +2585,7 @@ function addTag(groupIndex) {
   const index = (group.tags || []).length + 1;
   const tag = { ...defaultTag(index), id: nextTagId(group, index) };
   group.tags = [...(group.tags || []), tag];
+  collapseAllTagCards();
   collapsedTagGroups.delete(tagGroupCollapseKey(group, groupIndex));
   renderTagSchemaEditor();
 }
@@ -2607,6 +2621,7 @@ async function loadTagSchema({ contextVersion = state.botContextVersion } = {}) 
   const data = await request(`/api/tag-schemas/${encodeURIComponent(botId)}`);
   if (!isCurrentBotContext(botId, contextVersion)) return;
   state.tagSchema = normalizeTagSchemaDraft(data.schema || defaultTagSchema());
+  collapseAllTagCards();
   renderTagSchemaEditor();
   renderFlowSessionTagFilter();
   renderFlowSessionDateTagFilter();
@@ -2654,6 +2669,7 @@ async function importTagSchemaFile(file) {
   if (!file) return;
   const schema = JSON.parse(await file.text());
   state.tagSchema = normalizeTagSchemaDraft(schema);
+  collapseAllTagCards();
   renderTagSchemaEditor();
   renderFlowSessionTagFilter();
   renderFlowSessionDateTagFilter();
