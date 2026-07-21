@@ -160,7 +160,10 @@ h2 {
 
 .workspace {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
+  height: max(560px, calc(100vh - 178px));
+  min-height: 0;
   min-width: 0;
 }
 
@@ -302,6 +305,7 @@ h2 {
 .tab-panel {
   display: grid;
   gap: 14px;
+  min-height: 0;
   min-width: 0;
 }
 
@@ -730,7 +734,8 @@ h2 {
 
 .flow-name-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-column: 1 / -1;
+  grid-template-columns: max-content minmax(180px, 0.72fr) minmax(280px, 1.28fr) max-content;
   align-items: stretch;
   gap: 10px;
 }
@@ -742,6 +747,27 @@ h2 {
 .flow-name-row button {
   align-self: stretch;
   height: auto;
+}
+
+.flow-name-row .toggle {
+  align-self: stretch;
+  width: auto;
+  white-space: nowrap;
+}
+
+.flow-general-rule textarea {
+  height: 40px;
+  min-height: 40px;
+  max-height: 40px;
+  overflow: hidden;
+  resize: none;
+  line-height: 20px;
+  padding-top: 9px;
+  padding-bottom: 9px;
+}
+
+.flow-general-rule:focus-within textarea {
+  overflow: auto;
 }
 
 .compact-form {
@@ -1712,6 +1738,11 @@ button.danger:hover {
 .flow-node-list {
   display: grid;
   gap: 12px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  padding: 2px 4px 2px 2px;
 }
 
 .flow-node-card {
@@ -1873,9 +1904,28 @@ button.danger:hover {
   transform: rotate(-90deg);
 }
 
-.flow-node-card.is-collapsed .flow-node-grid,
-.flow-node-card.is-collapsed .activation-editor {
-  display: none;
+.flow-node-card-body {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  overflow: hidden;
+  opacity: 1;
+  transition:
+    grid-template-rows 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms ease;
+}
+
+.flow-node-card-body-inner {
+  display: grid;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.flow-node-card.is-collapsed .flow-node-card-body {
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .flow-node-grid {
@@ -2284,6 +2334,52 @@ textarea[data-action-target-activation].is-action-target-focused {
   flex-wrap: wrap;
 }
 
+#flowTab,
+#tagsTab {
+  height: 100%;
+  min-height: 0;
+}
+
+#flowMachinePanel,
+#tagSchemaPanel {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#flowMachinePanel > .collapsible-content,
+#tagSchemaPanel > .collapsible-content {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#flowMachinePanel #flowMachineForm {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  margin-top: 0;
+  overflow: hidden;
+}
+
+#tagSchemaPanel .tag-schema-editor {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+#tagSchemaPanel .tag-group-list {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  align-content: start;
+  padding: 2px 4px 2px 2px;
+}
+
 .tag-schema-editor {
   display: grid;
   gap: 14px;
@@ -2521,6 +2617,12 @@ textarea[data-action-target-activation].is-action-target-focused {
   grid-template-rows: auto minmax(0, 1fr);
   height: max(560px, calc(100vh - 178px));
   overflow: hidden;
+}
+
+#flowSessionsPanel,
+#proactivePanel {
+  height: 100%;
+  min-height: 0;
 }
 
 .flow-session-head {
@@ -4266,6 +4368,39 @@ td .muted {
 
   .left-rail {
     position: static;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .workspace {
+    height: auto;
+    grid-template-rows: none;
+  }
+
+  #flowTab,
+  #tagsTab,
+  #flowMachinePanel,
+  #tagSchemaPanel {
+    height: auto;
+    min-height: 0;
+  }
+
+  #flowMachinePanel,
+  #tagSchemaPanel,
+  #flowMachinePanel > .collapsible-content,
+  #tagSchemaPanel > .collapsible-content {
+    overflow: visible;
+  }
+
+  #flowMachinePanel #flowMachineForm,
+  #tagSchemaPanel .tag-schema-editor {
+    height: auto;
+    grid-template-rows: none;
+    overflow: visible;
+  }
+
+  #flowMachinePanel .flow-node-list,
+  #tagSchemaPanel .tag-group-list {
     max-height: none;
     overflow: visible;
   }

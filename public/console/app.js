@@ -1582,6 +1582,7 @@ function createBlankFlowNode(index = flowDraftNodes.length + 1) {
 
 function setFlowEditorFromConfig(config = {}) {
   els.flowMachineForm.flowName.value = config.name || "";
+  els.flowMachineForm.generalRule.value = config.generalRule || "";
   els.flowMachineForm.flowVersion.value = config.version || "1.0.0";
   const usedNodeIds = new Set();
   const assignNodeId = (preferredId, fallbackIndex) => {
@@ -1633,6 +1634,7 @@ function buildFlowConfigFromEditor() {
   return {
     name: String(els.flowMachineForm.flowName.value || "客服状态机").trim(),
     version: String(els.flowMachineForm.flowVersion.value || "1.0.0").trim(),
+    generalRule: String(els.flowMachineForm.generalRule.value || "").trim(),
     entryNodeId: nodes.some((node) => node.id === selectedEntryNodeId)
       ? selectedEntryNodeId
       : nodes[0]?.id || "",
@@ -2862,25 +2864,27 @@ function renderFlowNodeEditor(entryNodeId = "") {
               </button>
             </div>
           </div>
-          <div class="flow-node-grid">
-            <label>
-              ${flowNodeFieldLabel("goal", "节点目标")}
-              <textarea data-flow-node-field="goal" rows="2" placeholder="这个阶段要让 AI 完成什么">${escapeHtml(node.goal)}</textarea>
-            </label>
-            <label>
-              ${flowNodeFieldLabel("completionCriteria", "完成条件")}
-              <textarea data-flow-node-field="completionCriteria" rows="2" placeholder="什么情况下可以进入下一节点">${escapeHtml(node.completionCriteria)}</textarea>
-            </label>
-            <label>
-              ${flowNodeFieldLabel("collectFields", "收集字段")}
-              <textarea data-flow-node-field="collectFields" rows="3" placeholder="每行一个，例如：手机号">${escapeHtml(joinLines(node.collectFields))}</textarea>
-            </label>
-            <label>
-              ${flowNodeFieldLabel("conversationTips", "交流技巧")}
-              <textarea data-flow-node-field="conversationTips" rows="3" placeholder="每行一个，例如：先回应再追问">${escapeHtml(joinLines(node.conversationTips))}</textarea>
-            </label>
-          </div>
-          <section class="activation-editor ${activationEnabled ? "is-active" : ""}" aria-label="客户激活设置">
+          <div class="flow-node-card-body">
+            <div class="flow-node-card-body-inner">
+              <div class="flow-node-grid">
+                <label>
+                  ${flowNodeFieldLabel("goal", "节点目标")}
+                  <textarea data-flow-node-field="goal" rows="2" placeholder="这个阶段要让 AI 完成什么">${escapeHtml(node.goal)}</textarea>
+                </label>
+                <label>
+                  ${flowNodeFieldLabel("completionCriteria", "完成条件")}
+                  <textarea data-flow-node-field="completionCriteria" rows="2" placeholder="什么情况下可以进入下一节点">${escapeHtml(node.completionCriteria)}</textarea>
+                </label>
+                <label>
+                  ${flowNodeFieldLabel("collectFields", "收集字段")}
+                  <textarea data-flow-node-field="collectFields" rows="3" placeholder="每行一个，例如：手机号">${escapeHtml(joinLines(node.collectFields))}</textarea>
+                </label>
+                <label>
+                  ${flowNodeFieldLabel("conversationTips", "交流技巧")}
+                  <textarea data-flow-node-field="conversationTips" rows="3" placeholder="每行一个，例如：先回应再追问">${escapeHtml(joinLines(node.conversationTips))}</textarea>
+                </label>
+              </div>
+              <section class="activation-editor ${activationEnabled ? "is-active" : ""}" aria-label="客户激活设置">
             <div class="activation-toolbar">
               <div class="activation-toolbar-main">
                 <label class="toggle switch-toggle activation-toggle">
@@ -2922,7 +2926,9 @@ function renderFlowNodeEditor(entryNodeId = "") {
                 `)
                 .join("")}
             </div>
-          </section>
+              </section>
+            </div>
+          </div>
         </article>
       `;
     })
@@ -3024,9 +3030,19 @@ function renderFlowNodeEditor(entryNodeId = "") {
       if (collapsedFlowNodes.has(collapseKey)) {
         collapsedFlowNodes.delete(collapseKey);
       } else {
+        flowDraftNodes.forEach((node, index) => {
+          collapsedFlowNodes.add(flowNodeCollapseKey(node, index));
+        });
         collapsedFlowNodes.add(collapseKey);
+        collapsedFlowNodes.delete(collapseKey);
       }
-      renderFlowNodeEditor(els.flowMachineForm.entryNodeId.value);
+      els.flowNodeList.querySelectorAll("[data-flow-node-collapse-key]").forEach((nodeCard) => {
+        const isCollapsed = collapsedFlowNodes.has(nodeCard.dataset.flowNodeCollapseKey || "");
+        nodeCard.classList.toggle("is-collapsed", isCollapsed);
+        const toggle = nodeCard.querySelector("[data-toggle-flow-node]");
+        toggle?.setAttribute("aria-expanded", String(!isCollapsed));
+        toggle?.setAttribute("aria-label", isCollapsed ? "展开任务节点" : "收起任务节点");
+      });
     });
   });
 }
@@ -4286,6 +4302,7 @@ els.importFlowFile?.addEventListener("change", () =>
     .catch(toastError)
 );
 els.flowMachineForm.entryNodeId.addEventListener("change", syncFlowJsonTextarea);
+els.flowMachineForm.generalRule.addEventListener("input", syncFlowJsonTextarea);
 els.loadDefaultFlowButton.addEventListener("click", () =>
   loadDefaultFlowMachine().catch(toastError)
 );
