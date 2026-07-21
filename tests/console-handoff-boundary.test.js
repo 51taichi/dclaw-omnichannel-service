@@ -245,8 +245,14 @@ test("task nodes animate and keep only one node expanded", () => {
 });
 
 test("task node textareas truncate to one line until focused", () => {
-  assert.match(css, /\.flow-node-grid textarea\s*\{[\s\S]*height:\s*40px[\s\S]*white-space:\s*nowrap[\s\S]*text-overflow:\s*ellipsis[\s\S]*overflow:\s*hidden/);
-  assert.match(css, /\.flow-node-grid label:focus-within textarea\s*\{[\s\S]*height:\s*96px[\s\S]*white-space:\s*pre-wrap[\s\S]*text-overflow:\s*clip[\s\S]*overflow:\s*auto/);
+  assert.match(css, /\.expand-on-focus\s*\{[\s\S]*height:\s*40px[\s\S]*max-height:\s*40px[\s\S]*overflow:\s*hidden[\s\S]*resize:\s*none/);
+  assert.match(css, /\.expand-on-focus:focus\s*\{[\s\S]*height:\s*112px[\s\S]*max-height:\s*112px[\s\S]*overflow:\s*auto[\s\S]*resize:\s*vertical/);
+});
+
+test("focused task node textareas stay aligned with their expanding field slot", () => {
+  assert.match(css, /\.expand-field-slot > label:focus-within\s*\{[\s\S]*height:\s*112px/);
+  assert.match(css, /\.expand-on-focus:focus\s*\{[\s\S]*height:\s*112px[\s\S]*max-height:\s*112px/);
+  assert.doesNotMatch(css, /\.flow-node-grid label:focus-within textarea\s*\{/);
 });
 
 test("proactive panel keeps send action pinned while content scrolls", () => {

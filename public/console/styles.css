@@ -2096,26 +2096,6 @@ body.is-flow-node-dragging {
   gap: 10px;
 }
 
-.flow-node-grid textarea {
-  height: 40px;
-  min-height: 40px;
-  max-height: 40px;
-  overflow: hidden;
-  resize: none;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-.flow-node-grid label:focus-within textarea {
-  height: 96px;
-  min-height: 96px;
-  max-height: 260px;
-  overflow: auto;
-  resize: vertical;
-  white-space: pre-wrap;
-  text-overflow: clip;
-}
-
 textarea[data-action-target-activation].is-action-target-focused {
   border-color: color-mix(in srgb, var(--primary) 70%, var(--accent));
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 12%, transparent);
