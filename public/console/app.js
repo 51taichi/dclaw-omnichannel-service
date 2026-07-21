@@ -984,6 +984,7 @@ let addressBookTargets = [];
 let currentFlowMachine = null;
 let currentFlowSessions = [];
 let flowDraftNodes = [];
+let flowNodeDragState = null;
 let focusedActionTarget = null;
 let actionToolboxOpen = false;
 let currentConversationAssets = { fields: [], totalCount: 0, collectedCount: 0 };
@@ -1596,14 +1597,132 @@ function relinkFlowDraftNodesSequentially() {
   }
 }
 
-function moveFlowDraftNode(fromIndex, toIndex) {
+function swapFlowDraftNodes(fromIndex, toIndex) {
   if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) return false;
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) return false;
   if (fromIndex >= flowDraftNodes.length || toIndex >= flowDraftNodes.length) return false;
-  const [node] = flowDraftNodes.splice(fromIndex, 1);
-  flowDraftNodes.splice(toIndex, 0, node);
+  [flowDraftNodes[fromIndex], flowDraftNodes[toIndex]] = [flowDraftNodes[toIndex], flowDraftNodes[fromIndex]];
   relinkFlowDraftNodesSequentially();
   return true;
+}
+
+function flowNodeDragCards() {
+  return [...els.flowNodeList.querySelectorAll("[data-flow-node-draggable]")];
+}
+
+function moveFlowNodeDragGhost(clientX, clientY) {
+  if (!flowNodeDragState?.ghost) return;
+  flowNodeDragState.ghost.style.transform = `translate3d(${clientX + 14}px, ${clientY + 14}px, 0)`;
+}
+
+function findFlowNodeDragTarget(clientX, clientY) {
+  if (!flowNodeDragState) return null;
+  const match = flowNodeDragState.cardRects.find(({ index, rect }) => (
+    index !== flowNodeDragState.sourceIndex
+      && clientX >= rect.left
+      && clientX <= rect.right
+      && clientY >= rect.top
+      && clientY <= rect.bottom
+  ));
+  return match ? match.index : null;
+}
+
+function clearFlowNodeDragTargetPreview() {
+  if (!flowNodeDragState) return;
+  flowNodeDragState.targetCard?.classList.remove("is-swap-preview");
+  if (flowNodeDragState.targetCard) {
+    flowNodeDragState.targetCard.style.transform = "";
+  }
+  flowNodeDragState.targetCard = null;
+  flowNodeDragState.targetIndex = null;
+}
+
+function updateFlowNodeDragTargetPreview(targetIndex) {
+  if (!flowNodeDragState || targetIndex === flowNodeDragState.targetIndex) return;
+  clearFlowNodeDragTargetPreview();
+  if (!Number.isInteger(targetIndex)) return;
+  const targetCard = els.flowNodeList.querySelector(`[data-flow-node-index="${targetIndex}"]`);
+  const targetRect = flowNodeDragState.cardRects.find((item) => item.index === targetIndex)?.rect;
+  if (!targetCard || !targetRect) return;
+  const deltaX = flowNodeDragState.sourceRect.left - targetRect.left;
+  const deltaY = flowNodeDragState.sourceRect.top - targetRect.top;
+  targetCard.classList.add("is-swap-preview");
+  targetCard.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0)`;
+  flowNodeDragState.targetCard = targetCard;
+  flowNodeDragState.targetIndex = targetIndex;
+}
+
+function cleanupFlowNodeDrag({ commit = false } = {}) {
+  if (!flowNodeDragState) return;
+  const { sourceIndex, targetIndex, ghost, sourceCard } = flowNodeDragState;
+  document.removeEventListener("pointermove", handleFlowNodeDragMove);
+  document.removeEventListener("pointerup", handleFlowNodeDragEnd);
+  document.removeEventListener("pointercancel", handleFlowNodeDragCancel);
+  document.body.classList.remove("is-flow-node-dragging");
+  clearFlowNodeDragTargetPreview();
+  sourceCard?.classList.remove("is-drag-placeholder");
+  ghost?.remove();
+  flowNodeDragState = null;
+  if (commit && swapFlowDraftNodes(sourceIndex, targetIndex)) {
+    renderFlowNodeEditor(flowDraftNodes[0]?.id || "");
+    syncFlowJsonTextarea();
+  }
+}
+
+function handleFlowNodeDragMove(event) {
+  if (!flowNodeDragState) return;
+  event.preventDefault();
+  moveFlowNodeDragGhost(event.clientX, event.clientY);
+  updateFlowNodeDragTargetPreview(findFlowNodeDragTarget(event.clientX, event.clientY));
+}
+
+function handleFlowNodeDragEnd(event) {
+  event.preventDefault();
+  cleanupFlowNodeDrag({ commit: Number.isInteger(flowNodeDragState?.targetIndex) });
+}
+
+function handleFlowNodeDragCancel() {
+  cleanupFlowNodeDrag();
+}
+
+function startFlowNodeDrag(event, handle) {
+  if (event.button !== 0 || flowDraftNodes.length <= 1) return;
+  const sourceCard = handle.closest("[data-flow-node-index]");
+  if (!sourceCard) return;
+  const sourceIndex = Number(sourceCard.dataset.flowNodeIndex);
+  if (!Number.isInteger(sourceIndex)) return;
+  event.preventDefault();
+  cleanupFlowNodeDrag();
+  const cards = flowNodeDragCards();
+  const cardRects = cards.map((card) => ({
+    index: Number(card.dataset.flowNodeIndex),
+    rect: card.getBoundingClientRect()
+  }));
+  const sourceRect = cardRects.find((item) => item.index === sourceIndex)?.rect;
+  if (!sourceRect) return;
+  const ghost = sourceCard.cloneNode(true);
+  ghost.classList.remove("is-collapsed", "is-drag-placeholder", "is-swap-preview");
+  ghost.classList.add("flow-node-drag-ghost");
+  ghost.removeAttribute("data-flow-node-index");
+  ghost.removeAttribute("data-flow-node-collapse-key");
+  ghost.removeAttribute("data-flow-node-draggable");
+  ghost.style.width = `${Math.min(420, sourceRect.width)}px`;
+  document.body.append(ghost);
+  flowNodeDragState = {
+    sourceIndex,
+    sourceCard,
+    sourceRect,
+    targetIndex: null,
+    targetCard: null,
+    ghost,
+    cardRects
+  };
+  sourceCard.classList.add("is-drag-placeholder");
+  document.body.classList.add("is-flow-node-dragging");
+  moveFlowNodeDragGhost(event.clientX, event.clientY);
+  document.addEventListener("pointermove", handleFlowNodeDragMove, { passive: false });
+  document.addEventListener("pointerup", handleFlowNodeDragEnd, { passive: false });
+  document.addEventListener("pointercancel", handleFlowNodeDragCancel);
 }
 
 function setFlowEditorFromConfig(config = {}) {
@@ -2944,7 +3063,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
       return `
         <article class="flow-node-card ${isCollapsed ? "is-collapsed" : ""}" data-flow-node-index="${index}" data-flow-node-collapse-key="${escapeHtml(collapseKey)}" data-flow-node-draggable>
           <div class="flow-node-card-head">
-            <button class="flow-node-drag-handle" data-flow-node-drag-handle="${index}" type="button" draggable="true" aria-label="拖拽调整节点顺序" title="拖拽调整节点顺序">
+            <button class="flow-node-drag-handle" data-flow-node-drag-handle="${index}" type="button" aria-label="拖拽调整节点顺序" title="拖拽调整节点顺序">
               ${icon("grip")}
             </button>
             <button class="flow-node-title" data-edit-flow-node-name="${index}" type="button" title="双击编辑节点名称" aria-label="双击编辑节点名称：${escapeHtml(node.name || `节点 ${index + 1}`)}">
@@ -3028,38 +3147,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
     });
   });
   els.flowNodeList.querySelectorAll("[data-flow-node-drag-handle]").forEach((handle) => {
-    handle.addEventListener("dragstart", (event) => {
-      const card = handle.closest("[data-flow-node-index]");
-      if (!card) return;
-      card.classList.add("is-dragging");
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", card.dataset.flowNodeIndex || "");
-    });
-    handle.addEventListener("dragend", () => {
-      els.flowNodeList.querySelectorAll(".flow-node-card").forEach((card) => {
-        card.classList.remove("is-dragging", "is-drag-over");
-      });
-    });
-  });
-  els.flowNodeList.querySelectorAll("[data-flow-node-draggable]").forEach((card) => {
-    card.addEventListener("dragover", (event) => {
-      event.preventDefault();
-      if (!event.dataTransfer) return;
-      event.dataTransfer.dropEffect = "move";
-      card.classList.add("is-drag-over");
-    });
-    card.addEventListener("dragleave", () => {
-      card.classList.remove("is-drag-over");
-    });
-    card.addEventListener("drop", (event) => {
-      event.preventDefault();
-      const fromIndex = Number(event.dataTransfer?.getData("text/plain"));
-      const toIndex = Number(card.dataset.flowNodeIndex);
-      card.classList.remove("is-drag-over");
-      if (!moveFlowDraftNode(fromIndex, toIndex)) return;
-      renderFlowNodeEditor(flowDraftNodes[0]?.id || "");
-      syncFlowJsonTextarea();
-    });
+    handle.addEventListener("pointerdown", (event) => startFlowNodeDrag(event, handle));
   });
   els.flowNodeList.querySelectorAll("[data-edit-flow-node-name]").forEach((button) => {
     button.addEventListener("dblclick", (event) => {

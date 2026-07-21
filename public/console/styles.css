@@ -1808,13 +1808,44 @@ button.danger:hover {
   line-height: 1.2;
 }
 
-.flow-node-card.is-dragging {
-  opacity: 0.62;
+.flow-node-card.is-drag-placeholder,
+.flow-node-card.is-swap-preview {
+  border: 1.5px dashed color-mix(in srgb, var(--accent) 58%, var(--line));
+  background: color-mix(in srgb, var(--accent) 4%, #ffffff);
+  box-shadow: none;
 }
 
-.flow-node-card.is-drag-over {
-  border-color: color-mix(in srgb, var(--accent) 52%, var(--line));
-  box-shadow: 0 12px 26px rgba(40, 86, 255, 0.14);
+.flow-node-card.is-drag-placeholder > * {
+  visibility: hidden;
+}
+
+.flow-node-card.is-swap-preview {
+  position: relative;
+  z-index: 6;
+  pointer-events: none;
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.flow-node-drag-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 9999;
+  max-height: 132px;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.96;
+  box-shadow: 0 18px 38px rgba(40, 48, 124, 0.2);
+  transform: translate3d(-9999px, -9999px, 0);
+}
+
+.flow-node-drag-ghost .flow-node-card-body {
+  display: none;
+}
+
+body.is-flow-node-dragging {
+  cursor: grabbing;
+  user-select: none;
 }
 
 .flow-node-card-head {
