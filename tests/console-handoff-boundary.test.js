@@ -210,7 +210,7 @@ test("flow machine and proactive panels use compact title-free layouts", () => {
 
 test("task and tag workspaces keep their content scrollable above fixed footers", () => {
   assert.match(css, /\.workspace\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\)[\s\S]*height:\s*max\(560px,\s*calc\(100vh - 108px\)\)/);
-  assert.match(css, /#flowMachinePanel #flowMachineForm\s*\{[\s\S]*grid-template-rows:\s*auto auto minmax\(0,\s*1fr\) auto/);
+  assert.match(css, /#flowMachinePanel #flowMachineForm\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto/);
   assert.match(css, /\.flow-node-list\s*\{[\s\S]*overflow-y:\s*auto/);
   assert.match(css, /#tagSchemaPanel \.tag-schema-editor\s*\{[\s\S]*grid-template-rows:\s*auto minmax\(0,\s*1fr\) auto/);
   assert.match(css, /#tagSchemaPanel \.tag-group-list\s*\{[\s\S]*overflow-y:\s*auto/);
@@ -220,9 +220,10 @@ test("task and tag workspaces keep their content scrollable above fixed footers"
 });
 
 test("task nodes animate and keep only one node expanded", () => {
-  assert.match(css, /\.flow-node-card-body\s*\{[\s\S]*transition:[\s\S]*grid-template-rows 220ms/);
-  assert.match(css, /\.flow-node-card\.is-collapsed \.flow-node-card-body\s*\{[\s\S]*grid-template-rows:\s*0fr/);
-  assert.match(css, /\.tag-group-card\.is-collapsed \.tag-group-body\s*\{[\s\S]*grid-template-rows:\s*0fr/);
+  assert.match(css, /\.flow-node-card-body\s*\{[\s\S]*max-height:\s*10000px[\s\S]*transition:[\s\S]*max-height 220ms/);
+  assert.match(css, /\.flow-node-card\.is-collapsed \.flow-node-card-body\s*\{[\s\S]*(?:max-height:\s*0[\s\S]*grid-template-rows:\s*0fr|grid-template-rows:\s*0fr[\s\S]*max-height:\s*0)/);
+  assert.match(css, /\.tag-group-body\s*\{[\s\S]*max-height:\s*10000px[\s\S]*transition:[\s\S]*max-height 220ms/);
+  assert.match(css, /\.tag-group-card\.is-collapsed \.tag-group-body\s*\{[\s\S]*(?:max-height:\s*0[\s\S]*grid-template-rows:\s*0fr|grid-template-rows:\s*0fr[\s\S]*max-height:\s*0)/);
   assert.match(app, /flowDraftNodes\.forEach\(\(node, index\) => \{[\s\S]*collapsedFlowNodes\.add\(flowNodeCollapseKey\(node, index\)\)/);
   assert.match(app, /nodeCard\.classList\.toggle\("is-collapsed", isCollapsed\)/);
   assert.match(app, /function toggleTagGroupCollapse\(groupIndex\)[\s\S]*collapsedTagGroups\.clear\(\)[\s\S]*groupCard\.classList\.toggle\("is-collapsed", isCollapsed\)/);
