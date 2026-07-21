@@ -736,7 +736,7 @@ h2 {
   display: grid;
   grid-column: 1 / -1;
   grid-template-columns: max-content minmax(180px, 0.72fr) minmax(280px, 1.28fr) max-content;
-  align-items: stretch;
+  align-items: start;
   gap: 10px;
 }
 
@@ -755,7 +755,7 @@ h2 {
   white-space: nowrap;
 }
 
-.flow-general-rule textarea {
+.expand-on-focus {
   height: 40px;
   min-height: 40px;
   max-height: 40px;
@@ -764,32 +764,16 @@ h2 {
   line-height: 20px;
   padding-top: 9px;
   padding-bottom: 9px;
+  transition: height 140ms ease, box-shadow 140ms ease, border-color 140ms ease;
 }
 
-.flow-general-rule {
-  --flow-rule-label-width: 132px;
-  position: relative;
-  overflow: visible;
-  z-index: 1;
-}
-
-.flow-general-rule:focus-within textarea {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: var(--flow-rule-label-width);
-  z-index: 3;
+.expand-on-focus:focus {
   height: 112px;
   max-height: 112px;
   overflow: auto;
-  border: 1px solid var(--accent);
-  border-radius: 0 7px 7px 0;
-  background: #ffffff;
-  box-shadow: 0 12px 24px rgba(42, 48, 216, 0.18);
-}
-
-.flow-general-rule:focus-within {
-  z-index: 20;
+  resize: vertical;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(42, 48, 216, 0.13);
 }
 
 .compact-form {
@@ -4535,10 +4519,6 @@ td .muted {
 
   label {
     grid-template-columns: 108px minmax(0, 1fr);
-  }
-
-  .flow-general-rule {
-    --flow-rule-label-width: 108px;
   }
 
   .auth-form label {
