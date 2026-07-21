@@ -31,7 +31,7 @@ test("server applies tag decisions only after valid agent replies", () => {
   const applyIndex = body.indexOf("applyAgentTagDecision({");
   const validIndex = body.indexOf("if (!strictInvocation.agentReply.valid)");
   assert.ok(applyIndex > validIndex);
-  assert.match(body.slice(validIndex, applyIndex), /return;/);
+  assert.match(body.slice(validIndex, applyIndex), /throw failure;/);
   assert.match(functionBody("applyAgentTagDecision"), /agentReply\?\.tagDecision/);
 });
 

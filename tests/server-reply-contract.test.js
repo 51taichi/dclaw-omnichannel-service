@@ -9,7 +9,7 @@ const serverSource = fs.readFileSync(path.join(currentDir, "../src/server.js"), 
 
 test("server retries malformed agent replies once and never forwards the raw response", () => {
   assert.match(serverSource, /async function invokeStrictAgentReply/);
-  assert.match(serverSource, /buildAgentResponseValidationRetryRequest\(request,\s*validation\.errors\)/);
+  assert.match(serverSource, /validateAndRetryAgentResponse\(\{/);
   assert.match(serverSource, /validateAgentResponseText/);
   assert.match(serverSource, /recordAgentResponseValidationFailures/);
   assert.match(serverSource, /getDclawFormatRetryTimeoutMs\(\)/);
@@ -26,4 +26,12 @@ test("server retries agent replies when media attachments do not have trusted so
   assert.match(serverSource, /getAgentReplySendabilityIssue\(agentReply\)/);
   assert.match(serverSource, /agent\.reply\.attachment_source_retry/);
   assert.match(serverSource, /agent\.reply\.invalid_attachment_source/);
+});
+
+test("agent failures are persisted and use the customer fallback reply", () => {
+  assert.match(serverSource, /function recordAgentFailure/);
+  assert.match(serverSource, /recordAgentFailure\(\{/);
+  assert.match(serverSource, /stage:\s*"fallback"/);
+  assert.match(serverSource, /error\.response \|\| null/);
+  assert.match(serverSource, /throw failure/);
 });

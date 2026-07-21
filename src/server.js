@@ -23,9 +23,9 @@ import {
   parseConversationResetAcknowledgement
 } from "./dclaw.js";
 import {
-  buildAgentResponseValidationRetryRequest,
   sendabilityIssueToValidationError,
-  validateAgentResponseText
+  validateAgentResponseText,
+  validateAndRetryAgentResponse
 } from "./agent-response-gateway.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
@@ -1300,6 +1300,29 @@ function recordAgentResponseValidationFailures({
   }
 }
 
+function recordAgentFailure({
+  invocationId,
+  botId,
+  agentId,
+  conversationKey,
+  incomingMessageId,
+  error
+}) {
+  insertAgentResponseValidationFailure({
+    invocationId,
+    botId,
+    agentId,
+    conversationKey,
+    incomingMessageId,
+    attemptNumber: error?.attemptNumber || 1,
+    stage: "fallback",
+    errorType: error?.errorType || "agent_invocation",
+    errorMessage: error?.message || "Agent invocation failed",
+    rawResponseText: error?.rawReply || "",
+    retryRequested: false
+  });
+}
+
 async function invokeStrictAgentReply({
   binding,
   request,
@@ -1309,62 +1332,51 @@ async function invokeStrictAgentReply({
   onInvalidAttachmentSource,
   onValidationFailure
 }) {
-  const first = await enqueueAgentInvocation(() =>
-    invokeDclawAgentWithRetry({ binding, request, onRetry })
-  );
-  let formatAttempts = 1;
-  let attachmentSourceAttempts = 1;
-  let totalAttempts = Number(first.attempts || 1);
-  let responseChain = null;
-  let currentInvocation = first;
-  let validation = validateStrictAgentReply({
-    invocation: first,
+  const validationGateway = await validateAndRetryAgentResponse({
     request,
-    attemptNumber: 1,
-    stage: "initial",
-    retryRequested: false,
-    onValidationFailure
-  });
-
-  if (!validation.valid) {
-    onFormatRetry?.({ rawReplyLength: String(first.reply || "").length });
-    const validationRetryRequest = buildAgentResponseValidationRetryRequest(request, validation.errors);
-    const repaired = await enqueueAgentInvocation(() =>
+    validationOptions: agentResponseValidationOptions(request),
+    invoke: ({ request: attemptRequest, attemptNumber }) => enqueueAgentInvocation(() =>
       invokeDclawAgentWithRetry({
         binding,
-        request: validationRetryRequest,
-        timeoutMs: getDclawFormatRetryTimeoutMs(),
+        request: attemptRequest,
+        timeoutMs: attemptNumber > 1 ? getDclawFormatRetryTimeoutMs() : undefined,
         onRetry
       })
-    );
-    formatAttempts = 2;
-    totalAttempts += Number(repaired.attempts || 1);
-    currentInvocation = repaired;
-    responseChain = {
-      initial: first.response,
-      validationRetry: repaired.response
+    ),
+    onRetryRequested: ({ rawReplyLength }) => {
+      onFormatRetry?.({ rawReplyLength });
+    },
+    onValidationFailure
+  });
+  const firstAttempt = validationGateway.attempts[0];
+  const first = firstAttempt.invocation;
+  let formatAttempts = validationGateway.attempts.length;
+  let attachmentSourceAttempts = 1;
+  let totalAttempts = validationGateway.attempts.reduce(
+    (sum, attempt) => sum + Number(attempt.invocation?.attempts || 1),
+    0
+  );
+  let currentInvocation = validationGateway.invocation;
+  let responseChain = validationGateway.attempts.length > 1
+    ? {
+        initial: validationGateway.attempts[0].invocation.response,
+        validationRetry: validationGateway.attempts[1].invocation.response
+      }
+    : null;
+  let validation = validationGateway.validation;
+
+  if (!validationGateway.valid) {
+    return {
+      invocation: {
+        ...currentInvocation,
+        request,
+        response: responseChain || currentInvocation.response,
+        attempts: totalAttempts
+      },
+      agentReply: invalidValidationAgentReply(currentInvocation.reply, validation.errors),
+      formatAttempts,
+      attachmentSourceAttempts
     };
-    validation = validateStrictAgentReply({
-      invocation: repaired,
-      request,
-      attemptNumber: 2,
-      stage: "validation_retry",
-      retryRequested: true,
-      onValidationFailure
-    });
-    if (!validation.valid) {
-      return {
-        invocation: {
-          ...repaired,
-          request,
-          response: responseChain,
-          attempts: totalAttempts
-        },
-        agentReply: invalidValidationAgentReply(repaired.reply, validation.errors),
-        formatAttempts,
-        attachmentSourceAttempts
-      };
-    }
   }
 
   let agentReply = validation.agentReply;
@@ -1613,7 +1625,7 @@ async function sendAgentFailureFallback({
     content: reply,
     rawPayload: {
       fallback: true,
-      reason: "agent_invocation_failed",
+      reason: error?.errorType || "agent_invocation_failed",
       error: error.message,
       worktoolMessageId: worktoolMessageIds[0] || "",
       worktoolMessageIds,
@@ -3356,12 +3368,6 @@ async function processCoalescedIncomingBatch(batch) {
     if (!strictInvocation.agentReply.valid) {
       const sendabilityIssue = strictInvocation.agentReply.sendabilityIssue;
       const errorCode = sendabilityIssue ? "invalid_agent_attachment_source" : "invalid_agent_reply_format";
-      finishAgentInvocation({
-        id: invocationId,
-        response: strictInvocation.invocation.response,
-        status: "failed",
-        error: errorCode
-      });
       logWarn(sendabilityIssue ? "agent.reply.invalid_attachment_source" : "agent.reply.invalid_format", {
         ...logContext,
         agentId: binding.agentId,
@@ -3371,12 +3377,12 @@ async function processCoalescedIncomingBatch(batch) {
         issueCode: sendabilityIssue?.code || "",
         attachmentUrls: sendabilityIssue?.attachmentUrls || []
       });
-      finishCoalescedMessageProcessing({
-        batch,
-        status: sendabilityIssue ? "invalid_attachment_source" : "invalid_reply_format",
-        error: errorCode
-      });
-      return;
+      const failure = new Error(errorCode);
+      failure.errorType = errorCode;
+      failure.response = strictInvocation.invocation.response;
+      failure.rawReply = strictInvocation.invocation.reply || "";
+      failure.attemptNumber = strictInvocation.formatAttempts;
+      throw failure;
     }
 
     const invocation = strictInvocation.invocation;
@@ -3582,9 +3588,18 @@ async function processCoalescedIncomingBatch(batch) {
     if (!agentInvocationSucceeded) {
       finishAgentInvocation({
         id: invocationId,
-        response: null,
+        response: error.response || null,
         status: "failed",
         error: error.message
+      });
+
+      recordAgentFailure({
+        invocationId,
+        botId,
+        agentId: binding?.agentId || "",
+        conversationKey,
+        incomingMessageId: message.messageId,
+        error
       });
 
       try {
@@ -3606,6 +3621,16 @@ async function processCoalescedIncomingBatch(batch) {
           return;
         }
       } catch (fallbackError) {
+        recordAgentFailure({
+          invocationId,
+          botId,
+          agentId: binding?.agentId || "",
+          conversationKey,
+          incomingMessageId: message.messageId,
+          error: Object.assign(fallbackError, {
+            errorType: "fallback_send"
+          })
+        });
         logError("agent.fallback_failed", {
           ...logContext,
           agentId: binding?.agentId || "",

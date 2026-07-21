@@ -72,6 +72,57 @@ export function buildAgentResponseValidationRetryRequest(request, errors = []) {
   };
 }
 
+export async function validateAndRetryAgentResponse({
+  request,
+  invoke,
+  validationOptions = {},
+  onRetryRequested,
+  onValidationFailure
+}) {
+  const attempts = [];
+  let currentRequest = request;
+
+  for (let attemptNumber = 1; attemptNumber <= 2; attemptNumber += 1) {
+    const invocation = await invoke({ request: currentRequest, attemptNumber });
+    const validation = validateAgentResponseText(invocation?.reply || "", validationOptions);
+    attempts.push({ request: currentRequest, invocation, validation });
+
+    if (validation.valid) {
+      return {
+        valid: true,
+        invocation,
+        agentReply: validation.agentReply,
+        validation,
+        attempts
+      };
+    }
+
+    onValidationFailure?.({
+      attemptNumber,
+      stage: attemptNumber === 1 ? "initial" : "validation_retry",
+      retryRequested: attemptNumber > 1,
+      errors: validation.errors,
+      rawReply: validation.rawText,
+      rawReplyLength: String(validation.rawText || "").length,
+      normalizations: validation.normalizations
+    });
+
+    if (attemptNumber === 1) {
+      onRetryRequested?.({ rawReplyLength: String(invocation?.reply || "").length });
+      currentRequest = buildAgentResponseValidationRetryRequest(request, validation.errors);
+    }
+  }
+
+  const lastAttempt = attempts[attempts.length - 1];
+  return {
+    valid: false,
+    invocation: lastAttempt.invocation,
+    agentReply: lastAttempt.validation.agentReply,
+    validation: lastAttempt.validation,
+    attempts
+  };
+}
+
 export function summarizeValidationErrors(errors = []) {
   return errors.slice(0, 8).map((error) => ({
     type: String(error.type || "validation").trim(),

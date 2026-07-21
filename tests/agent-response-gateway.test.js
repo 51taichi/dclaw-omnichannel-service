@@ -3,8 +3,43 @@ import test from "node:test";
 import {
   buildAgentResponseValidationRetryRequest,
   summarizeValidationErrors,
-  validateAgentResponseText
+  validateAgentResponseText,
+  validateAndRetryAgentResponse
 } from "../src/agent-response-gateway.js";
+
+test("gateway retries a deliberately broken successful JSON response and validates the repair", async () => {
+  const validResponse = JSON.stringify({
+    reply: "您好，我来帮您了解一下。",
+    attachments: [],
+    sources: []
+  });
+  const brokenResponse = validResponse.replace('[],"sources"', '[]"sources"');
+  const requests = [];
+  const validationFailures = [];
+
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：您好", metadata: { source: "test" } },
+    invoke: async ({ request, attemptNumber }) => {
+      requests.push({ request, attemptNumber });
+      return {
+        reply: attemptNumber === 1 ? brokenResponse : validResponse,
+        response: { attemptNumber }
+      };
+    },
+    onValidationFailure: (failure) => validationFailures.push(failure)
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.agentReply.reply, "您好，我来帮您了解一下。");
+  assert.equal(requests.length, 2);
+  assert.equal(validationFailures.length, 1);
+  assert.equal(validationFailures[0].attemptNumber, 1);
+  assert.equal(validationFailures[0].retryRequested, false);
+  assert.equal(requests[1].attemptNumber, 2);
+  assert.equal(requests[1].request.metadata.validationRetry, true);
+  assert.match(requests[1].request.message, /上一条输出没有通过服务端 JSON 响应校验/);
+  assert.match(requests[1].request.message, /json_syntax/);
+});
 
 test("validation reports JSON syntax line and column", () => {
   const result = validateAgentResponseText('{\n  "reply": "你好",\n  "attachments": []\n  "sources": []\n}');
