@@ -55,6 +55,8 @@ test("flow editor preserves the top-level general business rule", () => {
   assert.equal(css.includes(".expand-on-focus"), true);
   assert.equal(css.includes(".expand-on-focus:focus"), true);
   assert.equal(css.includes("height: 112px;"), true);
+  assert.match(css, /label:has\(> \.expand-on-focus\)/);
+  assert.match(css, /\.expand-on-focus:focus[\s\S]*position: absolute;/);
   assert.equal(css.includes(".flow-general-rule:focus-within textarea"), false);
 });
 
