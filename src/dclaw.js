@@ -633,10 +633,10 @@ export async function invokeDclawAgent({ binding, request, timeoutMs = getDclawA
   const contentType = response.headers.get("content-type") || "";
   if (contentType.includes("text/event-stream")) {
     const result = await readSseText(response, signal);
-    const reply = result.text.trim() || extractReply(result.events);
+    const reply = result.text.trim() || extractReply(result.response);
     return {
       request,
-      response: result.events,
+      response: result.response,
       reply,
       sessionId: result.sessionId
     };
@@ -902,9 +902,9 @@ async function readSseText(response, signal) {
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let finalText = "";
+  let deltaText = "";
+  let completedText = "";
   let sessionId = null;
-  const events = [];
   const cancelReader = () => {
     reader.cancel(signal.reason).catch(() => {});
   };
@@ -924,18 +924,11 @@ async function readSseText(response, signal) {
 
       for (const chunk of chunks) {
         for (const event of parseSseChunk(chunk)) {
-          events.push(event);
-          if (event.session_id) {
-            sessionId = event.session_id;
-          }
-          if (event.object === "content" && event.type === "text" && event.text) {
-            finalText += event.text;
-          }
-          if (event.error) {
-            throw new Error(
-              typeof event.error === "string" ? event.error : JSON.stringify(event.error)
-            );
-          }
+          processSseEvent(event, {
+            onSessionId: (value) => { sessionId = value; },
+            onDeltaText: (value) => { deltaText += value; },
+            onCompletedText: (value) => { completedText += value; }
+          });
         }
       }
     }
@@ -944,18 +937,42 @@ async function readSseText(response, signal) {
   }
 
   for (const event of parseSseChunk(buffer)) {
-    events.push(event);
-    if (event.session_id) sessionId = event.session_id;
-    if (event.object === "content" && event.type === "text" && event.text) {
-      finalText += event.text;
-    }
+    processSseEvent(event, {
+      onSessionId: (value) => { sessionId = value; },
+      onDeltaText: (value) => { deltaText += value; },
+      onCompletedText: (value) => { completedText += value; }
+    });
+  }
+
+  const text = (completedText || deltaText).trim();
+  let responseData = null;
+  try {
+    responseData = text ? JSON.parse(text) : null;
+  } catch {
+    responseData = text ? { reply: text } : null;
   }
 
   return {
-    text: finalText.trim(),
+    text,
     sessionId,
-    events
+    response: responseData
   };
+}
+
+function processSseEvent(event, { onSessionId, onDeltaText, onCompletedText }) {
+  if (event.session_id) onSessionId(event.session_id);
+  if (event.object === "content" && event.type === "text" && event.text) {
+    if (event.delta === true) {
+      onDeltaText(event.text);
+    } else {
+      onCompletedText(event.text);
+    }
+  }
+  if (event.error) {
+    throw new Error(
+      typeof event.error === "string" ? event.error : JSON.stringify(event.error)
+    );
+  }
 }
 
 function parseSseChunk(chunk) {
