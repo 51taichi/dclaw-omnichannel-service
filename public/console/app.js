@@ -1,6 +1,7 @@
 const PROACTIVE_MAX_ATTACHMENTS = 5;
 const BEIJING_TIME_ZONE = "Asia/Shanghai";
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
+const DEFAULT_REPLY_WAIT_FALLBACK_REPLY = "刚刚这边有点忙，我稍后回复你哈";
 
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
@@ -550,6 +551,7 @@ function clearBotScopedContent() {
   if (els.replyWaitForm) {
     els.replyWaitForm.baseSeconds.value = "10";
     els.replyWaitForm.incrementSeconds.value = "5";
+    els.replyWaitForm.fallbackReply.value = DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
   }
   els.manualReplyInput.value = "";
   els.accessKeyForm.reset();
@@ -1231,6 +1233,8 @@ async function loadReplyWait({ contextVersion = state.botContextVersion } = {}) 
   const config = data.config || {};
   els.replyWaitForm.baseSeconds.value = String(config.baseSeconds ?? 10);
   els.replyWaitForm.incrementSeconds.value = String(config.incrementSeconds ?? 5);
+  els.replyWaitForm.fallbackReply.value =
+    config.fallbackReply || DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
 }
 
 async function saveBot(event) {
@@ -4160,13 +4164,16 @@ async function saveReplyWait(event) {
     botId,
     body: JSON.stringify({
       baseSeconds: Number(els.replyWaitForm.baseSeconds.value),
-      incrementSeconds: Number(els.replyWaitForm.incrementSeconds.value)
+      incrementSeconds: Number(els.replyWaitForm.incrementSeconds.value),
+      fallbackReply: els.replyWaitForm.fallbackReply.value
     })
   });
   if (!isCurrentBotContext(botId, contextVersion)) return;
   els.replyWaitForm.baseSeconds.value = String(result.config?.baseSeconds ?? 10);
   els.replyWaitForm.incrementSeconds.value = String(result.config?.incrementSeconds ?? 5);
-  toast("连续消息回复等待配置已保存");
+  els.replyWaitForm.fallbackReply.value =
+    result.config?.fallbackReply || DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
+  toast("消息/等待回复配置已保存");
 }
 
 function proactiveAttachmentIcon(type) {

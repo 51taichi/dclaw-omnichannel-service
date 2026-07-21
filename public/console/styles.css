@@ -2323,6 +2323,10 @@ textarea[data-action-target-activation].is-action-target-focused {
   align-items: end;
 }
 
+.reply-wait-fallback-field {
+  grid-column: 1 / -1;
+}
+
 .response-wait-help {
   margin-bottom: 2px;
 }

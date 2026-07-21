@@ -161,8 +161,9 @@ const uploadAllowedOrigins = String(process.env.UPLOAD_ALLOWED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+const DEFAULT_AGENT_FAILURE_FALLBACK_REPLY = "刚刚这边有点忙，我稍后回复你哈";
 const agentFailureFallbackReply =
-  process.env.AGENT_FAILURE_FALLBACK_REPLY || "刚刚这边有点卡，我稍后回复你哈";
+  process.env.AGENT_FAILURE_FALLBACK_REPLY || DEFAULT_AGENT_FAILURE_FALLBACK_REPLY;
 const uploadRetentionMs = Number(process.env.UPLOAD_RETENTION_HOURS || 24) * 60 * 60 * 1000;
 const uploadCleanupIntervalMs =
   Number(process.env.UPLOAD_CLEANUP_INTERVAL_MINUTES || 60) * 60 * 1000;
@@ -1490,14 +1491,20 @@ function getReplyWaitSettingKey(botId) {
 function normalizeReplyWaitConfig(config = {}) {
   const baseSeconds = Number(config.baseSeconds);
   const incrementSeconds = Number(config.incrementSeconds);
+  const fallbackReply = String(config.fallbackReply ?? agentFailureFallbackReply).trim();
   return {
     baseSeconds: Number.isFinite(baseSeconds) ? Math.max(1, Math.round(baseSeconds)) : 10,
-    incrementSeconds: Number.isFinite(incrementSeconds) ? Math.max(0, Math.round(incrementSeconds)) : 5
+    incrementSeconds: Number.isFinite(incrementSeconds) ? Math.max(0, Math.round(incrementSeconds)) : 5,
+    fallbackReply: fallbackReply || agentFailureFallbackReply
   };
 }
 
 function getReplyWaitConfig(botId) {
   return normalizeReplyWaitConfig(getSetting(getReplyWaitSettingKey(botId), null) || {});
+}
+
+function getAgentFailureFallbackReply(botId) {
+  return getReplyWaitConfig(botId).fallbackReply;
 }
 
 function getDebugReplyConfig(botId) {
@@ -1604,7 +1611,7 @@ async function sendAgentFailureFallback({
   error
 }) {
   if (!isPrivateMessage(message)) return false;
-  const reply = String(agentFailureFallbackReply || "").trim();
+  const reply = String(getAgentFailureFallbackReply(botId) || "").trim();
   if (!reply) return false;
   const target = getReplyTarget(message);
   if (!target) return false;
@@ -4254,7 +4261,10 @@ app.put(
   "/api/bots/:botId/settings/reply-wait",
   asyncHandler(async (req, res) => {
     assertAdminForBot(req, req.params.botId);
-    const config = normalizeReplyWaitConfig(req.body || {});
+    const config = normalizeReplyWaitConfig({
+      ...getReplyWaitConfig(req.params.botId),
+      ...(req.body || {})
+    });
     setSetting(getReplyWaitSettingKey(req.params.botId), config);
     res.json({ ok: true, botId: req.params.botId, config });
   })

@@ -35,3 +35,10 @@ test("agent failures are persisted and use the customer fallback reply", () => {
   assert.match(serverSource, /error\.response \|\| null/);
   assert.match(serverSource, /throw failure/);
 });
+
+test("fallback reply is loaded from the selected Bot reply-wait setting", () => {
+  assert.match(serverSource, /DEFAULT_AGENT_FAILURE_FALLBACK_REPLY/);
+  assert.match(serverSource, /fallbackReply/);
+  assert.match(serverSource, /function getAgentFailureFallbackReply\(botId\)/);
+  assert.match(serverSource, /getAgentFailureFallbackReply\(botId\)/);
+});

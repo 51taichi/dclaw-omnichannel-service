@@ -284,8 +284,8 @@
 
       <section id="replyWaitPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
         <div class="section-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>连续消息回复等待</h2>
-          <button class="collapse-button" data-collapse-target="replyWaitPanel" type="button" aria-label="收起连续消息回复等待">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>消息/等待回复</h2>
+          <button class="collapse-button" data-collapse-target="replyWaitPanel" type="button" aria-label="收起消息/等待回复">
             <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
           </button>
         </div>
@@ -298,6 +298,10 @@
             <label>
               <span class="field-label">累计秒数</span>
               <input name="incrementSeconds" type="number" min="0" step="1" value="5" required />
+            </label>
+            <label class="reply-wait-fallback-field">
+              <span class="field-label">失败兜底话术</span>
+              <input name="fallbackReply" type="text" value="刚刚这边有点忙，我稍后回复你哈" required />
             </label>
             <button class="activation-help-icon response-wait-help" type="button" aria-label="连续消息等待规则说明" title="当前等待时间 = 回复等待间隔 +（当前批次消息数 - 1）× 累计秒数&#10;例如配置 10 和 5：&#10;第 1 条后等待 10 秒&#10;第 2 条后重新等待 15 秒&#10;第 3 条后重新等待 20 秒">
               <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
