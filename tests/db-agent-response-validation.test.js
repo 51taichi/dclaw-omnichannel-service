@@ -9,6 +9,7 @@ process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-agent-val
 const {
   insertAgentInvocationStart,
   insertAgentResponseValidationFailure,
+  updateAgentResponseValidationRetryOutcome,
   listRecords
 } = await import("../src/db.js");
 
@@ -44,5 +45,39 @@ test("agent response validation failures are persisted for later diagnosis", () 
   assert.equal(row.line, 3);
   assert.equal(row.column, 4);
   assert.equal(row.retryRequested, true);
+  assert.equal(row.retryOutcome, "pending");
   assert.equal(row.rawResponseText, "{ bad json");
+});
+
+test("validation failure records whether its retry succeeded", () => {
+  const invocationId = insertAgentInvocationStart({
+    botId: "bot-a",
+    agentId: "agent-a",
+    conversationKey: "bot-a:private:客户-b",
+    incomingMessageId: "message-b",
+    request: { message: "hello" }
+  });
+
+  insertAgentResponseValidationFailure({
+    invocationId,
+    botId: "bot-a",
+    agentId: "agent-a",
+    conversationKey: "bot-a:private:客户-b",
+    incomingMessageId: "message-b",
+    attemptNumber: 1,
+    stage: "initial",
+    errorType: "json_syntax",
+    errorMessage: "invalid JSON",
+    rawResponseText: "不是 JSON"
+  });
+
+  updateAgentResponseValidationRetryOutcome({
+    invocationId,
+    outcome: "succeeded"
+  });
+
+  const [row] = listRecords("agent-response-validation-failures", { botId: "bot-a", limit: 10 });
+  assert.equal(row.retryOutcome, "succeeded");
+  assert.equal(row.retryErrorMessage, "");
+  assert.ok(row.retryFinishedAt);
 });

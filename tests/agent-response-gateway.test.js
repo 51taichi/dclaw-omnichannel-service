@@ -41,6 +41,28 @@ test("gateway retries a deliberately broken successful JSON response and validat
   assert.match(requests[1].request.message, /json_syntax/);
 });
 
+test("gateway reports when the validation retry succeeds", async () => {
+  const validResponse = JSON.stringify({ reply: "修复后的回复", attachments: [], sources: [] });
+  const retryOutcomes = [];
+
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：你好" },
+    invoke: async ({ attemptNumber }) => ({
+      reply: attemptNumber === 1 ? "不是 JSON" : validResponse,
+      response: { attemptNumber }
+    }),
+    onValidationFailure: () => {},
+    onRetryOutcome: (outcome) => retryOutcomes.push(outcome)
+  });
+
+  assert.equal(result.valid, true);
+  assert.deepEqual(retryOutcomes, [{
+    outcome: "succeeded",
+    attemptNumber: 2,
+    error: null
+  }]);
+});
+
 test("validation reports JSON syntax line and column", () => {
   const result = validateAgentResponseText('{\n  "reply": "你好",\n  "attachments": []\n  "sources": []\n}');
 

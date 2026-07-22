@@ -42,3 +42,9 @@ test("fallback reply is loaded from the selected Bot reply-wait setting", () => 
   assert.match(serverSource, /function getAgentFailureFallbackReply\(botId\)/);
   assert.match(serverSource, /getAgentFailureFallbackReply\(botId\)/);
 });
+
+test("server persists and logs deterministic validation retry outcomes", () => {
+  assert.match(serverSource, /updateAgentResponseValidationRetryOutcome/);
+  assert.match(serverSource, /onValidationRetryOutcome/);
+  assert.match(serverSource, /validation_retry_/);
+});

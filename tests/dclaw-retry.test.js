@@ -7,6 +7,34 @@ const binding = {
   agentApiKey: "test-key"
 };
 
+test("sanitizes lone Unicode surrogates before sending DClaw requests", async () => {
+  const originalFetch = globalThis.fetch;
+  let sentPayload;
+  globalThis.fetch = async (_url, options) => {
+    sentPayload = JSON.parse(options.body);
+    return new Response(JSON.stringify({ reply: "ok" }), {
+      headers: { "content-type": "application/json" }
+    });
+  };
+
+  try {
+    await invokeDclawAgentWithRetry({
+      binding,
+      request: {
+        message: `正常 Emoji 😀，孤立高代理：\uD83D`,
+        metadata: { nested: ["正常", "\uDC00"] }
+      },
+      maxAttempts: 1,
+      timeoutMs: 25
+    });
+
+    assert.equal(sentPayload.message, "正常 Emoji 😀，孤立高代理：�");
+    assert.deepEqual(sentPayload.metadata.nested, ["正常", "�"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("retries a timed out DClaw invocation once", async () => {
   const originalFetch = globalThis.fetch;
   let attempts = 0;

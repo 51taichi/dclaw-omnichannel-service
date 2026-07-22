@@ -77,17 +77,37 @@ export async function validateAndRetryAgentResponse({
   invoke,
   validationOptions = {},
   onRetryRequested,
-  onValidationFailure
+  onValidationFailure,
+  onRetryOutcome
 }) {
   const attempts = [];
   let currentRequest = request;
 
   for (let attemptNumber = 1; attemptNumber <= 2; attemptNumber += 1) {
-    const invocation = await invoke({ request: currentRequest, attemptNumber });
+    let invocation;
+    try {
+      invocation = await invoke({ request: currentRequest, attemptNumber });
+    } catch (error) {
+      if (attemptNumber > 1) {
+        onRetryOutcome?.({
+          outcome: "call_failed",
+          attemptNumber,
+          error
+        });
+      }
+      throw error;
+    }
     const validation = validateAgentResponseText(invocation?.reply || "", validationOptions);
     attempts.push({ request: currentRequest, invocation, validation });
 
     if (validation.valid) {
+      if (attemptNumber > 1) {
+        onRetryOutcome?.({
+          outcome: "succeeded",
+          attemptNumber,
+          error: null
+        });
+      }
       return {
         valid: true,
         invocation,
@@ -110,6 +130,12 @@ export async function validateAndRetryAgentResponse({
     if (attemptNumber === 1) {
       onRetryRequested?.({ rawReplyLength: String(invocation?.reply || "").length });
       currentRequest = buildAgentResponseValidationRetryRequest(request, validation.errors);
+    } else {
+      onRetryOutcome?.({
+        outcome: "failed",
+        attemptNumber,
+        error: null
+      });
     }
   }
 

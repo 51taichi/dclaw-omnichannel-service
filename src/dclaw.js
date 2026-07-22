@@ -612,6 +612,7 @@ export async function invokeDclawAgent({ binding, request, timeoutMs = getDclawA
     throw new Error("DClaw agentApiKey is required");
   }
 
+  const transportRequest = sanitizeDclawRequest(request);
   const signal = AbortSignal.timeout(timeoutMs);
   const response = await fetch(binding.agentApiUrl, {
     method: "POST",
@@ -619,7 +620,7 @@ export async function invokeDclawAgent({ binding, request, timeoutMs = getDclawA
       Authorization: `Bearer ${binding.agentApiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify(transportRequest),
     signal
   });
 
@@ -660,6 +661,39 @@ export async function invokeDclawAgent({ binding, request, timeoutMs = getDclawA
         : text,
     sessionId: data?.sessionId || data?.session_id || data?.conversationId || data?.data?.sessionId || null
   };
+}
+
+export function sanitizeDclawRequest(value) {
+  if (typeof value === "string") return sanitizeDclawText(value);
+  if (Array.isArray(value)) return value.map(sanitizeDclawRequest);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [key, sanitizeDclawRequest(item)])
+  );
+}
+
+export function sanitizeDclawText(value) {
+  const text = String(value || "");
+  let sanitized = "";
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code >= 0xd800 && code <= 0xdbff) {
+      const next = text.charCodeAt(index + 1);
+      if (next >= 0xdc00 && next <= 0xdfff) {
+        sanitized += text[index] + text[index + 1];
+        index += 1;
+      } else {
+        sanitized += "\ufffd";
+      }
+      continue;
+    }
+    if (code >= 0xdc00 && code <= 0xdfff) {
+      sanitized += "\ufffd";
+      continue;
+    }
+    sanitized += text[index];
+  }
+  return sanitized;
 }
 
 function isTimeoutError(error) {

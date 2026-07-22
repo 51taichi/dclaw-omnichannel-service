@@ -70,6 +70,7 @@ import {
   incrementFlowActivationGeneration,
   insertAgentInvocationStart,
   insertAgentResponseValidationFailure,
+  updateAgentResponseValidationRetryOutcome,
   insertConversationMessage,
   insertCommandCallback,
   insertIncomingMessage,
@@ -1301,6 +1302,36 @@ function recordAgentResponseValidationFailures({
   }
 }
 
+function recordAgentValidationRetryOutcome({
+  invocationId,
+  botId,
+  agentId,
+  conversationKey,
+  incomingMessageId,
+  eventPrefix,
+  outcome,
+  attemptNumber,
+  error
+}) {
+  updateAgentResponseValidationRetryOutcome({
+    invocationId,
+    outcome,
+    errorMessage: error?.message || ""
+  });
+  const eventName = `${eventPrefix}.validation_retry_${outcome}`;
+  const log = outcome === "succeeded" ? logInfo : logWarn;
+  log(eventName, {
+    botId,
+    agentId,
+    conversationKey,
+    incomingMessageId,
+    invocationId,
+    attemptNumber,
+    outcome,
+    error: error?.message || ""
+  });
+}
+
 function recordAgentFailure({
   invocationId,
   botId,
@@ -1320,7 +1351,8 @@ function recordAgentFailure({
     errorType: error?.errorType || "agent_invocation",
     errorMessage: error?.message || "Agent invocation failed",
     rawResponseText: error?.rawReply || "",
-    retryRequested: false
+    retryRequested: false,
+    retryOutcome: "not_attempted"
   });
 }
 
@@ -1331,7 +1363,8 @@ async function invokeStrictAgentReply({
   onFormatRetry,
   onAttachmentSourceRetry,
   onInvalidAttachmentSource,
-  onValidationFailure
+  onValidationFailure,
+  onValidationRetryOutcome
 }) {
   const validationGateway = await validateAndRetryAgentResponse({
     request,
@@ -1347,7 +1380,8 @@ async function invokeStrictAgentReply({
     onRetryRequested: ({ rawReplyLength }) => {
       onFormatRetry?.({ rawReplyLength });
     },
-    onValidationFailure
+    onValidationFailure,
+    onRetryOutcome: onValidationRetryOutcome
   });
   const firstAttempt = validationGateway.attempts[0];
   const first = firstAttempt.invocation;
@@ -2378,6 +2412,19 @@ async function sendActivationPolishedMessage({ task, binding, delivery }) {
             column: error.column || null
           }))
         });
+      },
+      onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
+        recordAgentValidationRetryOutcome({
+          invocationId,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          incomingMessageId: `activation:${task.id}`,
+          eventPrefix: "activation.agent",
+          outcome,
+          attemptNumber,
+          error
+        });
       }
     });
   } catch (error) {
@@ -2710,6 +2757,19 @@ async function buildPolishedTagActivationContent({ binding, task }) {
             line: error.line || null,
             column: error.column || null
           }))
+        });
+      },
+      onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
+        recordAgentValidationRetryOutcome({
+          invocationId,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          incomingMessageId: `tag_activation:${task.id}`,
+          eventPrefix: "tag.activation.agent",
+          outcome,
+          attemptNumber,
+          error
         });
       }
     });
@@ -3368,6 +3428,19 @@ async function processCoalescedIncomingBatch(batch) {
             line: error.line || null,
             column: error.column || null
           }))
+        });
+      },
+      onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
+        recordAgentValidationRetryOutcome({
+          invocationId,
+          botId,
+          agentId: binding.agentId,
+          conversationKey,
+          incomingMessageId: message.messageId,
+          eventPrefix: "agent.reply",
+          outcome,
+          attemptNumber,
+          error
         });
       }
     });

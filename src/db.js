@@ -124,6 +124,9 @@ db.exec(`
     column INTEGER,
     raw_response_text TEXT,
     retry_requested INTEGER NOT NULL DEFAULT 0,
+    retry_outcome TEXT NOT NULL DEFAULT 'unknown',
+    retry_error_message TEXT NOT NULL DEFAULT '',
+    retry_finished_at TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -428,6 +431,17 @@ ensureColumn("flow_sessions", "handoff_status", "TEXT NOT NULL DEFAULT 'ai'");
 ensureColumn("flow_sessions", "handoff_at", "TEXT");
 ensureColumn("flow_sessions", "handoff_by", "TEXT");
 ensureColumn("flow_sessions", "handoff_reason", "TEXT");
+ensureColumn(
+  "agent_response_validation_failures",
+  "retry_outcome",
+  "TEXT NOT NULL DEFAULT 'unknown'"
+);
+ensureColumn(
+  "agent_response_validation_failures",
+  "retry_error_message",
+  "TEXT NOT NULL DEFAULT ''"
+);
+ensureColumn("agent_response_validation_failures", "retry_finished_at", "TEXT");
 ensureColumn("flow_sessions", "activation_generation", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("flow_sessions", "activation_state_json", "TEXT");
 ensureColumn("flow_sessions", "last_friend_added_at", "TEXT");
@@ -1160,15 +1174,19 @@ export function insertAgentResponseValidationFailure({
   line = null,
   column = null,
   rawResponseText = "",
-  retryRequested = false
+  retryRequested = false,
+  retryOutcome
 }) {
+  const normalizedRetryOutcome = retryOutcome || (
+    stage === "initial" ? "pending" : "not_applicable"
+  );
   const result = db.prepare(`
     INSERT INTO agent_response_validation_failures (
       invocation_id, bot_id, agent_id, conversation_key, incoming_message_id,
       attempt_number, stage, error_type, error_path, error_message,
-      line, column, raw_response_text, retry_requested, created_at
+      line, column, raw_response_text, retry_requested, retry_outcome, created_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     invocationId ?? null,
     botId,
@@ -1184,9 +1202,40 @@ export function insertAgentResponseValidationFailure({
     Number.isFinite(Number(column)) ? Number(column) : null,
     String(rawResponseText || ""),
     retryRequested ? 1 : 0,
+    normalizedRetryOutcome,
     now()
   );
   return result.lastInsertRowid;
+}
+
+export function updateAgentResponseValidationRetryOutcome({
+  invocationId,
+  outcome,
+  errorMessage = ""
+}) {
+  const normalizedOutcome = [
+    "succeeded",
+    "failed",
+    "call_failed",
+    "not_attempted",
+    "pending",
+    "unknown"
+  ].includes(outcome)
+    ? outcome
+    : "not_attempted";
+  const result = db.prepare(`
+    UPDATE agent_response_validation_failures
+    SET retry_outcome = ?, retry_error_message = ?, retry_finished_at = ?
+    WHERE invocation_id = ?
+      AND attempt_number = 1
+      AND stage = 'initial'
+  `).run(
+    normalizedOutcome,
+    String(errorMessage || ""),
+    now(),
+    invocationId ?? null
+  );
+  return result.changes;
 }
 
 function rowToProactiveTask(row) {
@@ -3855,7 +3904,10 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
         errorPath: row.error_path,
         errorMessage: row.error_message,
         rawResponseText: row.raw_response_text,
-        retryRequested: Boolean(row.retry_requested)
+        retryRequested: Boolean(row.retry_requested),
+        retryOutcome: row.retry_outcome || "unknown",
+        retryErrorMessage: row.retry_error_message || "",
+        retryFinishedAt: row.retry_finished_at || ""
       })
     },
     "message-processing": {
