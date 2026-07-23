@@ -25,6 +25,9 @@ test("proactive panel exposes separate add-date, multi-tag, and one-time schedul
   assert.match(proactivePanel, /class="switch-slider"/);
   assert.match(proactivePanel, /id="proactiveScheduledAt"/);
   assert.match(proactivePanel, /type="datetime-local"/);
+  assert.match(proactivePanel, /id="proactiveScheduledAtField"[\s\S]*>推送时间<\/span>/);
+  assert.match(proactivePanel, /按添加日期选择/);
+  assert.match(proactivePanel, /id="targetDateTagSelect"/);
   assert.match(css, /\.proactive-schedule/);
 });
 
