@@ -35,3 +35,18 @@ test("existing proactive target bulk controls remain in the same panel", () => {
 test("proactive task cancellation style is scoped to proactive rows", () => {
   assert.match(css, /\.proactive-task-cancel/);
 });
+
+test("proactive app loads tags and selects matching targets across every page", () => {
+  assert.match(app, /loadProactiveTargetTags/);
+  assert.match(app, /fetchAllAddressBookTargetsByTag/);
+  assert.match(app, /tagFilters/);
+  assert.match(app, /\/api\/proactive\/targets\/tags/);
+});
+
+test("proactive app submits one-time scheduledAt and can cancel a task", () => {
+  assert.match(app, /proactiveScheduleEnabled/);
+  assert.match(app, /proactiveScheduledAt/);
+  assert.match(app, /scheduledAt/);
+  assert.match(app, /data-proactive-task-cancel/);
+  assert.match(app, /\/cancel/);
+});

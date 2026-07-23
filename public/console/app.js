@@ -18,6 +18,9 @@ const state = {
   pendingAdminKeyResolve: null,
   proactiveSubmitting: false,
   proactiveUploadFiles: [],
+  proactiveTargetTags: [],
+  proactiveTagSelections: new Map(),
+  proactiveManualTargetKeys: new Set(),
   flowSessionsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   proactiveTargetsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   proactiveTasksPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
@@ -100,6 +103,9 @@ const els = {
   proactiveFileUrl: document.querySelector("#proactiveFileUrl"),
   proactiveTitle: document.querySelector("#proactiveTitle"),
   proactiveContent: document.querySelector("#proactiveContent"),
+  proactiveScheduleEnabled: document.querySelector("#proactiveScheduleEnabled"),
+  proactiveScheduledAtField: document.querySelector("#proactiveScheduledAtField"),
+  proactiveScheduledAt: document.querySelector("#proactiveScheduledAt"),
   messageTypeInput: document.querySelector('select[name="messageType"]'),
   messageFields: document.querySelectorAll("[data-message-field]"),
   taskDateFrom: document.querySelector("#taskDateFrom"),
@@ -110,6 +116,7 @@ const els = {
   selectGroupTargetsButton: document.querySelector("#selectGroupTargetsButton"),
   clearTargetsButton: document.querySelector("#clearTargetsButton"),
   targetSearchInput: document.querySelector("#targetSearchInput"),
+  targetTagSelect: document.querySelector("#targetTagSelect"),
   targetList: document.querySelector("#targetList"),
   targetPaginationEl: document.querySelector("#targetPagination"),
   resetFormButton: document.querySelector("#resetFormButton"),
@@ -519,6 +526,9 @@ function clearBotScopedContent() {
   state.flowSessionsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTargetsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTasksPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
+  state.proactiveTargetTags = [];
+  state.proactiveTagSelections.clear();
+  state.proactiveManualTargetKeys.clear();
   selectedTargets.clear();
   addressBookTargets = [];
   currentFlowMachine = null;
@@ -558,6 +568,8 @@ function clearBotScopedContent() {
   els.proactiveForm.reset();
   if (els.proactiveFileUrl) els.proactiveFileUrl.value = "";
   clearProactiveUpload();
+  renderProactiveTargetTags();
+  syncProactiveScheduleFields();
   syncMessageTypeFields();
   renderSelectedTargets();
   renderTargetList();
@@ -611,6 +623,7 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
     }
     const tasks = [
       loadAddressBookTargets({ contextVersion }),
+      loadProactiveTargetTags({ contextVersion }),
       loadProactiveTasks({ contextVersion }),
       loadFlowMachine({ contextVersion }),
       loadTagSchema({ contextVersion }),
@@ -1070,8 +1083,10 @@ async function selectTargetsByTypeAcrossPages(type) {
     targets.forEach((target) => {
       if (allSelected) {
         selectedTargets.delete(targetKey(target));
+        state.proactiveManualTargetKeys.delete(targetKey(target));
       } else {
         selectedTargets.set(targetKey(target), target);
+        state.proactiveManualTargetKeys.add(targetKey(target));
       }
     });
     renderSelectedTargets();
@@ -1089,6 +1104,9 @@ async function selectTargetsByTypeAcrossPages(type) {
 
 function clearSelectedTargets() {
   selectedTargets.clear();
+  state.proactiveTagSelections.clear();
+  state.proactiveManualTargetKeys.clear();
+  if (els.targetTagSelect) els.targetTagSelect.value = "";
   renderSelectedTargets();
   renderTargetList();
   toast("已清空全部已选目标");
@@ -1096,6 +1114,137 @@ function clearSelectedTargets() {
 
 function renderSelectedTargets() {
   updateBulkActionButtons();
+}
+
+function proactiveTagKey(tag) {
+  return `${tag.tagType || "normal"}:${tag.groupId || ""}:${tag.tagId || ""}`;
+}
+
+function renderProactiveTargetTags() {
+  if (!els.targetTagSelect) return;
+  const groups = new Map();
+  state.proactiveTargetTags.forEach((tag) => {
+    const groupKey = tag.tagType === "date" ? "date" : `group:${tag.groupId || "ungrouped"}`;
+    if (!groups.has(groupKey)) {
+      groups.set(groupKey, {
+        label: tag.tagType === "date" ? "添加日期" : (tag.groupName || "未分组标签"),
+        tags: []
+      });
+    }
+    groups.get(groupKey).tags.push(tag);
+  });
+  const options = [`<option value="">选择标签</option>`];
+  for (const group of groups.values()) {
+    options.push(`<optgroup label="${escapeHtml(group.label)}">`);
+    for (const tag of group.tags) {
+      const key = proactiveTagKey(tag);
+      const label = tag.tagType === "date"
+        ? tag.tagName
+        : `${tag.groupName || "标签"} / ${tag.tagName}`;
+      options.push(`<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`);
+    }
+    options.push("</optgroup>");
+  }
+  els.targetTagSelect.innerHTML = options.join("");
+  els.targetTagSelect.value = "";
+}
+
+function selectedProactiveTag(tagKey) {
+  return state.proactiveTargetTags.find((tag) => proactiveTagKey(tag) === tagKey) || null;
+}
+
+async function loadProactiveTargetTags({ contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (!botId) return;
+  try {
+    const data = await request(`/api/proactive/targets/tags?botId=${encodeURIComponent(botId)}`);
+    if (!isCurrentBotContext(botId, contextVersion)) return;
+    state.proactiveTargetTags = data.tags || [];
+    renderProactiveTargetTags();
+  } catch (error) {
+    if (isCurrentBotContext(botId, contextVersion)) {
+      renderProactiveTargetTags();
+      toastError(error);
+    }
+  }
+}
+
+async function fetchAllAddressBookTargetsByTag(tag, { contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (!botId || !tag) return [];
+  const targets = [];
+  let page = 1;
+  while (true) {
+    const params = new URLSearchParams({
+      botId,
+      tagType: tag.tagType || "normal",
+      groupId: tag.groupId || "",
+      tagId: tag.tagId || "",
+      page: String(page),
+      pageSize: "100"
+    });
+    const data = await request(`/api/proactive/targets?${params.toString()}`);
+    if (!isCurrentBotContext(botId, contextVersion)) return [];
+    targets.push(...(data.targets || []));
+    const pagination = normalizePagination(data.pagination, {
+      page,
+      pageSize: 100,
+      total: targets.length,
+      totalPages: 1
+    });
+    if (!pagination.hasNext) break;
+    page += 1;
+  }
+  return targets;
+}
+
+function targetKeptByOtherProactiveTag(targetKey, excludedTagKey) {
+  for (const [tagKey, targetKeys] of state.proactiveTagSelections.entries()) {
+    if (tagKey !== excludedTagKey && targetKeys.has(targetKey)) return true;
+  }
+  return false;
+}
+
+async function toggleProactiveTagSelection(tagKey) {
+  const tag = selectedProactiveTag(tagKey);
+  if (!tag) return;
+  const contextVersion = state.botContextVersion;
+  const botId = state.selectedBotId;
+  if (state.proactiveTagSelections.has(tagKey)) {
+    const targetKeys = state.proactiveTagSelections.get(tagKey);
+    state.proactiveTagSelections.delete(tagKey);
+    for (const key of targetKeys) {
+      if (!state.proactiveManualTargetKeys.has(key) && !targetKeptByOtherProactiveTag(key, tagKey)) {
+        selectedTargets.delete(key);
+      }
+    }
+    renderSelectedTargets();
+    renderTargetList();
+    toast(`已取消标签选择：${tag.tagName}`);
+    return;
+  }
+
+  const select = els.targetTagSelect;
+  if (select) select.disabled = true;
+  try {
+    const targets = await fetchAllAddressBookTargetsByTag(tag, { contextVersion });
+    if (!isCurrentBotContext(botId, contextVersion)) return;
+    const targetKeys = new Set();
+    for (const target of targets) {
+      const key = targetKey(target);
+      targetKeys.add(key);
+      if (!selectedTargets.has(key)) selectedTargets.set(key, target);
+    }
+    state.proactiveTagSelections.set(tagKey, targetKeys);
+    renderSelectedTargets();
+    renderTargetList();
+    toast(targets.length ? `已按标签选择 ${targets.length} 个客户` : "该标签暂无客户");
+  } finally {
+    if (select) {
+      select.disabled = false;
+      select.value = "";
+    }
+  }
 }
 
 function renderTargetList() {
@@ -1125,8 +1274,10 @@ function renderTargetList() {
       if (!target) return;
       if (selectedTargets.has(button.dataset.targetKey)) {
         selectedTargets.delete(button.dataset.targetKey);
+        state.proactiveManualTargetKeys.delete(button.dataset.targetKey);
       } else {
         selectedTargets.set(button.dataset.targetKey, target);
+        state.proactiveManualTargetKeys.add(button.dataset.targetKey);
       }
       renderSelectedTargets();
       renderTargetList();
@@ -4251,6 +4402,23 @@ function setProactiveSubmitting(submitting) {
   els.proactiveMessageFields?.classList.toggle("is-uploading", submitting);
 }
 
+function syncProactiveScheduleFields() {
+  const enabled = Boolean(els.proactiveScheduleEnabled?.checked);
+  if (els.proactiveScheduledAtField) els.proactiveScheduledAtField.hidden = !enabled;
+  if (els.proactiveScheduledAt) els.proactiveScheduledAt.required = enabled;
+}
+
+function validateProactiveScheduledAt(value) {
+  const raw = String(value || "").trim();
+  if (!raw) throw new Error("请选择定时发送时间");
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(raw);
+  const scheduledAt = match ? new Date(`${raw}:00+08:00`) : new Date("invalid");
+  if (Number.isNaN(scheduledAt.getTime()) || scheduledAt.getTime() <= Date.now()) {
+    throw new Error("定时发送时间必须晚于当前北京时间");
+  }
+  return raw;
+}
+
 function bindProactiveUploadDropzone() {
   if (!els.proactiveUploadDropzone || !els.proactiveUploadFile) return;
   els.proactiveUploadFile.addEventListener("change", () => {
@@ -4291,12 +4459,16 @@ async function createProactiveTask(event) {
   const data = new FormData(els.proactiveForm);
   const localFiles = [...(state.proactiveUploadFiles || [])];
   const content = String(data.get("content") || "").trim();
+  const scheduledAt = els.proactiveScheduleEnabled?.checked
+    ? validateProactiveScheduledAt(els.proactiveScheduledAt?.value)
+    : "";
   const payload = {
     botId,
     title: String(data.get("title") || "").trim(),
     messageType: localFiles.length ? "media" : "text",
     content,
-    targets: getSelectedTargets()
+    targets: getSelectedTargets(),
+    scheduledAt: scheduledAt || null
   };
 
   if (!payload.botId) {
@@ -4365,6 +4537,9 @@ async function createProactiveTask(event) {
     if (els.proactiveTitle) els.proactiveTitle.value = "";
     if (els.proactiveContent) els.proactiveContent.value = "";
     if (els.proactiveFileUrl) els.proactiveFileUrl.value = "";
+    if (els.proactiveScheduleEnabled) els.proactiveScheduleEnabled.checked = false;
+    if (els.proactiveScheduledAt) els.proactiveScheduledAt.value = "";
+    syncProactiveScheduleFields();
     clearProactiveUpload();
     resetProactiveTasksPagination();
     await loadProactiveTasks();
@@ -4432,6 +4607,25 @@ function renderProactiveTasks(tasks) {
         text: "文本",
         media: "媒体"
       }[task.messageType || "text"] || "文本";
+      const statusLabel = {
+        pending: task.scheduledAt ? "待定时" : "待发送",
+        sending: "发送中",
+        sent: "已发送",
+        partial: "部分失败",
+        failed: "失败",
+        canceled: "已取消"
+      }[task.status] || task.status;
+      const statusClass = task.status === "sent"
+        ? "ok"
+        : ["failed", "partial"].includes(task.status)
+          ? "bad"
+          : task.status === "canceled" ? "selected" : "off";
+      const cancelButton = ["pending", "sending"].includes(task.status)
+        ? `<button class="secondary danger proactive-task-cancel" data-proactive-task-cancel="${task.id}" type="button" title="取消任务">${icon("reset")}取消</button>`
+        : "";
+      const timeLabel = task.scheduledAt
+        ? `定时 ${formatDisplayDateTime(task.scheduledAt)}`
+        : formatDisplayDateTime(task.updatedAt || task.createdAt);
       return `
         <tr>
           <td class="task-content-cell">
@@ -4439,10 +4633,10 @@ function renderProactiveTasks(tasks) {
             <span class="task-content-text" title="${escapeHtml(content)}">${escapeHtml(content)}</span>
           </td>
           <td class="muted">${escapeHtml(botDisplayName(task.botId))}</td>
-          <td><span class="pill ${task.status === "sent" ? "ok" : task.status === "failed" ? "bad" : "off"}">${escapeHtml(task.status)}</span></td>
+          <td><span class="pill ${statusClass}">${escapeHtml(statusLabel)}</span></td>
           <td>${escapeHtml(progress + failed)}</td>
-          <td class="muted">${escapeHtml(formatDisplayDateTime(task.updatedAt || task.createdAt))}</td>
-          <td><button class="secondary" data-task="${task.id}" type="button">${icon("info")}详情</button></td>
+          <td class="muted">${escapeHtml(timeLabel)}</td>
+          <td class="proactive-task-actions"><button class="secondary" data-task="${task.id}" type="button">${icon("info")}详情</button>${cancelButton}</td>
         </tr>
       `;
     })
@@ -4456,6 +4650,25 @@ function renderProactiveTasks(tasks) {
       if (!isCurrentBotContext(botId, contextVersion)) return;
       els.logsOutput.textContent = JSON.stringify(data, null, 2);
       toast(`已加载任务 #${button.dataset.task}`);
+    });
+  });
+  els.proactiveTasksTable.querySelectorAll("[data-proactive-task-cancel]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const botId = state.selectedBotId;
+      const contextVersion = state.botContextVersion;
+      button.disabled = true;
+      try {
+        await request(`/api/proactive/tasks/${encodeURIComponent(button.dataset.proactiveTaskCancel)}/cancel`, {
+          method: "POST",
+          botId,
+          body: JSON.stringify({ reason: "console" })
+        });
+        if (!isCurrentBotContext(botId, contextVersion)) return;
+        toast("主动推送任务已取消");
+        await loadProactiveTasks({ contextVersion });
+      } finally {
+        button.disabled = false;
+      }
     });
   });
 }
@@ -4632,6 +4845,11 @@ els.taskDateTo.addEventListener("change", () =>
 els.targetSearchInput.addEventListener("input", () =>
   reloadProactiveTargetsFromFirstPage().catch(toastError)
 );
+els.targetTagSelect?.addEventListener("change", () => {
+  const tagKey = els.targetTagSelect.value;
+  if (!tagKey) return;
+  toggleProactiveTagSelection(tagKey).catch(toastError);
+});
 els.loadTargetsButton.addEventListener("click", () =>
   reloadProactiveTargetsFromFirstPage().catch(toastError)
 );
@@ -4642,6 +4860,7 @@ els.selectGroupTargetsButton.addEventListener("click", () =>
   selectTargetsByTypeAcrossPages("group").catch(toastError)
 );
 els.clearTargetsButton.addEventListener("click", clearSelectedTargets);
+els.proactiveScheduleEnabled?.addEventListener("change", syncProactiveScheduleFields);
 document.querySelectorAll("[data-target-filter]").forEach((button) => {
   button.addEventListener("click", () => {
     targetFilter = button.dataset.targetFilter;
@@ -4681,3 +4900,4 @@ loadBots()
     els.logsOutput.textContent = `无法加载配置：${error.message}`;
   });
 syncMessageTypeFields();
+syncProactiveScheduleFields();
