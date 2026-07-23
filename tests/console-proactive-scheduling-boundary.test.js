@@ -39,6 +39,18 @@ test("proactive schedule control sits left of the task name as one component", (
   assert.doesNotMatch(bulkActions, /id="proactiveScheduleEnabled"|id="proactiveScheduledAt"/);
 });
 
+test("proactive labels use icons without duplicating the schedule switch icon", () => {
+  const proactivePanel = sectionHtml("proactivePanel");
+  const scheduleControl = proactivePanel.slice(
+    proactivePanel.indexOf('<div class="proactive-schedule-control">'),
+    proactivePanel.indexOf('<label class="proactive-title-field">')
+  );
+  assert.match(scheduleControl, /<span class="switch-label">定时推送<\/span>/);
+  assert.match(proactivePanel, /class="proactive-title-field"[\s\S]*href="#icon-edit"/);
+  assert.match(proactivePanel, /id="proactiveScheduledAtField"[\s\S]*href="#icon-clock"/);
+  assert.match(css, /\.bulk-actions \.target-pagination\s*\{[\s\S]*margin-left:\s*auto/);
+});
+
 test("existing proactive target bulk controls remain in the same panel", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
