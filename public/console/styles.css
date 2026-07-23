@@ -1645,6 +1645,22 @@ button.danger:hover {
   gap: 8px;
 }
 
+.target-search-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.target-inline-bulk-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .target-picker-head strong {
   display: block;
   margin-bottom: 2px;
@@ -1715,7 +1731,6 @@ button.danger:hover {
 }
 
 .bulk-actions .proactive-schedule {
-  flex: 0 1 auto;
   min-width: max-content;
   padding-top: 0;
 }
@@ -4449,13 +4464,14 @@ textarea[data-action-target-activation].is-action-target-focused {
 
 .bulk-actions {
   grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: max-content minmax(180px, 0.9fr) minmax(190px, 0.9fr) minmax(230px, 1fr) minmax(0, 1.4fr);
   align-items: center;
-  flex-wrap: nowrap;
-  justify-content: flex-start;
+  justify-content: initial;
 }
 
 .bulk-actions .target-pagination {
-  flex: 1 1 360px;
+  min-width: 0;
   justify-content: flex-end;
   margin-left: auto;
   min-height: 40px;
@@ -4736,6 +4752,7 @@ td .muted {
   .task-filters,
   .target-picker-head,
   .target-toolbar,
+  .target-search-actions,
   .flow-session-head,
   .flow-session-filters,
   .flow-session-sidebar,
@@ -4748,11 +4765,11 @@ td .muted {
   }
 
   .bulk-actions {
-    flex-wrap: wrap;
+    grid-template-columns: 1fr;
   }
 
   .bulk-actions .target-pagination {
-    flex-basis: 100%;
+    grid-column: 1;
     margin-left: 0;
   }
 

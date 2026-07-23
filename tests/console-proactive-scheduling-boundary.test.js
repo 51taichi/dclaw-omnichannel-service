@@ -21,6 +21,8 @@ test("proactive panel exposes separate add-date, multi-tag, and one-time schedul
   assert.match(proactivePanel, /id="targetTagSelectMenu"/);
   assert.match(proactivePanel, /id="targetDateTagSelect"/);
   assert.match(proactivePanel, /id="proactiveScheduleEnabled"/);
+  assert.match(proactivePanel, /class="toggle switch-toggle proactive-schedule proactive-schedule-toggle"/);
+  assert.match(proactivePanel, /class="switch-slider"/);
   assert.match(proactivePanel, /id="proactiveScheduledAt"/);
   assert.match(proactivePanel, /type="datetime-local"/);
   assert.match(css, /\.proactive-schedule/);
@@ -29,12 +31,12 @@ test("proactive panel exposes separate add-date, multi-tag, and one-time schedul
 test("existing proactive target bulk controls remain in the same panel", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
-  assert.match(proactivePanel, /id="selectPrivateTargetsButton"[\s\S]*全选私聊/);
-  assert.match(proactivePanel, /id="selectGroupTargetsButton"[\s\S]*全选群组/);
-  assert.match(proactivePanel, /id="clearTargetsButton"[\s\S]*清空/);
+  assert.match(proactivePanel, /class="target-search-actions"[\s\S]*id="selectPrivateTargetsButton"[\s\S]*全选私聊/);
+  assert.match(proactivePanel, /class="target-search-actions"[\s\S]*id="selectGroupTargetsButton"[\s\S]*全选群组/);
+  assert.match(proactivePanel, /class="target-search-actions"[\s\S]*id="clearTargetsButton"[\s\S]*清空/);
   assert.match(proactivePanel, /id="targetPagination"/);
   const bulkActions = proactivePanel.slice(proactivePanel.indexOf('<div class="bulk-actions">'));
-  assert.match(bulkActions, /id="clearTargetsButton"[\s\S]*id="targetDateTagSelect"[\s\S]*id="targetTagSelectButton"[\s\S]*id="proactiveScheduleEnabled"[\s\S]*id="targetPagination"/);
+  assert.match(bulkActions, /id="proactiveScheduleEnabled"[\s\S]*id="proactiveScheduledAtField"[\s\S]*id="targetDateTagSelect"[\s\S]*id="targetTagSelectButton"[\s\S]*id="targetPagination"/);
 });
 
 test("proactive task cancellation style is scoped to proactive rows", () => {

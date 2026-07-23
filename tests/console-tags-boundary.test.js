@@ -39,10 +39,14 @@ test("console renders tag chips and tag filters", () => {
   assert.match(js, /function selectedFlowSessionTagFilterValues\(\)/);
   assert.match(js, /const tagFilters = new Set\(selectedFlowSessionTagFilterValues\(\)\)/);
   assert.match(js, /tagFilters\.size && !\(session\.tags \|\| \[\]\)\.some\(\(tag\) => tagFilters\.has\(tagFilterKey\(tag\)\)\)/);
-  assert.match(js, /function positionFlowSessionTagFilterMenu\(\)/);
+  assert.match(js, /function positionTagMultiSelectMenu\(button, menu\)/);
   assert.match(js, /getBoundingClientRect\(\)/);
-  assert.match(js, /function toggleFlowSessionTagFilterMenu\(\)/);
-  assert.match(js, /if \(willOpen\) positionFlowSessionTagFilterMenu\(\)/);
+  assert.match(js, /function toggleTagMultiSelectMenu\(button, menu\)/);
+  assert.match(js, /if \(willOpen\) positionTagMultiSelectMenu\(button, menu\)/);
+  assert.match(js, /function renderTagMultiSelectControl\(\{[\s\S]*select,[\s\S]*button,[\s\S]*menu/);
+  assert.match(js, /renderTagMultiSelectControl\(\{[\s\S]*flowSessionTagFilter/);
+  assert.doesNotMatch(js, /function positionProactiveTagSelectMenu\(\)/);
+  assert.doesNotMatch(js, /function positionFlowSessionTagFilterMenu\(\)/);
   assert.match(js, /function setFlowSessionTagFilterValues\(values\)/);
   assert.match(js, /flowSessionTagFilterMenu\?\.addEventListener\("change"/);
   assert.match(css, /\.tag-multi-select-menu\s*\{[\s\S]*position:\s*fixed[\s\S]*z-index:\s*1000/);

@@ -656,23 +656,36 @@
                   群组
                 </button>
               </div>
-              <label class="target-search">
-                <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索</span>
-                <input id="targetSearchInput" type="search" placeholder="输入客户或群名" />
-              </label>
+              <div class="target-search-actions">
+                <label class="target-search">
+                  <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索</span>
+                  <input id="targetSearchInput" type="search" placeholder="输入客户或群名" />
+                </label>
+                <div class="target-inline-bulk-actions">
+                  <button id="selectPrivateTargetsButton" class="secondary" type="button">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
+                    全选私聊
+                  </button>
+                  <button id="selectGroupTargetsButton" class="secondary" type="button">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+                    全选群组
+                  </button>
+                  <button id="clearTargetsButton" class="secondary" type="button">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+                    清空
+                  </button>
+                </div>
+              </div>
               <div class="bulk-actions">
-                <button id="selectPrivateTargetsButton" class="secondary" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
-                  全选私聊
-                </button>
-                <button id="selectGroupTargetsButton" class="secondary" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
-                  全选群组
-                </button>
-                <button id="clearTargetsButton" class="secondary" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
-                  清空
-                </button>
+                <label class="toggle switch-toggle proactive-schedule proactive-schedule-toggle">
+                  <input id="proactiveScheduleEnabled" name="scheduleEnabled" type="checkbox" />
+                  <span class="switch-slider" aria-hidden="true"></span>
+                  <span class="switch-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>定时推送</span>
+                </label>
+                <label id="proactiveScheduledAtField" class="proactive-schedule-field" hidden>
+                  <span class="field-label">发送时间</span>
+                  <input id="proactiveScheduledAt" name="scheduledAt" type="datetime-local" />
+                </label>
                 <label class="target-date-picker flow-session-date-filter">
                   <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>添加日期</span>
                   <input id="targetDateTagSelect" type="date" />
@@ -685,16 +698,6 @@
                   <div id="targetTagSelectMenu" class="tag-multi-select-menu" role="listbox" aria-label="推送标签选择" hidden></div>
                   <select id="targetTagSelect" multiple hidden></select>
                 </label>
-                <div class="proactive-schedule">
-                  <label class="proactive-schedule-toggle">
-                    <input id="proactiveScheduleEnabled" name="scheduleEnabled" type="checkbox" />
-                    <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>定时推送</span>
-                  </label>
-                  <label id="proactiveScheduledAtField" class="proactive-schedule-field" hidden>
-                    <span class="field-label">发送时间</span>
-                    <input id="proactiveScheduledAt" name="scheduledAt" type="datetime-local" />
-                  </label>
-                </div>
                 <div id="targetPagination" class="pagination-bar target-pagination" aria-label="推送目标分页"></div>
               </div>
             </div>

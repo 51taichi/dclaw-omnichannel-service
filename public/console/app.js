@@ -1111,7 +1111,7 @@ function clearSelectedTargets() {
   state.proactiveManualTargetKeys.clear();
   if (els.targetTagSelect) els.targetTagSelect.value = "";
   if (els.targetDateTagSelect) els.targetDateTagSelect.value = "";
-  closeProactiveTagSelectMenu();
+  closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
   renderProactiveTargetTags();
   renderSelectedTargets();
   renderTargetList();
@@ -1140,51 +1140,70 @@ function selectedProactiveTagKeys() {
   return new Set([...state.proactiveTagSelections.keys()].filter((key) => !key.startsWith("date:")));
 }
 
+function renderTagMultiSelectControl({
+  select,
+  button,
+  menu,
+  options = [],
+  selectedValues = [],
+  emptyLabel = "全部"
+} = {}) {
+  if (!select || !button || !menu) return;
+  const selected = new Set(selectedValues);
+  const normalizedOptions = options.map((option) => ({
+    value: String(option?.value || ""),
+    label: String(option?.label || option?.value || ""),
+    groupLabel: String(option?.groupLabel || "")
+  }));
+  select.innerHTML = normalizedOptions
+    .map(({ value, label }) => {
+      const checked = value === "all" ? selected.size === 0 : selected.has(value);
+      return `<option value="${escapeHtml(value)}" ${checked ? "selected" : ""}>${escapeHtml(label)}</option>`;
+    })
+    .join("");
+  const menuOptions = [];
+  let previousGroupLabel = "";
+  normalizedOptions.forEach(({ value, label, groupLabel }) => {
+    if (groupLabel && groupLabel !== previousGroupLabel) {
+      menuOptions.push(`<div class="tag-multi-select-group-label">${escapeHtml(groupLabel)}</div>`);
+      previousGroupLabel = groupLabel;
+    }
+    const checked = value === "all" ? selected.size === 0 : selected.has(value);
+    menuOptions.push(`
+      <label class="tag-multi-select-option" role="option" aria-selected="${checked ? "true" : "false"}">
+        <input type="checkbox" value="${escapeHtml(value)}" ${checked ? "checked" : ""} />
+        <span>${escapeHtml(label)}</span>
+      </label>
+    `);
+  });
+  menu.innerHTML = menuOptions.length
+    ? menuOptions.join("")
+    : `<span class="tag-multi-select-empty">暂无可用标签</span>`;
+  button.textContent = selected.size ? `已选 ${selected.size} 个` : emptyLabel;
+}
+
 function renderProactiveTargetTags() {
   if (!els.targetTagSelect || !els.targetTagSelectMenu) return;
   const selectedKeys = selectedProactiveTagKeys();
-  const groups = new Map();
+  const options = [];
   state.proactiveTargetTags
     .filter((tag) => tag.tagType !== "date")
     .forEach((tag) => {
-    const groupKey = `group:${tag.groupId || "ungrouped"}`;
-    if (!groups.has(groupKey)) {
-      groups.set(groupKey, {
-        label: tag.groupName || "未分组标签",
-        tags: []
-      });
-    }
-    groups.get(groupKey).tags.push(tag);
-  });
-  const options = [];
-  const menuOptions = [];
-  for (const group of groups.values()) {
-    menuOptions.push(`<div class="tag-multi-select-group-label">${escapeHtml(group.label)}</div>`);
-    options.push(`<optgroup label="${escapeHtml(group.label)}">`);
-    for (const tag of group.tags) {
       const key = proactiveTagKey(tag);
-      const label = tag.tagName || tag.tagId;
-      options.push(`<option value="${escapeHtml(key)}">${escapeHtml(label)}</option>`);
-      const checked = selectedKeys.has(key);
-      menuOptions.push(`
-        <label class="tag-multi-select-option" role="option" aria-selected="${checked ? "true" : "false"}">
-          <input type="checkbox" value="${escapeHtml(key)}" ${checked ? "checked" : ""} />
-          <span>${escapeHtml(label)}</span>
-        </label>
-      `);
-    }
-    options.push("</optgroup>");
-  }
-  els.targetTagSelect.innerHTML = options.join("");
-  [...els.targetTagSelect.options].forEach((option) => {
-    option.selected = selectedKeys.has(option.value);
+      options.push({
+        value: key,
+        label: tag.tagName || tag.tagId,
+        groupLabel: tag.groupName || "未分组标签"
+      });
+    });
+  renderTagMultiSelectControl({
+    select: els.targetTagSelect,
+    button: els.targetTagSelectButton,
+    menu: els.targetTagSelectMenu,
+    options,
+    selectedValues: selectedKeys,
+    emptyLabel: "选择标签"
   });
-  els.targetTagSelectMenu.innerHTML = menuOptions.length
-    ? menuOptions.join("")
-    : `<span class="tag-multi-select-empty">暂无可用标签</span>`;
-  if (els.targetTagSelectButton) {
-    els.targetTagSelectButton.textContent = selectedKeys.size ? `已选 ${selectedKeys.size} 个` : "选择标签";
-  }
 }
 
 function selectedProactiveTag(tagKey) {
@@ -1334,28 +1353,28 @@ async function syncProactiveDateTagSelection() {
   }
 }
 
-function closeProactiveTagSelectMenu() {
-  if (!els.targetTagSelectMenu || !els.targetTagSelectButton) return;
-  els.targetTagSelectMenu.hidden = true;
-  els.targetTagSelectButton.setAttribute("aria-expanded", "false");
+function closeTagMultiSelectMenu(button, menu) {
+  if (!menu || !button) return;
+  menu.hidden = true;
+  button.setAttribute("aria-expanded", "false");
 }
 
-function positionProactiveTagSelectMenu() {
-  if (!els.targetTagSelectMenu || !els.targetTagSelectButton) return;
-  const rect = els.targetTagSelectButton.getBoundingClientRect();
+function positionTagMultiSelectMenu(button, menu) {
+  if (!menu || !button) return;
+  const rect = button.getBoundingClientRect();
   const menuWidth = Math.max(220, rect.width);
   const left = Math.min(Math.max(12, rect.left), window.innerWidth - menuWidth - 12);
-  els.targetTagSelectMenu.style.left = `${left}px`;
-  els.targetTagSelectMenu.style.top = `${rect.bottom + 6}px`;
-  els.targetTagSelectMenu.style.width = `${menuWidth}px`;
+  menu.style.left = `${left}px`;
+  menu.style.top = `${rect.bottom + 6}px`;
+  menu.style.width = `${menuWidth}px`;
 }
 
-function toggleProactiveTagSelectMenu() {
-  if (!els.targetTagSelectMenu || !els.targetTagSelectButton) return;
-  const willOpen = els.targetTagSelectMenu.hidden;
-  if (willOpen) positionProactiveTagSelectMenu();
-  els.targetTagSelectMenu.hidden = !willOpen;
-  els.targetTagSelectButton.setAttribute("aria-expanded", String(willOpen));
+function toggleTagMultiSelectMenu(button, menu) {
+  if (!menu || !button) return;
+  const willOpen = menu.hidden;
+  if (willOpen) positionTagMultiSelectMenu(button, menu);
+  menu.hidden = !willOpen;
+  button.setAttribute("aria-expanded", String(willOpen));
 }
 
 function renderTargetList() {
@@ -3740,52 +3759,14 @@ function renderFlowSessionTagFilter() {
     if (!options.has(value)) options.set(value, value);
   }
   const selected = [...current].filter((value) => options.has(value));
-  els.flowSessionTagFilter.innerHTML = [...options]
-    .map(([value, label]) => {
-      const checked = value === "all" ? selected.length === 0 : selected.includes(value);
-      return `<option value="${escapeHtml(value)}" ${checked ? "selected" : ""}>${escapeHtml(label)}</option>`;
-    })
-    .join("");
-  if (els.flowSessionTagFilterButton) {
-    els.flowSessionTagFilterButton.textContent = selected.length ? `已选 ${selected.length} 个` : "全部";
-  }
-  if (els.flowSessionTagFilterMenu) {
-    els.flowSessionTagFilterMenu.innerHTML = [...options]
-      .map(([value, label]) => {
-        const checked = value === "all" ? selected.length === 0 : selected.includes(value);
-        return `
-          <label class="tag-multi-select-option" role="option" aria-selected="${checked ? "true" : "false"}">
-            <input type="checkbox" value="${escapeHtml(value)}" ${checked ? "checked" : ""} />
-            <span>${escapeHtml(label)}</span>
-          </label>
-        `;
-      })
-      .join("");
-  }
-}
-
-function closeFlowSessionTagFilterMenu() {
-  if (!els.flowSessionTagFilterMenu || !els.flowSessionTagFilterButton) return;
-  els.flowSessionTagFilterMenu.hidden = true;
-  els.flowSessionTagFilterButton.setAttribute("aria-expanded", "false");
-}
-
-function positionFlowSessionTagFilterMenu() {
-  if (!els.flowSessionTagFilterMenu || !els.flowSessionTagFilterButton) return;
-  const rect = els.flowSessionTagFilterButton.getBoundingClientRect();
-  const menuWidth = Math.max(220, rect.width);
-  const left = Math.min(Math.max(12, rect.left), window.innerWidth - menuWidth - 12);
-  els.flowSessionTagFilterMenu.style.left = `${left}px`;
-  els.flowSessionTagFilterMenu.style.top = `${rect.bottom + 6}px`;
-  els.flowSessionTagFilterMenu.style.width = `${menuWidth}px`;
-}
-
-function toggleFlowSessionTagFilterMenu() {
-  if (!els.flowSessionTagFilterMenu || !els.flowSessionTagFilterButton) return;
-  const willOpen = els.flowSessionTagFilterMenu.hidden;
-  if (willOpen) positionFlowSessionTagFilterMenu();
-  els.flowSessionTagFilterMenu.hidden = !willOpen;
-  els.flowSessionTagFilterButton.setAttribute("aria-expanded", String(willOpen));
+  renderTagMultiSelectControl({
+    select: els.flowSessionTagFilter,
+    button: els.flowSessionTagFilterButton,
+    menu: els.flowSessionTagFilterMenu,
+    options: [...options].map(([value, label]) => ({ value, label })),
+    selectedValues: selected,
+    emptyLabel: "全部"
+  });
 }
 
 function setFlowSessionTagFilterValues(values) {
@@ -4870,7 +4851,7 @@ els.flowSessionTypeButtons.forEach((button) => {
 });
 els.flowSessionTagFilterButton?.addEventListener("click", (event) => {
   event.stopPropagation();
-  toggleFlowSessionTagFilterMenu();
+  toggleTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
 });
 els.flowSessionTagFilterMenu?.addEventListener("change", (event) => {
   const checkbox = event.target.closest('input[type="checkbox"]');
@@ -4888,22 +4869,22 @@ document.addEventListener("click", (event) => {
   if (event.target.closest(".flow-session-tag-menu")) return;
   if (event.target.closest(".tag-multi-select")) return;
   hideFlowSessionManualTagMenu();
-  closeFlowSessionTagFilterMenu();
-  closeProactiveTagSelectMenu();
+  closeTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
+  closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
 });
 window.addEventListener("resize", () => {
-  closeFlowSessionTagFilterMenu();
-  closeProactiveTagSelectMenu();
+  closeTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
+  closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
 });
 window.addEventListener("scroll", () => {
-  closeFlowSessionTagFilterMenu();
-  closeProactiveTagSelectMenu();
+  closeTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
+  closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
 }, true);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     hideFlowSessionManualTagMenu();
-    closeFlowSessionTagFilterMenu();
-    closeProactiveTagSelectMenu();
+    closeTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
+    closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
   }
 });
 els.flowSessionDateTagFilter?.addEventListener("input", () => {
@@ -4966,7 +4947,7 @@ els.targetSearchInput.addEventListener("input", () =>
 );
 els.targetTagSelectButton?.addEventListener("click", (event) => {
   event.stopPropagation();
-  toggleProactiveTagSelectMenu();
+  toggleTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
 });
 els.targetTagSelectMenu?.addEventListener("change", (event) => {
   const checkbox = event.target.closest('input[type="checkbox"]');
