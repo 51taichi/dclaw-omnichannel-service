@@ -4482,6 +4482,7 @@ textarea[data-action-target-activation].is-action-target-focused {
 }
 
 .bulk-actions .target-pagination {
+  grid-column: 4 / -1;
   min-width: 0;
   justify-content: flex-end;
   margin-left: auto;

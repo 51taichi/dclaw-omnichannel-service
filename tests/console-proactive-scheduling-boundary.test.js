@@ -49,6 +49,7 @@ test("proactive labels use icons without duplicating the schedule switch icon", 
   assert.match(proactivePanel, /class="proactive-title-field"[\s\S]*href="#icon-edit"/);
   assert.match(proactivePanel, /id="proactiveScheduledAtField"[\s\S]*href="#icon-clock"/);
   assert.match(css, /\.bulk-actions \.target-pagination\s*\{[\s\S]*margin-left:\s*auto/);
+  assert.match(css, /\.bulk-actions \.target-pagination\s*\{[\s\S]*grid-column:\s*4\s*\/\s*-1;/);
   assert.match(css, /\.proactive-schedule-control\s*\{[^}]*align-items:\s*center;[^}]*align-self:\s*center;/);
 });
 
