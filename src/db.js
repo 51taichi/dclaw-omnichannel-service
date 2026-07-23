@@ -164,7 +164,10 @@ db.exec(`
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     started_at TEXT,
-    finished_at TEXT
+    finished_at TEXT,
+    scheduled_at TEXT,
+    canceled_at TEXT,
+    cancel_reason TEXT
   );
 
   CREATE TABLE IF NOT EXISTS proactive_task_targets (
@@ -448,6 +451,9 @@ ensureColumn("flow_sessions", "last_friend_added_at", "TEXT");
 ensureColumn("flow_activation_tasks", "anchor_at", "TEXT");
 ensureColumn("flow_activation_tasks", "message_index", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("flow_activation_tasks", "message_content", "TEXT");
+ensureColumn("proactive_tasks", "scheduled_at", "TEXT");
+ensureColumn("proactive_tasks", "canceled_at", "TEXT");
+ensureColumn("proactive_tasks", "cancel_reason", "TEXT");
 
 function now() {
   return new Date().toISOString();
@@ -1256,7 +1262,10 @@ function rowToProactiveTask(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     startedAt: row.started_at,
-    finishedAt: row.finished_at
+    finishedAt: row.finished_at,
+    scheduledAt: row.scheduled_at,
+    canceledAt: row.canceled_at,
+    cancelReason: row.cancel_reason
   };
 }
 
@@ -3430,6 +3439,64 @@ export function syncProactiveTargetsFromIncoming(botId) {
   }
 }
 
+function normalizeProactiveTagFilters(tagFilters = []) {
+  const seen = new Set();
+  return (Array.isArray(tagFilters) ? tagFilters : [])
+    .map((tag) => ({
+      tagType: tag?.tagType === "date" ? "date" : "normal",
+      groupId: String(tag?.groupId || "").trim(),
+      tagId: String(tag?.tagId || "").trim()
+    }))
+    .filter((tag) => tag.tagId)
+    .filter((tag) => {
+      const key = `${tag.tagType}:${tag.groupId}:${tag.tagId}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+export function listProactiveTargetTags({ botId = "" } = {}) {
+  syncProactiveTargetsFromIncoming(botId);
+  const filters = [
+    "pt.enabled = 1",
+    "pt.target_type = 'private'",
+    "bab.enabled = 1"
+  ];
+  const values = [];
+  if (botId) {
+    filters.push("pt.bot_id = ?");
+    values.push(botId);
+  }
+  return db.prepare(`
+    SELECT DISTINCT
+      pt.bot_id,
+      ct.tag_type,
+      ct.group_id,
+      ct.group_name,
+      ct.tag_id,
+      ct.tag_name
+    FROM proactive_targets pt
+    JOIN bot_agent_bindings bab ON bab.bot_id = pt.bot_id
+    JOIN conversation_tags ct
+      ON ct.bot_id = pt.bot_id
+     AND ct.agent_id = bab.agent_id
+     AND ct.conversation_key = pt.bot_id || ':private:' || pt.target_name
+    WHERE ${filters.join(" AND ")}
+    ORDER BY CASE WHEN ct.tag_type = 'date' THEN 0 ELSE 1 END,
+             ct.group_name ASC,
+             ct.tag_name ASC,
+             ct.tag_id ASC
+  `).all(...values).map((row) => ({
+    botId: row.bot_id,
+    tagType: row.tag_type,
+    groupId: row.group_id || "",
+    groupName: row.group_name || "",
+    tagId: row.tag_id,
+    tagName: row.tag_name || row.tag_id
+  }));
+}
+
 export function listProactiveAddressBookTargets({ botId, targetType, query, limit = 200 }) {
   syncProactiveTargetsFromIncoming(botId);
 
@@ -3447,7 +3514,7 @@ export function listProactiveAddressBookTargets({ botId, targetType, query, limi
     .map(rowToProactiveAddressBookTarget);
 }
 
-function proactiveAddressBookTargetsWhere({ botId = "", targetType = "", query = "" } = {}) {
+function proactiveAddressBookTargetsWhere({ botId = "", targetType = "", query = "", tagFilters = [] } = {}) {
   const filters = ["enabled = 1"];
   const values = [];
   if (botId) {
@@ -3462,6 +3529,27 @@ function proactiveAddressBookTargetsWhere({ botId = "", targetType = "", query =
     filters.push("(target_name LIKE ? OR display_name LIKE ?)");
     values.push(`%${query}%`, `%${query}%`);
   }
+  const normalizedTagFilters = normalizeProactiveTagFilters(tagFilters);
+  if (normalizedTagFilters.length) {
+    const clauses = normalizedTagFilters.map(() => "(ct.tag_type = ? AND ct.group_id = ? AND ct.tag_id = ?)");
+    filters.push(`
+      target_type = 'private'
+      AND EXISTS (
+        SELECT 1
+        FROM bot_agent_bindings bab
+        JOIN conversation_tags ct
+          ON ct.bot_id = proactive_targets.bot_id
+         AND ct.agent_id = bab.agent_id
+         AND ct.conversation_key = proactive_targets.bot_id || ':private:' || proactive_targets.target_name
+        WHERE bab.bot_id = proactive_targets.bot_id
+          AND bab.enabled = 1
+          AND (${clauses.join(" OR ")})
+      )
+    `);
+    for (const tag of normalizedTagFilters) {
+      values.push(tag.tagType, tag.groupId, tag.tagId);
+    }
+  }
   return {
     where: `WHERE ${filters.join(" AND ")}`,
     values
@@ -3472,6 +3560,7 @@ export function listProactiveAddressBookTargetsPage({
   botId = "",
   targetType = "",
   query = "",
+  tagFilters = [],
   page = 1,
   pageSize = 20
 } = {}) {
@@ -3479,7 +3568,7 @@ export function listProactiveAddressBookTargetsPage({
 
   const normalizedPageSize = normalizePageSize(pageSize, 20, 100);
   const requestedPage = normalizePage(page);
-  const { where, values } = proactiveAddressBookTargetsWhere({ botId, targetType, query });
+  const { where, values } = proactiveAddressBookTargetsWhere({ botId, targetType, query, tagFilters });
   const total = db.prepare(`SELECT COUNT(*) AS total FROM proactive_targets ${where}`).get(...values)?.total || 0;
   const pagination = paginationResult({
     total,
@@ -3528,6 +3617,7 @@ export function createProactiveTask({
   messageType = "text",
   messagePayload = {},
   targets,
+  scheduledAt = null,
   createdBy
 }) {
   const timestamp = now();
@@ -3542,9 +3632,9 @@ export function createProactiveTask({
   const result = db.prepare(`
     INSERT INTO proactive_tasks (
       bot_id, agent_id, title, content, message_type, message_payload_json,
-      status, total_count, created_by, created_at, updated_at
+      status, total_count, created_by, created_at, updated_at, scheduled_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     botId,
     agentId || "",
@@ -3556,7 +3646,8 @@ export function createProactiveTask({
     normalizedTargets.length,
     createdBy || "console",
     timestamp,
-    timestamp
+    timestamp,
+    scheduledAt || null
   );
 
   const taskId = result.lastInsertRowid;
@@ -3666,16 +3757,18 @@ export function listProactiveTaskTargets(taskId) {
     .map(rowToProactiveTarget);
 }
 
-export function claimNextProactiveTarget() {
+export function claimNextProactiveTarget({ nowIso = now() } = {}) {
   const target = db
     .prepare(`
-      SELECT *
-      FROM proactive_task_targets
-      WHERE status = 'pending'
-      ORDER BY id ASC
+      SELECT target.*
+      FROM proactive_task_targets target
+      JOIN proactive_tasks task ON task.id = target.task_id
+      WHERE target.status = 'pending'
+        AND (task.scheduled_at IS NULL OR task.scheduled_at <= ?)
+      ORDER BY target.id ASC
       LIMIT 1
     `)
-    .get();
+    .get(nowIso);
   if (!target) return null;
 
   const timestamp = now();
@@ -3737,6 +3830,42 @@ export function markProactiveTargetSent({ id, messageId, worktoolResponse }) {
     WHERE id = ?
   `).run(messageId || "", json(worktoolResponse), timestamp, timestamp, id);
   if (target) refreshProactiveTaskStatus(target.task_id);
+}
+
+export function cancelProactiveTask({ id, reason = "console" }) {
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const task = db.prepare("SELECT * FROM proactive_tasks WHERE id = ?").get(id);
+    if (!task) throw new Error("proactive task not found");
+    if (["sent", "failed", "partial", "canceled"].includes(task.status)) {
+      throw new Error("proactive task cannot be canceled");
+    }
+
+    db.prepare(`
+      UPDATE proactive_task_targets
+      SET status = 'canceled',
+          error_message = ?,
+          finished_at = ?,
+          updated_at = ?
+      WHERE task_id = ?
+        AND status = 'pending'
+    `).run(String(reason || "console"), timestamp, timestamp, id);
+    db.prepare(`
+      UPDATE proactive_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = ?,
+          finished_at = COALESCE(finished_at, ?),
+          updated_at = ?
+      WHERE id = ?
+    `).run(timestamp, String(reason || "console"), timestamp, timestamp, id);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return getProactiveTask(id);
 }
 
 export function markProactiveTargetAgentSync({ id, status, response, error }) {
@@ -3806,6 +3935,7 @@ export function markProactiveTargetFailed({ id, error, retry = false }) {
 }
 
 export function refreshProactiveTaskStatus(taskId) {
+  const currentTask = db.prepare("SELECT status FROM proactive_tasks WHERE id = ?").get(taskId);
   const counts = db.prepare(`
     SELECT
       COUNT(*) AS total,
@@ -3815,6 +3945,24 @@ export function refreshProactiveTaskStatus(taskId) {
     FROM proactive_task_targets
     WHERE task_id = ?
   `).get(taskId);
+
+  if (currentTask?.status === "canceled") {
+    db.prepare(`
+      UPDATE proactive_tasks
+      SET total_count = ?,
+          sent_count = ?,
+          failed_count = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      counts.total || 0,
+      counts.sent || 0,
+      counts.failed || 0,
+      now(),
+      taskId
+    );
+    return;
+  }
 
   let status = "pending";
   let finishedAt = null;
