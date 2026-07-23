@@ -1582,10 +1582,25 @@ button.danger:hover {
 
 .target-picker-head {
   display: grid;
-  grid-template-columns: minmax(320px, 1fr) auto;
+  grid-template-columns: max-content minmax(280px, 1fr) auto;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.proactive-schedule-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.proactive-schedule-control .proactive-schedule {
+  padding-top: 0;
+}
+
+.proactive-schedule-control .proactive-schedule-field {
+  min-width: 230px;
 }
 
 .proactive-title-field {
@@ -1728,11 +1743,6 @@ button.danger:hover {
 
 .bulk-actions .target-tag-picker .tag-multi-select-button {
   min-width: 0;
-}
-
-.bulk-actions .proactive-schedule {
-  min-width: max-content;
-  padding-top: 0;
 }
 
 .proactive-schedule {

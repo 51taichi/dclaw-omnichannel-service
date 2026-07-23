@@ -630,6 +630,17 @@
           <div class="proactive-form-body">
           <div class="wide target-picker">
             <div class="target-picker-head">
+              <div class="proactive-schedule-control">
+                <label class="toggle switch-toggle proactive-schedule proactive-schedule-toggle">
+                  <input id="proactiveScheduleEnabled" name="scheduleEnabled" type="checkbox" />
+                  <span class="switch-slider" aria-hidden="true"></span>
+                  <span class="switch-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>定时推送</span>
+                </label>
+                <label id="proactiveScheduledAtField" class="proactive-schedule-field" hidden>
+                  <span class="field-label">发送时间</span>
+                  <input id="proactiveScheduledAt" name="scheduledAt" type="datetime-local" />
+                </label>
+              </div>
               <label class="proactive-title-field">
                 <span class="field-label">任务名称</span>
                 <input id="proactiveTitle" name="title" placeholder="例如 客户资料跟进" />
@@ -677,15 +688,6 @@
                 </div>
               </div>
               <div class="bulk-actions">
-                <label class="toggle switch-toggle proactive-schedule proactive-schedule-toggle">
-                  <input id="proactiveScheduleEnabled" name="scheduleEnabled" type="checkbox" />
-                  <span class="switch-slider" aria-hidden="true"></span>
-                  <span class="switch-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>定时推送</span>
-                </label>
-                <label id="proactiveScheduledAtField" class="proactive-schedule-field" hidden>
-                  <span class="field-label">发送时间</span>
-                  <input id="proactiveScheduledAt" name="scheduledAt" type="datetime-local" />
-                </label>
                 <label class="target-date-picker flow-session-date-filter">
                   <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>添加日期</span>
                   <input id="targetDateTagSelect" type="date" />

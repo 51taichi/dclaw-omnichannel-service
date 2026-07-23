@@ -28,6 +28,17 @@ test("proactive panel exposes separate add-date, multi-tag, and one-time schedul
   assert.match(css, /\.proactive-schedule/);
 });
 
+test("proactive schedule control sits left of the task name as one component", () => {
+  const proactivePanel = sectionHtml("proactivePanel");
+  const head = proactivePanel.slice(
+    proactivePanel.indexOf('<div class="target-picker-head">'),
+    proactivePanel.indexOf('<div class="target-toolbar">')
+  );
+  assert.match(head, /class="proactive-schedule-control"[\s\S]*id="proactiveScheduleEnabled"[\s\S]*id="proactiveScheduledAt"[\s\S]*class="proactive-title-field"/);
+  const bulkActions = proactivePanel.slice(proactivePanel.indexOf('<div class="bulk-actions">'));
+  assert.doesNotMatch(bulkActions, /id="proactiveScheduleEnabled"|id="proactiveScheduledAt"/);
+});
+
 test("existing proactive target bulk controls remain in the same panel", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
@@ -36,7 +47,8 @@ test("existing proactive target bulk controls remain in the same panel", () => {
   assert.match(proactivePanel, /class="target-search-actions"[\s\S]*id="clearTargetsButton"[\s\S]*清空/);
   assert.match(proactivePanel, /id="targetPagination"/);
   const bulkActions = proactivePanel.slice(proactivePanel.indexOf('<div class="bulk-actions">'));
-  assert.match(bulkActions, /id="proactiveScheduleEnabled"[\s\S]*id="proactiveScheduledAtField"[\s\S]*id="targetDateTagSelect"[\s\S]*id="targetTagSelectButton"[\s\S]*id="targetPagination"/);
+  assert.match(bulkActions, /id="targetDateTagSelect"[\s\S]*id="targetTagSelectButton"[\s\S]*id="targetPagination"/);
+  assert.doesNotMatch(bulkActions, /id="proactiveScheduleEnabled"|id="proactiveScheduledAt"/);
 });
 
 test("proactive task cancellation style is scoped to proactive rows", () => {
