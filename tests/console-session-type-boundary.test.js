@@ -106,16 +106,15 @@ test("target pagination total sits after the next page button", () => {
   assert.match(css, /\.pagination-size\s*\{[^}]*display:\s*inline-flex;[^}]*grid-template-columns:\s*none;[^}]*align-items:\s*center;[^}]*margin:\s*0;[^}]*padding-left:\s*15px;/);
   assert.match(css, /\.pagination-size select\s*\{[^}]*width:\s*60px;[^}]*min-width:\s*60px;[^}]*height:\s*32px;[^}]*padding:\s*0 24px 0 0px;[^}]*font-size:\s*13px;/);
   assert.doesNotMatch(css, /\.pagination-summary\s*\{[^}]*margin-right:\s*auto/);
-  assert.match(css, /\.bulk-actions \.target-pagination\s*\{[^}]*justify-content:\s*flex-end/);
+  assert.match(css, /\.proactive-form-body > \.target-pagination\s*\{[^}]*justify-content:\s*flex-end/);
 });
 
-test("target pagination buttons keep shared dimensions inside bulk actions", () => {
-  assert.match(css, /\.bulk-actions \.pagination-button\s*\{[^}]*width:\s*34px;[^}]*min-width:\s*34px;[^}]*height:\s*34px;[^}]*min-height:\s*34px;[^}]*padding:\s*0;[^}]*gap:\s*0;/);
+test("target pagination buttons keep shared dimensions in the standalone pagination row", () => {
+  assert.match(css, /\.target-pagination \.pagination-button\s*\{[^}]*width:\s*34px;[^}]*min-width:\s*34px;[^}]*height:\s*34px;[^}]*min-height:\s*34px;[^}]*padding:\s*0;[^}]*gap:\s*0;/);
 });
 
-test("proactive target pagination sits on the bulk action row", () => {
-  assert.match(html, /<div class="bulk-actions">[\s\S]*id="targetPagination"[\s\S]*<\/div>\s*<\/div>\s*<div id="targetList"/);
+test("proactive target pagination sits above the message fields", () => {
+  assert.match(html, /<div class="bulk-actions">[\s\S]*id="targetTagSelectButton"[\s\S]*<\/div>\s*<\/div>\s*<div id="targetList"[\s\S]*<\/div>\s*<div id="targetPagination" class="pagination-bar target-pagination"/);
   assert.match(css, /\.bulk-actions\s*\{[^}]*align-items:\s*center/);
-  assert.match(css, /\.bulk-actions \.target-pagination\s*\{[^}]*margin-left:\s*auto/);
-  assert.doesNotMatch(css, /\.target-pagination\s*\{[^}]*grid-column:\s*2/);
+  assert.match(css, /\.proactive-form-body > \.target-pagination\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*margin-left:\s*auto/);
 });

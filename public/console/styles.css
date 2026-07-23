@@ -4453,7 +4453,7 @@ textarea[data-action-target-activation].is-action-target-focused {
   font-size: 14px;
 }
 
-.bulk-actions .pagination-button {
+.target-pagination .pagination-button {
   width: 34px;
   min-width: 34px;
   height: 34px;
@@ -4481,8 +4481,8 @@ textarea[data-action-target-activation].is-action-target-focused {
   justify-content: initial;
 }
 
-.bulk-actions .target-pagination {
-  grid-column: 4 / -1;
+.proactive-form-body > .target-pagination {
+  grid-column: 1 / -1;
   min-width: 0;
   justify-content: flex-end;
   margin-left: auto;
