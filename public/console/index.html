@@ -660,12 +660,6 @@
                 <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索</span>
                 <input id="targetSearchInput" type="search" placeholder="输入客户或群名" />
               </label>
-              <label class="target-tag-picker">
-                <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>按标签选择</span>
-                <select id="targetTagSelect">
-                  <option value="">选择标签</option>
-                </select>
-              </label>
               <div class="bulk-actions">
                 <button id="selectPrivateTargetsButton" class="secondary" type="button">
                   <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
@@ -679,6 +673,28 @@
                   <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
                   清空
                 </button>
+                <label class="target-date-picker flow-session-date-filter">
+                  <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>添加日期</span>
+                  <input id="targetDateTagSelect" type="date" />
+                </label>
+                <label class="target-tag-picker tag-multi-select">
+                  <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>按标签选择</span>
+                  <button id="targetTagSelectButton" class="tag-multi-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+                    选择标签
+                  </button>
+                  <div id="targetTagSelectMenu" class="tag-multi-select-menu" role="listbox" aria-label="推送标签选择" hidden></div>
+                  <select id="targetTagSelect" multiple hidden></select>
+                </label>
+                <div class="proactive-schedule">
+                  <label class="proactive-schedule-toggle">
+                    <input id="proactiveScheduleEnabled" name="scheduleEnabled" type="checkbox" />
+                    <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>定时推送</span>
+                  </label>
+                  <label id="proactiveScheduledAtField" class="proactive-schedule-field" hidden>
+                    <span class="field-label">发送时间</span>
+                    <input id="proactiveScheduledAt" name="scheduledAt" type="datetime-local" />
+                  </label>
+                </div>
                 <div id="targetPagination" class="pagination-bar target-pagination" aria-label="推送目标分页"></div>
               </div>
             </div>
@@ -710,16 +726,6 @@
               <span class="upload-overlay-copy">
                 <strong>请您稍后，正在上传</strong>
               </span>
-            </div>
-            <div class="proactive-schedule">
-              <label class="proactive-schedule-toggle">
-                <input id="proactiveScheduleEnabled" name="scheduleEnabled" type="checkbox" />
-                <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>定时推送</span>
-              </label>
-              <label id="proactiveScheduledAtField" class="proactive-schedule-field" hidden>
-                <span class="field-label">发送时间</span>
-                <input id="proactiveScheduledAt" name="scheduledAt" type="datetime-local" />
-              </label>
             </div>
           </div>
           </div>
