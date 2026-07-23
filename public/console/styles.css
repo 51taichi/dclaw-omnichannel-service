@@ -1591,6 +1591,7 @@ button.danger:hover {
 .proactive-schedule-control {
   display: flex;
   align-items: center;
+  align-self: center;
   gap: 10px;
   min-width: 0;
 }
