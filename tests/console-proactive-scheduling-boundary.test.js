@@ -29,6 +29,7 @@ test("proactive panel exposes separate add-date, multi-tag, and one-time schedul
   assert.match(proactivePanel, /按添加日期选择/);
   assert.match(proactivePanel, /id="targetDateTagSelect"/);
   assert.match(css, /\.proactive-schedule/);
+  assert.match(css, /#proactiveContent\s*\{[^}]*height:\s*80px;[^}]*min-height:\s*80px;/);
 });
 
 test("proactive schedule control sits left of the task name as one component", () => {
