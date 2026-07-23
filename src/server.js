@@ -46,6 +46,7 @@ import {
   claimDueFlowActivationTasks,
   claimDueTagActivationTasks,
   claimNextProactiveTarget,
+  cancelProactiveTask,
   clearConversationForReset,
   createProactiveTask,
   deleteAgent,
@@ -87,6 +88,7 @@ import {
   listFlowStateEvents,
   listTagActivationTasks,
   listProactiveAddressBookTargetsPage,
+  listProactiveTargetTags,
   listProactiveTasksPage,
   listProactiveTaskTargets,
   listAgents,
@@ -2024,6 +2026,62 @@ function normalizeProactiveMessage(body) {
   };
 }
 
+function normalizeProactiveScheduledAt(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/.exec(raw);
+  if (!match) {
+    const error = new Error("scheduledAt must use Asia/Shanghai (UTC+8) time in YYYY-MM-DDTHH:mm format");
+    error.status = 400;
+    throw error;
+  }
+  const [, yearText, monthText, dayText, hourText, minuteText] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const calendarDate = new Date(Date.UTC(year, month - 1, day));
+  if (
+    calendarDate.getUTCFullYear() !== year ||
+    calendarDate.getUTCMonth() !== month - 1 ||
+    calendarDate.getUTCDate() !== day ||
+    hour > 23 ||
+    minute > 59
+  ) {
+    const error = new Error("scheduledAt is not a valid Beijing date and time");
+    error.status = 400;
+    throw error;
+  }
+  const scheduledAt = new Date(Date.UTC(year, month - 1, day, hour - 8, minute));
+  if (scheduledAt.getTime() <= Date.now()) {
+    const error = new Error("scheduledAt must be later than now");
+    error.status = 400;
+    throw error;
+  }
+  return scheduledAt.toISOString();
+}
+
+function proactiveTagFiltersFromRequest(req) {
+  const raw = req.query.tagFilters;
+  if (raw) {
+    try {
+      const parsed = JSON.parse(String(raw));
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      const error = new Error("tagFilters must be valid JSON");
+      error.status = 400;
+      throw error;
+    }
+  }
+  if (!req.query.tagId) return [];
+  return [{
+    tagType: String(req.query.tagType || "normal"),
+    groupId: String(req.query.groupId || ""),
+    tagId: String(req.query.tagId || "")
+  }];
+}
+
 function buildCommandForTarget(target) {
   const payload = target.messagePayload || {};
   if (target.messageType === "media") {
@@ -2996,7 +3054,7 @@ async function processNextProactiveTarget() {
   if (!proactiveWorkerConfig.enabled || proactiveWorkerBusy) return;
   proactiveWorkerBusy = true;
   try {
-    const target = claimNextProactiveTarget();
+    const target = claimNextProactiveTarget({ nowIso: new Date().toISOString() });
     if (!target) return;
 
     try {
@@ -4748,6 +4806,7 @@ app.post(
     const targets = normalizeProactiveTargets(body.targets);
     const binding = botId ? getBotBinding(botId) : null;
     const message = normalizeProactiveMessage(body);
+    const scheduledAt = normalizeProactiveScheduledAt(body.scheduledAt);
 
     if (!botId) throw new Error("botId is required");
     if (!targets.length) throw new Error("at least one target is required");
@@ -4763,12 +4822,15 @@ app.post(
       messageType: message.messageType,
       messagePayload: message.messagePayload,
       targets,
+      scheduledAt,
       createdBy: "console"
     });
 
-    void processNextProactiveTarget().catch((error) => {
-      logError("proactive.worker.failed", { error });
-    });
+    if (!scheduledAt) {
+      void processNextProactiveTarget().catch((error) => {
+        logError("proactive.worker.failed", { error });
+      });
+    }
 
     res.json({
       ok: true,
@@ -4815,6 +4877,36 @@ app.get(
   })
 );
 
+app.post(
+  "/api/proactive/tasks/:taskId/cancel",
+  asyncHandler(async (req, res) => {
+    const task = getProactiveTask(req.params.taskId);
+    if (!task) {
+      res.status(404).json({ ok: false, message: "task not found" });
+      return;
+    }
+    assertBotAccess(req, task.botId);
+    const canceledTask = cancelProactiveTask({
+      id: req.params.taskId,
+      reason: String(req.body?.reason || "console")
+    });
+    res.json({
+      ok: true,
+      task: canceledTask,
+      targets: listProactiveTaskTargets(req.params.taskId)
+    });
+  })
+);
+
+app.get(
+  "/api/proactive/targets/tags",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
+    res.json({ ok: true, tags: listProactiveTargetTags({ botId }) });
+  })
+);
+
 app.get(
   "/api/proactive/targets",
   asyncHandler(async (req, res) => {
@@ -4825,6 +4917,7 @@ app.get(
       botId,
       targetType: req.query.targetType,
       query: String(req.query.q || "").trim(),
+      tagFilters: proactiveTagFiltersFromRequest(req),
       page: Number(req.query.page || 1),
       pageSize: Number(req.query.pageSize || req.query.limit || 20)
     });
