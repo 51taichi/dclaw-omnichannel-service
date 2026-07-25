@@ -48,20 +48,26 @@ export function normalizeCustomerHistoryRow(row) {
     return [];
   }
   if (!Array.isArray(items)) return [];
+  const type = Number(row?.type || 0);
   const content = items
     .filter((item) => Number(item?.feature) !== 0)
     .map((item) => String(item?.text || "").trim())
     .filter(Boolean)
     .join("\n");
   const createdAt = normalizeWorktoolTimestamp(row?.createTime);
-  if (!content || !createdAt) return [];
+  const fallbackContentByType = {
+    2: "[图片消息]",
+    3: "[语音消息]"
+  };
+  const normalizedContent = content || fallbackContentByType[type] || "";
+  if (!normalizedContent || !createdAt) return [];
   const message = {
     robotId: String(row?.robotId || ""),
     title: String(row?.titleList || "").trim(),
     sender: Number(row?.sender || 0),
-    type: Number(row?.type || 0),
+    type,
     direction: Number(row?.sender || 0) === 0 ? "inbound" : "outbound",
-    content,
+    content: normalizedContent,
     createdAt,
     rawItems: String(row?.itemMsgList || "[]"),
     rawPayload: row

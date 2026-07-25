@@ -50,6 +50,52 @@ test("normalizes timezone-free WorkTool timestamps as Beijing time", () => {
   assert.equal(normalizeWorktoolTimestamp("invalid"), "");
 });
 
+test("preserves historical image rows as placeholders when WorkTool omits the image URL", () => {
+  const messages = normalizeCustomerHistoryRow({
+    robotId: "bot_a",
+    titleList: "魔兮",
+    sender: 0,
+    type: 2,
+    createTime: "2026-07-13 08:56:35",
+    itemMsgList: JSON.stringify([{ feature: 0, text: "8:56" }])
+  });
+
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].content, "[图片消息]");
+  assert.equal(messages[0].type, 2);
+  assert.equal(messages[0].rawItems, JSON.stringify([{ feature: 0, text: "8:56" }]));
+});
+
+test("keeps historical voice transcription and falls back to a voice placeholder", () => {
+  const transcribed = normalizeCustomerHistoryRow({
+    robotId: "bot_a",
+    titleList: "魔兮",
+    sender: 0,
+    type: 3,
+    createTime: "2026-07-16 14:27:56",
+    itemMsgList: JSON.stringify([
+      { feature: 0, text: "14:27" },
+      { feature: 2, text: "5\"" },
+      { feature: 2, text: "好的，好的，我知道了" }
+    ])
+  });
+
+  assert.equal(transcribed.length, 1);
+  assert.equal(transcribed[0].content, "5\"\n好的，好的，我知道了");
+
+  const missingTranscription = normalizeCustomerHistoryRow({
+    robotId: "bot_a",
+    titleList: "魔兮",
+    sender: 0,
+    type: 3,
+    createTime: "2026-07-16 14:27:56",
+    itemMsgList: JSON.stringify([{ feature: 0, text: "14:27" }])
+  });
+
+  assert.equal(missingTranscription.length, 1);
+  assert.equal(missingTranscription[0].content, "[语音消息]");
+});
+
 test("paginates customer history and returns remark aliases", async () => {
   const originalFetch = globalThis.fetch;
   const originalBaseUrl = process.env.WORKTOOL_BASE_URL;
