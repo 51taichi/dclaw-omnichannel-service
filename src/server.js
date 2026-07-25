@@ -154,6 +154,7 @@ import {
 } from "./message-rules.js";
 import { normalizeUploadedFilename } from "./filenames.js";
 import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
+import { normalizeHistoryAnalysisConfig } from "./history-analysis.js";
 import { createLegacyCustomerHistoryService } from "./legacy-customer-history.js";
 import { isLegacyCustomerCandidate } from "./legacy-history.js";
 import { listApiCommandPage, listCustomerHistory } from "./worktool-history.js";
@@ -1620,6 +1621,10 @@ function getReplyWaitSettingKey(botId) {
   return `reply_wait:${String(botId || "").trim()}`;
 }
 
+function getHistoryAnalysisSettingKey(botId) {
+  return `history_analysis:${String(botId || "").trim()}`;
+}
+
 function normalizeReplyWaitConfig(config = {}) {
   const baseSeconds = Number(config.baseSeconds);
   const incrementSeconds = Number(config.incrementSeconds);
@@ -1633,6 +1638,12 @@ function normalizeReplyWaitConfig(config = {}) {
 
 function getReplyWaitConfig(botId) {
   return normalizeReplyWaitConfig(getSetting(getReplyWaitSettingKey(botId), null) || {});
+}
+
+function getHistoryAnalysisConfig(botId) {
+  return normalizeHistoryAnalysisConfig(
+    getSetting(getHistoryAnalysisSettingKey(botId), null) || {}
+  );
 }
 
 function getAgentFailureFallbackReply(botId) {
@@ -4500,6 +4511,31 @@ app.put(
       ...(req.body || {})
     });
     setSetting(getReplyWaitSettingKey(req.params.botId), config);
+    res.json({ ok: true, botId: req.params.botId, config });
+  })
+);
+
+app.get(
+  "/api/bots/:botId/settings/history-analysis",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    res.json({
+      ok: true,
+      botId: req.params.botId,
+      config: getHistoryAnalysisConfig(req.params.botId)
+    });
+  })
+);
+
+app.put(
+  "/api/bots/:botId/settings/history-analysis",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    const config = normalizeHistoryAnalysisConfig({
+      ...getHistoryAnalysisConfig(req.params.botId),
+      ...(req.body || {})
+    });
+    setSetting(getHistoryAnalysisSettingKey(req.params.botId), config);
     res.json({ ok: true, botId: req.params.botId, config });
   })
 );

@@ -321,6 +321,37 @@
         </div>
       </section>
 
+      <section id="historyAnalysisPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
+        <div class="section-head">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>历史智能分析</h2>
+          <button class="collapse-button" data-collapse-target="historyAnalysisPanel" type="button" aria-label="收起历史智能分析">
+            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+          </button>
+        </div>
+        <div class="collapsible-content">
+          <form id="historyAnalysisForm" class="form-grid compact-form history-analysis-form">
+            <label>
+              <span class="field-label">历史客户发言上限（字符）</span>
+              <input
+                name="historyCustomerTextMaxChars"
+                type="number"
+                min="1000"
+                max="6000"
+                step="100"
+                value="4000"
+                required
+              />
+            </label>
+            <div class="actions">
+              <button class="primary" type="submit">
+                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+                保存历史分析配置
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
       <section id="debugPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-terminal"></use></svg>调试自动回复</h2>

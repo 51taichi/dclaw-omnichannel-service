@@ -9,6 +9,7 @@ const state = {
   botContextVersion: 0,
   debugReplyLoadVersion: 0,
   replyWaitLoadVersion: 0,
+  historyAnalysisLoadVersion: 0,
   selectedFlowConversationKey: "",
   loadingFlowConversationKey: "",
   currentRole: "",
@@ -59,6 +60,7 @@ const els = {
   debugReplyForm: document.querySelector("#debugReplyForm"),
   replyWaitPanel: document.querySelector("#replyWaitPanel"),
   replyWaitForm: document.querySelector("#replyWaitForm"),
+  historyAnalysisForm: document.querySelector("#historyAnalysisForm"),
   flowMachineForm: document.querySelector("#flowMachineForm"),
   addFlowNodeButton: document.querySelector("#addFlowNodeButton"),
   applyFlowJsonButton: document.querySelector("#applyFlowJsonButton"),
@@ -572,6 +574,10 @@ function clearBotScopedContent() {
     els.replyWaitForm.incrementSeconds.value = "5";
     els.replyWaitForm.fallbackReply.value = DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
   }
+  els.historyAnalysisForm?.reset();
+  if (els.historyAnalysisForm) {
+    els.historyAnalysisForm.historyCustomerTextMaxChars.value = "4000";
+  }
   els.manualReplyInput.value = "";
   els.accessKeyForm.reset();
   els.proactiveForm.reset();
@@ -631,6 +637,8 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
       await loadDebugReply({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       await loadReplyWait({ contextVersion });
+      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
+      await loadHistoryAnalysis({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
     }
     const tasks = [
@@ -1523,6 +1531,22 @@ async function loadReplyWait({ contextVersion = state.botContextVersion } = {}) 
   els.replyWaitForm.incrementSeconds.value = String(config.incrementSeconds ?? 5);
   els.replyWaitForm.fallbackReply.value =
     config.fallbackReply || DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
+}
+
+async function loadHistoryAnalysis({ contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (state.currentRole !== "admin" || !botId || !els.historyAnalysisForm) return;
+  const requestVersion = ++state.historyAnalysisLoadVersion;
+  const data = await request(
+    `/api/bots/${encodeURIComponent(botId)}/settings/history-analysis`
+  );
+  if (
+    requestVersion !== state.historyAnalysisLoadVersion ||
+    state.selectedBotId !== botId ||
+    !isCurrentBotContext(botId, contextVersion)
+  ) return;
+  els.historyAnalysisForm.historyCustomerTextMaxChars.value =
+    String(data.config?.historyCustomerTextMaxChars ?? 4000);
 }
 
 async function saveBot(event) {
@@ -4550,6 +4574,32 @@ async function saveReplyWait(event) {
   toast("消息/等待回复配置已保存");
 }
 
+async function saveHistoryAnalysis(event) {
+  event.preventDefault();
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (state.currentRole !== "admin" || !botId) {
+    toast("请先以管理员身份选择 Bot");
+    return;
+  }
+  const result = await request(
+    `/api/bots/${encodeURIComponent(botId)}/settings/history-analysis`,
+    {
+      method: "PUT",
+      botId,
+      body: JSON.stringify({
+        historyCustomerTextMaxChars: Number(
+          els.historyAnalysisForm.historyCustomerTextMaxChars.value
+        )
+      })
+    }
+  );
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  els.historyAnalysisForm.historyCustomerTextMaxChars.value =
+    String(result.config?.historyCustomerTextMaxChars ?? 4000);
+  toast("历史智能分析配置已保存");
+}
+
 function proactiveAttachmentIcon(type) {
   return {
     image: "icon-image",
@@ -4937,6 +4987,9 @@ els.debugReplyForm.addEventListener("submit", (event) =>
 );
 els.replyWaitForm?.addEventListener("submit", (event) =>
   saveReplyWait(event).catch(toastError)
+);
+els.historyAnalysisForm?.addEventListener("submit", (event) =>
+  saveHistoryAnalysis(event).catch(toastError)
 );
 els.flowMachineForm.addEventListener("submit", (event) =>
   saveFlowMachine(event).catch(toastError)
