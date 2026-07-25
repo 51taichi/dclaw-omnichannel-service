@@ -112,6 +112,17 @@ test("bot binding form selects a saved agent instead of storing agent credential
   assert.match(app, /class="danger" data-agent-delete/);
 });
 
+test("admin Bot context reloads Agent data with the selected Bot session", () => {
+  assert.match(
+    app,
+    /if \(state\.currentRole === "admin"\) \{[\s\S]*await loadAgents\(\);[\s\S]*fillForm\(activeBot\);/
+  );
+  const loadAgentsStart = app.indexOf("async function loadAgents");
+  const loadAgentsEnd = app.indexOf("async function loadDebugReply", loadAgentsStart);
+  const loadAgentsBody = app.slice(loadAgentsStart, loadAgentsEnd);
+  assert.doesNotMatch(loadAgentsBody, /botId:\s*""/);
+});
+
 test("startup toggles render as switch components instead of plain checkboxes", () => {
   assert.match(html, /class="toggle switch-toggle action-toggle"[\s\S]*name="enabled" type="checkbox" checked[\s\S]*class="switch-slider"/);
   assert.match(html, /id="debugReplyForm"[\s\S]*class="toggle switch-toggle"[\s\S]*name="enabled" type="checkbox"[\s\S]*class="switch-slider"/);

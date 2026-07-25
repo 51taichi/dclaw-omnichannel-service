@@ -618,6 +618,8 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       currentBots = data.bots || currentBots;
       activeBot = currentBots.find((item) => item.botId === bot.botId) || bot;
+      await loadAgents();
+      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       renderBots(currentBots);
       fillForm(activeBot);
       await loadDebugReply({ contextVersion });
@@ -1471,7 +1473,6 @@ async function loadBots() {
 async function loadAgents({ silent = false, headers: requestHeaders = {} } = {}) {
   try {
     const data = await request("/api/agents", {
-      botId: "",
       headers: requestHeaders
     });
     currentAgents = data.agents || [];
