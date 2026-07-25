@@ -2535,6 +2535,14 @@ textarea[data-action-target-activation].is-action-target-focused {
   padding: 0;
 }
 
+.history-analysis-form {
+  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
+}
+
+.history-text-limit-field {
+  grid-template-columns: 168px minmax(0, 1fr);
+}
+
 @media (max-width: 920px) {
   .reply-wait-form {
     grid-template-columns: 1fr 1fr;
