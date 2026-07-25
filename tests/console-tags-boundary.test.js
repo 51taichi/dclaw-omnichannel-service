@@ -151,6 +151,15 @@ test("console renders tag chips and tag filters", () => {
   assert.match(css, /\.tag-chip \.icon\s*\{[\s\S]*width:\s*12px[\s\S]*height:\s*12px/);
 });
 
+test("opening a conversation refreshes its card after detail tags arrive", () => {
+  const body = functionBody("openFlowSession");
+
+  assert.match(
+    body,
+    /currentFlowSessions = currentFlowSessions\.map\([\s\S]*\);\s*renderFlowSessions\(\);\s*if \(els\.chatTagList\)/
+  );
+});
+
 test("conversation cards expose click and right-click entry points for one manual tag menu", () => {
   assert.match(html, /id="flowSessionTagMenu" class="flow-session-tag-menu"/);
   assert.match(js, /flowSessionTagMenu: document\.querySelector\("#flowSessionTagMenu"\)/);

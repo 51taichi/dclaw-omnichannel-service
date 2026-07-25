@@ -4459,6 +4459,7 @@ async function openFlowSession(conversationKey, {
     currentFlowSessions = currentFlowSessions.map((item) =>
       item.conversationKey === conversationKey ? { ...item, tags: currentTags } : item
     );
+    renderFlowSessions();
     if (els.chatTagList) els.chatTagList.innerHTML = renderConversationTags(currentTags);
     renderFlowSessionTagFilter();
     renderFlowSessionDateTagFilter();
