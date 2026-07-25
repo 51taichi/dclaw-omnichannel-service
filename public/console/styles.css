@@ -178,6 +178,8 @@ h2 {
 }
 
 .workspace-tabs {
+  --workspace-tab-link: var(--accent);
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -192,6 +194,7 @@ h2 {
 }
 
 .workspace-tabs.is-bound {
+  --workspace-tab-link: var(--bot-accent);
   border-color: color-mix(in srgb, var(--bot-accent) 45%, var(--line));
   background: color-mix(in srgb, var(--bot-accent) 8%, #ffffff);
   box-shadow: 0 12px 28px color-mix(in srgb, var(--bot-accent) 16%, transparent);
@@ -263,9 +266,25 @@ h2 {
 @media (min-width: 761px) {
   .workspace-tabs {
     overflow: visible;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .workspace-tabs::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    right: -1px;
+    left: -1px;
+    height: 15px;
+    border-style: solid;
+    border-color: var(--workspace-tab-link);
+    border-width: 0 1px 3px;
+    background: transparent;
+    pointer-events: none;
   }
 
   .workspace-tabs button.active {
+    z-index: 1;
     border-radius: 6px 6px 0 0;
   }
 
@@ -276,7 +295,9 @@ h2 {
     right: 0;
     left: 0;
     height: 20px;
-    background: inherit;
+    border-left: 2px solid var(--workspace-tab-link);
+    border-right: 2px solid var(--workspace-tab-link);
+    background: transparent;
     pointer-events: none;
   }
 }
