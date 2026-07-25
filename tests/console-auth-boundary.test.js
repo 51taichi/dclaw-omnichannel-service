@@ -79,16 +79,17 @@ test("workspace tabs adapt to visible tab count without a fixed container width"
   assert.match(css, /\.workspace-tabs button\s*\{[\s\S]*flex:\s*0 0 auto[\s\S]*min-width:\s*108px[\s\S]*padding:\s*0 16px/);
 });
 
-test("workspace tab strip uses a slanted active tab and connects to its content panel", () => {
+test("workspace tab strip uses a white active tab and connects to its content panel", () => {
   assert.match(css, /\.workspace-head\s*\{[\s\S]*position:\s*relative[\s\S]*z-index:\s*2/);
   assert.match(css, /\.workspace-tabs button\s*\{[\s\S]*position:\s*relative/);
   assert.match(css, /@media \(min-width:\s*761px\)\s*\{[\s\S]*\.workspace-tabs\s*\{[\s\S]*overflow:\s*visible/);
-  assert.match(css, /\.workspace-tabs\s*\{[\s\S]*--workspace-tab-link:\s*var\(--accent\)/);
+  assert.match(css, /\.workspace-tabs\s*\{[\s\S]*--workspace-tab-link:\s*var\(--accent\)[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.78\)/);
   assert.match(css, /\.workspace-tabs\.is-bound\s*\{[\s\S]*--workspace-tab-link:\s*var\(--bot-accent\)/);
   assert.match(css, /\.workspace-tabs::after\s*\{[\s\S]*content:\s*""[\s\S]*top:\s*100%[\s\S]*height:\s*15px[\s\S]*border-width:\s*0 1px 3px[\s\S]*background:\s*transparent/);
-  assert.match(css, /\.workspace-tabs button\.active::before\s*\{[\s\S]*content:\s*""[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.96\)[\s\S]*clip-path:\s*polygon/);
-  assert.match(css, /\.workspace-tabs button\.active::after\s*\{[^}]*content:\s*""[^}]*width:\s*24px[^}]*height:\s*3px[^}]*background:\s*var\(--workspace-tab-link\)/);
-  assert.doesNotMatch(css, /\.workspace-tabs button\.active::after\s*\{[^}]*border-left:/);
+  assert.match(css, /\.workspace-tabs button\.active\s*\{[^}]*background:\s*#ffffff[^}]*color:\s*var\(--workspace-tab-link\)/);
+  assert.match(css, /\.workspace-tabs\.is-bound button\.active\s*\{[^}]*background:\s*#ffffff[^}]*color:\s*var\(--workspace-tab-link\)/);
+  assert.doesNotMatch(css, /\.workspace-tabs button\.active::before\s*\{/);
+  assert.match(css, /\.workspace-tabs button\.active::after\s*\{[^}]*content:\s*""[^}]*top:\s*100%[^}]*height:\s*20px[^}]*border-left:\s*2px solid var\(--workspace-tab-link\)[^}]*border-right:\s*2px solid var\(--workspace-tab-link\)[^}]*background:\s*transparent/);
 });
 
 test("bot binding form selects a saved agent instead of storing agent credentials", () => {
