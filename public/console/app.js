@@ -4245,8 +4245,8 @@ function sourceTypeIcon(type) {
 
 function sourceTypeShortLabel(type) {
   return {
-    enterprise_knowledge: "知识",
-    knowledge: "知识",
+    enterprise_knowledge: "智库",
+    knowledge: "智库",
     experience: "经验",
     flow_node: "任务",
     conversation: "会话",

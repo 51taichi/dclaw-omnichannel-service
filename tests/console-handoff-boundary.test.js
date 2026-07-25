@@ -463,6 +463,9 @@ test("console has manual reply composer with AI takeover prompt and emoji tools"
 });
 
 test("chat bubbles can show agent reply sources without sending them to customers", () => {
+  const shortLabelStart = app.indexOf("function sourceTypeShortLabel");
+  const shortLabelEnd = app.indexOf("function shouldShowChatSource", shortLabelStart);
+  const shortLabels = app.slice(shortLabelStart, shortLabelEnd);
   assert.equal(app.includes("renderChatSources"), true);
   assert.equal(app.includes("message.rawPayload?.sources"), true);
   assert.equal(app.includes("chat-sources"), true);
@@ -473,6 +476,10 @@ test("chat bubbles can show agent reply sources without sending them to customer
   assert.equal(app.includes("chat-source-chip"), true);
   assert.equal(app.includes("icon(sourceTypeIcon(source.type))"), true);
   assert.equal(app.includes("sourceTypeShortLabel(source.type)"), true);
+  assert.match(shortLabels, /enterprise_knowledge:\s*"智库"/);
+  assert.match(shortLabels, /knowledge:\s*"智库"/);
+  assert.match(shortLabels, /experience:\s*"经验"/);
+  assert.doesNotMatch(shortLabels, /(?:enterprise_knowledge|knowledge):\s*"知识"/);
   assert.equal(app.includes("title=\"${escapeHtml(tooltip)}\""), true);
   assert.equal(app.includes("${escapeHtml(label)}：${escapeHtml(source.name)}"), false);
   assert.equal(css.includes(".chat-sources"), true);
