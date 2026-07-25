@@ -37,7 +37,6 @@ import {
   verifyAccessKey
 } from "./auth.js";
 import {
-  backfillEnabledConversationFirstSeenDateTags,
   beginMessageProcessing,
   beginFriendAddedFlowEntry,
   buildMessageKey,
@@ -63,6 +62,8 @@ import {
   getFlowActivationProgress,
   getFlowSession,
   getFlowSessionForBot,
+  ensureConversationDateTag,
+  initializeLegacyDateTagRuleEffectiveTimes,
   isFlowActivationTaskProcessing,
   getOrCreateConversationSession,
   getOrCreateFlowSession,
@@ -120,7 +121,6 @@ import {
   updateOutgoingMessageFromCommandCallback,
   upsertAgent,
   upsertAgentTagSchema,
-  upsertSystemDateTag,
   upsertFlowMachine,
   upsertProactiveAddressBookTarget,
   upsertBotBinding,
@@ -148,7 +148,6 @@ import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
 import {
   adjudicateTagDecision,
   compactTagRulesForAgent,
-  dateTagIdFor,
   normalizeTagSchema
 } from "./tags.js";
 
@@ -527,13 +526,11 @@ function buildTagContext({ binding, conversationKey }) {
 
 function applySystemDateTag({ botId, binding, conversationKey, firstSeenAt }) {
   if (!binding?.agentId) return null;
-  const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
-  if (!schema.dateTag.enabled) return null;
-  return upsertSystemDateTag({
+  return ensureConversationDateTag({
     botId,
     agentId: binding.agentId,
     conversationKey,
-    dateTagId: dateTagIdFor(firstSeenAt || new Date()),
+    firstSeenAt: firstSeenAt || new Date(),
     source: "friend_added"
   });
 }
@@ -5084,8 +5081,8 @@ app.use((error, req, res, next) => {
   });
 });
 
-const dateTagBackfillAgentCount = backfillEnabledConversationFirstSeenDateTags();
-logInfo("customer_date_tags.backfilled", { agentCount: dateTagBackfillAgentCount });
+const migratedDateTagRuleCount = initializeLegacyDateTagRuleEffectiveTimes();
+logInfo("customer_date_tag_rules.migrated", { agentCount: migratedDateTagRuleCount });
 
 app.listen(port, host, () => {
   logInfo("service.started", { host, port });

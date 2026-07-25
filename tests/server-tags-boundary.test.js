@@ -63,13 +63,22 @@ test("tag decisions cancel activation work for tags made inactive", () => {
 test("friend-added event can create date tags", () => {
   assert.match(source, /applySystemDateTag/);
   assert.match(source, /friend_added\.date_tag\.applied/);
+  assert.match(
+    functionBody("applySystemDateTag"),
+    /ensureConversationDateTag\(\{[\s\S]*firstSeenAt:/
+  );
+  assert.doesNotMatch(
+    functionBody("applySystemDateTag"),
+    /dateTagId:\s*dateTagIdFor\(firstSeenAt/
+  );
 });
 
-test("service startup backfills enabled first-seen date tags", () => {
-  const backfillIndex = source.indexOf("backfillEnabledConversationFirstSeenDateTags();");
+test("service startup initializes legacy date tag rule times without historical backfill", () => {
+  const backfillIndex = source.indexOf("initializeLegacyDateTagRuleEffectiveTimes();");
   const listenIndex = source.indexOf("app.listen(port, host");
   assert.ok(backfillIndex >= 0);
   assert.ok(backfillIndex < listenIndex);
+  assert.doesNotMatch(source, /backfillEnabledConversationFirstSeenDateTags\(\)/);
 });
 
 test("conversation reset and handoff cancel tag activation work", () => {
