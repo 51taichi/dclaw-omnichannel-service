@@ -847,6 +847,8 @@ h2 {
   min-height: 40px;
   max-height: 40px;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   resize: none;
   line-height: 20px;
   padding-top: 9px;
@@ -862,6 +864,8 @@ h2 {
   height: 112px;
   max-height: 112px;
   overflow: auto;
+  white-space: pre-wrap;
+  text-overflow: clip;
   resize: vertical;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(42, 48, 216, 0.13);

@@ -247,8 +247,8 @@ test("task nodes animate and keep only one node expanded", () => {
 });
 
 test("task node textareas truncate to one line until focused", () => {
-  assert.match(css, /\.expand-on-focus\s*\{[\s\S]*height:\s*40px[\s\S]*max-height:\s*40px[\s\S]*overflow:\s*hidden[\s\S]*resize:\s*none/);
-  assert.match(css, /\.expand-on-focus:focus\s*\{[\s\S]*height:\s*112px[\s\S]*max-height:\s*112px[\s\S]*overflow:\s*auto[\s\S]*resize:\s*vertical/);
+  assert.match(css, /\.expand-on-focus\s*\{[\s\S]*height:\s*40px[\s\S]*max-height:\s*40px[\s\S]*overflow:\s*hidden[\s\S]*white-space:\s*nowrap[\s\S]*text-overflow:\s*ellipsis[\s\S]*resize:\s*none/);
+  assert.match(css, /\.expand-on-focus:focus\s*\{[\s\S]*height:\s*112px[\s\S]*max-height:\s*112px[\s\S]*overflow:\s*auto[\s\S]*white-space:\s*pre-wrap[\s\S]*text-overflow:\s*clip[\s\S]*resize:\s*vertical/);
 });
 
 test("focused task node textareas stay aligned with their expanding field slot", () => {
