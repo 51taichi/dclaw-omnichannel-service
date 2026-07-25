@@ -217,6 +217,26 @@ h2 {
   white-space: nowrap;
 }
 
+html.has-bot-context .current-bot-actions #lockBotButton {
+  border-color: transparent;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bot-accent) 64%, #1b2148),
+    color-mix(in srgb, var(--bot-accent) 86%, #1b2148)
+  );
+  color: #ffffff;
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bot-accent) 22%, transparent);
+}
+
+html.has-bot-context .current-bot-actions #lockBotButton:hover {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bot-accent) 54%, #11162f),
+    color-mix(in srgb, var(--bot-accent) 78%, #11162f)
+  );
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--bot-accent) 28%, transparent);
+}
+
 .workspace-tabs button {
   position: relative;
   flex: 0 0 auto;
@@ -256,9 +276,13 @@ h2 {
 }
 
 .workspace-tabs.is-bound button.active {
-  background: linear-gradient(90deg, var(--danger), var(--orange));
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bot-accent) 64%, #1b2148),
+    color-mix(in srgb, var(--bot-accent) 86%, #1b2148)
+  );
   color: #ffffff;
-  box-shadow: 0 8px 18px rgba(239, 38, 37, 0.2);
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--bot-accent) 24%, transparent);
 }
 
 .workspace-tabs.is-bound button:not(.active) {
@@ -675,7 +699,7 @@ h2 {
   line-height: 1;
 }
 
-.bot-delete-button {
+.bot-card button.bot-delete-button {
   width: auto;
   min-width: 58px;
   height: 30px;
@@ -686,16 +710,25 @@ h2 {
   align-items: center;
   justify-content: center;
   gap: 5px;
-  border-color: color-mix(in srgb, var(--danger) 48%, var(--line));
-  background: color-mix(in srgb, var(--danger) 8%, #ffffff);
-  color: var(--danger);
+  border-color: transparent;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bot-accent) 64%, #1b2148),
+    color-mix(in srgb, var(--bot-accent) 86%, #1b2148)
+  );
+  color: #ffffff;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--bot-accent) 20%, transparent);
   font-size: 12px;
   font-weight: 900;
 }
 
-.bot-delete-button:hover {
-  background: var(--danger);
-  border-color: var(--danger);
+.bot-card button.bot-delete-button:hover {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bot-accent) 54%, #11162f),
+    color-mix(in srgb, var(--bot-accent) 78%, #11162f)
+  );
+  border-color: transparent;
   color: #ffffff;
 }
 
@@ -1774,6 +1807,16 @@ button.danger:hover {
 .segmented button.active {
   background: var(--accent);
   color: #fff;
+}
+
+.bot-context-panel.is-bound .segmented button.active {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bot-accent) 64%, #1b2148),
+    color-mix(in srgb, var(--bot-accent) 86%, #1b2148)
+  );
+  color: #fff;
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--bot-accent) 20%, transparent);
 }
 
 .target-search {
@@ -3199,6 +3242,24 @@ textarea[data-action-target-activation].is-action-target-focused {
 .action-toolbox-toggle:hover {
   background: linear-gradient(90deg, var(--danger-dark), var(--danger), var(--orange));
   box-shadow: 0 12px 28px rgba(239, 38, 37, 0.22);
+}
+
+html.has-bot-context .action-toolbox-toggle {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bot-accent) 64%, #1b2148),
+    color-mix(in srgb, var(--bot-accent) 86%, #1b2148)
+  );
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--bot-accent) 22%, transparent);
+}
+
+html.has-bot-context .action-toolbox-toggle:hover {
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bot-accent) 54%, #11162f),
+    color-mix(in srgb, var(--bot-accent) 78%, #11162f)
+  );
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--bot-accent) 28%, transparent);
 }
 
 .action-toolbox-toggle .icon {

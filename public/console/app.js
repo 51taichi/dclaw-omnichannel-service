@@ -505,6 +505,12 @@ function setBindingState(bot = null) {
   state.selectedBotId = bot?.botId || "";
   state.currentRole = bot ? getBotSession(bot.botId)?.role || "" : "";
   const accent = bot ? getBotAccent(bot) : "";
+  document.documentElement.classList.toggle("has-bot-context", Boolean(bot));
+  if (accent) {
+    document.documentElement.style.setProperty("--bot-accent", accent);
+  } else {
+    document.documentElement.style.removeProperty("--bot-accent");
+  }
   updateWorkspaceTabAccess(Boolean(bot));
   syncRoleVisibility();
   els.workspaceTabBar?.classList.toggle("is-bound", Boolean(bot));

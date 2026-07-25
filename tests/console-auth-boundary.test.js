@@ -79,7 +79,7 @@ test("workspace tabs adapt to visible tab count without a fixed container width"
   assert.match(css, /\.workspace-tabs button\s*\{[\s\S]*flex:\s*0 0 auto[\s\S]*min-width:\s*108px[\s\S]*padding:\s*0 16px/);
 });
 
-test("workspace tab strip uses the danger action gradient and connects to its content panel", () => {
+test("workspace tab strip follows the selected Bot accent and connects to its content panel", () => {
   assert.match(css, /\.workspace-head\s*\{[\s\S]*position:\s*relative[\s\S]*z-index:\s*2/);
   assert.match(css, /\.workspace-tabs button\s*\{[\s\S]*position:\s*relative/);
   assert.match(css, /@media \(min-width:\s*761px\)\s*\{[\s\S]*\.workspace-tabs\s*\{[\s\S]*overflow:\s*visible/);
@@ -87,7 +87,12 @@ test("workspace tab strip uses the danger action gradient and connects to its co
   assert.match(css, /\.workspace-tabs\.is-bound\s*\{[\s\S]*--workspace-tab-link:\s*var\(--bot-accent\)/);
   assert.match(css, /\.workspace-tabs::after\s*\{[\s\S]*content:\s*""[\s\S]*top:\s*100%[\s\S]*height:\s*15px[\s\S]*border-width:\s*0 1px 3px[\s\S]*background:\s*transparent/);
   assert.match(css, /\.workspace-tabs button\.active\s*\{[^}]*background:\s*linear-gradient\(90deg,\s*var\(--danger\),\s*var\(--orange\)\)[^}]*color:\s*#ffffff/);
-  assert.match(css, /\.workspace-tabs\.is-bound button\.active\s*\{[^}]*background:\s*linear-gradient\(90deg,\s*var\(--danger\),\s*var\(--orange\)\)[^}]*color:\s*#ffffff/);
+  assert.match(css, /\.workspace-tabs\.is-bound button\.active\s*\{[^}]*var\(--bot-accent\)[^}]*color:\s*#ffffff/);
+  assert.match(css, /\.bot-context-panel\.is-bound \.segmented button\.active\s*\{[^}]*var\(--bot-accent\)[^}]*color:\s*#fff/);
+  assert.match(css, /html\.has-bot-context \.current-bot-actions #lockBotButton\s*\{[^}]*var\(--bot-accent\)[^}]*color:\s*#ffffff/);
+  assert.match(app, /document\.documentElement\.classList\.toggle\("has-bot-context", Boolean\(bot\)\)/);
+  assert.match(app, /document\.documentElement\.style\.setProperty\("--bot-accent", accent\)/);
+  assert.match(app, /document\.documentElement\.style\.removeProperty\("--bot-accent"\)/);
   assert.doesNotMatch(css, /\.workspace-tabs button\.active::before\s*\{/);
   assert.match(css, /\.workspace-tabs button\.active::after\s*\{[^}]*content:\s*""[^}]*top:\s*100%[^}]*height:\s*20px[^}]*border-left:\s*2px solid var\(--workspace-tab-link\)[^}]*border-right:\s*2px solid var\(--workspace-tab-link\)[^}]*background:\s*transparent/);
 });
@@ -185,7 +190,7 @@ test("admin bot cards expose a dangerous delete action with password confirmatio
   assert.equal(app.includes("确认删除该 Bot 及其所有数据？此操作不可恢复。"), true);
   assert.match(app, /request\(`\/api\/bots\/\$\{encodeURIComponent\(botId\)\}`,\s*\{[\s\S]*method:\s*"DELETE"/);
   assert.match(app, /clearBotSession\(botId\);[\s\S]*resetBotContext\(\);[\s\S]*loadBots\(\)/);
-  assert.match(css, /\.bot-delete-button\s*\{[\s\S]*color:\s*var\(--danger\)/);
+  assert.match(css, /\.bot-card button\.bot-delete-button\s*\{[^}]*var\(--bot-accent\)[^}]*color:\s*#ffffff/);
 });
 
 test("bot delete action anchors left while quick actions stay right", () => {

@@ -21,8 +21,8 @@ test("console exposes a fixed universal action toolbox", () => {
   assert.equal(app.includes("带聊天记录"), false);
   assert.equal(css.includes(".action-toolbox"), true);
   assert.equal(css.includes("position: fixed"), true);
-  assert.match(css, /\.action-toolbox-toggle\s*\{[\s\S]*background:\s*linear-gradient\(90deg,\s*var\(--danger\),\s*var\(--orange\)\)/);
-  assert.match(css, /\.action-toolbox-toggle:hover\s*\{[\s\S]*background:\s*linear-gradient\(90deg,\s*var\(--danger-dark\),\s*var\(--danger\),\s*var\(--orange\)\)/);
+  assert.match(css, /html\.has-bot-context \.action-toolbox-toggle\s*\{[^}]*var\(--bot-accent\)/);
+  assert.match(css, /html\.has-bot-context \.action-toolbox-toggle:hover\s*\{[^}]*var\(--bot-accent\)/);
 });
 
 test("toolbox targets activation textareas without rendering node completion action panels", () => {
