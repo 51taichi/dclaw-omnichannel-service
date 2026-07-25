@@ -4556,6 +4556,53 @@ html.has-bot-context .action-toolbox-toggle:hover {
   box-shadow: 0 8px 20px color-mix(in srgb, var(--orange) 14%, transparent);
 }
 
+.chat-bubble-row.is-tag-evidence-highlight .chat-bubble {
+  border-color: var(--danger);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--danger) 22%, transparent),
+    0 12px 28px color-mix(in srgb, var(--danger) 24%, transparent);
+  animation: tagEvidenceAttention 900ms ease-in-out 2;
+}
+
+.tag-evidence-note,
+.tag-evidence-missing {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--danger);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tag-evidence-note {
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid color-mix(in srgb, var(--danger) 22%, transparent);
+}
+
+.tag-evidence-missing {
+  justify-content: center;
+  margin-bottom: 4px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--orange) 34%, var(--line));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--orange) 8%, #ffffff);
+  color: color-mix(in srgb, var(--orange) 70%, var(--text));
+}
+
+.tag-evidence-note .icon,
+.tag-evidence-missing .icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+}
+
+@keyframes tagEvidenceAttention {
+  50% {
+    transform: translateY(-2px);
+  }
+}
+
 .chat-meta {
   display: flex;
   align-items: center;
@@ -4838,6 +4885,174 @@ td .muted {
   white-space: pre-wrap;
 }
 
+.tag-alert-center {
+  position: fixed;
+  right: 22px;
+  bottom: 88px;
+  z-index: 920;
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+}
+
+.tag-alert-center[hidden] {
+  display: none;
+}
+
+.tag-alert-button {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--danger) 76%, #ffffff);
+  border-radius: 50%;
+  background: var(--danger);
+  color: #ffffff;
+  box-shadow: 0 12px 28px color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.tag-alert-button:hover,
+.tag-alert-button:focus-visible {
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.tag-alert-button .icon {
+  width: 21px;
+  height: 21px;
+}
+
+.tag-alert-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: inline-grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: 2px solid #ffffff;
+  border-radius: 11px;
+  background: #9f1239;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.tag-alert-center.has-unread:not(.is-paused) .tag-alert-button {
+  animation: tagAlertPulse 1200ms ease-in-out infinite;
+}
+
+.tag-alert-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: min(340px, calc(100vw - 32px));
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--danger) 32%, var(--line));
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 20px 42px rgba(38, 42, 94, 0.22);
+}
+
+.tag-alert-panel[hidden] {
+  display: none;
+}
+
+.tag-alert-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 12px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--danger) 6%, #ffffff);
+}
+
+.tag-alert-panel-head strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.tag-alert-panel-head span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.tag-alert-list {
+  display: grid;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.tag-alert-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  background: #ffffff;
+  color: var(--text);
+  text-align: left;
+}
+
+.tag-alert-item:last-child {
+  border-bottom: 0;
+}
+
+.tag-alert-item:hover,
+.tag-alert-item:focus-visible {
+  background: color-mix(in srgb, var(--danger) 7%, #ffffff);
+  color: var(--text);
+  transform: none;
+}
+
+.tag-alert-item strong,
+.tag-alert-item span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-alert-item strong {
+  font-size: 13px;
+}
+
+.tag-alert-item span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@keyframes tagAlertPulse {
+  0%,
+  100% {
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--danger) 28%, transparent);
+    transform: scale(1);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 9px color-mix(in srgb, var(--danger) 12%, transparent),
+      0 14px 32px color-mix(in srgb, var(--danger) 38%, transparent);
+    transform: scale(1.06);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tag-alert-center.has-unread:not(.is-paused) .tag-alert-button,
+  .chat-bubble-row.is-tag-evidence-highlight .chat-bubble {
+    animation: none;
+  }
+}
+
 .toast {
   position: fixed;
   top: 18px;
@@ -4902,6 +5117,11 @@ td .muted {
 }
 
 @media (max-width: 760px) {
+  .tag-alert-center {
+    right: 12px;
+    bottom: 76px;
+  }
+
   .topbar,
   .topbar-inner,
   .console-shell,

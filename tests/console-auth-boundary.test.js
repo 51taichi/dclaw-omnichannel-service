@@ -292,6 +292,25 @@ test("switching bots clears old scoped content before loading the new bot", () =
   assert.match(body, /loadFlowSessions\(\{ contextVersion \}\)/);
 });
 
+test("tag alert streaming follows the authenticated Bot lifecycle", () => {
+  const applyStart = app.indexOf("async function applyBotContext");
+  const applyEnd = app.indexOf("function openUnlockDialog", applyStart);
+  const applyBody = app.slice(applyStart, applyEnd);
+  const clearStart = app.indexOf("function clearBotScopedContent");
+  const clearEnd = app.indexOf("function expandPanel", clearStart);
+  const clearBody = app.slice(clearStart, clearEnd);
+
+  assert.match(clearBody, /disconnectTagAlerts\(\)/);
+  assert.match(applyBody, /connectTagAlerts\(bot\.botId\)/);
+  assert.equal(
+    applyBody.indexOf("clearBotScopedContent();") <
+      applyBody.indexOf("connectTagAlerts(bot.botId)"),
+    true
+  );
+  assert.match(app, /tagAlertClient\.connect\(\{[\s\S]*botId,[\s\S]*headers:\s*headers\(\{\}, botId\)/);
+  assert.match(app, /tagAlertClient\.disconnect\(\)/);
+});
+
 test("bot scoped loaders ignore responses from a previous bot selection", () => {
   ["loadAddressBookTargets", "loadDebugReply", "loadLogs", "loadProactiveTasks", "loadFlowMachine", "loadFlowSessions"].forEach((name) => {
     const start = app.indexOf(`async function ${name}`);

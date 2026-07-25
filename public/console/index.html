@@ -858,6 +858,37 @@
     </main>
 
     <div id="flowSessionTagMenu" class="flow-session-tag-menu" role="menu" hidden></div>
+    <div id="tagAlertCenter" class="tag-alert-center" hidden>
+      <div
+        id="tagAlertPanel"
+        class="tag-alert-panel"
+        role="region"
+        aria-label="待处理标签提醒"
+        hidden
+      >
+        <div class="tag-alert-panel-head">
+          <strong>标签提醒</strong>
+          <span>点击后定位到触发消息</span>
+        </div>
+        <div id="tagAlertList" class="tag-alert-list" role="list"></div>
+      </div>
+      <button
+        id="tagAlertButton"
+        class="tag-alert-button"
+        type="button"
+        aria-label="客户标签提醒"
+        aria-controls="tagAlertPanel"
+        aria-expanded="false"
+      >
+        <svg class="icon" aria-hidden="true"><use href="#icon-alert"></use></svg>
+        <span id="tagAlertCount" class="tag-alert-count">0</span>
+      </button>
+    </div>
+    <audio
+      id="tagAlertAudio"
+      preload="auto"
+      src="./assets/tag-voice-alert.mp3"
+    ></audio>
     <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
     <div id="unlockDialog" class="modal-backdrop" hidden>
       <div class="confirm-dialog unlock-dialog" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
@@ -914,6 +945,7 @@
         </span>
       </div>
     </div>
+    <script src="./tag-alert-client.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

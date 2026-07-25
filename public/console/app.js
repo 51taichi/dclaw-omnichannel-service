@@ -79,6 +79,12 @@ const els = {
   flowSessionTagFilterMenu: document.querySelector("#flowSessionTagFilterMenu"),
   flowSessionTagMenu: document.querySelector("#flowSessionTagMenu"),
   flowSessionDateTagFilter: document.querySelector("#flowSessionDateTagFilter"),
+  tagAlertCenter: document.querySelector("#tagAlertCenter"),
+  tagAlertButton: document.querySelector("#tagAlertButton"),
+  tagAlertCount: document.querySelector("#tagAlertCount"),
+  tagAlertPanel: document.querySelector("#tagAlertPanel"),
+  tagAlertList: document.querySelector("#tagAlertList"),
+  tagAlertAudio: document.querySelector("#tagAlertAudio"),
   chatTitle: document.querySelector("#chatTitle"),
   chatStatusBadge: document.querySelector("#chatStatusBadge"),
   chatTagList: document.querySelector("#chatTagList"),
@@ -533,7 +539,21 @@ function isCurrentBotContext(botId, contextVersion) {
   return state.selectedBotId === botId && state.botContextVersion === contextVersion;
 }
 
+function disconnectTagAlerts() {
+  tagAlertClient.disconnect();
+}
+
+function connectTagAlerts(botId) {
+  const authHeaders = headers({}, botId);
+  if (!authHeaders["x-api-key"] && !authHeaders["x-bot-session-token"]) return;
+  tagAlertClient.connect({
+    botId,
+    headers: headers({}, botId)
+  });
+}
+
 function clearBotScopedContent() {
+  disconnectTagAlerts();
   state.selectedFlowConversationKey = "";
   state.flowSessionsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTargetsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
@@ -655,6 +675,9 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
       await loadLogs({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
     }
+  }
+  if (bot?.botId && isCurrentBotContext(bot.botId, contextVersion)) {
+    connectTagAlerts(bot.botId);
   }
   if (scrollTo) {
     const tabName = tabForPanel(scrollTo);
@@ -1023,10 +1046,102 @@ let focusedActionTarget = null;
 let actionToolboxOpen = false;
 let currentConversationAssets = { fields: [], totalCount: 0, collectedCount: 0 };
 let currentFlowSession = null;
+let currentTagAlerts = [];
 const collapsedFlowNodes = new Set();
 const collapsedTagGroups = new Set();
 const selectedTargets = new Map();
 const manualReplyEmojis = ["😊", "👌", "👍", "🙏", "😄", "🎉", "✨", "💪"];
+const tagAlertClient = window.createTagAlertClient({
+  onChange: renderTagAlerts,
+  playSound: playTagAlertSound,
+  unlockSound: unlockTagAlertAudio,
+  onError: (error) => console.warn("Tag alert stream disconnected", error)
+});
+
+function setTagAlertInteraction(active) {
+  if (!els.tagAlertCenter || !els.tagAlertPanel || !els.tagAlertButton) return;
+  const shouldOpen = Boolean(active && currentTagAlerts.length);
+  els.tagAlertCenter.classList.toggle("is-paused", shouldOpen);
+  els.tagAlertPanel.hidden = !shouldOpen;
+  els.tagAlertButton.setAttribute("aria-expanded", String(shouldOpen));
+}
+
+function renderTagAlerts(alerts) {
+  currentTagAlerts = Array.isArray(alerts) ? alerts : [];
+  if (!els.tagAlertCenter || !els.tagAlertList) return;
+  const hasUnread = Boolean(state.selectedBotId && currentTagAlerts.length);
+  els.tagAlertCenter.hidden = !hasUnread;
+  els.tagAlertCenter.classList.toggle("has-unread", hasUnread);
+  els.tagAlertCount.textContent = String(currentTagAlerts.length);
+  els.tagAlertList.innerHTML = currentTagAlerts
+    .map((alert) => `
+      <button
+        class="tag-alert-item"
+        type="button"
+        role="listitem"
+        data-tag-alert-id="${escapeHtml(alert.id)}"
+      >
+        <strong>${escapeHtml(alert.customerName || "未命名客户")}</strong>
+        <span>达成「${escapeHtml(alert.tagName || "未命名")}」标签</span>
+      </button>
+    `)
+    .join("");
+  if (!hasUnread) setTagAlertInteraction(false);
+}
+
+async function unlockTagAlertAudio() {
+  const audio = els.tagAlertAudio;
+  if (!audio) return;
+  const wasMuted = audio.muted;
+  audio.muted = true;
+  try {
+    await audio.play();
+    audio.pause();
+    audio.currentTime = 0;
+  } catch {
+    // Browsers may still require a later explicit gesture; alerts remain visible.
+  } finally {
+    audio.muted = wasMuted;
+  }
+}
+
+function playTagAlertSound() {
+  const audio = els.tagAlertAudio;
+  if (!audio) return;
+  audio.muted = false;
+  audio.currentTime = 0;
+  audio.play().catch(() => {});
+}
+
+function resetFlowSessionFiltersForTagAlert() {
+  els.flowSessionTypeButtons.forEach((button) => {
+    const active = button.dataset.flowSessionType === "all";
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  els.flowSessionSearchInput.value = "";
+  els.flowSessionNodeFilter.value = "all";
+  setFlowSessionTagFilterValues([], { reload: false });
+  setFlowSessionDateTagFilterValue("");
+  resetFlowSessionsPagination();
+}
+
+async function openTagAlert(alert) {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (!botId || !alert?.conversationKey) return;
+  switchWorkspaceTab("sessions");
+  resetFlowSessionFiltersForTagAlert();
+  await reloadFlowSessionsFromFirstPage();
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  const opened = await openFlowSession(alert.conversationKey, {
+    anchorMessageId: alert.evidenceMessageId,
+    alertTagName: alert.tagName,
+    missingEvidence: !alert.evidenceMessageId
+  });
+  if (opened === false || !isCurrentBotContext(botId, contextVersion)) return;
+  await tagAlertClient.markRead(alert.id);
+}
 
 function targetKey(target) {
   return `${target.targetType}:${target.targetName}`;
@@ -3917,12 +4032,13 @@ function renderFlowSessionTagFilter() {
 
 function setFlowSessionTagFilterValues(values) {
   if (!els.flowSessionTagFilter) return;
+  const { reload = true } = arguments[1] || {};
   const selected = new Set(values.filter((value) => value && value !== "all"));
   [...els.flowSessionTagFilter.options].forEach((option) => {
     option.selected = option.value === "all" ? selected.size === 0 : selected.has(option.value);
   });
   renderFlowSessionTagFilter();
-  reloadFlowSessionsFromFirstPage().catch(toastError);
+  if (reload) reloadFlowSessionsFromFirstPage().catch(toastError);
 }
 
 function renderFlowSessionDateTagFilter() {
@@ -4315,11 +4431,15 @@ function renderChatSources(value) {
   `;
 }
 
-async function openFlowSession(conversationKey) {
+async function openFlowSession(conversationKey, {
+  anchorMessageId = "",
+  alertTagName = "",
+  missingEvidence = false
+} = {}) {
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
-  if (!botId) return;
-  if (state.loadingFlowConversationKey === conversationKey) return;
+  if (!botId) return false;
+  if (state.loadingFlowConversationKey === conversationKey) return false;
   state.selectedFlowConversationKey = conversationKey;
   const session = currentFlowSessions.find((item) => item.conversationKey === conversationKey);
   renderFlowSessions();
@@ -4328,8 +4448,11 @@ async function openFlowSession(conversationKey) {
   renderChatLoadingState(session || { conversationKey });
   try {
     const params = new URLSearchParams({ limit: "300", botId });
+    if (anchorMessageId) params.set("anchorMessageId", String(anchorMessageId));
     const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
-    if (!isCurrentBotContext(botId, contextVersion) || state.selectedFlowConversationKey !== conversationKey) return;
+    if (!isCurrentBotContext(botId, contextVersion) || state.selectedFlowConversationKey !== conversationKey) {
+      return false;
+    }
     currentFlowSession = data.session || session || null;
     const currentTags = data.tags || session?.tags || [];
     currentFlowSession = { ...(currentFlowSession || {}), tags: currentTags };
@@ -4341,8 +4464,13 @@ async function openFlowSession(conversationKey) {
     renderFlowSessionDateTagFilter();
     syncHandoffButton(currentFlowSession);
     renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
-    renderChatMessages(data.messages || []);
+    renderChatMessages(data.messages || [], {
+      anchorMessageId,
+      alertTagName,
+      missingEvidence: Boolean(missingEvidence || (anchorMessageId && data.evidenceFound === false))
+    });
     els.flowEventsOutput.textContent = JSON.stringify(data.events || [], null, 2);
+    return true;
   } catch (error) {
     if (isCurrentBotContext(botId, contextVersion) && state.selectedFlowConversationKey === conversationKey) {
       renderChatLoadError(error);
@@ -4392,15 +4520,24 @@ async function toggleSelectedConversationHandoff(conversationKey = state.selecte
   toast(nextStatus === "human" ? "已切换为人工接手" : "已恢复 AI 接手");
 }
 
-function renderChatMessages(messages) {
+function renderChatMessages(messages, {
+  anchorMessageId = "",
+  alertTagName = "",
+  missingEvidence = false
+} = {}) {
+  const normalizedAnchorMessageId = String(anchorMessageId || "");
   els.chatMessages.innerHTML = messages.length
     ? messages
         .map((message) => {
           const outbound = message.direction === "outbound";
           const avatar = outbound ? "./assets/bot-avatar.png" : "./assets/ddeer.png";
           const sender = message.senderName || (outbound ? "机器人" : "客户");
+          const isEvidence = normalizedAnchorMessageId && String(message.id) === normalizedAnchorMessageId;
           return `
-          <div class="chat-bubble-row ${outbound ? "outbound" : "inbound"}">
+          <div
+            class="chat-bubble-row ${outbound ? "outbound" : "inbound"} ${isEvidence ? "is-tag-evidence-highlight" : ""}"
+            data-message-id="${escapeHtml(message.id)}"
+          >
             ${outbound ? "" : `<img class="chat-avatar" src="${avatar}" alt="" aria-hidden="true" />`}
             <div class="chat-bubble">
               <div class="chat-meta">
@@ -4408,6 +4545,9 @@ function renderChatMessages(messages) {
                 <time>${escapeHtml(formatDisplayDateTime(message.createdAt))}</time>
               </div>
               ${renderChatMessageContent(message)}
+              ${isEvidence && alertTagName
+                ? `<div class="tag-evidence-note">${icon("tag")}<span>此消息触发「${escapeHtml(alertTagName)}」标签</span></div>`
+                : ""}
             </div>
             ${outbound ? `<img class="chat-avatar" src="${avatar}" alt="" aria-hidden="true" />` : ""}
           </div>
@@ -4415,7 +4555,24 @@ function renderChatMessages(messages) {
         })
         .join("")
     : `<div class="empty-state">暂无会话记录</div>`;
-  els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+  const evidenceMessage = [...els.chatMessages.querySelectorAll("[data-message-id]")]
+    .find((element) => element.dataset.messageId === normalizedAnchorMessageId);
+  if (evidenceMessage) {
+    requestAnimationFrame(() => {
+      evidenceMessage.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+    setTimeout(() => {
+      evidenceMessage.classList.remove("is-tag-evidence-highlight");
+    }, 3000);
+  } else {
+    if (missingEvidence || normalizedAnchorMessageId) {
+      els.chatMessages.insertAdjacentHTML(
+        "afterbegin",
+        `<div class="tag-evidence-missing" role="status">${icon("info")}<span>原触发消息已不在会话记录中，已为您打开该客户的最新会话</span></div>`
+      );
+    }
+    els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
+  }
 }
 
 function renderChatLoadingState(session) {
@@ -5022,6 +5179,26 @@ els.loadDefaultFlowButton.addEventListener("click", () =>
   loadDefaultFlowMachine().catch(toastError)
 );
 els.exportFlowButton.addEventListener("click", exportFlowMachine);
+els.tagAlertCenter?.addEventListener("mouseenter", () => setTagAlertInteraction(true));
+els.tagAlertCenter?.addEventListener("mouseleave", () => setTagAlertInteraction(false));
+els.tagAlertCenter?.addEventListener("focusin", () => setTagAlertInteraction(true));
+els.tagAlertCenter?.addEventListener("focusout", (event) => {
+  if (!els.tagAlertCenter.contains(event.relatedTarget)) setTagAlertInteraction(false);
+});
+els.tagAlertButton?.addEventListener("click", () => {
+  setTagAlertInteraction(true);
+});
+els.tagAlertList?.addEventListener("click", (event) => {
+  const item = event.target.closest("[data-tag-alert-id]");
+  if (!item) return;
+  const alert = currentTagAlerts.find(
+    (candidate) => String(candidate.id) === String(item.dataset.tagAlertId)
+  );
+  if (alert) openTagAlert(alert).catch(toastError);
+});
+document.addEventListener("pointerdown", () => {
+  tagAlertClient.unlockAudio().catch(() => {});
+}, { once: true, capture: true });
 els.refreshFlowSessionsButton.addEventListener("click", () =>
   Promise.all([loadFlowMachine(), loadFlowSessions()]).catch(toastError)
 );

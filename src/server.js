@@ -89,6 +89,7 @@ import {
   applyConversationTagChanges,
   getAgentTagSchema,
   listConversationMessages,
+  listConversationMessagesAround,
   listConversationTags,
   listUnreadTagAlerts,
   listCachedApiMessages,
@@ -5063,17 +5064,34 @@ app.get(
     const binding = getBotBinding(botId);
     const session = getFlowSessionForBot({ botId, conversationKey });
     const { historySyncError: _historySyncError, ...publicSession } = session || {};
+    const anchorMessageId = Number(req.query.anchorMessageId || 0);
+    const anchoredMessages = Number.isInteger(anchorMessageId) && anchorMessageId > 0
+      ? listConversationMessagesAround({
+          botId,
+          conversationKey,
+          anchorMessageId,
+          before: 80,
+          after: 80
+        })
+      : [];
+    const evidenceFound = anchoredMessages.some(
+      (message) => Number(message.id) === anchorMessageId
+    );
+    const messages = evidenceFound
+      ? anchoredMessages
+      : listConversationMessages({
+          botId,
+          conversationKey,
+          limit: Number(req.query.limit || 300)
+        });
     res.json({
       ok: true,
       session: session ? publicSession : null,
       ...(binding
         ? { tags: listConversationTags({ botId, agentId: binding.agentId, conversationKey }) }
         : { tags: [] }),
-      messages: listConversationMessages({
-        botId,
-        conversationKey,
-        limit: Number(req.query.limit || 300)
-      }),
+      messages,
+      evidenceFound: anchorMessageId > 0 ? evidenceFound : null,
       events: listFlowStateEvents({ botId, conversationKey, limit: 100 }),
       assets: getConversationAssets({
         botId,

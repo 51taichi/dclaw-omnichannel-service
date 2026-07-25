@@ -55,3 +55,14 @@ test("created alerts publish only after the tag transaction returns", () => {
   const handoff = source.slice(handoffStart, handoffEnd);
   assert.ok(handoff.indexOf("applyAgentTagDecision({") < handoff.indexOf("publishCommittedTagAlerts({"));
 });
+
+test("conversation detail can return an anchored evidence window without changing normal history", () => {
+  const start = source.indexOf('"/api/flow-sessions/:conversationKey"');
+  const end = source.indexOf('"/api/flow-sessions/:conversationKey/tags/manual"', start);
+  const body = source.slice(start, end);
+
+  assert.match(body, /const anchorMessageId = Number\(req\.query\.anchorMessageId \|\| 0\)/);
+  assert.match(body, /listConversationMessagesAround\(\{[\s\S]*botId,[\s\S]*conversationKey,[\s\S]*anchorMessageId/);
+  assert.match(body, /evidenceFound/);
+  assert.match(body, /listConversationMessages\(\{[\s\S]*limit:\s*Number\(req\.query\.limit \|\| 300\)/);
+});
