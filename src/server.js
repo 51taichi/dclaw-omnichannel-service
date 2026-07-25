@@ -167,6 +167,7 @@ import { createLegacyCustomerHistoryService } from "./legacy-customer-history.js
 import { isLegacyCustomerCandidate } from "./legacy-history.js";
 import { listApiCommandPage, listCustomerHistory } from "./worktool-history.js";
 import { createWorktoolHistoryCache } from "./worktool-history-cache.js";
+import { filterConfiguredCollectedDataPatch } from "./flow-assets.js";
 import {
   adjudicateTagDecision,
   compactTagRulesForAgent,
@@ -1162,10 +1163,23 @@ async function executeFlowActions({
   return results;
 }
 
-async function applyFlowDecision({ botId, binding, conversationKey, message, flow, decision }) {
+async function applyFlowDecision({
+  botId,
+  binding,
+  conversationKey,
+  message,
+  flow,
+  decision,
+  fillOnlyMissing = false
+}) {
   if (!flow || !decision || typeof decision !== "object") return;
-  const patch = decision.collectedDataPatch || decision.collectedFields || decision.dataPatch || {};
-  if (patch && typeof patch === "object" && !Array.isArray(patch)) {
+  const rawPatch = decision.collectedDataPatch || decision.collectedFields || decision.dataPatch || {};
+  const patch = filterConfiguredCollectedDataPatch({
+    flow,
+    patch: rawPatch,
+    fillOnlyMissing
+  });
+  if (Object.keys(patch).length) {
     mergeFlowSessionData({ conversationKey, patch });
   }
 
@@ -1791,6 +1805,45 @@ function getHistoryAnalysisConfig(botId) {
   return normalizeHistoryAnalysisConfig(
     getSetting(getHistoryAnalysisSettingKey(botId), null) || {}
   );
+}
+
+const legacyHistoryDynamicAssetsRolloutKey =
+  "legacy_history_dynamic_assets_v1_rollout_at";
+let legacyHistoryDynamicAssetsRolloutAt = "";
+
+function getLegacyHistoryDynamicAssetsRolloutAt() {
+  if (legacyHistoryDynamicAssetsRolloutAt) {
+    return legacyHistoryDynamicAssetsRolloutAt;
+  }
+  const stored = String(
+    getSetting(legacyHistoryDynamicAssetsRolloutKey, "") || ""
+  ).trim();
+  if (Number.isFinite(Date.parse(stored))) {
+    legacyHistoryDynamicAssetsRolloutAt = stored;
+    return stored;
+  }
+  const rolloutAt = new Date().toISOString();
+  setSetting(legacyHistoryDynamicAssetsRolloutKey, rolloutAt);
+  legacyHistoryDynamicAssetsRolloutAt = rolloutAt;
+  return rolloutAt;
+}
+
+function shouldAnalyzeLegacyHistoryForSession(session) {
+  if (
+    !session
+    || session.customerOrigin !== "legacy"
+    || session.historySyncStatus !== "success"
+  ) {
+    return false;
+  }
+  const historyContextSentAt = String(session.historyContextSentAt || "").trim();
+  if (!historyContextSentAt) return true;
+  const historyContextTime = Date.parse(historyContextSentAt);
+  const rolloutTime = Date.parse(getLegacyHistoryDynamicAssetsRolloutAt());
+  if (!Number.isFinite(historyContextTime) || !Number.isFinite(rolloutTime)) {
+    return true;
+  }
+  return historyContextTime < rolloutTime;
 }
 
 function getAgentFailureFallbackReply(botId) {
@@ -3739,10 +3792,8 @@ async function processCoalescedIncomingBatch(batch) {
     return;
   }
 
-  const shouldAnalyzeLegacyHistory = Boolean(
-    flow?.session?.customerOrigin === "legacy"
-    && flow.session.historySyncStatus === "success"
-    && !flow.session.historyContextSentAt
+  const shouldAnalyzeLegacyHistory = shouldAnalyzeLegacyHistoryForSession(
+    flow?.session
   );
   const historyAnalysisConfig = shouldAnalyzeLegacyHistory
     ? getHistoryAnalysisConfig(botId)
@@ -4046,7 +4097,8 @@ async function processCoalescedIncomingBatch(batch) {
         conversationKey,
         message,
         flow,
-        decision: agentReply.flowDecision
+        decision: agentReply.flowDecision,
+        fillOnlyMissing: shouldAnalyzeLegacyHistory
       });
       if (shouldAnalyzeLegacyHistory) {
         markLegacyHistoryContextSent({ botId, conversationKey });

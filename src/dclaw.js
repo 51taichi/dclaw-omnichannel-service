@@ -1,4 +1,5 @@
 import { normalizeTagDecision } from "./tags.js";
+import { listConfiguredFlowCollectFields } from "./flow-assets.js";
 
 const defaultDclawRequestMessageMaxChars = 16000;
 const maxDclawCurrentMessageChars = 1200;
@@ -173,7 +174,9 @@ export function buildDclawRequest({
       payload: compactInboundPayload(message)
     }
   };
-  const agentFlow = compactFlowForAgent(flow);
+  const agentFlow = compactFlowForAgent(flow, {
+    includeAllCollectFields: Boolean(legacyHistoryText)
+  });
   const agentTagRules = (
     tagContext
     && typeof tagContext === "object"
@@ -223,6 +226,9 @@ export function buildDclawRequest({
   if (legacyHistoryText) {
     instructions.push(
       "以下是该客户最近一段历史发言，只用于判断客户意图、标签和已经提供的资料。",
+      "flow.collectibleFields 是当前任务配置中全部节点动态汇总后的可收集资产字段。",
+      "请从客户历史发言中提取已经明确提供的资料，通过 flowDecision.collectedDataPatch 只补充尚未收集的字段；键名只能来自 flow.collectibleFields。",
+      "历史资产补采不改变当前节点职责；nodeCompleted 和 nextNodeId 仍然只按 flow.currentNode 判断。",
       "客户历史发言（纯文本，按时间从旧到新）：",
       legacyHistoryText
     );
@@ -733,7 +739,7 @@ export function buildDclawTagActivationRequest({
   };
 }
 
-function compactFlowForAgent(flow) {
+function compactFlowForAgent(flow, { includeAllCollectFields = false } = {}) {
   if (!flow || typeof flow !== "object" || Array.isArray(flow)) return flow || null;
   const compactNode = (node) => {
     if (!node || typeof node !== "object" || Array.isArray(node)) return node;
@@ -754,16 +760,34 @@ function compactFlowForAgent(flow) {
         generalRule: boundedDclawText(flow.machine.generalRule, maxDclawGeneralRuleChars)
       }
     : null;
+  const collectibleFields = includeAllCollectFields
+    ? listConfiguredFlowCollectFields(flow)
+    : [];
+  const collectedData = collectibleFields.reduce((result, field) => {
+    const value = flow?.session?.collectedData?.[field];
+    if (
+      (typeof value === "string" && value.trim())
+      || (typeof value === "number" && Number.isFinite(value))
+      || typeof value === "boolean"
+    ) {
+      result[field] = typeof value === "string"
+        ? boundedDclawText(value.trim(), 500)
+        : value;
+    }
+    return result;
+  }, {});
   const session = flow.session && typeof flow.session === "object" && !Array.isArray(flow.session)
     ? {
         currentNodeId: boundedDclawText(flow.session.currentNodeId, maxDclawFlowFieldChars),
-        handoffStatus: boundedDclawText(flow.session.handoffStatus, maxDclawFlowFieldChars)
+        handoffStatus: boundedDclawText(flow.session.handoffStatus, maxDclawFlowFieldChars),
+        ...(includeAllCollectFields ? { collectedData } : {})
       }
     : null;
   return {
     machine,
     session,
-    currentNode: compactNode(flow.currentNode)
+    currentNode: compactNode(flow.currentNode),
+    ...(includeAllCollectFields ? { collectibleFields } : {})
   };
 }
 

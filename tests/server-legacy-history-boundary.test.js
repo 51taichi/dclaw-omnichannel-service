@@ -36,9 +36,10 @@ test("legacy preparation completes before the inbound batch is queued", () => {
 test("coalesced legacy requests forward one bounded customer history analysis", () => {
   const body = asyncFunctionBody("processCoalescedIncomingBatch");
   assert.match(body, /const shouldAnalyzeLegacyHistory =/);
-  assert.match(body, /customerOrigin === "legacy"/);
-  assert.match(body, /historySyncStatus === "success"/);
-  assert.match(body, /!flow\.session\.historyContextSentAt/);
+  assert.match(
+    body,
+    /shouldAnalyzeLegacyHistoryForSession\(\s*flow\?\.session\s*\)/
+  );
   assert.match(body, /getHistoryAnalysisConfig\(botId\)/);
   assert.match(body, /buildStoredLegacyAnalysis\(\{/);
   assert.match(body, /const tagContext = isPrivateMessage\(message\)/);
@@ -46,6 +47,25 @@ test("coalesced legacy requests forward one bounded customer history analysis", 
   assert.match(body, /tagContext,/);
   assert.match(body, /tagEvidenceCandidates,/);
   assert.match(body, /markLegacyHistoryContextSent\(\{/);
+});
+
+test("legacy asset rollout reopens old analysis exactly once", () => {
+  assert.match(
+    source,
+    /legacy_history_dynamic_assets_v1_rollout_at/
+  );
+  assert.match(
+    source,
+    /getSetting\(legacyHistoryDynamicAssetsRolloutKey/
+  );
+  assert.match(
+    source,
+    /setSetting\(legacyHistoryDynamicAssetsRolloutKey,\s*rolloutAt\)/
+  );
+  assert.match(
+    source,
+    /function shouldAnalyzeLegacyHistoryForSession\(session\)[\s\S]*customerOrigin !== "legacy"[\s\S]*historySyncStatus !== "success"[\s\S]*!historyContextSentAt[\s\S]*historyContextTime < rolloutTime/
+  );
 });
 
 test("bot-wide API history cache refreshes in the background only", () => {

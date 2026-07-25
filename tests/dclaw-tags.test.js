@@ -214,27 +214,58 @@ test("retry prompts preserve an enabled tagDecision schema", () => {
   assert.match(buildDclawAttachmentSourceRetryRequest(request, {}).message, /tagDecision/);
 });
 
-test("legacy flow requests preserve ten collectible asset fields", () => {
-  const collectFields = Array.from({ length: 10 }, (_, index) => `字段${index + 1}`);
-  const request = buildDclawRequest({
+test("legacy flow requests preserve dynamic collectible fields across task nodes", () => {
+  const earlierFields = ["姓名", "手机", "地区"];
+  const currentFields = ["预约时间", "是否陪同"];
+  const legacyRequest = buildDclawRequest({
     binding,
     conversation,
     message,
     flow: {
-      machine: { nodes: [{ id: "final" }] },
-      session: { currentNodeId: "final", customerOrigin: "legacy" },
-      currentNode: { id: "final", collectFields }
+      machine: {
+        nodes: [
+          { id: "entry", collectFields: earlierFields },
+          { id: "final", collectFields: currentFields }
+        ]
+      },
+      session: {
+        currentNodeId: "final",
+        customerOrigin: "legacy",
+        collectedData: { 姓名: "魔兮" }
+      },
+      currentNode: { id: "final", collectFields: currentFields }
     },
     legacyHistoryAnalysis: {
-      text: "客户历史",
+      text: "我还是告诉你号码吧，18570860666",
       selectedCount: 1,
       omittedCount: 0,
-      selectedChars: 4,
+      selectedChars: 20,
       configuredLimit: 4000
     }
   });
 
-  for (const field of collectFields) {
-    assert.match(request.message, new RegExp(field));
+  for (const field of [...earlierFields, ...currentFields]) {
+    assert.match(legacyRequest.message, new RegExp(field));
   }
+  assert.match(legacyRequest.message, /collectibleFields/);
+  assert.match(legacyRequest.message, /只补充尚未收集的字段/);
+  assert.match(legacyRequest.message, /"collectedData": \{\s*"姓名": "魔兮"/);
+
+  const normalRequest = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    flow: {
+      machine: {
+        nodes: [
+          { id: "entry", collectFields: earlierFields },
+          { id: "final", collectFields: currentFields }
+        ]
+      },
+      session: { currentNodeId: "final", collectedData: {} },
+      currentNode: { id: "final", collectFields: currentFields }
+    }
+  });
+  assert.doesNotMatch(normalRequest.message, /collectibleFields/);
+  assert.doesNotMatch(normalRequest.message, /"手机"/);
 });

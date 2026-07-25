@@ -41,6 +41,22 @@ test("validated Agent replies apply tag decisions before empty reply or WorkTool
   assert.match(body, /evidenceCandidates:/);
 });
 
+test("flow asset patches are constrained by current task configuration", () => {
+  const applyBody = functionBody("applyFlowDecision");
+  const coalescedBody = functionBody("processCoalescedIncomingBatch");
+
+  assert.match(source, /filterConfiguredCollectedDataPatch/);
+  assert.match(
+    applyBody,
+    /filterConfiguredCollectedDataPatch\(\{[\s\S]*flow,[\s\S]*patch:[\s\S]*fillOnlyMissing/
+  );
+  assert.match(applyBody, /if \(Object\.keys\(patch\)\.length\)/);
+  assert.match(
+    coalescedBody,
+    /applyFlowDecision\(\{[\s\S]*fillOnlyMissing: shouldAnalyzeLegacyHistory/
+  );
+});
+
 test("private inbound messages persist their session before coalesced agent work", () => {
   const incomingBody = functionBody("processIncomingMessage");
   const coalescedBody = functionBody("processCoalescedIncomingBatch");
