@@ -130,6 +130,7 @@ export async function listCustomerHistory({
     const rows = Array.isArray(data.list) ? data.list : [];
     rawCount += rows.length;
     for (const row of rows) {
+      if (row?.robotId && String(row.robotId) !== String(robotId)) continue;
       const normalized = normalizeCustomerHistoryRow(row);
       for (const message of normalized) {
         if (message.title) titles.add(message.title);

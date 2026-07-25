@@ -91,6 +91,47 @@ test("paginates customer history and returns remark aliases", async () => {
   }
 });
 
+test("customer history ignores rows belonging to another bot", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBaseUrl = process.env.WORKTOOL_BASE_URL;
+  process.env.WORKTOOL_BASE_URL = "https://worktool.test";
+  globalThis.fetch = async () => worktoolResponse({
+    pageNum: 1,
+    pageSize: 10,
+    totalPage: 1,
+    total: 2,
+    list: [
+      {
+        robotId: "bot_a",
+        titleList: "阿三",
+        sender: 0,
+        type: 1,
+        createTime: "2026-07-18 01:00:00",
+        itemMsgList: JSON.stringify([{ feature: 2, text: "正确记录" }])
+      },
+      {
+        robotId: "bot_b",
+        titleList: "同名客户",
+        sender: 0,
+        type: 1,
+        createTime: "2026-07-18 01:01:00",
+        itemMsgList: JSON.stringify([{ feature: 2, text: "其他 Bot 记录" }])
+      }
+    ]
+  });
+
+  try {
+    const result = await listCustomerHistory({ robotId: "bot_a", title: "阿三" });
+    assert.deepEqual(result.messages.map((message) => message.content), ["正确记录"]);
+    assert.deepEqual(result.titles, ["阿三"]);
+    assert.equal(result.rawCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBaseUrl === undefined) delete process.env.WORKTOOL_BASE_URL;
+    else process.env.WORKTOOL_BASE_URL = originalBaseUrl;
+  }
+});
+
 test("normalizes one API command per target", () => {
   const commands = normalizeApiCommandRow({
     robotId: "bot_a",

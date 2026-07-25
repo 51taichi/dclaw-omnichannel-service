@@ -47,6 +47,7 @@ import {
   claimNextProactiveTarget,
   cancelProactiveTask,
   clearConversationForReset,
+  createLegacyFlowSession,
   createProactiveTask,
   deleteAgent,
   deleteBotData,
@@ -62,6 +63,7 @@ import {
   getFlowActivationProgress,
   getFlowSession,
   getFlowSessionForBot,
+  hasCachedWorktoolMessageId,
   ensureConversationDateTag,
   initializeLegacyDateTagRuleEffectiveTimes,
   isFlowActivationTaskProcessing,
@@ -74,6 +76,7 @@ import {
   insertAgentResponseValidationFailure,
   updateAgentResponseValidationRetryOutcome,
   insertConversationMessage,
+  insertImportedConversationMessages,
   insertCommandCallback,
   insertIncomingMessage,
   insertOutgoingMessage,
@@ -84,9 +87,12 @@ import {
   getAgentTagSchema,
   listConversationMessages,
   listConversationTags,
+  listCachedApiMessages,
   listFlowMachines,
   listFlowSessionsPage,
   listFlowStateEvents,
+  listImportedConversationMessages,
+  listLegacyFlowSessionTargets,
   listTagActivationTasks,
   listProactiveAddressBookTargetsPage,
   listProactiveTargetTags,
@@ -102,6 +108,7 @@ import {
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
   markConversationResetHandled,
+  markLegacyHistoryContextSent,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
@@ -117,6 +124,7 @@ import {
   touchFlowSession,
   updateFlowSessionHandoff,
   updateFlowSessionNode,
+  updateLegacyHistorySync,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
   upsertAgent,
@@ -124,7 +132,8 @@ import {
   upsertFlowMachine,
   upsertProactiveAddressBookTarget,
   upsertBotBinding,
-  upsertConversation
+  upsertConversation,
+  upsertWorktoolApiMessageCache
 } from "./db.js";
 import {
   buildRawMediaCommand,
@@ -145,6 +154,10 @@ import {
 } from "./message-rules.js";
 import { normalizeUploadedFilename } from "./filenames.js";
 import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
+import { createLegacyCustomerHistoryService } from "./legacy-customer-history.js";
+import { isLegacyCustomerCandidate } from "./legacy-history.js";
+import { listApiCommandPage, listCustomerHistory } from "./worktool-history.js";
+import { createWorktoolHistoryCache } from "./worktool-history-cache.js";
 import {
   adjudicateTagDecision,
   compactTagRulesForAgent,
@@ -169,6 +182,8 @@ const agentFailureFallbackReply =
 const uploadRetentionMs = Number(process.env.UPLOAD_RETENTION_HOURS || 24) * 60 * 60 * 1000;
 const uploadCleanupIntervalMs =
   Number(process.env.UPLOAD_CLEANUP_INTERVAL_MINUTES || 60) * 60 * 1000;
+const worktoolHistoryCacheIntervalMs =
+  Number(process.env.WORKTOOL_HISTORY_CACHE_INTERVAL_MINUTES || 10) * 60 * 1000;
 fs.mkdirSync(uploadDir, { recursive: true });
 
 function getUploadFolderName(botId) {
@@ -240,6 +255,55 @@ setInterval(() => {
 
 await loadBotBindingsFromConfig();
 resetInterruptedProactiveTargets();
+
+const legacyCustomerHistory = createLegacyCustomerHistoryService({
+  listCustomerHistory,
+  createLegacyFlowSession,
+  updateLegacyHistorySync,
+  insertImportedConversationMessages,
+  listImportedConversationMessages,
+  listConversationMessages,
+  listCachedApiMessages,
+  listLegacyFlowSessionTargets,
+  onEvent(event, fields) {
+    if (event === "failed") {
+      logWarn("legacy_history.failed", fields);
+      return;
+    }
+    logInfo(`legacy_history.${event}`, fields);
+  }
+});
+
+const worktoolHistoryCache = createWorktoolHistoryCache({
+  listPage: listApiCommandPage,
+  upsertItems: upsertWorktoolApiMessageCache,
+  hasMessageId: hasCachedWorktoolMessageId,
+  async onRefreshed({ robotId }) {
+    const backfill = legacyCustomerHistory.backfillCachedHistoryForBot({ botId: robotId });
+    logInfo("worktool_history_cache.backfilled", { botId: robotId, ...backfill });
+  }
+});
+
+async function refreshWorktoolHistoryCaches() {
+  for (const binding of listBotBindings().filter((item) => item.enabled)) {
+    try {
+      const result = await worktoolHistoryCache.refreshBot({ robotId: binding.botId });
+      logInfo("worktool_history_cache.refreshed", { botId: binding.botId, ...result });
+    } catch (error) {
+      logWarn("worktool_history_cache.failed", {
+        botId: binding.botId,
+        error: error.message
+      });
+    }
+  }
+}
+
+void refreshWorktoolHistoryCaches();
+if (Number.isFinite(worktoolHistoryCacheIntervalMs) && worktoolHistoryCacheIntervalMs > 0) {
+  setInterval(() => {
+    void refreshWorktoolHistoryCaches();
+  }, worktoolHistoryCacheIntervalMs).unref();
+}
 
 function assertCallbackSecret(req) {
   const expected = process.env.CALLBACK_SECRET;
@@ -577,12 +641,19 @@ function getFlowNode(machine, nodeId) {
   return nodes.find((node) => node.id === nodeId) || null;
 }
 
-function persistInboundConversation({ botId, binding, conversationKey, message }) {
+function persistInboundConversation({
+  botId,
+  binding,
+  conversationKey,
+  message,
+  skipFirstSeenDateTag = false
+}) {
   const conversation = upsertConversation({
     botId,
     agentId: binding?.agentId || "",
     conversationKey,
-    message
+    message,
+    skipFirstSeenDateTag
   });
   const flowMachine = getFlowMachineForBot(botId);
   if (binding?.enabled) {
@@ -3178,6 +3249,15 @@ async function processIncomingMessage({ botId, message, intake = null }) {
   const { conversationKey, messageKey } = received;
   const baseLog = messageLogFields({ botId, conversationKey, message });
   const logContext = { ...baseLog, messageKey };
+  const hadConversation = Boolean(getConversation(conversationKey));
+  const hadFlowSession = Boolean(getFlowSession(conversationKey));
+  const legacyCandidate = isLegacyCustomerCandidate({
+    message,
+    binding,
+    hadConversation,
+    hadFlowSession
+  });
+  const flowMachine = getFlowMachineForBot(botId);
   logInfo("incoming.received", logContext);
 
   if (!received.accepted) {
@@ -3206,7 +3286,8 @@ async function processIncomingMessage({ botId, message, intake = null }) {
       botId,
       binding,
       conversationKey,
-      message
+      message,
+      skipFirstSeenDateTag: legacyCandidate
     });
   }
 
@@ -3237,6 +3318,25 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     });
     finishMessageProcessing({ messageKey, status: "skipped" });
     return;
+  }
+
+  const legacySession = getFlowSession(conversationKey);
+  const shouldAwaitLegacySync = legacyCandidate || (
+    legacySession?.customerOrigin === "legacy"
+    && legacySession.historySyncStatus === "loading"
+  );
+  if (
+    shouldAwaitLegacySync
+    && flowMachine?.enabled
+    && Array.isArray(flowMachine.config?.nodes)
+    && flowMachine.config.nodes.some((node) => String(node?.id || "").trim())
+  ) {
+    await legacyCustomerHistory.prepareLegacyCustomer({
+      botId,
+      conversationKey,
+      title: message.receivedName || "",
+      machine: flowMachine
+    });
   }
 
   const conversation = getConversation(conversationKey);
@@ -3387,13 +3487,25 @@ async function processCoalescedIncomingBatch(batch) {
   }
 
   const agentMessage = normalizeMessageForAgent(coalescedMessage, binding);
-  const tagContext = buildTagContext({ binding, conversationKey });
+  const isLegacyCustomer = flow?.session?.customerOrigin === "legacy";
+  const shouldSendLegacyHistory = isLegacyCustomer
+    && flow.session.historySyncStatus === "success"
+    && !flow.session.historyContextSentAt;
+  const legacyHistoryContext = shouldSendLegacyHistory
+    ? legacyCustomerHistory.buildStoredLegacyContext({ botId, conversationKey })
+    : null;
+  const isLegacyWithoutHistory = isLegacyCustomer
+    && flow.session.historySyncStatus !== "success";
+  const tagContext = isLegacyWithoutHistory
+    ? null
+    : buildTagContext({ binding, conversationKey });
   const request = buildDclawRequest({
     binding,
     conversation,
     message: agentMessage,
     flow,
     tagContext,
+    legacyHistoryContext,
     conversationReset,
     generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
   });
@@ -3528,6 +3640,9 @@ async function processCoalescedIncomingBatch(batch) {
       status: "success"
     });
     agentInvocationSucceeded = true;
+    if (legacyHistoryContext?.messages?.length) {
+      markLegacyHistoryContextSent({ botId, conversationKey });
+    }
     if (conversationReset) {
       markConversationResetHandled(conversationKey);
     }
@@ -4551,12 +4666,17 @@ app.get(
       tagFilters,
       dateTag: String(req.query.dateTag || "").trim()
     });
-    const sessions = page.items.map((session) => ({
-      ...session,
-      ...(binding
-        ? { tags: listConversationTags({ botId, agentId: binding.agentId, conversationKey: session.conversationKey }) }
-        : { tags: [] })
-    }));
+    const sessions = page.items.map((session) => {
+      const { historySyncError: _historySyncError, ...publicSession } = session;
+      publicSession.tags = binding
+        ? listConversationTags({
+            botId,
+            agentId: binding.agentId,
+            conversationKey: session.conversationKey
+          })
+        : [];
+      return publicSession;
+    });
     res.json({
       ok: true,
       sessions,

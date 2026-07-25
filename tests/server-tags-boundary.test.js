@@ -22,7 +22,10 @@ function functionBody(name) {
 
 test("incoming agent calls build and pass tag context", () => {
   const body = functionBody("processCoalescedIncomingBatch");
-  assert.match(body, /const tagContext = buildTagContext\(\{ binding, conversationKey \}\);/);
+  assert.match(
+    body,
+    /const tagContext = isLegacyWithoutHistory[\s\S]*buildTagContext\(\{ binding, conversationKey \}\);/
+  );
   assert.match(body, /const request = buildDclawRequest\(\{[\s\S]*\n\s+tagContext,\n[\s\S]*\}\);/);
 });
 
@@ -38,7 +41,9 @@ test("server applies tag decisions only after valid agent replies", () => {
 test("private inbound messages persist their session before coalesced agent work", () => {
   const incomingBody = functionBody("processIncomingMessage");
   const coalescedBody = functionBody("processCoalescedIncomingBatch");
-  assert.match(source, /function persistInboundConversation\(\{ botId, binding, conversationKey, message \}\)/);
+  const persistBody = functionBody("persistInboundConversation");
+  assert.match(source, /function persistInboundConversation\(\{/);
+  assert.match(persistBody, /skipFirstSeenDateTag/);
   assert.match(incomingBody, /persistInboundConversation\(\{[\s\S]*message\n\s+\}\);/);
   assert.ok(
     incomingBody.indexOf("persistInboundConversation") < incomingBody.indexOf("inboundCoalescer.push"),
