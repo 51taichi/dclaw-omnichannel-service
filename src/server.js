@@ -90,6 +90,7 @@ import {
   getAgentTagSchema,
   listConversationMessages,
   listConversationTags,
+  listUnreadTagAlerts,
   listCachedApiMessages,
   listFlowMachines,
   listFlowSessionsPage,
@@ -112,6 +113,7 @@ import {
   markTagActivationTaskSent,
   markConversationResetHandled,
   markLegacyHistoryContextSent,
+  markTagAlertRead,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
@@ -158,6 +160,7 @@ import {
 } from "./message-rules.js";
 import { normalizeUploadedFilename } from "./filenames.js";
 import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
+import { createTagAlertStreamHub } from "./tag-alert-stream.js";
 import { normalizeHistoryAnalysisConfig } from "./history-analysis.js";
 import { createLegacyCustomerHistoryService } from "./legacy-customer-history.js";
 import { isLegacyCustomerCandidate } from "./legacy-history.js";
@@ -170,6 +173,7 @@ import {
 } from "./tags.js";
 
 const app = express();
+const tagAlertStreamHub = createTagAlertStreamHub();
 const port = Number(process.env.PORT || 8765);
 const host = process.env.HOST || "0.0.0.0";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -922,6 +926,16 @@ function applyAgentTagDecision({
     source: "agent_decision",
     activationCandidates,
     alertCandidates
+  });
+}
+
+function publishCommittedTagAlerts({ botId, invocationId, tagResult }) {
+  const alerts = tagResult?.alerts || [];
+  if (!alerts.length) return;
+  tagAlertStreamHub.publishCreated({
+    botId,
+    batchId: `invocation:${invocationId}`,
+    alerts
   });
 }
 
@@ -3622,6 +3636,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
             evidenceCandidates: tagEvidenceCandidates
           })
         : null;
+      publishCommittedTagAlerts({ botId, invocationId, tagResult });
       if (conversationReset) {
         markConversationResetHandled(conversationKey);
       }
@@ -3942,6 +3957,7 @@ async function processCoalescedIncomingBatch(batch) {
           evidenceCandidates: tagEvidenceCandidates
         })
       : null;
+    publishCommittedTagAlerts({ botId, invocationId, tagResult });
     const reply = String(agentReply.reply || "").trim();
     const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
     const sources = Array.isArray(agentReply.sources) ? agentReply.sources : [];
@@ -4803,6 +4819,66 @@ app.put(
     });
     setSetting(getHistoryAnalysisSettingKey(req.params.botId), config);
     res.json({ ok: true, botId: req.params.botId, config });
+  })
+);
+
+app.get(
+  "/api/tag-alerts/stream",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
+    const snapshot = listUnreadTagAlerts({ botId });
+    tagAlertStreamHub.subscribe({
+      botId,
+      req,
+      res,
+      snapshot
+    });
+  })
+);
+
+app.get(
+  "/api/tag-alerts",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
+    const status = String(req.query.status || "unread").trim().toLowerCase();
+    if (status !== "unread") {
+      const error = new Error("only unread tag alerts are supported");
+      error.status = 400;
+      throw error;
+    }
+    res.json({
+      ok: true,
+      botId,
+      alerts: listUnreadTagAlerts({ botId })
+    });
+  })
+);
+
+app.post(
+  "/api/tag-alerts/:alertId/read",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.body?.botId || "").trim();
+    const alertId = Number(req.params.alertId);
+    assertBotAccess(req, botId);
+    if (!Number.isInteger(alertId) || alertId <= 0) {
+      const error = new Error("valid alertId is required");
+      error.status = 400;
+      throw error;
+    }
+    const alert = markTagAlertRead({ botId, alertId });
+    if (!alert) {
+      const error = new Error("unread tag alert not found");
+      error.status = 404;
+      throw error;
+    }
+    tagAlertStreamHub.publishRead({
+      botId,
+      alertId,
+      readAt: alert.readAt
+    });
+    res.json({ ok: true, alert });
   })
 );
 
