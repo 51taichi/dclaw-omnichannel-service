@@ -14,13 +14,12 @@ test("friend-added activation is triggered only by the system greeting before ag
   );
 });
 
-test("friend-added activation never invokes DClaw or sends a welcome message", () => {
+test("friend-added activation never sends a welcome message", () => {
   const start = source.indexOf("async function handleFriendAddedEvent");
   const end = source.indexOf("\nfunction commandCallbackLogFields", start);
   const handler = source.slice(start, end);
   assert.equal(handler.includes("scheduleCurrentActivation"), false);
   assert.equal(handler.includes("activationDueAtForAttempt"), true);
-  assert.equal(handler.includes("invokeDclaw"), false);
   assert.equal(handler.includes("sendTextMessage"), false);
 });
 
@@ -93,6 +92,35 @@ test("friend-added callback resets an existing conversation instead of skipping 
   assert.equal(handler.includes("friend_added.conversation_reset"), true);
   assert.equal(handler.includes("system_friend_greeting_existing_conversation"), false);
   assert.equal(handler.includes("forceReentry: Boolean(existingConversation)"), true);
+});
+
+test("friend-added callback queues old Agent memory cleanup without blocking local re-entry", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+  const syncIndex = handler.indexOf("syncConversationResetToAgent");
+  const resetIndex = handler.indexOf("resetConversationForFriendGreeting");
+  const entryIndex = handler.indexOf("beginFriendAddedFlowEntry");
+
+  assert.ok(syncIndex >= 0);
+  assert.ok(resetIndex >= 0);
+  assert.ok(entryIndex >= 0);
+  assert.ok(syncIndex < resetIndex);
+  assert.ok(resetIndex < entryIndex);
+  assert.equal(handler.includes("await syncConversationResetToAgent"), false);
+});
+
+test("friend-added re-entry cancels any buffered messages from the old conversation epoch", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+  const cancelIndex = handler.indexOf("cancelInboundBatch");
+  const resetIndex = handler.indexOf("resetConversationForFriendGreeting");
+
+  assert.ok(cancelIndex >= 0);
+  assert.ok(resetIndex >= 0);
+  assert.ok(cancelIndex < resetIndex);
+  assert.match(handler, /"friend_added_reentry"/);
 });
 
 test("friend-added cooldown is checked before resetting an existing conversation", () => {

@@ -4,12 +4,30 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 
-test("conversation reset sync validates an exact Agent acknowledgement", () => {
-  assert.match(source, /export async function syncConversationResetToAgent/);
-  assert.match(source, /buildDclawConversationResetRequest/);
-  assert.match(source, /parseConversationResetAcknowledgement/);
-  assert.match(source, /markConversationResetHandled\(conversationKey\)/);
-  assert.match(source, /agent\.conversation_reset\.failed/);
+test("conversation reset sync clears workspace history before customer session memory", () => {
+  const start = source.indexOf("export async function syncConversationResetToAgent");
+  const end = source.indexOf("\nfunction invalidSendabilityAgentReply", start);
+  const sync = source.slice(start, end);
+
+  assert.ok(start >= 0);
+  assert.match(sync, /buildDclawConversationResetRequest/);
+  assert.match(sync, /buildDclawConversationMemoryClearRequest/);
+  assert.match(sync, /runConversationResetRequests/);
+  assert.match(sync, /markConversationResetHandled\(conversationKey\)/);
+  assert.match(sync, /agent\.conversation_reset\.failed/);
+});
+
+test("agent replies are discarded when their conversation epoch became stale", () => {
+  const start = source.indexOf("async function processCoalescedIncomingBatch");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+  const staleCheck = handler.indexOf("isConversationEpochCurrent");
+  const send = handler.indexOf("sendTextReplyParts");
+
+  assert.ok(staleCheck >= 0);
+  assert.ok(send >= 0);
+  assert.ok(staleCheck < send);
+  assert.match(handler, /agent\.reply\.stale_skipped/);
 });
 
 test("reset route stays local-first and returns Agent sync status", () => {

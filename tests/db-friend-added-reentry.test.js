@@ -203,6 +203,13 @@ test("friend-added re-entry never advances an old delivery into the new generati
 
 test("friend-added re-entry clears prior business state before scheduling entry activation", () => {
   const { botId, agentId, conversationKey, machine } = setup();
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "道友", groupName: "道友" }
+  });
+  const originalConversationEpoch = db.getConversation(conversationKey).conversationEpoch;
   const firstAt = "2026-07-16T10:00:00.000Z";
   const first = db.beginFriendAddedFlowEntry({
     botId,
@@ -277,6 +284,11 @@ test("friend-added re-entry clears prior business state before scheduling entry 
     conversationKey,
     timestamp: "2026-07-16T10:11:00.000Z"
   });
+  const resetConversation = db.getConversation(conversationKey);
+  assert.ok(originalConversationEpoch);
+  assert.ok(resetConversation.conversationEpoch);
+  assert.notEqual(resetConversation.conversationEpoch, originalConversationEpoch);
+  assert.equal(resetConversation.resetPending, true);
   const reentry = db.beginFriendAddedFlowEntry({
     botId,
     conversationKey,

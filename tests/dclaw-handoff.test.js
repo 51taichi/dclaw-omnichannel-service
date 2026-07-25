@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildDclawConversationMemoryClearRequest,
   buildDclawConversationResetRequest,
   buildDclawHandoffTranscriptRequest,
+  parseConversationMemoryClearAcknowledgement,
   parseConversationResetAcknowledgement
 } from "../src/dclaw.js";
 
@@ -49,6 +51,7 @@ test("conversation reset request uses a bounded event and exact acknowledgement"
 
   assert.equal(request.metadata.eventType, "conversation_reset");
   assert.equal(request.metadata.worktool.eventType, "conversation_reset");
+  assert.equal(request.external_user_id, "张三");
   assert.equal(request.external_session_id, "bot_1:private:张三");
   assert.match(request.message, /客户档案/);
   assert.match(request.message, /conversationId/);
@@ -59,4 +62,34 @@ test("conversation reset request uses a bounded event and exact acknowledgement"
   assert.equal(parseConversationResetAcknowledgement('{"reply":"好的"}').ok, false);
   assert.equal(parseConversationResetAcknowledgement('```json\n{"ok":true,"eventType":"conversation_reset"}\n```').ok, false);
   assert.equal(parseConversationResetAcknowledgement('{"ok":true,"eventType":"other"}').ok, false);
+});
+
+test("conversation memory clear targets the customer's existing DClaw session", () => {
+  const request = buildDclawConversationMemoryClearRequest({
+    binding: { botId: "bot_1", agentId: "agent_1" },
+    conversationKey: "bot_1:private:张三",
+    reason: "console_reset"
+  });
+
+  assert.equal(request.external_user_id, "张三");
+  assert.equal(request.external_session_id, "bot_1:private:张三");
+  assert.equal(request.message, "/clear");
+  assert.equal(request.metadata.eventType, "conversation_memory_clear");
+  assert.deepEqual(
+    parseConversationMemoryClearAcknowledgement(
+      "**History Cleared!**\n\n- Memory is now empty\n- Plan state cleared"
+    ),
+    { ok: true }
+  );
+  assert.equal(parseConversationMemoryClearAcknowledgement("好的").ok, false);
+});
+
+test("conversation memory clear is private-only because group sessions are sender-scoped", () => {
+  const request = buildDclawConversationMemoryClearRequest({
+    binding: { botId: "bot_1", agentId: "agent_1" },
+    conversationKey: "bot_1:group:测试群",
+    reason: "console_reset"
+  });
+
+  assert.equal(request, null);
 });

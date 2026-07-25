@@ -43,6 +43,7 @@ db.exec(`
     conversation_key TEXT PRIMARY KEY,
     bot_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
+    conversation_epoch TEXT NOT NULL,
     dclaw_session_id TEXT,
     reset_pending INTEGER NOT NULL DEFAULT 0,
     room_type INTEGER,
@@ -435,6 +436,12 @@ ensureColumn("bot_agent_bindings", "dclaw_public_id", "TEXT");
 ensureColumn("bot_agent_bindings", "access_key_hash", "TEXT");
 ensureColumn("bot_agent_bindings", "access_key_updated_at", "TEXT");
 ensureColumn("conversations", "reset_pending", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("conversations", "conversation_epoch", "TEXT NOT NULL DEFAULT ''");
+db.exec(`
+  UPDATE conversations
+  SET conversation_epoch = lower(hex(randomblob(16)))
+  WHERE conversation_epoch IS NULL OR conversation_epoch = ''
+`);
 ensureColumn("outgoing_messages", "callback_error_code", "INTEGER");
 ensureColumn("outgoing_messages", "callback_error_reason", "TEXT");
 ensureColumn("outgoing_messages", "callback_payload_json", "TEXT");
@@ -1011,10 +1018,10 @@ export function upsertConversation({
   const timestamp = now();
   db.prepare(`
     INSERT INTO conversations (
-      conversation_key, bot_id, agent_id, room_type, received_name, group_name,
+      conversation_key, bot_id, agent_id, conversation_epoch, room_type, received_name, group_name,
       last_message_at, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(conversation_key) DO UPDATE SET
       agent_id = excluded.agent_id,
       room_type = excluded.room_type,
@@ -1026,6 +1033,7 @@ export function upsertConversation({
     conversationKey,
     botId,
     agentId,
+    crypto.randomUUID(),
     message.roomType ?? null,
     message.receivedName || "",
     message.groupName || "",
@@ -1071,6 +1079,7 @@ export function getConversation(conversationKey) {
     conversationKey: row.conversation_key,
     botId: row.bot_id,
     agentId: row.agent_id,
+    conversationEpoch: row.conversation_epoch,
     dclawSessionId: row.dclaw_session_id,
     resetPending: Boolean(row.reset_pending),
     roomType: row.room_type,
@@ -1875,13 +1884,20 @@ export function resetConversationForFriendGreeting({
     `).run(json({}), timestamp, timestamp, normalizedConversationKey, normalizedBotId);
     db.prepare(`
       UPDATE conversations
-      SET dclaw_session_id = NULL,
+      SET conversation_epoch = ?,
+          dclaw_session_id = NULL,
           reset_pending = 1,
           last_message_at = ?,
           updated_at = ?
       WHERE conversation_key = ?
         AND bot_id = ?
-    `).run(timestamp, timestamp, normalizedConversationKey, normalizedBotId);
+    `).run(
+      crypto.randomUUID(),
+      timestamp,
+      timestamp,
+      normalizedConversationKey,
+      normalizedBotId
+    );
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");

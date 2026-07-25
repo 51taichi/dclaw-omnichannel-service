@@ -7,9 +7,11 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mergeInlineActions } from "./action-chips.js";
 import { loadBotBindingsFromConfig } from "./config.js";
+import { runConversationResetRequests } from "./conversation-reset.js";
 import {
   buildDclawActivationRequest,
   buildDclawAttachmentSourceRetryRequest,
+  buildDclawConversationMemoryClearRequest,
   buildDclawConversationResetRequest,
   buildDclawHandoffTranscriptRequest,
   buildDclawProactiveEventRequest,
@@ -19,8 +21,7 @@ import {
   getDclawFormatRetryTimeoutMs,
   getDclawAgentTimeoutMs,
   getAgentReplySendabilityIssue,
-  invokeDclawAgentWithRetry,
-  parseConversationResetAcknowledgement
+  invokeDclawAgentWithRetry
 } from "./dclaw.js";
 import {
   sendabilityIssueToValidationError,
@@ -566,6 +567,16 @@ function activationMessageForAttempt(task) {
 
 function privateTargetNameFromConversationKey(conversationKey) {
   return String(conversationKey || "").split(":private:")[1] || "";
+}
+
+function isConversationEpochCurrent({ botId, conversationKey, expectedEpoch }) {
+  const current = getConversation(conversationKey);
+  return Boolean(
+    current &&
+    current.botId === botId &&
+    expectedEpoch &&
+    current.conversationEpoch === expectedEpoch
+  );
 }
 
 function invalidateFlowActivation({ conversationKey, reason }) {
@@ -1209,6 +1220,11 @@ function enqueueAgentInvocation(task) {
   return run;
 }
 
+const conversationResetTimeoutMs = Math.max(
+  1000,
+  Number(process.env.DCLAW_CONVERSATION_RESET_TIMEOUT_MS || 20000)
+);
+
 export async function syncConversationResetToAgent({
   binding,
   conversationKey,
@@ -1225,6 +1241,11 @@ export async function syncConversationResetToAgent({
     reason,
     generalRule: getFlowMachineForBot(binding.botId)?.config?.generalRule || ""
   });
+  const memoryClearRequest = buildDclawConversationMemoryClearRequest({
+    binding,
+    conversationKey,
+    reason
+  });
   const invocationId = insertAgentInvocationStart({
     botId: binding.botId,
     agentId: binding.agentId,
@@ -1235,15 +1256,33 @@ export async function syncConversationResetToAgent({
   const startedAt = Date.now();
 
   try {
-    const invocation = invoke
-      ? await invoke({ binding, request })
-      : await enqueueAgentInvocation(() => invokeDclawAgentWithRetry({ binding, request }));
-    if (!parseConversationResetAcknowledgement(invocation?.reply).ok) {
-      throw new Error("invalid conversation reset acknowledgement");
+    const invokeResetRequest = async (nextRequest) => {
+      if (invoke) return invoke({ binding, request: nextRequest });
+      return invokeDclawAgentWithRetry({
+        binding,
+        request: nextRequest,
+        maxAttempts: 1,
+        timeoutMs: conversationResetTimeoutMs
+      });
+    };
+    const runReset = () => runConversationResetRequests({
+      workspaceRequest: request,
+      memoryClearRequest,
+      invoke: invokeResetRequest
+    });
+    const result = invoke ? await runReset() : await enqueueAgentInvocation(runReset);
+    if (!result.ok) {
+      const errors = [result.workspaceError, result.memoryError].filter(Boolean);
+      const error = new Error(errors.map((item) => item.message).join("; "));
+      error.resetResult = result;
+      throw error;
     }
     finishAgentInvocation({
       id: invocationId,
-      response: invocation.response || null,
+      response: {
+        workspaceReset: result.workspaceInvocation?.response || null,
+        memoryClear: result.memoryInvocation?.response || null
+      },
       status: "success"
     });
     markConversationResetHandled(conversationKey);
@@ -1256,9 +1295,15 @@ export async function syncConversationResetToAgent({
     });
     return { status: "synced" };
   } catch (error) {
+    const resetResult = error.resetResult || null;
     finishAgentInvocation({
       id: invocationId,
-      response: null,
+      response: resetResult
+        ? {
+            workspaceReset: resetResult.workspaceInvocation?.response || null,
+            memoryClear: resetResult.memoryInvocation?.response || null
+          }
+        : null,
       status: "failed",
       error: error.message
     });
@@ -1807,6 +1852,15 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
     return "skipped";
   }
   if (existingConversation) {
+    cancelInboundBatch(
+      inboundCoalesceKey(botId, conversationKey),
+      "friend_added_reentry"
+    );
+    void syncConversationResetToAgent({
+      binding,
+      conversationKey,
+      reason: "friend_added_reentry"
+    });
     resetConversationForFriendGreeting({
       botId,
       agentId: binding.agentId,
@@ -3571,6 +3625,27 @@ async function processCoalescedIncomingBatch(batch) {
       }
     });
 
+    if (!isConversationEpochCurrent({
+      botId,
+      conversationKey,
+      expectedEpoch: conversation.conversationEpoch
+    })) {
+      finishAgentInvocation({
+        id: invocationId,
+        response: strictInvocation.invocation?.response || null,
+        status: "stale",
+        error: "conversation_epoch_changed"
+      });
+      logWarn("agent.reply.stale_skipped", {
+        ...logContext,
+        agentId: binding.agentId,
+        invocationId,
+        reason: "conversation_epoch_changed"
+      });
+      finishCoalescedMessageProcessing({ batch, status: "stale" });
+      return;
+    }
+
     if (!strictInvocation.agentReply.valid) {
       const sendabilityIssue = strictInvocation.agentReply.sendabilityIssue;
       const errorCode = sendabilityIssue ? "invalid_agent_attachment_source" : "invalid_agent_reply_format";
@@ -3647,6 +3722,26 @@ async function processCoalescedIncomingBatch(batch) {
     const target = getReplyTarget(message);
     if (!target) {
       throw new Error("missing WorkTool reply target");
+    }
+    if (!isConversationEpochCurrent({
+      botId,
+      conversationKey,
+      expectedEpoch: conversation.conversationEpoch
+    })) {
+      finishAgentInvocation({
+        id: invocationId,
+        response: invocation.response || null,
+        status: "stale",
+        error: "conversation_epoch_changed"
+      });
+      logWarn("agent.reply.stale_skipped", {
+        ...logContext,
+        agentId: binding.agentId,
+        invocationId,
+        reason: "conversation_epoch_changed_before_send"
+      });
+      finishCoalescedMessageProcessing({ batch, status: "stale" });
+      return;
     }
 
     const sentParts = await sendTextReplyParts({
@@ -3775,6 +3870,28 @@ async function processCoalescedIncomingBatch(batch) {
     }
     finishCoalescedMessageProcessing({ batch, status: "coalesced_processed" });
   } catch (error) {
+    if (!isConversationEpochCurrent({
+      botId,
+      conversationKey,
+      expectedEpoch: conversation.conversationEpoch
+    })) {
+      if (!agentInvocationSucceeded) {
+        finishAgentInvocation({
+          id: invocationId,
+          response: error.response || null,
+          status: "stale",
+          error: "conversation_epoch_changed"
+        });
+      }
+      logWarn("agent.reply.stale_skipped", {
+        ...logContext,
+        agentId: binding.agentId,
+        invocationId,
+        reason: "conversation_epoch_changed_after_failure"
+      });
+      finishCoalescedMessageProcessing({ batch, status: "stale" });
+      return;
+    }
     if (!agentInvocationSucceeded) {
       finishAgentInvocation({
         id: invocationId,

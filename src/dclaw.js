@@ -33,6 +33,13 @@ function compactInboundPayload(message = {}) {
   };
 }
 
+function privateUserIdFromConversationKey(conversationKey) {
+  const value = String(conversationKey || "");
+  const marker = ":private:";
+  const markerIndex = value.indexOf(marker);
+  return markerIndex >= 0 ? value.slice(markerIndex + marker.length).trim() : "";
+}
+
 export function getDclawRequestMessageMaxChars() {
   const configured = Number(process.env.DCLAW_REQUEST_MESSAGE_MAX_CHARS || defaultDclawRequestMessageMaxChars);
   return Number.isFinite(configured) && configured > 0
@@ -335,6 +342,7 @@ export function buildDclawConversationResetRequest({
   generalRule = ""
 }) {
   const normalizedGeneralRule = normalizeGeneralRule(generalRule);
+  const externalUserId = privateUserIdFromConversationKey(conversationKey) || "system";
   const worktoolMessage = {
     channel: "wecom-worktool",
     eventType: "conversation_reset",
@@ -347,12 +355,12 @@ export function buildDclawConversationResetRequest({
     rawMessage: "",
     roomType: null,
     groupName: "",
-    userId: "",
+    userId: externalUserId,
     metadata: { reason }
   };
 
   return {
-    external_user_id: "system",
+    external_user_id: externalUserId,
     external_session_id: conversationKey,
     message: [
       "你收到的是 WorkTool 回调服务器的内部会话清理事件。",
@@ -382,6 +390,30 @@ export function buildDclawConversationResetRequest({
   };
 }
 
+export function buildDclawConversationMemoryClearRequest({
+  binding,
+  conversationKey,
+  reason = "console_reset"
+}) {
+  const externalUserId = privateUserIdFromConversationKey(conversationKey);
+  if (!externalUserId) return null;
+  return {
+    external_user_id: externalUserId,
+    external_session_id: conversationKey,
+    message: "/clear",
+    stream: true,
+    metadata: {
+      source: "worktool",
+      eventType: "conversation_memory_clear",
+      botId: binding.botId,
+      agentId: binding.agentId,
+      conversationId: conversationKey,
+      reason,
+      userId: externalUserId
+    }
+  };
+}
+
 export function parseConversationResetAcknowledgement(rawReply) {
   const text = String(rawReply || "").trim();
   if (!text) return { ok: false };
@@ -399,6 +431,13 @@ export function parseConversationResetAcknowledgement(rawReply) {
   } catch {
     return { ok: false };
   }
+}
+
+export function parseConversationMemoryClearAcknowledgement(rawReply) {
+  const text = String(rawReply || "").trim();
+  return {
+    ok: /History Cleared!/i.test(text) && /Memory is now empty/i.test(text)
+  };
 }
 
 export function buildDclawProactiveEventRequest({
