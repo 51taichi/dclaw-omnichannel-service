@@ -4888,7 +4888,7 @@ td .muted {
 .tag-alert-center {
   position: fixed;
   right: 22px;
-  bottom: 88px;
+  bottom: 120px;
   z-index: 920;
   display: flex;
   align-items: flex-end;
@@ -5119,7 +5119,7 @@ td .muted {
 @media (max-width: 760px) {
   .tag-alert-center {
     right: 12px;
-    bottom: 76px;
+    bottom: 104px;
   }
 
   .topbar,

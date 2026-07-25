@@ -33,6 +33,11 @@ test("console exposes an accessible fixed tag alert center and preloaded audio",
       html.indexOf('<script src="./app.js"></script>')
   );
   assert.match(css, /\.tag-alert-center\s*\{[^}]*position:\s*fixed/);
+  assert.match(css, /\.tag-alert-center\s*\{[^}]*bottom:\s*120px/);
+  assert.match(
+    css,
+    /@media \(max-width:\s*760px\)\s*\{[\s\S]*\.tag-alert-center\s*\{[^}]*bottom:\s*104px/
+  );
   assert.match(css, /\.tag-alert-button\s*\{[^}]*background:[^;}]*var\(--danger\)/);
   assert.match(css, /\.tag-alert-center\.has-unread:not\(\.is-paused\) \.tag-alert-button/);
   assert.match(css, /\.tag-alert-list\s*\{[^}]*overflow-y:\s*auto/);
