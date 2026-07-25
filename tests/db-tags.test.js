@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { dateTagIdFor } from "../src/tags.js";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-tags-test-"));
@@ -12,7 +13,9 @@ const {
   applyConversationTagChanges,
   cancelTagActivationTasks,
   claimDueTagActivationTasks,
+  ensureConversationDateTag,
   getAgentTagSchema,
+  initializeLegacyDateTagRuleEffectiveTimes,
   listConversationTags,
   listTagActivationTasks,
   markTagActivationTaskFailed,
@@ -33,6 +36,8 @@ test("agent tag schemas are stored by agent id", () => {
   });
 
   assert.equal(schema.agentId, "tag_agent_a");
+  assert.equal(schema.config.dateTag.cutoffTime, "00:00");
+  assert.ok(schema.config.dateTag.effectiveAt);
   assert.equal(getAgentTagSchema("tag_agent_a").config.groups[0].id, "intent");
   assert.equal(getAgentTagSchema("missing_agent"), null);
 });
@@ -94,13 +99,13 @@ test("private conversations receive one stable Beijing date tag from first persi
   );
 });
 
-test("saving an enabled date tag schema backfills existing private conversations only", () => {
+test("enabling date tags does not backfill existing conversations", () => {
   const scope = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const botId = `date_backfill_bot_${scope}`;
   const agentId = `date_backfill_agent_${scope}`;
   const privateKey = `${botId}:private:历史客户`;
   const groupKey = `${botId}:group:历史群`;
-  const privateConversation = upsertConversation({
+  upsertConversation({
     botId,
     agentId,
     conversationKey: privateKey,
@@ -114,31 +119,166 @@ test("saving an enabled date tag schema backfills existing private conversations
   });
 
   assert.deepEqual(listConversationTags({ botId, agentId, conversationKey: privateKey }), []);
-  upsertAgentTagSchema({ agentId, schema: { dateTag: { enabled: true }, groups: [] } });
+  const saved = upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "20:00" }, groups: [] }
+  });
 
-  assert.equal(
-    listConversationTags({ botId, agentId, conversationKey: privateKey })
-      .find((tag) => tag.tagType === "date")?.tagId,
-    dateTagIdFor(privateConversation.createdAt)
-  );
+  assert.ok(saved.config.dateTag.effectiveAt);
+  assert.deepEqual(listConversationTags({ botId, agentId, conversationKey: privateKey }), []);
   assert.deepEqual(listConversationTags({ botId, agentId, conversationKey: groupKey }), []);
 });
 
-test("system date updates replace an old date instead of creating a second date tag", () => {
+test("new private conversations use the active cutoff rule", () => {
   const scope = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-  const botId = `date_replace_bot_${scope}`;
-  const agentId = `date_replace_agent_${scope}`;
-  const conversationKey = `${botId}:private:重新添加客户`;
+  const botId = `date_new_bot_${scope}`;
+  const agentId = `date_new_agent_${scope}`;
+  const conversationKey = `${botId}:private:新客户`;
+  upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "20:00" }, groups: [] }
+  });
 
-  upsertSystemDateTag({ botId, agentId, conversationKey, dateTagId: "20260717" });
-  upsertSystemDateTag({ botId, agentId, conversationKey, dateTagId: "20260718" });
+  const conversation = upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "新客户", groupName: "新客户" }
+  });
 
   assert.deepEqual(
     listConversationTags({ botId, agentId, conversationKey })
       .filter((tag) => tag.tagType === "date")
       .map((tag) => tag.tagId),
-    ["20260718"]
+    [dateTagIdFor(conversation.createdAt, "20:00")]
   );
+});
+
+test("unchanged date rules preserve their effective time", () => {
+  const agentId = `date_unchanged_agent_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const first = upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "20:00" }, groups: [] }
+  });
+  const second = upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "20:00" }, groups: [] }
+  });
+
+  assert.equal(second.config.dateTag.effectiveAt, first.config.dateTag.effectiveAt);
+});
+
+test("changing disabling and re-enabling date rules only changes future eligibility", async () => {
+  const scope = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const botId = `date_transition_bot_${scope}`;
+  const agentId = `date_transition_agent_${scope}`;
+  const conversationKey = `${botId}:private:规则变更客户`;
+  const first = upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "20:00" }, groups: [] }
+  });
+  upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "规则变更客户", groupName: "规则变更客户" }
+  });
+  const originalTagId = listConversationTags({ botId, agentId, conversationKey })
+    .find((tag) => tag.tagType === "date")?.tagId;
+
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  const changed = upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "21:00" }, groups: [] }
+  });
+  assert.notEqual(changed.config.dateTag.effectiveAt, first.config.dateTag.effectiveAt);
+  assert.equal(
+    listConversationTags({ botId, agentId, conversationKey })
+      .find((tag) => tag.tagType === "date")?.tagId,
+    originalTagId
+  );
+
+  const disabled = upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: false, cutoffTime: "21:00" }, groups: [] }
+  });
+  assert.equal(disabled.config.dateTag.effectiveAt, "");
+
+  const blockedKey = `${botId}:private:停用期间客户`;
+  upsertConversation({
+    botId,
+    agentId,
+    conversationKey: blockedKey,
+    message: { roomType: 2, receivedName: "停用期间客户", groupName: "停用期间客户" }
+  });
+  assert.deepEqual(listConversationTags({ botId, agentId, conversationKey: blockedKey }), []);
+
+  await new Promise((resolve) => setTimeout(resolve, 2));
+  const reenabled = upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "21:00" }, groups: [] }
+  });
+  assert.ok(reenabled.config.dateTag.effectiveAt);
+  assert.notEqual(reenabled.config.dateTag.effectiveAt, changed.config.dateTag.effectiveAt);
+  assert.deepEqual(listConversationTags({ botId, agentId, conversationKey: blockedKey }), []);
+});
+
+test("date tag creation rejects records before effectiveAt and never replaces an existing date", () => {
+  const scope = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const botId = `date_replace_bot_${scope}`;
+  const agentId = `date_replace_agent_${scope}`;
+  const conversationKey = `${botId}:private:重新添加客户`;
+  upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "重新添加客户", groupName: "重新添加客户" }
+  });
+  upsertSystemDateTag({ botId, agentId, conversationKey, dateTagId: "20260717" });
+  const saved = upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "20:00" }, groups: [] }
+  });
+  upsertSystemDateTag({ botId, agentId, conversationKey, dateTagId: "20260718" });
+  ensureConversationDateTag({
+    botId,
+    agentId,
+    conversationKey,
+    firstSeenAt: new Date(new Date(saved.config.dateTag.effectiveAt).getTime() - 1_000).toISOString()
+  });
+
+  assert.deepEqual(
+    listConversationTags({ botId, agentId, conversationKey })
+      .filter((tag) => tag.tagType === "date")
+      .map((tag) => tag.tagId),
+    ["20260717"]
+  );
+});
+
+test("legacy enabled date rules gain an effective time without backfilling conversations", () => {
+  const scope = `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const botId = `date_legacy_bot_${scope}`;
+  const agentId = `date_legacy_agent_${scope}`;
+  const conversationKey = `${botId}:private:旧配置客户`;
+  upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "旧配置客户", groupName: "旧配置客户" }
+  });
+
+  const rawDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const timestamp = new Date().toISOString();
+  rawDb.prepare(`
+    INSERT INTO agent_tag_schemas (agent_id, config_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+  `).run(agentId, JSON.stringify({ dateTag: { enabled: true }, groups: [] }), timestamp, timestamp);
+  rawDb.close();
+
+  assert.equal(initializeLegacyDateTagRuleEffectiveTimes(), 1);
+  assert.ok(getAgentTagSchema(agentId).config.dateTag.effectiveAt);
+  assert.equal(getAgentTagSchema(agentId).config.dateTag.cutoffTime, "00:00");
+  assert.deepEqual(listConversationTags({ botId, agentId, conversationKey }), []);
 });
 
 test("tag activation tasks can be scheduled claimed and finalized", () => {

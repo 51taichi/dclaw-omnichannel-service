@@ -2819,8 +2819,19 @@ export function getAgentTagSchema(agentId) {
 }
 
 export function upsertAgentTagSchema({ agentId, schema }) {
-  const normalized = normalizeTagSchema(schema);
   const timestamp = now();
+  const previous = normalizeTagSchema(getAgentTagSchema(agentId)?.config || {});
+  const requested = normalizeTagSchema({
+    ...(schema || {}),
+    dateTag: {
+      ...(schema?.dateTag || {}),
+      effectiveAt: ""
+    }
+  });
+  const normalized = {
+    ...requested,
+    dateTag: resolveDateTagRuleForSave({ previous, requested, timestamp })
+  };
   db.exec("BEGIN IMMEDIATE");
   try {
     db.prepare(`
@@ -2831,9 +2842,6 @@ export function upsertAgentTagSchema({ agentId, schema }) {
         updated_at = excluded.updated_at
     `).run(agentId, json(normalized), timestamp, timestamp);
     cancelObsoleteTagActivationTasksForSchema({ agentId, schema: normalized, timestamp });
-    if (normalized.dateTag.enabled) {
-      backfillConversationFirstSeenDateTags(agentId);
-    }
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -2842,66 +2850,58 @@ export function upsertAgentTagSchema({ agentId, schema }) {
   return getAgentTagSchema(agentId);
 }
 
-function syncConversationFirstSeenDateTag(conversation) {
-  if (!conversation || !conversation.agentId) return null;
-  const roomType = Number(conversation.roomType);
-  if (roomType !== 2 && roomType !== 4) return null;
-  const schema = normalizeTagSchema(getAgentTagSchema(conversation.agentId)?.config || {});
-  if (!schema.dateTag.enabled) return null;
-  const dateTagId = dateTagIdFor(conversation.createdAt);
-  const timestamp = now();
-  db.prepare(`
-    DELETE FROM conversation_tags
-    WHERE bot_id = ?
-      AND agent_id = ?
-      AND conversation_key = ?
-      AND tag_type = 'date'
-      AND tag_id <> ?
-  `).run(conversation.botId, conversation.agentId, conversation.conversationKey, dateTagId);
-  db.prepare(`
-    INSERT INTO conversation_tags (
-      bot_id, agent_id, conversation_key, group_id, group_name, tag_id, tag_name,
-      tag_type, reason, source, created_at, updated_at
-    )
-    VALUES (?, ?, ?, '', '', ?, ?, 'date', ?, 'conversation_first_seen', ?, ?)
-    ON CONFLICT(bot_id, agent_id, conversation_key, tag_type, group_id, tag_id)
-    DO UPDATE SET updated_at = excluded.updated_at
-  `).run(
-    conversation.botId,
-    conversation.agentId,
-    conversation.conversationKey,
-    dateTagId,
-    dateTagId,
-    "客户首次入库日期",
-    timestamp,
-    timestamp
-  );
-  return dateTagId;
+function resolveDateTagRuleForSave({ previous, requested, timestamp }) {
+  const next = requested.dateTag;
+  if (!next.enabled) {
+    return {
+      enabled: false,
+      cutoffTime: next.cutoffTime,
+      effectiveAt: ""
+    };
+  }
+  const unchanged = previous.dateTag.enabled
+    && previous.dateTag.cutoffTime === next.cutoffTime
+    && previous.dateTag.effectiveAt;
+  return {
+    enabled: true,
+    cutoffTime: next.cutoffTime,
+    effectiveAt: unchanged ? previous.dateTag.effectiveAt : timestamp
+  };
 }
 
-function backfillConversationFirstSeenDateTags(agentId) {
-  const conversations = db.prepare(`
-    SELECT conversation_key
-    FROM conversations
-    WHERE agent_id = ?
-      AND room_type IN (2, 4)
-    ORDER BY created_at ASC
-  `).all(agentId);
-  for (const row of conversations) {
-    syncConversationFirstSeenDateTag(getConversation(row.conversation_key));
-  }
+function syncConversationFirstSeenDateTag(conversation) {
+  if (!conversation || !conversation.agentId) return null;
+  return ensureConversationDateTag({
+    botId: conversation.botId,
+    agentId: conversation.agentId,
+    conversationKey: conversation.conversationKey,
+    firstSeenAt: conversation.createdAt,
+    source: "conversation_first_seen"
+  });
 }
 
 export function backfillEnabledConversationFirstSeenDateTags() {
+  return initializeLegacyDateTagRuleEffectiveTimes();
+}
+
+export function initializeLegacyDateTagRuleEffectiveTimes() {
   const schemas = db.prepare(`
     SELECT agent_id, config_json
     FROM agent_tag_schemas
   `).all();
   let agentCount = 0;
+  const timestamp = now();
   for (const row of schemas) {
-    const schema = normalizeTagSchema(parseJson(row.config_json, {}));
-    if (!schema.dateTag.enabled) continue;
-    backfillConversationFirstSeenDateTags(row.agent_id);
+    const rawSchema = parseJson(row.config_json) || {};
+    const schema = normalizeTagSchema(rawSchema);
+    if (!schema.dateTag.enabled || schema.dateTag.effectiveAt) continue;
+    schema.dateTag.effectiveAt = timestamp;
+    db.prepare(`
+      UPDATE agent_tag_schemas
+      SET config_json = ?,
+          updated_at = ?
+      WHERE agent_id = ?
+    `).run(json(schema), timestamp, row.agent_id);
     agentCount += 1;
   }
   return agentCount;
@@ -3025,15 +3025,12 @@ export function upsertSystemDateTag({
   dateTagId,
   source = "friend_added"
 }) {
+  const existing = listConversationTags({ botId, agentId, conversationKey })
+    .find((tag) => tag.tagType === "date");
+  if (existing) {
+    return listConversationTags({ botId, agentId, conversationKey });
+  }
   const timestamp = now();
-  db.prepare(`
-    DELETE FROM conversation_tags
-    WHERE bot_id = ?
-      AND agent_id = ?
-      AND conversation_key = ?
-      AND tag_type = 'date'
-      AND tag_id <> ?
-  `).run(botId, agentId, conversationKey, dateTagId);
   db.prepare(`
     INSERT INTO conversation_tags (
       bot_id, agent_id, conversation_key, group_id, group_name, tag_id, tag_name,
@@ -3041,7 +3038,7 @@ export function upsertSystemDateTag({
     )
     VALUES (?, ?, ?, '', '', ?, ?, 'date', ?, ?, ?, ?)
     ON CONFLICT(bot_id, agent_id, conversation_key, tag_type, group_id, tag_id)
-    DO UPDATE SET updated_at = excluded.updated_at
+    DO NOTHING
   `).run(
     botId,
     agentId,
@@ -3054,6 +3051,47 @@ export function upsertSystemDateTag({
     timestamp
   );
   return listConversationTags({ botId, agentId, conversationKey });
+}
+
+export function ensureConversationDateTag({
+  botId,
+  agentId,
+  conversationKey,
+  firstSeenAt,
+  source = "conversation_first_seen"
+}) {
+  const conversation = getConversation(conversationKey);
+  if (
+    !conversation
+    || conversation.botId !== botId
+    || conversation.agentId !== agentId
+    || ![2, 4].includes(Number(conversation.roomType))
+  ) {
+    return null;
+  }
+  const schema = normalizeTagSchema(getAgentTagSchema(agentId)?.config || {});
+  if (!schema.dateTag.enabled || !schema.dateTag.effectiveAt) return null;
+  const firstSeenDate = new Date(firstSeenAt);
+  const effectiveDate = new Date(schema.dateTag.effectiveAt);
+  if (
+    Number.isNaN(firstSeenDate.getTime())
+    || Number.isNaN(effectiveDate.getTime())
+    || firstSeenDate.getTime() < effectiveDate.getTime()
+  ) {
+    return null;
+  }
+  const existing = listConversationTags({ botId, agentId, conversationKey })
+    .find((tag) => tag.tagType === "date");
+  if (existing) {
+    return listConversationTags({ botId, agentId, conversationKey });
+  }
+  return upsertSystemDateTag({
+    botId,
+    agentId,
+    conversationKey,
+    dateTagId: dateTagIdFor(firstSeenDate, schema.dateTag.cutoffTime),
+    source
+  });
 }
 
 export function scheduleTagActivationTask({
