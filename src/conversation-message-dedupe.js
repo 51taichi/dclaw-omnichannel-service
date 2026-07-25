@@ -24,9 +24,14 @@ function stableId(message) {
 }
 
 function compareChronologically(left, right) {
-  const leftTime = messageTime(left) ?? Number.POSITIVE_INFINITY;
-  const rightTime = messageTime(right) ?? Number.POSITIVE_INFINITY;
-  return leftTime - rightTime || stableId(left) - stableId(right);
+  const leftTime = messageTime(left);
+  const rightTime = messageTime(right);
+  if (leftTime !== null && rightTime !== null) {
+    return leftTime - rightTime || stableId(left) - stableId(right);
+  }
+  const textOrder = String(left?.createdAt || "")
+    .localeCompare(String(right?.createdAt || ""));
+  return textOrder || stableId(left) - stableId(right);
 }
 
 function candidateWins(candidate, existing, preferredMessageId) {

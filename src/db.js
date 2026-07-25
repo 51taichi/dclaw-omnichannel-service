@@ -4059,8 +4059,10 @@ export function listConversationMessages({ botId = "", conversationKey, limit = 
     const oldestFetchedTime = messageTimestamp(cursor);
     if (
       oldestVisibleTime === null
-      || oldestFetchedTime === null
-      || oldestFetchedTime < oldestVisibleTime - 10_000
+      || (
+        oldestFetchedTime !== null
+        && oldestFetchedTime < oldestVisibleTime - 10_000
+      )
     ) {
       return visible;
     }
@@ -4172,16 +4174,20 @@ export function listConversationMessagesAround({
       anchorIndex < beforeLimit
       || (
         lowerTarget !== null
-        && oldestFetchedTime !== null
-        && oldestFetchedTime >= lowerTarget
+        && (
+          oldestFetchedTime === null
+          || oldestFetchedTime >= lowerTarget
+        )
       )
     );
     const needsNewerRows = !newerDone && (
       visible.length - anchorIndex - 1 < afterLimit
       || (
         upperTarget !== null
-        && newestFetchedTime !== null
-        && newestFetchedTime <= upperTarget
+        && (
+          newestFetchedTime === null
+          || newestFetchedTime <= upperTarget
+        )
       )
     );
     if (!needsOlderRows && !needsNewerRows) return selected;

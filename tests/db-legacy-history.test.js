@@ -663,3 +663,106 @@ test("conversation message lookups use scope and timestamp indexes", () => {
     /idx_conversation_messages_scope_time/
   );
 });
+
+test("limited reads continue past malformed timestamp cursors", () => {
+  const botId = "dedupe_invalid_cursor_bot";
+  const conversationKey = `${botId}:private:客户`;
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "重复消息",
+    source: "local",
+    sourceKey: "local-canonical",
+    createdAt: "2026-07-25T15:22:00.000Z"
+  });
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "异常时间消息",
+    source: "worktool_customer_history",
+    sourceKey: "invalid-cursor",
+    createdAt: "2026-07-25T15:22:07.invalid"
+  });
+  for (const second of [8, 9]) {
+    insertRawConversationMessage({
+      botId,
+      conversationKey,
+      content: `唯一消息${second}`,
+      source: "worktool_customer_history",
+      sourceKey: `unique-${second}`,
+      createdAt: `2026-07-25T15:22:0${second}.000Z`
+    });
+  }
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "重复消息",
+    source: "worktool_customer_history",
+    sourceKey: "imported-duplicate",
+    createdAt: "2026-07-25T15:22:10.000Z"
+  });
+
+  assert.deepEqual(
+    db.listConversationMessages({ botId, conversationKey, limit: 1 })
+      .map((message) => message.content),
+    ["唯一消息9"]
+  );
+});
+
+test("evidence reads continue past malformed timestamp cursors", () => {
+  const botId = "dedupe_invalid_evidence_cursor_bot";
+  const conversationKey = `${botId}:private:客户`;
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "重复消息",
+    source: "local",
+    sourceKey: "local-canonical",
+    createdAt: "2026-07-25T15:22:00.000Z"
+  });
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "异常时间消息",
+    source: "worktool_customer_history",
+    sourceKey: "invalid-cursor",
+    createdAt: "2026-07-25T15:22:07.invalid"
+  });
+  for (const second of [8, 9]) {
+    insertRawConversationMessage({
+      botId,
+      conversationKey,
+      content: `唯一消息${second}`,
+      source: "worktool_customer_history",
+      sourceKey: `unique-${second}`,
+      createdAt: `2026-07-25T15:22:0${second}.000Z`
+    });
+  }
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "重复消息",
+    source: "worktool_customer_history",
+    sourceKey: "imported-duplicate",
+    createdAt: "2026-07-25T15:22:10.000Z"
+  });
+  const anchorId = insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "证据锚点",
+    source: "local",
+    sourceKey: "anchor",
+    createdAt: "2026-07-25T15:22:20.000Z"
+  });
+
+  assert.deepEqual(
+    db.listConversationMessagesAround({
+      botId,
+      conversationKey,
+      anchorMessageId: anchorId,
+      before: 1,
+      after: 0
+    }).map((message) => message.content),
+    ["唯一消息9", "证据锚点"]
+  );
+});
