@@ -1602,7 +1602,7 @@ button.danger:hover {
 }
 
 .proactive-schedule-control .proactive-schedule {
-  padding-top: 0;
+  padding-block: 0;
 }
 
 .proactive-schedule-control .proactive-schedule-field {

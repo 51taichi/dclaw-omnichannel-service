@@ -56,6 +56,13 @@ test("proactive labels use icons without duplicating the schedule switch icon", 
   assert.match(css, /\.proactive-schedule-control\s*\{[^}]*align-items:\s*center;[^}]*align-self:\s*center;/);
 });
 
+test("proactive schedule toggle centers its content with symmetric vertical padding", () => {
+  assert.match(
+    css,
+    /\.proactive-schedule-control \.proactive-schedule\s*\{[^}]*padding-block:\s*0;/
+  );
+});
+
 test("existing proactive target bulk controls remain in the same panel", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
