@@ -7,6 +7,16 @@ const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url)
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 const clientUrl = new URL("../public/console/tag-alert-client.js", import.meta.url);
 const client = fs.existsSync(clientUrl) ? fs.readFileSync(clientUrl, "utf8") : "";
+const audioPath = new URL("../public/console/assets/tag-voice-alert.mp3", import.meta.url);
+
+test("tag voice alert template is a nonempty MP3 asset", () => {
+  assert.equal(fs.existsSync(audioPath), true);
+  const audio = fs.readFileSync(audioPath);
+  assert.ok(audio.length > 1000);
+  const startsWithId3 = audio.subarray(0, 3).toString("latin1") === "ID3";
+  const startsWithMpegFrame = audio[0] === 0xff && (audio[1] & 0xe0) === 0xe0;
+  assert.equal(startsWithId3 || startsWithMpegFrame, true);
+});
 
 test("console exposes an accessible fixed tag alert center and preloaded audio", () => {
   assert.match(html, /id="tagAlertCenter"/);
