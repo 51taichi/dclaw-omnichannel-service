@@ -3,12 +3,40 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { DatabaseSync } from "node:sqlite";
 import { dateTagIdFor } from "../src/tags.js";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-legacy-history-test-"));
 process.env.DATA_DIR = dataDir;
 
 const db = await import("../src/db.js");
+const rawDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+
+function insertRawConversationMessage({
+  botId,
+  conversationKey,
+  direction = "inbound",
+  content,
+  source = "local",
+  sourceKey,
+  createdAt
+}) {
+  return Number(rawDb.prepare(`
+    INSERT INTO conversation_messages (
+      bot_id, conversation_key, direction, sender_name, content,
+      raw_payload_json, source, source_key, created_at
+    )
+    VALUES (?, ?, ?, '', ?, '{}', ?, ?, ?)
+  `).run(
+    botId,
+    conversationKey,
+    direction,
+    content,
+    source,
+    sourceKey,
+    createdAt
+  ).lastInsertRowid);
+}
 
 test("creates a legacy flow session at the last valid node", () => {
   const session = db.createLegacyFlowSession({
@@ -510,4 +538,128 @@ test("semantic import matching stays isolated by bot and conversation", () => {
       rawPayload: {}
     }]
   }), 1);
+});
+
+test("limited reads close the duplicate tolerance boundary before selecting newest rows", () => {
+  const botId = "dedupe_boundary_bot";
+  const conversationKey = `${botId}:private:客户`;
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "重复消息",
+    source: "local",
+    sourceKey: "local-canonical",
+    createdAt: "2026-07-25T15:22:00.000Z"
+  });
+  for (let index = 6; index <= 9; index += 1) {
+    insertRawConversationMessage({
+      botId,
+      conversationKey,
+      content: `唯一消息${index}`,
+      source: "worktool_customer_history",
+      sourceKey: `unique-${index}`,
+      createdAt: `2026-07-25T15:22:0${index}.000Z`
+    });
+  }
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "重复消息",
+    source: "worktool_customer_history",
+    sourceKey: "imported-duplicate",
+    createdAt: "2026-07-25T15:22:10.000Z"
+  });
+
+  assert.deepEqual(
+    db.listConversationMessages({ botId, conversationKey, limit: 1 })
+      .map((message) => message.content),
+    ["唯一消息9"]
+  );
+});
+
+test("evidence reads close duplicate boundaries for non-anchor rows", () => {
+  const botId = "dedupe_evidence_boundary_bot";
+  const conversationKey = `${botId}:private:客户`;
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "重复消息",
+    source: "local",
+    sourceKey: "local-canonical",
+    createdAt: "2026-07-25T15:22:00.000Z"
+  });
+  for (let index = 6; index <= 9; index += 1) {
+    insertRawConversationMessage({
+      botId,
+      conversationKey,
+      content: `唯一消息${index}`,
+      source: "worktool_customer_history",
+      sourceKey: `unique-${index}`,
+      createdAt: `2026-07-25T15:22:0${index}.000Z`
+    });
+  }
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "重复消息",
+    source: "worktool_customer_history",
+    sourceKey: "imported-duplicate",
+    createdAt: "2026-07-25T15:22:10.000Z"
+  });
+  const anchorId = insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "证据锚点",
+    source: "local",
+    sourceKey: "anchor",
+    createdAt: "2026-07-25T15:22:20.000Z"
+  });
+
+  assert.deepEqual(
+    db.listConversationMessagesAround({
+      botId,
+      conversationKey,
+      anchorMessageId: anchorId,
+      before: 1,
+      after: 0
+    }).map((message) => message.content),
+    ["唯一消息9", "证据锚点"]
+  );
+});
+
+test("conversation message lookups use scope and timestamp indexes", () => {
+  const importPlan = rawDb.prepare(`
+    EXPLAIN QUERY PLAN
+    SELECT *
+    FROM conversation_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND direction = ?
+      AND created_at BETWEEN ? AND ?
+    ORDER BY created_at ASC, id ASC
+  `).all(
+    "query_plan_bot",
+    "query_plan_bot:private:客户",
+    "inbound",
+    "2026-07-25T15:22:00.000Z",
+    "2026-07-25T15:23:00.000Z"
+  );
+  const readPlan = rawDb.prepare(`
+    EXPLAIN QUERY PLAN
+    SELECT *
+    FROM conversation_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+    ORDER BY created_at DESC, id DESC
+    LIMIT 20
+  `).all("query_plan_bot", "query_plan_bot:private:客户");
+
+  assert.match(
+    importPlan.map((row) => row.detail).join("\n"),
+    /idx_conversation_messages_scope_direction_time/
+  );
+  assert.match(
+    readPlan.map((row) => row.detail).join("\n"),
+    /idx_conversation_messages_scope_time/
+  );
 });

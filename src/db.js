@@ -495,6 +495,12 @@ db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_messages_external_source
   ON conversation_messages (bot_id, source, source_key)
   WHERE source_key IS NOT NULL AND source_key != '';
+
+  CREATE INDEX IF NOT EXISTS idx_conversation_messages_scope_time
+  ON conversation_messages (bot_id, conversation_key, created_at, id);
+
+  CREATE INDEX IF NOT EXISTS idx_conversation_messages_scope_direction_time
+  ON conversation_messages (bot_id, conversation_key, direction, created_at, id);
 `);
 ensureColumn(
   "agent_response_validation_failures",
@@ -3969,28 +3975,96 @@ export function listLegacyFlowSessionTargets({ botId }) {
   }));
 }
 
-export function listConversationMessages({ botId = "", conversationKey, limit = 200 }) {
-  const where = botId ? "conversation_key = ? AND bot_id = ?" : "conversation_key = ?";
-  const visibleLimit = Math.max(1, Number.parseInt(limit, 10) || 200);
-  const fetchLimit = Math.min(1200, visibleLimit * 4);
-  const params = botId
-    ? [conversationKey, botId, fetchLimit]
-    : [conversationKey, fetchLimit];
-  const rows = db
-    .prepare(`
-      SELECT *
-      FROM (
-        SELECT *
-        FROM conversation_messages
-        WHERE ${where}
-        ORDER BY created_at DESC, id DESC
-        LIMIT ?
+function messageTimestamp(message) {
+  const value = Date.parse(message?.createdAt || message?.created_at || "");
+  return Number.isFinite(value) ? value : null;
+}
+
+function fetchConversationMessagesBefore({
+  botId = "",
+  conversationKey,
+  cursor = null,
+  limit
+}) {
+  const botClause = botId ? "AND bot_id = ?" : "";
+  const cursorClause = cursor
+    ? `AND (
+        created_at < ?
+        OR (created_at = ? AND id < ?)
+      )`
+    : "";
+  const params = [conversationKey];
+  if (botId) params.push(botId);
+  if (cursor) params.push(cursor.created_at, cursor.created_at, cursor.id);
+  params.push(limit);
+  return db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE conversation_key = ?
+      ${botClause}
+      ${cursorClause}
+    ORDER BY created_at DESC, id DESC
+    LIMIT ?
+  `).all(...params);
+}
+
+function fetchConversationMessagesAfter({
+  botId,
+  conversationKey,
+  cursor,
+  limit
+}) {
+  return db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND (
+        created_at > ?
+        OR (created_at = ? AND id > ?)
       )
-      ORDER BY created_at ASC, id ASC
-    `)
-    .all(...params)
-    .map(rowToConversationMessage);
-  return dedupeConversationMessages(rows).slice(-visibleLimit);
+    ORDER BY created_at ASC, id ASC
+    LIMIT ?
+  `).all(
+    botId,
+    conversationKey,
+    cursor.created_at,
+    cursor.created_at,
+    cursor.id,
+    limit
+  );
+}
+
+export function listConversationMessages({ botId = "", conversationKey, limit = 200 }) {
+  const visibleLimit = Math.max(1, Number.parseInt(limit, 10) || 200);
+  const batchSize = Math.min(1200, Math.max(4, visibleLimit * 4));
+  const rawRows = [];
+  let cursor = null;
+  while (true) {
+    const batch = fetchConversationMessagesBefore({
+      botId,
+      conversationKey,
+      cursor,
+      limit: batchSize
+    });
+    rawRows.push(...batch);
+    const noMoreRows = batch.length < batchSize;
+    const visible = dedupeConversationMessages(rawRows.map(rowToConversationMessage))
+      .slice(-visibleLimit);
+    if (noMoreRows) return visible;
+
+    cursor = batch.at(-1);
+    if (visible.length < visibleLimit) continue;
+    const oldestVisibleTime = messageTimestamp(visible[0]);
+    const oldestFetchedTime = messageTimestamp(cursor);
+    if (
+      oldestVisibleTime === null
+      || oldestFetchedTime === null
+      || oldestFetchedTime < oldestVisibleTime - 10_000
+    ) {
+      return visible;
+    }
+  }
 }
 
 function normalizedEvidenceText(value) {
@@ -4060,64 +4134,81 @@ export function listConversationMessagesAround({
   if (!anchor) return [];
   const beforeLimit = Math.max(0, Math.min(200, Number.parseInt(before, 10) || 0));
   const afterLimit = Math.max(0, Math.min(200, Number.parseInt(after, 10) || 0));
-  const beforeFetchLimit = Math.min(800, beforeLimit * 4);
-  const afterFetchLimit = Math.min(800, afterLimit * 4);
-  const earlier = beforeLimit
-    ? db.prepare(`
-        SELECT *
-        FROM (
-          SELECT *
-          FROM conversation_messages
-          WHERE bot_id = ?
-            AND conversation_key = ?
-            AND (
-              created_at < ?
-              OR (created_at = ? AND id < ?)
-            )
-          ORDER BY created_at DESC, id DESC
-          LIMIT ?
-        )
-        ORDER BY created_at ASC, id ASC
-      `).all(
+  if (beforeLimit === 0 && afterLimit === 0) {
+    return [rowToConversationMessage(anchor)];
+  }
+
+  const beforeBatchSize = Math.min(800, Math.max(4, beforeLimit * 4));
+  const afterBatchSize = Math.min(800, Math.max(4, afterLimit * 4));
+  const rawRows = [anchor];
+  let olderCursor = anchor;
+  let newerCursor = anchor;
+  let olderDone = false;
+  let newerDone = false;
+
+  while (true) {
+    const visible = dedupeConversationMessages(
+      rawRows.map(rowToConversationMessage),
+      { preferredMessageId: anchor.id }
+    );
+    const anchorIndex = visible.findIndex((message) => message.id === anchor.id);
+    if (anchorIndex < 0) return [];
+    const start = Math.max(0, anchorIndex - beforeLimit);
+    const end = anchorIndex + afterLimit + 1;
+    const selected = visible.slice(start, end);
+    const selectedTimes = selected
+      .filter((message) => message.id !== anchor.id)
+      .map(messageTimestamp)
+      .filter((value) => value !== null);
+    const lowerTarget = selectedTimes.length
+      ? Math.min(...selectedTimes) - 10_000
+      : null;
+    const upperTarget = selectedTimes.length
+      ? Math.max(...selectedTimes) + 10_000
+      : null;
+    const oldestFetchedTime = messageTimestamp(olderCursor);
+    const newestFetchedTime = messageTimestamp(newerCursor);
+    const needsOlderRows = !olderDone && (
+      anchorIndex < beforeLimit
+      || (
+        lowerTarget !== null
+        && oldestFetchedTime !== null
+        && oldestFetchedTime >= lowerTarget
+      )
+    );
+    const needsNewerRows = !newerDone && (
+      visible.length - anchorIndex - 1 < afterLimit
+      || (
+        upperTarget !== null
+        && newestFetchedTime !== null
+        && newestFetchedTime <= upperTarget
+      )
+    );
+    if (!needsOlderRows && !needsNewerRows) return selected;
+
+    if (needsOlderRows) {
+      const older = fetchConversationMessagesBefore({
         botId,
         conversationKey,
-        anchor.created_at,
-        anchor.created_at,
-        anchor.id,
-        beforeFetchLimit
-      )
-    : [];
-  const later = afterLimit
-    ? db.prepare(`
-        SELECT *
-        FROM conversation_messages
-        WHERE bot_id = ?
-          AND conversation_key = ?
-          AND (
-            created_at > ?
-            OR (created_at = ? AND id > ?)
-          )
-        ORDER BY created_at ASC, id ASC
-        LIMIT ?
-      `).all(
+        cursor: olderCursor,
+        limit: beforeBatchSize
+      });
+      rawRows.push(...older);
+      olderDone = older.length < beforeBatchSize;
+      if (older.length) olderCursor = older.at(-1);
+    }
+    if (needsNewerRows) {
+      const newer = fetchConversationMessagesAfter({
         botId,
         conversationKey,
-        anchor.created_at,
-        anchor.created_at,
-        anchor.id,
-        afterFetchLimit
-      )
-    : [];
-  const visible = dedupeConversationMessages(
-    [...earlier, anchor, ...later].map(rowToConversationMessage),
-    { preferredMessageId: anchor.id }
-  );
-  const anchorIndex = visible.findIndex((message) => message.id === anchor.id);
-  if (anchorIndex < 0) return [];
-  return visible.slice(
-    Math.max(0, anchorIndex - beforeLimit),
-    anchorIndex + afterLimit + 1
-  );
+        cursor: newerCursor,
+        limit: afterBatchSize
+      });
+      rawRows.push(...newer);
+      newerDone = newer.length < afterBatchSize;
+      if (newer.length) newerCursor = newer.at(-1);
+    }
+  }
 }
 
 export function listFlowStateEvents({ botId = "", conversationKey, limit = 100 }) {
