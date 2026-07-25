@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDclawActivationRequest } from "../src/dclaw.js";
 
-test("buildDclawActivationRequest creates a flow activation event", () => {
+test("buildDclawActivationRequest creates a flow activation event without history", () => {
   const request = buildDclawActivationRequest({
     binding: { botId: "bot_1", agentId: "agent_1" },
     conversationKey: "bot_1:private:张三",
@@ -30,6 +30,8 @@ test("buildDclawActivationRequest creates a flow activation event", () => {
   assert.match(request.message, /最终只输出一个 JSON 对象/);
   assert.match(request.message, /"reply":"发给客户的激活话术"/);
   assert.match(request.message, /再提醒您一下/);
+  assert.doesNotMatch(request.message, /客服刚才给您发了邀请/);
+  assert.doesNotMatch(JSON.stringify(request.metadata), /recentMessages/);
 });
 
 test("buildDclawActivationRequest carries the highest-priority business rule", () => {

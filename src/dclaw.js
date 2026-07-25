@@ -1,12 +1,63 @@
 import { normalizeTagDecision } from "./tags.js";
 
+const defaultDclawRequestMessageMaxChars = 8000;
+const maxDclawCurrentMessageChars = 2400;
+const maxDclawRawMessageChars = 2400;
+const maxDclawGeneralRuleChars = 1200;
+const maxDclawFlowFieldChars = 500;
+const maxDclawFlowNodeCount = 50;
+const maxDclawFlowArrayItems = 12;
+
+function boundedDclawText(value, maxChars) {
+  const text = String(value || "");
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 1))}…`;
+}
+
+function boundedDclawTextArray(value, maxItems = maxDclawFlowArrayItems, maxChars = maxDclawFlowFieldChars) {
+  return (Array.isArray(value) ? value : [])
+    .slice(0, maxItems)
+    .map((item) => boundedDclawText(item, maxChars))
+    .filter(Boolean);
+}
+
+function compactInboundPayload(message = {}) {
+  return {
+    messageId: boundedDclawText(message.messageId, 200),
+    spoken: boundedDclawText(message.spoken || message.rawSpoken, maxDclawCurrentMessageChars),
+    rawSpoken: boundedDclawText(message.rawSpoken || message.spoken, maxDclawRawMessageChars),
+    receivedName: boundedDclawText(message.receivedName, 200),
+    groupName: boundedDclawText(message.groupName, 200),
+    roomType: message.roomType ?? null,
+    textType: message.textType ?? null,
+    atMe: boundedDclawText(message.atMe ?? message.metadata?.atMe, 50),
+    fileName: boundedDclawText(message.fileName, 200),
+    filePath: boundedDclawText(message.filePath, 500)
+  };
+}
+
+export function getDclawRequestMessageMaxChars() {
+  const configured = Number(process.env.DCLAW_REQUEST_MESSAGE_MAX_CHARS || defaultDclawRequestMessageMaxChars);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.max(1000, Math.floor(configured))
+    : defaultDclawRequestMessageMaxChars;
+}
+
+function buildDclawRequestMessage(instructions, payload) {
+  return [
+    ...instructions,
+    "",
+    JSON.stringify(payload, null, 2)
+  ].join("\n");
+}
+
 export function buildDclawRequest({
   binding,
   conversation,
   message,
   flow = null,
-  tagContext = null,
-  legacyHistoryContext = null,
+  tagContext: _tagContext = null,
+  legacyHistoryContext: _legacyHistoryContext = null,
   conversationReset = false,
   generalRule = ""
 }) {
@@ -19,38 +70,25 @@ export function buildDclawRequest({
     agentId: binding.agentId,
     conversationId: conversation.conversationKey,
     sessionId: conversation.conversationKey,
-    messageId: message.messageId || "",
-    message: message.spoken || "",
-    rawMessage: message.rawSpoken || message.spoken || "",
+    messageId: boundedDclawText(message.messageId, 200),
+    message: boundedDclawText(message.spoken || message.rawSpoken, maxDclawCurrentMessageChars),
+    rawMessage: boundedDclawText(message.rawSpoken || message.spoken, maxDclawRawMessageChars),
     roomType: message.roomType,
-    groupName: isGroup ? message.groupName || "" : "",
-    userId: message.receivedName || "",
+    groupName: isGroup ? boundedDclawText(message.groupName, 200) : "",
+    userId: boundedDclawText(message.receivedName, 200),
     metadata: {
-      receivedName: message.receivedName || "",
-      atMe: message.atMe,
+      receivedName: boundedDclawText(message.receivedName, 200),
+      atMe: boundedDclawText(message.atMe, 50),
       textType: message.textType,
-      fileName: message.fileName || "",
-      filePath: message.filePath || "",
-      payload: message
+      fileName: boundedDclawText(message.fileName, 200),
+      filePath: boundedDclawText(message.filePath, 500),
+      payload: compactInboundPayload(message)
     }
   };
   const agentFlow = compactFlowForAgent(flow);
-  const agentTagRules = tagContext && typeof tagContext === "object" ? tagContext : null;
-  const legacyHistory = Array.isArray(legacyHistoryContext?.messages)
-    && legacyHistoryContext.messages.length > 0
-    ? {
-        customerOrigin: "legacy",
-        messages: legacyHistoryContext.messages,
-        importedCustomerCount: Number(legacyHistoryContext.importedCustomerCount) || 0,
-        includedCount: Number(legacyHistoryContext.includedCount)
-          || legacyHistoryContext.messages.length,
-        truncated: Boolean(legacyHistoryContext.truncated)
-      }
-    : null;
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
   const responseSchema = responseSchemaForRequest({
-    hasFlow: Boolean(agentFlow),
-    hasTags: Boolean(agentTagRules)
+    hasFlow: Boolean(agentFlow)
   });
 
   const instructions = [
@@ -75,20 +113,6 @@ export function buildDclawRequest({
     "如果回复实际命中或参考了企业智库、任务节点、控制台配置资源、控制台上传资源、会话上下文、客户档案或大模型兜底，请在最终 JSON 中增加 sources 数组，格式为 {\"type\":\"enterprise_knowledge|flow_node|configured_resource|console_upload|conversation|profile|llm_fallback\",\"name\":\"来源名称\",\"reason\":\"为什么用于本次回复\"}；未命中的来源不要写入 sources。",
     "需要连续发送 2-3 条短回复时，请用空行分隔每段。"
   ];
-  if (agentTagRules) {
-    instructions.push(
-      "本次请求包含 tagRules。请根据客户当前表达判断是否满足标签条件，并在最终 JSON 中通过 tagDecision 给出建议。",
-      "tagDecision 只是建议，服务端会最终裁决；不要在 reply 中解释标签规则。",
-      "tagDecision 格式：{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\"}],\"remove\":[]}。没有变化时使用 {\"add\":[],\"remove\":[]}。"
-    );
-  }
-  if (legacyHistory) {
-    instructions.push(
-      "本次请求包含老客户历史上下文 legacyHistory。这是老客户首次接入本系统，不是新添加好友。",
-      "先结合历史上下文回应客户当前问题，再围绕当前最后任务节点继续交流；不要重新执行新客户开场流程。",
-      "标签判断必须结合历史记录和当前表达判断标签，不能把系统发送内容当成客户意图证据。"
-    );
-  }
   if (flow) {
     instructions.push(
       "当前私聊会话启用了客服流程状态机。你必须围绕 flow.currentNode 的 goal、completionCriteria、collectFields 和 conversationTips 推进对话。",
@@ -102,25 +126,20 @@ export function buildDclawRequest({
   } else {
     instructions.push(
       "最终请只输出一个 JSON 对象，不要输出 Markdown、分析过程、规则解释、处理步骤或任何对象外文字。",
-      `JSON 格式：${responseSchema}。没有附件或来源时使用空数组；不需要回复时使用 {"reply":"","attachments":[],"sources":[]${agentTagRules ? ",\"tagDecision\":{\"add\":[],\"remove\":[]}" : ""}}。`
+      `JSON 格式：${responseSchema}。没有附件或来源时使用空数组；不需要回复时使用 {"reply":"","attachments":[],"sources":[]}。`
     );
   }
 
+  const payload = {
+    worktoolMessage,
+    flow: agentFlow,
+    generalRule: normalizedGeneralRule,
+    conversationReset
+  };
   return {
     external_user_id: worktoolMessage.userId || "unknown",
     external_session_id: worktoolMessage.conversationId,
-    message: [
-      ...instructions,
-      "",
-      JSON.stringify({
-        worktoolMessage,
-        flow: agentFlow,
-        tagRules: agentTagRules,
-        legacyHistory,
-        generalRule: normalizedGeneralRule,
-        conversationReset
-      }, null, 2)
-    ].join("\n"),
+    message: buildDclawRequestMessage(instructions, payload),
     stream: true,
     metadata: {
       source: "worktool",
@@ -133,8 +152,6 @@ export function buildDclawRequest({
       userId: worktoolMessage.userId,
       worktool: worktoolMessage,
       flow: agentFlow,
-      tagRules: agentTagRules,
-      legacyHistory,
       generalRule: normalizedGeneralRule,
       conversationReset
     }
@@ -143,8 +160,7 @@ export function buildDclawRequest({
 
 export function buildDclawReplyFormatRetryRequest(request) {
   const responseSchema = responseSchemaForRequest({
-    hasFlow: Boolean(request?.metadata?.flow),
-    hasTags: Boolean(request?.metadata?.tagRules)
+    hasFlow: Boolean(request?.metadata?.flow)
   });
   return {
     ...request,
@@ -164,8 +180,7 @@ export function buildDclawReplyFormatRetryRequest(request) {
 
 export function buildDclawAttachmentSourceRetryRequest(request, issue = {}) {
   const responseSchema = responseSchemaForRequest({
-    hasFlow: Boolean(request?.metadata?.flow),
-    hasTags: Boolean(request?.metadata?.tagRules)
+    hasFlow: Boolean(request?.metadata?.flow)
   });
   const urls = Array.isArray(issue.attachmentUrls)
     ? issue.attachmentUrls.filter(Boolean)
@@ -426,11 +441,10 @@ export function buildDclawActivationRequest({
       attemptNumber: task.attemptNumber,
       maxTimes: task.maxTimes,
       intervalMinutes: task.intervalMinutes,
-      referenceMessages: task.messages
+      referenceMessages: boundedDclawTextArray(task.messages, 3, maxDclawFlowFieldChars)
     }
   };
   const agentFlow = compactFlowForAgent(flow);
-  const agentRecentMessages = compactRecentMessages(recentMessages);
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
 
   return {
@@ -448,7 +462,7 @@ export function buildDclawActivationRequest({
       "最终只输出一个 JSON 对象：{\"reply\":\"发给客户的激活话术\",\"attachments\":[],\"sources\":[]}。",
       "禁止输出 Markdown、分析、推理、规则、处理步骤或 JSON 对象外文字。",
       "",
-      JSON.stringify({ worktoolMessage, flow: agentFlow, recentMessages: agentRecentMessages, generalRule: normalizedGeneralRule }, null, 2)
+      JSON.stringify({ worktoolMessage, flow: agentFlow, generalRule: normalizedGeneralRule }, null, 2)
     ].join("\n"),
     stream: true,
     metadata: {
@@ -472,7 +486,6 @@ export function buildDclawTagActivationRequest({
   generalRule = ""
 }) {
   const userId = String(conversationKey || "").split(":private:")[1] || "";
-  const agentRecentMessages = compactRecentMessages(recentMessages);
   const normalizedGeneralRule = normalizeGeneralRule(generalRule);
   const worktoolMessage = {
     channel: "wecom-worktool",
@@ -491,7 +504,7 @@ export function buildDclawTagActivationRequest({
       tagActivationTaskId: task.id,
       groupId: task.groupId,
       tagId: task.tagId,
-      recentMessages: agentRecentMessages
+      messageContent: boundedDclawText(task.messageContent, maxDclawCurrentMessageChars)
     }
   };
   return {
@@ -528,51 +541,54 @@ function compactFlowForAgent(flow) {
   if (!flow || typeof flow !== "object" || Array.isArray(flow)) return flow || null;
   const compactNode = (node) => {
     if (!node || typeof node !== "object" || Array.isArray(node)) return node;
-    const { activation: _activation, ...visibleNode } = node;
-    return visibleNode;
+    return {
+      id: boundedDclawText(node.id, maxDclawFlowFieldChars),
+      name: boundedDclawText(node.name, maxDclawFlowFieldChars),
+      goal: boundedDclawText(node.goal, maxDclawFlowFieldChars),
+      completionCriteria: boundedDclawText(node.completionCriteria, maxDclawFlowFieldChars),
+      collectFields: boundedDclawTextArray(node.collectFields),
+      conversationTips: boundedDclawTextArray(node.conversationTips)
+    };
   };
   const machine = flow.machine && typeof flow.machine === "object" && !Array.isArray(flow.machine)
     ? {
-        ...flow.machine,
+        name: boundedDclawText(flow.machine.name, maxDclawFlowFieldChars),
+        version: boundedDclawText(flow.machine.version, maxDclawFlowFieldChars),
+        entryNodeId: boundedDclawText(flow.machine.entryNodeId, maxDclawFlowFieldChars),
+        generalRule: boundedDclawText(flow.machine.generalRule, maxDclawGeneralRuleChars),
         nodes: Array.isArray(flow.machine.nodes)
-          ? flow.machine.nodes.map(compactNode)
-          : flow.machine.nodes
+          ? flow.machine.nodes.slice(0, maxDclawFlowNodeCount).map((node) => ({
+              id: boundedDclawText(node?.id, maxDclawFlowFieldChars),
+              name: boundedDclawText(node?.name, maxDclawFlowFieldChars)
+            }))
+          : []
       }
-    : flow.machine;
+    : null;
+  const session = flow.session && typeof flow.session === "object" && !Array.isArray(flow.session)
+    ? {
+        currentNodeId: boundedDclawText(flow.session.currentNodeId, maxDclawFlowFieldChars),
+        handoffStatus: boundedDclawText(flow.session.handoffStatus, maxDclawFlowFieldChars)
+      }
+    : null;
   return {
-    ...flow,
     machine,
-    currentNode: compactNode(flow.currentNode),
-    recentMessages: compactRecentMessages(flow.recentMessages)
+    session,
+    currentNode: compactNode(flow.currentNode)
   };
 }
 
 function normalizeGeneralRule(value) {
-  return String(value || "").trim();
+  return boundedDclawText(String(value || "").trim(), maxDclawGeneralRuleChars);
 }
 
 function resolveGeneralRule(flow) {
   return normalizeGeneralRule(flow?.generalRule || flow?.machine?.generalRule || flow?.config?.generalRule);
 }
 
-function compactRecentMessages(messages) {
-  const items = Array.isArray(messages) ? messages : [];
-  return items
-    .filter((message) => message && typeof message === "object" && !Array.isArray(message))
-    .map((message) => ({
-      direction: String(message.direction || "").trim(),
-      senderName: String(message.senderName || "").trim(),
-      content: String(message.content || "").trim(),
-      createdAt: String(message.createdAt || message.created_at || "").trim()
-    }))
-    .filter((message) => message.direction || message.senderName || message.content);
-}
-
-function responseSchemaForRequest({ hasFlow, hasTags }) {
-  const tagPart = hasTags ? ",\"tagDecision\":{\"add\":[],\"remove\":[]}" : "";
+function responseSchemaForRequest({ hasFlow }) {
   return hasFlow
-    ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"建议下一节点ID或当前节点ID","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}${tagPart}}`
-    : `{"reply":"发给客户的文本","attachments":[],"sources":[]${tagPart}}`;
+    ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"建议下一节点ID或当前节点ID","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}}`
+    : `{"reply":"发给客户的文本","attachments":[],"sources":[]}`;
 }
 
 const defaultDclawTimeoutMs = 25000;
@@ -631,6 +647,18 @@ export async function invokeDclawAgent({ binding, request, timeoutMs = getDclawA
   }
   if (!binding.agentApiKey) {
     throw new Error("DClaw agentApiKey is required");
+  }
+
+  const requestMessageLength = String(request?.message || "").length;
+  const maxRequestMessageChars = getDclawRequestMessageMaxChars();
+  if (requestMessageLength > maxRequestMessageChars) {
+    const error = new Error(
+      `DClaw request message is too long: ${requestMessageLength} > ${maxRequestMessageChars}`
+    );
+    error.errorType = "agent_request_too_long";
+    error.requestMessageLength = requestMessageLength;
+    error.maxRequestMessageChars = maxRequestMessageChars;
+    throw error;
   }
 
   const transportRequest = sanitizeDclawRequest(request);

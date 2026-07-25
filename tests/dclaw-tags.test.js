@@ -27,7 +27,7 @@ const message = {
   textType: 1
 };
 
-test("buildDclawRequest includes tag rules in message and metadata", () => {
+test("buildDclawRequest omits tag rules from the Agent contract", () => {
   const request = buildDclawRequest({
     binding,
     conversation,
@@ -39,9 +39,9 @@ test("buildDclawRequest includes tag rules in message and metadata", () => {
     }
   });
 
-  assert.match(request.message, /tagRules/);
-  assert.match(request.message, /tagDecision/);
-  assert.equal(request.metadata.tagRules.groups[0].id, "intent");
+  assert.doesNotMatch(request.message, /tagRules/);
+  assert.doesNotMatch(request.message, /tagDecision/);
+  assert.equal(request.metadata.tagRules, undefined);
 });
 
 test("buildDclawRequest carries the flow general rule", () => {
@@ -74,7 +74,7 @@ test("buildDclawRequest carries the rule even when no flow context is active", (
   assert.match(request.message, /不要出现内部处理说明/);
 });
 
-test("buildDclawRequest includes legacy customer history and tag guidance", () => {
+test("buildDclawRequest omits legacy customer history and tag guidance", () => {
   const request = buildDclawRequest({
     binding,
     conversation,
@@ -115,11 +115,11 @@ test("buildDclawRequest includes legacy customer history and tag guidance", () =
     }
   });
 
-  assert.equal(request.metadata.legacyHistory.importedCustomerCount, 62);
-  assert.equal(request.metadata.legacyHistory.messages[0].content, "我刚刚已经付费了");
-  assert.match(request.message, /老客户历史上下文/);
-  assert.match(request.message, /我刚刚已经付费了/);
-  assert.match(request.message, /结合历史记录和当前表达判断标签/);
+  assert.equal(request.metadata.legacyHistory, undefined);
+  assert.doesNotMatch(request.message, /老客户历史上下文/);
+  assert.doesNotMatch(request.message, /我刚刚已经付费了/);
+  assert.doesNotMatch(request.message, /结合历史记录和当前表达判断标签/);
+  assert.doesNotMatch(request.message, /history_context/);
 });
 
 test("buildDclawRequest omits empty legacy history", () => {
@@ -135,7 +135,7 @@ test("buildDclawRequest omits empty legacy history", () => {
     }
   });
 
-  assert.equal(request.metadata.legacyHistory, null);
+  assert.equal(request.metadata.legacyHistory, undefined);
   assert.doesNotMatch(request.message, /老客户历史上下文/);
   assert.doesNotMatch(request.message, /结合历史记录和当前表达判断标签/);
 });
@@ -165,8 +165,8 @@ test("parseAgentReply extracts tagDecision", () => {
   assert.equal(reply.tagDecision.add[0].tagId, "b");
 });
 
-test("retry prompts preserve tagDecision schema", () => {
+test("retry prompts do not add a tagDecision schema", () => {
   const request = buildDclawRequest({ binding, conversation, message, tagContext: { groups: [], currentTags: [] } });
-  assert.match(buildDclawReplyFormatRetryRequest(request).message, /tagDecision/);
-  assert.match(buildDclawAttachmentSourceRetryRequest(request, {}).message, /tagDecision/);
+  assert.doesNotMatch(buildDclawReplyFormatRetryRequest(request).message, /tagDecision/);
+  assert.doesNotMatch(buildDclawAttachmentSourceRetryRequest(request, {}).message, /tagDecision/);
 });

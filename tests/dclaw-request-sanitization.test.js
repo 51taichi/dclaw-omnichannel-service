@@ -31,7 +31,7 @@ const heavyHistoryMessage = {
   createdAt: "2026-07-12T08:19:17.908Z"
 };
 
-test("buildDclawRequest sends compact recent messages without nested raw payloads", () => {
+test("buildDclawRequest omits recent messages and nested raw payloads", () => {
   const request = buildDclawRequest({
     binding,
     conversation: { conversationKey: "bot_1:private:魔兮" },
@@ -50,7 +50,8 @@ test("buildDclawRequest sends compact recent messages without nested raw payload
     }
   });
 
-  assert.match(request.message, /"content": "我发您看下"/);
+  assert.doesNotMatch(request.message, /"content": "我发您看下"/);
+  assert.doesNotMatch(request.message, /recentMessages/);
   assert.doesNotMatch(request.message, /rawPayload/);
   assert.doesNotMatch(request.message, /agentReply/);
   assert.doesNotMatch(request.message, /worktoolMessageIds/);
@@ -98,7 +99,7 @@ test("normal inbound requests hide node activation scripts from the agent", () =
   assert.doesNotMatch(JSON.stringify(request.metadata), /"activation"/);
 });
 
-test("buildDclawActivationRequest also sends compact recent messages", () => {
+test("buildDclawActivationRequest omits recent messages", () => {
   const request = buildDclawActivationRequest({
     binding,
     conversationKey: "bot_1:private:魔兮",
@@ -117,7 +118,8 @@ test("buildDclawActivationRequest also sends compact recent messages", () => {
     recentMessages: [heavyHistoryMessage]
   });
 
-  assert.match(request.message, /"content": "我发您看下"/);
+  assert.doesNotMatch(request.message, /"content": "我发您看下"/);
+  assert.doesNotMatch(request.message, /recentMessages/);
   assert.doesNotMatch(request.message, /rawPayload/);
   assert.doesNotMatch(request.message, /agentReply/);
   assert.doesNotMatch(request.message, /worktoolMessageIds/);

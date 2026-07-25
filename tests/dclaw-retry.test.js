@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { invokeDclawAgentWithRetry } from "../src/dclaw.js";
+import { getDclawRequestMessageMaxChars, invokeDclawAgentWithRetry } from "../src/dclaw.js";
 
 const binding = {
   agentApiUrl: "https://dclaw.example.test/api/open/v1/targets/demo/messages",
@@ -114,6 +114,26 @@ test("does not retry non-retryable DClaw failures", async () => {
     assert.equal(attempts, 1);
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("rejects an oversized request before calling DClaw", async () => {
+  const previousLimit = process.env.DCLAW_REQUEST_MESSAGE_MAX_CHARS;
+  process.env.DCLAW_REQUEST_MESSAGE_MAX_CHARS = "1000";
+  try {
+    assert.equal(getDclawRequestMessageMaxChars(), 1000);
+    await assert.rejects(
+      invokeDclawAgentWithRetry({
+        binding,
+        request: { message: "x".repeat(1001) },
+        maxAttempts: 2,
+        timeoutMs: 25
+      }),
+      (error) => error?.errorType === "agent_request_too_long"
+    );
+  } finally {
+    if (previousLimit === undefined) delete process.env.DCLAW_REQUEST_MESSAGE_MAX_CHARS;
+    else process.env.DCLAW_REQUEST_MESSAGE_MAX_CHARS = previousLimit;
   }
 });
 
