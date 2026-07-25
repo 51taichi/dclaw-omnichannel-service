@@ -8,10 +8,12 @@ function unicodeLength(value) {
 
 export function normalizeHistoryAnalysisConfig(config = {}) {
   const rawValue = config.historyCustomerTextMaxChars;
-  const hasValue = rawValue !== null
-    && rawValue !== undefined
-    && String(rawValue).trim() !== "";
-  const requested = hasValue ? Number(rawValue) : Number.NaN;
+  const isNumericValue = typeof rawValue === "number";
+  const isNumericString = typeof rawValue === "string"
+    && /^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(rawValue.trim());
+  const requested = isNumericValue || isNumericString
+    ? Number(rawValue)
+    : Number.NaN;
   const value = Number.isFinite(requested)
     ? Math.round(requested / 100) * 100
     : DEFAULT_HISTORY_CUSTOMER_TEXT_MAX_CHARS;

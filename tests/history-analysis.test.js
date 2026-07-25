@@ -44,6 +44,13 @@ test("normalizes the per-Bot history character budget", () => {
       .historyCustomerTextMaxChars,
     4000
   );
+  for (const invalidValue of [false, true, [4250], { value: 4250 }]) {
+    assert.equal(
+      normalizeHistoryAnalysisConfig({ historyCustomerTextMaxChars: invalidValue })
+        .historyCustomerTextMaxChars,
+      4000
+    );
+  }
 });
 
 test("selects newest customer messages but renders them chronologically", () => {
