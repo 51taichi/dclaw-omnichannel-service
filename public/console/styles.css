@@ -2959,6 +2959,22 @@ textarea[data-action-target-activation].is-action-target-focused {
   gap: 10px;
 }
 
+.tag-condition-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.tag-voice-alert-toggle {
+  min-height: 40px;
+  border: 1px solid rgba(47, 64, 229, 0.18);
+  border-radius: 6px;
+  background: #ffffff;
+  white-space: nowrap;
+}
+
 .tag-name-field {
   flex: 1 1 240px;
   min-width: 220px;

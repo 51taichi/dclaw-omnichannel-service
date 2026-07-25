@@ -1858,6 +1858,7 @@ function defaultTag(index = 1) {
     id: `tag_${index}`,
     name: `标签 ${index}`,
     condition: "",
+    voiceAlertEnabled: false,
     activation: { ...defaultActivationConfig(), messages: [defaultActivationMessage()] }
   };
 }
@@ -1882,6 +1883,7 @@ function normalizeTagSchemaDraft(schema = {}) {
                 id: String(tag.id || `tag_${tagIndex + 1}`).trim() || `tag_${tagIndex + 1}`,
                 name: String(tag.name || `标签 ${tagIndex + 1}`).trim() || `标签 ${tagIndex + 1}`,
                 condition: String(tag.condition || ""),
+                voiceAlertEnabled: Boolean(tag.voiceAlertEnabled),
                 activation: normalizeActivationDraft(tag.activation || defaultActivationConfig())
               }))
             : []
@@ -2936,10 +2938,17 @@ function renderNormalTagGroups(groups) {
                                 </div>
                               </div>
                               <div class="tag-row-body">
-                                <div class="expand-field-slot" data-tag-expand-field="condition">
-                                  <label class="wide">
-                                    <span class="field-label">${icon("check")}达标条件</span>
-                                    <textarea class="expand-on-focus" data-tag-field="condition" rows="2" placeholder="例如：客户明确表示愿意合作或留下联系方式">${escapeHtml(tag.condition)}</textarea>
+                                <div class="tag-condition-row">
+                                  <div class="expand-field-slot" data-tag-expand-field="condition">
+                                    <label class="wide">
+                                      <span class="field-label">${icon("check")}达标条件</span>
+                                      <textarea class="expand-on-focus" data-tag-field="condition" rows="2" placeholder="例如：客户明确表示愿意合作或留下联系方式">${escapeHtml(tag.condition)}</textarea>
+                                    </label>
+                                  </div>
+                                  <label class="toggle switch-toggle tag-voice-alert-toggle">
+                                    <input data-tag-field="voiceAlertEnabled" type="checkbox" ${tag.voiceAlertEnabled ? "checked" : ""} />
+                                    <span class="switch-slider" aria-hidden="true"></span>
+                                    <span class="switch-label">语音提示</span>
                                   </label>
                                 </div>
                                 <section class="activation-editor tag-activation-editor ${activation.enabled ? "is-active" : ""}" aria-label="标签触发任务">
@@ -3108,6 +3117,10 @@ function updateTagGroupDraft(input) {
 function updateTagDraft(input) {
   const tag = tagForInput(input);
   if (!tag) return;
+  if (input.dataset.tagField === "voiceAlertEnabled") {
+    tag.voiceAlertEnabled = input.checked;
+    return;
+  }
   tag[input.dataset.tagField] = input.value;
 }
 

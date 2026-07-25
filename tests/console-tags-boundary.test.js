@@ -231,6 +231,23 @@ test("tag conditions reuse the fixed-slot expanding textarea", () => {
   assert.match(css, /\.expand-field-slot > label:focus-within\s*\{[\s\S]*height:\s*112px/);
 });
 
+test("normal tags preserve and render a voice alert switch after the condition", () => {
+  const normalize = functionBody("normalizeTagSchemaDraft");
+  const normalGroups = functionBody("renderNormalTagGroups");
+  const specialGroup = functionBody("renderDateTagSpecialGroup");
+  const updateTag = functionBody("updateTagDraft");
+
+  assert.match(normalize, /voiceAlertEnabled:\s*Boolean\(tag\.voiceAlertEnabled\)/);
+  assert.match(normalGroups, /class="tag-condition-row"[\s\S]*data-tag-field="condition"[\s\S]*data-tag-field="voiceAlertEnabled"/);
+  assert.match(normalGroups, /class="toggle switch-toggle tag-voice-alert-toggle"/);
+  assert.match(normalGroups, /语音提示/);
+  assert.match(updateTag, /input\.dataset\.tagField === "voiceAlertEnabled"/);
+  assert.match(updateTag, /tag\.voiceAlertEnabled = input\.checked/);
+  assert.doesNotMatch(specialGroup, /voiceAlertEnabled|语音提示/);
+  assert.match(css, /\.tag-condition-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) max-content/);
+  assert.match(css, /\.tag-voice-alert-toggle\s*\{[^}]*min-height:\s*40px/);
+});
+
 test("tag activation message controls stay on one row beside the text", () => {
   assert.match(css, /\.tag-activation-editor \.activation-message-card\s*\{[\s\S]*grid-template-columns: minmax\(140px, 1fr\) max-content;/);
   assert.match(css, /\.tag-activation-editor \.activation-message-actions\s*\{[\s\S]*flex-wrap: nowrap;/);
