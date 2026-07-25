@@ -397,6 +397,27 @@ db.exec(`
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS tag_alert_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_tag_event_id INTEGER NOT NULL UNIQUE,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    customer_name TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    group_name TEXT NOT NULL,
+    tag_id TEXT NOT NULL,
+    tag_name TEXT NOT NULL,
+    reason TEXT,
+    evidence_message_id INTEGER,
+    evidence_text TEXT,
+    created_at TEXT NOT NULL,
+    read_at TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tag_alert_events_unread
+  ON tag_alert_events (bot_id, read_at, id);
+
   CREATE TABLE IF NOT EXISTS tag_activation_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bot_id TEXT NOT NULL,
@@ -1539,6 +1560,27 @@ function rowToConversationTag(row) {
     source: row.source,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function rowToTagAlertEvent(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    sourceTagEventId: row.source_tag_event_id,
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    conversationKey: row.conversation_key,
+    customerName: row.customer_name,
+    groupId: row.group_id,
+    groupName: row.group_name,
+    tagId: row.tag_id,
+    tagName: row.tag_name,
+    reason: row.reason || "",
+    evidenceMessageId: row.evidence_message_id || null,
+    evidenceText: row.evidence_text || "",
+    createdAt: row.created_at,
+    readAt: row.read_at || ""
   };
 }
 
@@ -3172,6 +3214,268 @@ export function applyConversationTagChanges({
   return listConversationTags({ botId, agentId, conversationKey });
 }
 
+function insertTagActivationTaskRecord({
+  botId,
+  agentId,
+  conversationKey,
+  groupId,
+  tagId,
+  activation,
+  dueAt,
+  attemptNumber = 1,
+  messageIndex = 0,
+  timestamp = now()
+}) {
+  const config = normalizeTagActivation(activation);
+  const normalizedMessageIndex = Math.max(0, Number.parseInt(messageIndex, 10) || 0);
+  const message = config.messages[normalizedMessageIndex] || null;
+  if (!config.enabled || !message) return null;
+  const result = db.prepare(`
+    INSERT INTO tag_activation_tasks (
+      bot_id, agent_id, conversation_key, group_id, tag_id, attempt_number,
+      message_index, message_content, max_times, interval_minutes, polish_by_agent,
+      messages_json, status, due_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
+  `).run(
+    botId,
+    agentId,
+    conversationKey,
+    groupId,
+    tagId,
+    Math.max(1, Number.parseInt(attemptNumber, 10) || 1),
+    normalizedMessageIndex,
+    message.content,
+    message.maxTimes,
+    message.intervalMinutes,
+    config.polishByAgent ? 1 : 0,
+    json(config.messages),
+    dueAt || timestamp,
+    timestamp,
+    timestamp
+  );
+  return rowToTagActivationTask(
+    db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(result.lastInsertRowid)
+  );
+}
+
+export function applyAgentTagOutcome({
+  botId,
+  agentId,
+  conversationKey,
+  accepted = [],
+  rejected = [],
+  nextTags = [],
+  source = "agent_decision",
+  activationCandidates = [],
+  alertCandidates = []
+}) {
+  const timestamp = now();
+  const acceptedEvents = [];
+  const rejectedEvents = [];
+  const scheduledTagActivationTasks = [];
+  const alerts = [];
+  const nextTagByKey = new Map(
+    nextTags.map((tag) => [`${tag.groupId}:${tag.tagId}`, tag])
+  );
+  const activationByKey = new Map(
+    activationCandidates.map((candidate) => [`${candidate.groupId}:${candidate.tagId}`, candidate])
+  );
+  const alertByKey = new Map(
+    alertCandidates.map((candidate) => [`${candidate.groupId}:${candidate.tagId}`, candidate])
+  );
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const change of accepted) {
+      const cancelTagIds = new Set(change.oldTagIds || []);
+      if (change.action === "remove") cancelTagIds.add(change.tagId);
+      for (const tagId of cancelTagIds) {
+        db.prepare(`
+          UPDATE tag_activation_tasks
+          SET status = 'canceled',
+              canceled_at = ?,
+              cancel_reason = ?,
+              updated_at = ?
+          WHERE bot_id = ?
+            AND agent_id = ?
+            AND conversation_key = ?
+            AND group_id = ?
+            AND tag_id = ?
+            AND status IN ('pending', 'processing')
+        `).run(
+          timestamp,
+          change.action === "remove" ? "tag_removed" : "tag_changed",
+          timestamp,
+          botId,
+          agentId,
+          conversationKey,
+          change.groupId || "",
+          tagId
+        );
+      }
+    }
+
+    db.prepare(`
+      DELETE FROM conversation_tags
+      WHERE bot_id = ?
+        AND agent_id = ?
+        AND conversation_key = ?
+        AND tag_type = 'normal'
+    `).run(botId, agentId, conversationKey);
+    for (const tag of nextTags) {
+      db.prepare(`
+        INSERT INTO conversation_tags (
+          bot_id, agent_id, conversation_key, group_id, group_name, tag_id, tag_name,
+          tag_type, reason, source, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'normal', ?, ?, ?, ?)
+      `).run(
+        botId,
+        agentId,
+        conversationKey,
+        tag.groupId || "",
+        tag.groupName || "",
+        tag.tagId,
+        tag.tagName || tag.name || tag.tagId,
+        tag.reason || "",
+        source,
+        timestamp,
+        timestamp
+      );
+    }
+
+    const insertEvent = (event, acceptedFlag) => {
+      const result = db.prepare(`
+        INSERT INTO conversation_tag_events (
+          bot_id, agent_id, conversation_key, event_type, group_id, tag_id,
+          accepted, reason, source, payload_json, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        botId,
+        agentId,
+        conversationKey,
+        event.action || "tag_decision",
+        event.groupId || "",
+        event.tagId || "",
+        acceptedFlag ? 1 : 0,
+        event.reason || "",
+        source,
+        json(event),
+        timestamp
+      );
+      return {
+        id: Number(result.lastInsertRowid),
+        ...event,
+        accepted: acceptedFlag,
+        source,
+        createdAt: timestamp
+      };
+    };
+
+    for (const event of accepted) {
+      const storedEvent = insertEvent(event, true);
+      acceptedEvents.push(storedEvent);
+      if (!["add", "replace"].includes(event.action)) continue;
+      const key = `${event.groupId}:${event.tagId}`;
+      const activationCandidate = activationByKey.get(key);
+      if (activationCandidate) {
+        const task = insertTagActivationTaskRecord({
+          botId,
+          agentId,
+          conversationKey,
+          ...activationCandidate,
+          timestamp
+        });
+        if (task) scheduledTagActivationTasks.push(task);
+      }
+      const alertCandidate = alertByKey.get(key);
+      if (!alertCandidate) continue;
+      const nextTag = nextTagByKey.get(key) || {};
+      const evidenceMessageId = Number(alertCandidate.evidenceMessageId) || null;
+      const evidenceMessage = evidenceMessageId
+        ? db.prepare(`
+            SELECT id
+            FROM conversation_messages
+            WHERE id = ? AND bot_id = ? AND conversation_key = ?
+          `).get(evidenceMessageId, botId, conversationKey)
+        : null;
+      db.prepare(`
+        INSERT OR IGNORE INTO tag_alert_events (
+          source_tag_event_id, bot_id, agent_id, conversation_key, customer_name,
+          group_id, group_name, tag_id, tag_name, reason, evidence_message_id,
+          evidence_text, created_at, read_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+      `).run(
+        storedEvent.id,
+        botId,
+        agentId,
+        conversationKey,
+        alertCandidate.customerName || "",
+        event.groupId || "",
+        event.groupName || nextTag.groupName || "",
+        event.tagId || "",
+        event.tagName || nextTag.tagName || nextTag.name || event.tagId || "",
+        event.reason || "",
+        evidenceMessage?.id || null,
+        alertCandidate.evidenceText || "",
+        timestamp
+      );
+      const alert = db.prepare(`
+        SELECT *
+        FROM tag_alert_events
+        WHERE source_tag_event_id = ?
+      `).get(storedEvent.id);
+      if (alert) alerts.push(rowToTagAlertEvent(alert));
+    }
+    for (const event of rejected) {
+      rejectedEvents.push(insertEvent(event, false));
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+
+  return {
+    tags: listConversationTags({ botId, agentId, conversationKey }),
+    accepted,
+    rejected,
+    tagEvents: [...acceptedEvents, ...rejectedEvents],
+    scheduledTagActivationTasks,
+    alerts
+  };
+}
+
+export function listUnreadTagAlerts({ botId }) {
+  if (!botId) return [];
+  return db.prepare(`
+    SELECT *
+    FROM tag_alert_events
+    WHERE bot_id = ?
+      AND read_at IS NULL
+    ORDER BY id DESC
+  `).all(botId).map(rowToTagAlertEvent);
+}
+
+export function markTagAlertRead({ botId, alertId }) {
+  if (!botId || !alertId) return null;
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE tag_alert_events
+    SET read_at = ?
+    WHERE id = ?
+      AND bot_id = ?
+      AND read_at IS NULL
+  `).run(timestamp, alertId, botId);
+  if (!result.changes) return null;
+  return rowToTagAlertEvent(
+    db.prepare("SELECT * FROM tag_alert_events WHERE id = ? AND bot_id = ?").get(alertId, botId)
+  );
+}
+
 export function upsertSystemDateTag({
   botId,
   agentId,
@@ -3287,37 +3591,17 @@ export function scheduleTagActivationTask({
   attemptNumber = 1,
   messageIndex = 0
 }) {
-  const config = normalizeTagActivation(activation);
-  const normalizedMessageIndex = Math.max(0, Number.parseInt(messageIndex, 10) || 0);
-  const message = config.messages[normalizedMessageIndex] || null;
-  const timestamp = now();
-  const result = db.prepare(`
-    INSERT INTO tag_activation_tasks (
-      bot_id, agent_id, conversation_key, group_id, tag_id, attempt_number,
-      message_index, message_content, max_times, interval_minutes, polish_by_agent,
-      messages_json, status, due_at, created_at, updated_at
-    )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?)
-  `).run(
+  return insertTagActivationTaskRecord({
     botId,
     agentId,
     conversationKey,
     groupId,
     tagId,
-    Math.max(1, Number.parseInt(attemptNumber, 10) || 1),
-    normalizedMessageIndex,
-    message?.content || "",
-    message?.maxTimes || 1,
-    message?.intervalMinutes || 30,
-    config.polishByAgent ? 1 : 0,
-    json(config.messages),
-    dueAt || timestamp,
-    timestamp,
-    timestamp
-  );
-  return rowToTagActivationTask(
-    db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(result.lastInsertRowid)
-  );
+    activation,
+    dueAt,
+    attemptNumber,
+    messageIndex
+  });
 }
 
 export function claimDueTagActivationTasks({ limit = 20, nowIso = now(), staleBeforeIso = "" } = {}) {
@@ -3477,7 +3761,7 @@ export function insertConversationMessage({
   content,
   rawPayload
 }) {
-  db.prepare(`
+  const result = db.prepare(`
     INSERT INTO conversation_messages (
       bot_id, conversation_key, direction, sender_name, content, raw_payload_json, created_at
     )
@@ -3490,6 +3774,9 @@ export function insertConversationMessage({
     content || "",
     json(rawPayload),
     now()
+  );
+  return rowToConversationMessage(
+    db.prepare("SELECT * FROM conversation_messages WHERE id = ?").get(result.lastInsertRowid)
   );
 }
 
@@ -3656,6 +3943,122 @@ export function listConversationMessages({ botId = "", conversationKey, limit = 
     `)
     .all(...params)
     .map(rowToConversationMessage);
+}
+
+function normalizedEvidenceText(value) {
+  return String(value || "").trim().replace(/\s+/g, " ");
+}
+
+export function resolveConversationMessageEvidence({
+  botId,
+  conversationKey,
+  evidenceMessageId = "",
+  evidenceText = "",
+  candidateMessageIds = []
+}) {
+  const candidateIds = [...new Set(
+    (Array.isArray(candidateMessageIds) ? candidateMessageIds : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  )];
+  if (!botId || !conversationKey || !candidateIds.length) return null;
+  const placeholders = candidateIds.map(() => "?").join(", ");
+  const rows = db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND direction = 'inbound'
+      AND id IN (${placeholders})
+  `).all(botId, conversationKey, ...candidateIds).map(rowToConversationMessage);
+  const byId = new Map(rows.map((row) => [row.id, row]));
+  const orderedCandidates = candidateIds.map((id) => byId.get(id)).filter(Boolean);
+  if (!orderedCandidates.length) return null;
+
+  const evidenceId = String(evidenceMessageId || "").trim();
+  if (evidenceId) {
+    const direct = orderedCandidates.find((message) => (
+      String(message.id) === evidenceId
+      || String(message.sourceKey || "") === evidenceId
+      || String(message.rawPayload?.messageId || "") === evidenceId
+    ));
+    if (direct) return direct;
+  }
+
+  const normalizedText = normalizedEvidenceText(evidenceText);
+  if (normalizedText) {
+    const textMatch = orderedCandidates.find(
+      (message) => normalizedEvidenceText(message.content) === normalizedText
+    );
+    if (textMatch) return textMatch;
+  }
+  return orderedCandidates.at(-1) || null;
+}
+
+export function listConversationMessagesAround({
+  botId,
+  conversationKey,
+  anchorMessageId,
+  before = 60,
+  after = 60
+}) {
+  const anchor = db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE id = ?
+      AND bot_id = ?
+      AND conversation_key = ?
+  `).get(anchorMessageId, botId, conversationKey);
+  if (!anchor) return [];
+  const beforeLimit = Math.max(0, Math.min(200, Number.parseInt(before, 10) || 0));
+  const afterLimit = Math.max(0, Math.min(200, Number.parseInt(after, 10) || 0));
+  const earlier = beforeLimit
+    ? db.prepare(`
+        SELECT *
+        FROM (
+          SELECT *
+          FROM conversation_messages
+          WHERE bot_id = ?
+            AND conversation_key = ?
+            AND (
+              created_at < ?
+              OR (created_at = ? AND id < ?)
+            )
+          ORDER BY created_at DESC, id DESC
+          LIMIT ?
+        )
+        ORDER BY created_at ASC, id ASC
+      `).all(
+        botId,
+        conversationKey,
+        anchor.created_at,
+        anchor.created_at,
+        anchor.id,
+        beforeLimit
+      )
+    : [];
+  const later = afterLimit
+    ? db.prepare(`
+        SELECT *
+        FROM conversation_messages
+        WHERE bot_id = ?
+          AND conversation_key = ?
+          AND (
+            created_at > ?
+            OR (created_at = ? AND id > ?)
+          )
+        ORDER BY created_at ASC, id ASC
+        LIMIT ?
+      `).all(
+        botId,
+        conversationKey,
+        anchor.created_at,
+        anchor.created_at,
+        anchor.id,
+        afterLimit
+      )
+    : [];
+  return [...earlier, anchor, ...later].map(rowToConversationMessage);
 }
 
 export function listFlowStateEvents({ botId = "", conversationKey, limit = 100 }) {
@@ -4471,6 +4874,11 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
     "conversation-tag-events": {
       table: "conversation_tag_events",
       mapper: (row) => ({ ...row, payload: parseJson(row.payload_json) })
+    },
+    "tag-alert-events": {
+      table: "tag_alert_events",
+      mapper: rowToTagAlertEvent,
+      orderBy: "created_at"
     },
     "proactive-tasks": {
       table: "proactive_tasks",
