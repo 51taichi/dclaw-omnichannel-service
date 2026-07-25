@@ -2666,7 +2666,7 @@ textarea[data-action-target-activation].is-action-target-focused {
 }
 
 .tag-schema-toolbar {
-  justify-content: space-between;
+  justify-content: flex-end;
 }
 
 .tag-group-enabled-toggle {
@@ -2709,6 +2709,31 @@ textarea[data-action-target-activation].is-action-target-focused {
 .tag-group-card {
   display: grid;
   gap: 12px;
+}
+
+.date-tag-special-group {
+  border-color: rgba(47, 64, 229, 0.42);
+  background: rgba(247, 249, 255, 0.96);
+}
+
+.date-tag-special-group .tag-group-head {
+  display: grid;
+  grid-template-columns: max-content minmax(240px, 1fr) minmax(220px, 280px);
+  flex-wrap: nowrap;
+}
+
+.date-tag-special-group .tag-group-enabled-toggle,
+.date-tag-name-field,
+.date-tag-cutoff-field {
+  min-height: 42px;
+}
+
+.date-tag-name-field .field-control {
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: #302321;
+  font-size: 13px;
 }
 
 .tag-row-list {
@@ -2844,6 +2869,14 @@ textarea[data-action-target-activation].is-action-target-focused {
 }
 
 @media (max-width: 760px) {
+  .date-tag-special-group .tag-group-head {
+    grid-template-columns: 1fr;
+  }
+
+  .date-tag-special-group .tag-group-enabled-toggle {
+    width: 100%;
+  }
+
   .tag-schema-footer {
     align-items: stretch;
     flex-direction: column;

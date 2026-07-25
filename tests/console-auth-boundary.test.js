@@ -104,7 +104,7 @@ test("startup toggles render as switch components instead of plain checkboxes", 
   assert.match(html, /id="debugReplyForm"[\s\S]*class="toggle switch-toggle"[\s\S]*name="enabled" type="checkbox"[\s\S]*class="switch-slider"/);
   assert.match(html, /id="agentForm"[\s\S]*class="toggle switch-toggle action-toggle"[\s\S]*name="enabled" type="checkbox" checked[\s\S]*class="switch-slider"/);
   assert.match(html, /id="flowMachineForm"[\s\S]*class="toggle switch-toggle"[\s\S]*name="enabled" type="checkbox"[\s\S]*class="switch-slider"/);
-  assert.match(html, /id="dateTagEnabled" type="checkbox"[\s\S]*class="switch-slider"/);
+  assert.match(app, /id="dateTagEnabled" type="checkbox"[\s\S]*class="switch-slider"/);
   assert.match(css, /\.switch-toggle/);
   assert.match(css, /\.switch-toggle input\[type="checkbox"\]/);
   assert.match(css, /\.switch-slider/);

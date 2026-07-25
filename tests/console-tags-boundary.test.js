@@ -6,12 +6,26 @@ const html = fs.readFileSync(new URL("../public/console/index.html", import.meta
 const js = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 
+function functionBody(name) {
+  const start = js.indexOf(`function ${name}`);
+  assert.notEqual(start, -1, `${name} is defined`);
+  const signatureEnd = js.indexOf(") {", start);
+  const open = signatureEnd + 2;
+  let depth = 0;
+  for (let index = open; index < js.length; index += 1) {
+    if (js[index] === "{") depth += 1;
+    if (js[index] === "}") depth -= 1;
+    if (depth === 0) return js.slice(open + 1, index);
+  }
+  assert.fail(`${name} body is closed`);
+}
+
 test("console has customer tags workspace tab", () => {
   assert.match(html, /data-workspace-tab="tags"/);
   assert.match(html, /data-workspace-tab="tags"[\s\S]*href="#icon-tag"[\s\S]*标签/);
   assert.match(html, /id="tagSchemaPanel"/);
   assert.doesNotMatch(html, /<h2 class="module-title">[\s\S]*客户标签[\s\S]*<\/h2>/);
-  assert.match(html, /启用客户添加日期标签/);
+  assert.doesNotMatch(html, /启用客户添加日期标签/);
 });
 
 test("console loads and saves tag schemas", () => {
@@ -19,6 +33,38 @@ test("console loads and saves tag schemas", () => {
   assert.match(js, /saveTagSchema/);
   assert.match(js, /\/api\/tag-schemas\//);
   assert.match(js, /state\.tagSchema = normalizeTagSchemaDraft\(data\.schema \|\| defaultTagSchema\(\)\);[\s\S]*collapseAllTagCards\(\);[\s\S]*renderTagSchemaEditor\(\)/);
+});
+
+test("date tags render as the fixed first special group with a cutoff time", () => {
+  const specialGroup = functionBody("renderDateTagSpecialGroup");
+  const editor = functionBody("renderTagSchemaEditor");
+
+  assert.match(specialGroup, /class="tag-group-card date-tag-special-group"/);
+  assert.match(specialGroup, /id="dateTagEnabled" type="checkbox"/);
+  assert.match(specialGroup, /添加日期/);
+  assert.match(specialGroup, /id="dateTagCutoffTime" type="time" step="60"/);
+  assert.match(specialGroup, /切日时间/);
+  assert.doesNotMatch(specialGroup, /data-add-tag/);
+  assert.doesNotMatch(specialGroup, /data-remove-tag-group/);
+  assert.doesNotMatch(specialGroup, /data-toggle-tag-group/);
+  assert.doesNotMatch(specialGroup, /data-tag-group-field="exclusive"/);
+  assert.doesNotMatch(specialGroup, /data-tag-group-field="oneWay"/);
+  assert.match(editor, /renderDateTagSpecialGroup\(\)[\s\S]*renderNormalTagGroups/);
+  assert.doesNotMatch(html, /id="dateTagEnabled"/);
+  assert.match(css, /\.date-tag-special-group/);
+});
+
+test("date tag drafts normalize and export only editable rule fields", () => {
+  assert.match(js, /dateTag:\s*\{\s*enabled: false,\s*cutoffTime: "00:00",\s*effectiveAt: ""\s*\}/);
+  assert.match(js, /function normalizeDateTagCutoffTimeDraft/);
+  assert.match(js, /cutoffTime: normalizeDateTagCutoffTimeDraft\(source\.dateTag\?\.cutoffTime\)/);
+  assert.match(js, /effectiveAt: normalizeDateTagEffectiveAtDraft\(source\.dateTag\?\.effectiveAt\)/);
+  assert.match(
+    functionBody("editableDateTagRule"),
+    /enabled: Boolean\(dateTagEnabledInput\(\)\?\.checked\)[\s\S]*cutoffTime: normalizeDateTagCutoffTimeDraft\(dateTagCutoffInput\(\)\?\.value\)/
+  );
+  assert.doesNotMatch(functionBody("editableDateTagRule"), /effectiveAt/);
+  assert.match(functionBody("exportTagSchema"), /dateTag: editableDateTagRule\(\)/);
 });
 
 test("console renders tag chips and tag filters", () => {

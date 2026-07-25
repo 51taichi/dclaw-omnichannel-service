@@ -24,7 +24,10 @@ const state = {
   flowSessionsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   proactiveTargetsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   proactiveTasksPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
-  tagSchema: { dateTag: { enabled: false }, groups: [] }
+  tagSchema: {
+    dateTag: { enabled: false, cutoffTime: "00:00", effectiveAt: "" },
+    groups: []
+  }
 };
 
 const els = {
@@ -131,7 +134,6 @@ const els = {
   loadLogsButton: document.querySelector("#loadLogsButton"),
   logsOutput: document.querySelector("#logsOutput"),
   tagGroupList: document.querySelector("#tagGroupList"),
-  dateTagEnabled: document.querySelector("#dateTagEnabled"),
   addTagGroupButton: document.querySelector("#addTagGroupButton"),
   saveTagsButton: document.querySelector("#saveTagsButton"),
   importTagsButton: document.querySelector("#importTagsButton"),
@@ -551,7 +553,6 @@ function clearBotScopedContent() {
   if (els.flowSessionTagFilter) els.flowSessionTagFilter.innerHTML = `<option value="all">全部</option>`;
   setFlowSessionDateTagFilterValue("");
   if (els.tagGroupList) els.tagGroupList.innerHTML = "";
-  if (els.dateTagEnabled) els.dateTagEnabled.checked = false;
   els.flowNodeList.innerHTML = `<div class="empty-state">正在加载当前 Bot 的任务状态机...</div>`;
   els.botForm.reset();
   els.botForm.enabled.checked = true;
@@ -1789,7 +1790,26 @@ function normalizeActivationDraft(value = {}) {
 }
 
 function defaultTagSchema() {
-  return { dateTag: { enabled: false }, groups: [] };
+  return {
+    dateTag: { enabled: false, cutoffTime: "00:00", effectiveAt: "" },
+    groups: []
+  };
+}
+
+function normalizeDateTagCutoffTimeDraft(value = "00:00") {
+  const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return "00:00";
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return "00:00";
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function normalizeDateTagEffectiveAtDraft(value = "") {
+  const candidate = String(value || "").trim();
+  if (!candidate) return "";
+  const date = new Date(candidate);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
 }
 
 function defaultTagGroup(index = state.tagSchema.groups.length + 1) {
@@ -1815,7 +1835,11 @@ function defaultTag(index = 1) {
 function normalizeTagSchemaDraft(schema = {}) {
   const source = schema && typeof schema === "object" && !Array.isArray(schema) ? schema : {};
   return {
-    dateTag: { enabled: Boolean(source.dateTag?.enabled) },
+    dateTag: {
+      enabled: Boolean(source.dateTag?.enabled),
+      cutoffTime: normalizeDateTagCutoffTimeDraft(source.dateTag?.cutoffTime),
+      effectiveAt: normalizeDateTagEffectiveAtDraft(source.dateTag?.effectiveAt)
+    },
     groups: Array.isArray(source.groups)
       ? source.groups.map((group, groupIndex) => ({
           id: String(group.id || `group_${groupIndex + 1}`).trim() || `group_${groupIndex + 1}`,
@@ -2781,12 +2805,46 @@ function collapseAllTagCards() {
   });
 }
 
-function renderTagSchemaEditor() {
-  state.tagSchema = normalizeTagSchemaDraft(state.tagSchema);
-  if (els.dateTagEnabled) els.dateTagEnabled.checked = Boolean(state.tagSchema.dateTag?.enabled);
-  if (!els.tagGroupList) return;
-  const groups = state.tagSchema.groups || [];
-  els.tagGroupList.innerHTML = groups.length
+function dateTagEnabledInput() {
+  return els.tagGroupList?.querySelector("#dateTagEnabled") || null;
+}
+
+function dateTagCutoffInput() {
+  return els.tagGroupList?.querySelector("#dateTagCutoffTime") || null;
+}
+
+function editableDateTagRule() {
+  return {
+    enabled: Boolean(dateTagEnabledInput()?.checked),
+    cutoffTime: normalizeDateTagCutoffTimeDraft(dateTagCutoffInput()?.value)
+  };
+}
+
+function renderDateTagSpecialGroup() {
+  const dateTag = state.tagSchema.dateTag || defaultTagSchema().dateTag;
+  return `
+    <article class="tag-group-card date-tag-special-group">
+      <div class="tag-group-head">
+        <label class="toggle switch-toggle tag-group-enabled-toggle">
+          <input id="dateTagEnabled" type="checkbox" ${dateTag.enabled ? "checked" : ""} />
+          <span class="switch-slider" aria-hidden="true"></span>
+          <span class="switch-label">启用</span>
+        </label>
+        <div class="field-row date-tag-name-field">
+          <span class="field-label">${icon("tag")}标签组</span>
+          <strong class="field-control">添加日期</strong>
+        </div>
+        <label class="date-tag-cutoff-field">
+          <span class="field-label">${icon("clock")}切日时间</span>
+          <input id="dateTagCutoffTime" type="time" step="60" value="${escapeHtml(dateTag.cutoffTime || "00:00")}" />
+        </label>
+      </div>
+    </article>
+  `;
+}
+
+function renderNormalTagGroups(groups) {
+  return groups.length
     ? groups
         .map((group, groupIndex) => {
           const groupKey = tagGroupCollapseKey(group, groupIndex);
@@ -2898,11 +2956,27 @@ function renderTagSchemaEditor() {
         })
         .join("")
     : `<div class="empty-state">暂无标签组。可以先新增一个标签组，例如“意向等级”。</div>`;
+}
 
+function renderTagSchemaEditor() {
+  state.tagSchema = normalizeTagSchemaDraft(state.tagSchema);
+  if (!els.tagGroupList) return;
+  const groups = state.tagSchema.groups || [];
+  els.tagGroupList.innerHTML = `${renderDateTagSpecialGroup()}${renderNormalTagGroups(groups)}`;
   bindTagSchemaEditorEvents();
 }
 
 function bindTagSchemaEditorEvents() {
+  dateTagEnabledInput()?.addEventListener("change", (event) => {
+    state.tagSchema.dateTag.enabled = event.currentTarget.checked;
+    renderFlowSessionDateTagFilter();
+    reloadFlowSessionsFromFirstPage().catch(toastError);
+  });
+  dateTagCutoffInput()?.addEventListener("change", (event) => {
+    const cutoffTime = normalizeDateTagCutoffTimeDraft(event.currentTarget.value);
+    state.tagSchema.dateTag.cutoffTime = cutoffTime;
+    event.currentTarget.value = cutoffTime;
+  });
   els.tagGroupList.querySelectorAll("[data-tag-group-field]").forEach((input) => {
     input.addEventListener("input", () => updateTagGroupDraft(input));
     input.addEventListener("change", () => updateTagGroupDraft(input));
@@ -3105,12 +3179,17 @@ async function saveTagSchema() {
   }
   state.tagSchema = normalizeTagSchemaDraft({
     ...state.tagSchema,
-    dateTag: { enabled: Boolean(els.dateTagEnabled?.checked) }
+    dateTag: editableDateTagRule()
   });
   const data = await request(`/api/tag-schemas/${encodeURIComponent(botId)}`, {
     method: "PUT",
     botId,
-    body: JSON.stringify({ schema: state.tagSchema })
+    body: JSON.stringify({
+      schema: {
+        ...state.tagSchema,
+        dateTag: editableDateTagRule()
+      }
+    })
   });
   if (!isCurrentBotContext(botId, contextVersion)) return;
   state.tagSchema = normalizeTagSchemaDraft(data.schema || state.tagSchema);
@@ -3123,8 +3202,9 @@ async function saveTagSchema() {
 function exportTagSchema() {
   const schema = normalizeTagSchemaDraft({
     ...state.tagSchema,
-    dateTag: { enabled: Boolean(els.dateTagEnabled?.checked) }
+    dateTag: editableDateTagRule()
   });
+  schema.dateTag = editableDateTagRule();
   const blob = new Blob([JSON.stringify(schema, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -3137,7 +3217,13 @@ function exportTagSchema() {
 async function importTagSchemaFile(file) {
   if (!file) return;
   const schema = JSON.parse(await file.text());
-  state.tagSchema = normalizeTagSchemaDraft(schema);
+  state.tagSchema = normalizeTagSchemaDraft({
+    ...schema,
+    dateTag: {
+      ...(schema?.dateTag || {}),
+      effectiveAt: ""
+    }
+  });
   collapseAllTagCards();
   renderTagSchemaEditor();
   renderFlowSessionTagFilter();
@@ -4898,14 +4984,6 @@ els.flowSessionDateTagFilter?.addEventListener("change", () => {
 els.flowSessionSearchInput.addEventListener("input", () =>
   reloadFlowSessionsFromFirstPage().catch(toastError)
 );
-els.dateTagEnabled?.addEventListener("change", () => {
-  state.tagSchema = normalizeTagSchemaDraft({
-    ...state.tagSchema,
-    dateTag: { enabled: els.dateTagEnabled.checked }
-  });
-  renderFlowSessionDateTagFilter();
-  reloadFlowSessionsFromFirstPage().catch(toastError);
-});
 els.addTagGroupButton?.addEventListener("click", addTagGroup);
 els.saveTagsButton?.addEventListener("click", () => saveTagSchema().catch(toastError));
 els.exportTagsButton?.addEventListener("click", exportTagSchema);
