@@ -168,6 +168,8 @@ h2 {
 }
 
 .workspace-head {
+  position: relative;
+  z-index: 2;
   display: grid;
   grid-template-columns: minmax(0, max-content) minmax(180px, 1fr);
   align-items: center;
@@ -213,6 +215,7 @@ h2 {
 }
 
 .workspace-tabs button {
+  position: relative;
   flex: 0 0 auto;
   min-width: 108px;
   gap: 6px;
@@ -255,6 +258,27 @@ h2 {
 
 .workspace-tabs.is-bound button:not(.active) {
   color: color-mix(in srgb, var(--bot-accent) 72%, var(--muted));
+}
+
+@media (min-width: 761px) {
+  .workspace-tabs {
+    overflow: visible;
+  }
+
+  .workspace-tabs button.active {
+    border-radius: 6px 6px 0 0;
+  }
+
+  .workspace-tabs button.active::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    height: 20px;
+    background: inherit;
+    pointer-events: none;
+  }
 }
 
 .workspace-lock-panel {
