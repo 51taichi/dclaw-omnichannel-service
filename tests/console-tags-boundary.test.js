@@ -43,7 +43,8 @@ test("date tags render as the fixed first special group with a cutoff time", () 
   assert.match(specialGroup, /id="dateTagEnabled" type="checkbox"/);
   assert.match(specialGroup, /添加日期/);
   assert.match(specialGroup, /id="dateTagCutoffTime" type="time" step="60"/);
-  assert.match(specialGroup, /切日时间/);
+  assert.match(specialGroup, /日切时间/);
+  assert.doesNotMatch(specialGroup, /切日时间/);
   assert.doesNotMatch(specialGroup, /data-add-tag/);
   assert.doesNotMatch(specialGroup, /data-remove-tag-group/);
   assert.doesNotMatch(specialGroup, /data-toggle-tag-group/);
@@ -58,7 +59,7 @@ test("date tag cutoff aligns beside the group name and explains the business-day
   const specialGroup = functionBody("renderDateTagSpecialGroup");
 
   assert.match(specialGroup, /class="activation-help-icon date-tag-help"/);
-  assert.match(specialGroup, /aria-label="切日时间说明"/);
+  assert.match(specialGroup, /aria-label="日切时间说明"/);
   assert.match(specialGroup, /icon\("info"\)/);
   assert.match(specialGroup, /设置为 20:00/);
   assert.match(specialGroup, /19:59/);
