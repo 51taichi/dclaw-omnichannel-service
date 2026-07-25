@@ -2935,10 +2935,22 @@ textarea[data-action-target-activation].is-action-target-focused {
 }
 
 .chat-tag-list {
+  display: block;
+  width: 100%;
   min-width: 0;
 }
 
 .chat-tag-list .conversation-tags {
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  align-content: flex-start;
+  width: 100%;
+  max-width: none;
+}
+
+.chat-tag-list .tag-chip {
+  flex: 0 0 auto;
   max-width: none;
 }
 
