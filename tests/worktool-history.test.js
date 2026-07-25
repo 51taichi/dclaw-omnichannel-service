@@ -170,6 +170,38 @@ test("rejects WorkTool business errors", async () => {
   }
 });
 
+test("customer history timeout covers the complete pagination run", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalBaseUrl = process.env.WORKTOOL_BASE_URL;
+  process.env.WORKTOOL_BASE_URL = "https://worktool.test";
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls += 1;
+    if (calls === 1) {
+      await new Promise((resolve) => setTimeout(resolve, 12));
+    }
+    return worktoolResponse({
+      pageNum: calls,
+      pageSize: 1,
+      totalPage: 2,
+      total: 2,
+      list: []
+    });
+  };
+
+  try {
+    await assert.rejects(
+      listCustomerHistory({ robotId: "bot_a", title: "阿三", timeoutMs: 5 }),
+      /customer history timed out/
+    );
+    assert.equal(calls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalBaseUrl === undefined) delete process.env.WORKTOOL_BASE_URL;
+    else process.env.WORKTOOL_BASE_URL = originalBaseUrl;
+  }
+});
+
 test("lists a normalized API command page", async () => {
   const originalFetch = globalThis.fetch;
   const originalBaseUrl = process.env.WORKTOOL_BASE_URL;

@@ -279,7 +279,7 @@ const worktoolHistoryCache = createWorktoolHistoryCache({
   upsertItems: upsertWorktoolApiMessageCache,
   hasMessageId: hasCachedWorktoolMessageId,
   async onRefreshed({ robotId }) {
-    const backfill = legacyCustomerHistory.backfillCachedHistoryForBot({ botId: robotId });
+    const backfill = await legacyCustomerHistory.backfillCachedHistoryForBot({ botId: robotId });
     logInfo("worktool_history_cache.backfilled", { botId: robotId, ...backfill });
   }
 });
@@ -4693,9 +4693,10 @@ app.get(
     const conversationKey = decodeURIComponent(req.params.conversationKey);
     const binding = getBotBinding(botId);
     const session = getFlowSessionForBot({ botId, conversationKey });
+    const { historySyncError: _historySyncError, ...publicSession } = session || {};
     res.json({
       ok: true,
-      session,
+      session: session ? publicSession : null,
       ...(binding
         ? { tags: listConversationTags({ botId, agentId: binding.agentId, conversationKey }) }
         : { tags: [] }),

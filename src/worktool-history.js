@@ -111,10 +111,15 @@ export async function listCustomerHistory({
 }) {
   const messages = [];
   const titles = new Set();
+  const deadline = Date.now() + Math.max(1, Number(timeoutMs) || DEFAULT_TIMEOUT_MS);
   let rawCount = 0;
   let page = 1;
   let totalPage = 1;
   do {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      throw new Error("WorkTool customer history timed out");
+    }
     const params = new URLSearchParams({
       title: String(title || ""),
       page: String(page),
@@ -125,7 +130,7 @@ export async function listCustomerHistory({
     });
     const data = assertWorktoolSuccess(await requestWorkTool(
       `/robot/wework/message?${params.toString()}`,
-      { robotId, timeoutMs }
+      { robotId, timeoutMs: remainingMs }
     ));
     const rows = Array.isArray(data.list) ? data.list : [];
     rawCount += rows.length;

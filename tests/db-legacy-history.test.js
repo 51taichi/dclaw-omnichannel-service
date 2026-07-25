@@ -56,6 +56,27 @@ test("imports external history once and preserves chronological order", () => {
   );
 });
 
+test("limited conversation history returns the most recent messages in chronological order", () => {
+  const botId = "recent_bot";
+  const conversationKey = `${botId}:private:阿三`;
+  for (const content of ["第一条", "第二条", "第三条"]) {
+    db.insertConversationMessage({
+      botId,
+      conversationKey,
+      direction: "inbound",
+      senderName: "阿三",
+      content,
+      rawPayload: {}
+    });
+  }
+
+  assert.deepEqual(
+    db.listConversationMessages({ botId, conversationKey, limit: 2 })
+      .map((message) => message.content),
+    ["第二条", "第三条"]
+  );
+});
+
 test("new imported history reopens one-time Agent context delivery", () => {
   const botId = "context_bot";
   const conversationKey = `${botId}:private:阿三`;
@@ -97,6 +118,40 @@ test("stores and queries API messages through contact aliases", () => {
     botId: "cache_bot",
     targetNames: ["魔兮", "魔兮-18570860666"]
   }).length, 2);
+});
+
+test("API message cache batches roll back together on persistence errors", () => {
+  const circularPayload = {};
+  circularPayload.self = circularPayload;
+
+  assert.throws(() => db.upsertWorktoolApiMessageCache({
+    botId: "atomic_cache_bot",
+    items: [
+      {
+        messageId: "atomic-1",
+        commandIndex: 0,
+        targetName: "阿三",
+        type: 203,
+        content: "第一条",
+        createdAt: "2026-07-20T01:00:00.000Z",
+        rawPayload: {}
+      },
+      {
+        messageId: "atomic-2",
+        commandIndex: 0,
+        targetName: "阿三",
+        type: 203,
+        content: "第二条",
+        createdAt: "2026-07-20T01:01:00.000Z",
+        rawPayload: circularPayload
+      }
+    ]
+  }), /circular/i);
+
+  assert.equal(db.hasCachedWorktoolMessageId({
+    botId: "atomic_cache_bot",
+    messageId: "atomic-1"
+  }), false);
 });
 
 test("legacy persistence can skip the first-seen date tag", () => {

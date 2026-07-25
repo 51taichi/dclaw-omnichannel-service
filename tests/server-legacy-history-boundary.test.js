@@ -58,3 +58,11 @@ test("flow session list does not expose raw legacy history errors", () => {
   assert.match(route, /historySyncError: _historySyncError/);
   assert.match(route, /return publicSession/);
 });
+
+test("flow session detail does not expose raw legacy history errors", () => {
+  const routeStart = source.indexOf('"/api/flow-sessions/:conversationKey"');
+  const routeEnd = source.indexOf('"/api/flow-sessions/:conversationKey/tags/manual"', routeStart);
+  const route = source.slice(routeStart, routeEnd);
+  assert.match(route, /historySyncError: _historySyncError/);
+  assert.match(route, /session: session \? publicSession : null/);
+});

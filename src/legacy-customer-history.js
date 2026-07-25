@@ -46,6 +46,8 @@ export function createLegacyCustomerHistoryService({
   listConversationMessages,
   listCachedApiMessages,
   listLegacyFlowSessionTargets,
+  yieldToEventLoop = () => new Promise((resolve) => setImmediate(resolve)),
+  backfillBatchSize = 25,
   onEvent = () => {}
 }) {
   const singleFlight = createKeyedSingleFlight();
@@ -135,10 +137,12 @@ export function createLegacyCustomerHistoryService({
     });
   }
 
-  function backfillCachedHistoryForBot({ botId }) {
+  async function backfillCachedHistoryForBot({ botId }) {
     const targets = listLegacyFlowSessionTargets({ botId });
     let importedCount = 0;
-    for (const target of targets) {
+    const normalizedBatchSize = Math.max(1, Number(backfillBatchSize) || 25);
+    for (let index = 0; index < targets.length; index += 1) {
+      const target = targets[index];
       const imported = listImportedConversationMessages({
         botId,
         conversationKey: target.conversationKey
@@ -152,13 +156,17 @@ export function createLegacyCustomerHistoryService({
       const cached = normalizeCachedApiMessages(
         listCachedApiMessages({ botId, targetNames: aliases })
       );
-      if (!cached.length) continue;
-      importedCount += insertImportedConversationMessages({
-        botId,
-        conversationKey: target.conversationKey,
-        source: "worktool_api_history",
-        messages: cached
-      });
+      if (cached.length) {
+        importedCount += insertImportedConversationMessages({
+          botId,
+          conversationKey: target.conversationKey,
+          source: "worktool_api_history",
+          messages: cached
+        });
+      }
+      if ((index + 1) % normalizedBatchSize === 0 && index + 1 < targets.length) {
+        await yieldToEventLoop();
+      }
     }
     return { conversationCount: targets.length, importedCount };
   }

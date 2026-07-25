@@ -3515,18 +3515,25 @@ export function upsertWorktoolApiMessageCache({ botId, items = [] }) {
   `);
   let changed = 0;
   const timestamp = now();
-  for (const item of items) {
-    changed += Number(insert.run(
-      botId,
-      String(item.messageId || ""),
-      Number(item.commandIndex || 0),
-      String(item.targetName || ""),
-      Number(item.type || 0),
-      String(item.content || ""),
-      String(item.createdAt || ""),
-      json(item.rawPayload || {}),
-      timestamp
-    ).changes || 0);
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const item of items) {
+      changed += Number(insert.run(
+        botId,
+        String(item.messageId || ""),
+        Number(item.commandIndex || 0),
+        String(item.targetName || ""),
+        Number(item.type || 0),
+        String(item.content || ""),
+        String(item.createdAt || ""),
+        json(item.rawPayload || {}),
+        timestamp
+      ).changes || 0);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
   }
   return changed;
 }
@@ -3582,10 +3589,14 @@ export function listConversationMessages({ botId = "", conversationKey, limit = 
   return db
     .prepare(`
       SELECT *
-      FROM conversation_messages
-      WHERE ${where}
+      FROM (
+        SELECT *
+        FROM conversation_messages
+        WHERE ${where}
+        ORDER BY created_at DESC, id DESC
+        LIMIT ?
+      )
       ORDER BY created_at ASC, id ASC
-      LIMIT ?
     `)
     .all(...params)
     .map(rowToConversationMessage);

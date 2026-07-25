@@ -172,3 +172,24 @@ test("backfills cached API replies for legacy aliases after a bot refresh", asyn
   assert.equal(result.importedCount, 1);
   assert.equal(state.imported.at(-1).source, "worktool_api_history");
 });
+
+test("large cache backfills yield between bounded conversation batches", async () => {
+  let yieldCount = 0;
+  const targets = Array.from({ length: 51 }, (_, index) => ({
+    conversationKey: `bot_a:private:客户${index}`,
+    receivedName: `客户${index}`
+  }));
+  const { service } = createHarness({
+    listLegacyFlowSessionTargets: () => targets,
+    listImportedConversationMessages: () => [],
+    listCachedApiMessages: () => [],
+    yieldToEventLoop: async () => {
+      yieldCount += 1;
+    }
+  });
+
+  const result = await service.backfillCachedHistoryForBot({ botId: "bot_a" });
+
+  assert.equal(result.conversationCount, 51);
+  assert.equal(yieldCount, 2);
+});
