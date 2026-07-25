@@ -6,9 +6,10 @@ const server = fs.readFileSync(new URL("../src/server.js", import.meta.url), "ut
 const db = fs.readFileSync(new URL("../src/db.js", import.meta.url), "utf8");
 const dclaw = fs.readFileSync(new URL("../src/dclaw.js", import.meta.url), "utf8");
 
-test("server schedules tag activation after accepted tag changes", () => {
+test("server keeps tag activation scheduling for accepted local tag changes", () => {
   assert.match(server, /scheduleTagActivationsForAcceptedChanges/);
-  assert.match(server, /tag\.activation\.scheduled/);
+  assert.match(server, /scheduledTagActivationTasks/);
+  assert.doesNotMatch(server, /applyAgentTagDecision/);
 });
 
 test("tag activation worker has independent non-overlapping loop", () => {

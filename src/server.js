@@ -674,7 +674,6 @@ function buildFlowContext({ botId, conversationKey, message }) {
   const session = getOrCreateFlowSession({ botId, conversationKey, machine });
   const currentNode = getFlowNode(machine, session.currentNodeId) ||
     getFlowNode(machine, machine.entryNodeId);
-  const recentMessages = listConversationMessages({ conversationKey, limit: 20 }).slice(-12);
   return {
     machine: {
       name: machine.name,
@@ -684,8 +683,7 @@ function buildFlowContext({ botId, conversationKey, message }) {
       nodes: machine.config.nodes
     },
     session,
-    currentNode,
-    recentMessages
+    currentNode
   };
 }
 
@@ -2416,14 +2414,9 @@ async function sendActivationPolishedMessage({ task, binding, delivery }) {
           nodes: machine.config.nodes
         },
         session,
-        currentNode: getFlowNode(machine, session.currentNodeId),
-        recentMessages: listConversationMessages({ conversationKey: task.conversationKey, limit: 20 }).slice(-12)
+        currentNode: getFlowNode(machine, session.currentNodeId)
       }
     : null;
-  const recentMessages = flow?.recentMessages || listConversationMessages({
-    conversationKey: task.conversationKey,
-    limit: 12
-  });
   const request = buildDclawActivationRequest({
     binding,
     conversationKey: task.conversationKey,
@@ -2431,8 +2424,7 @@ async function sendActivationPolishedMessage({ task, binding, delivery }) {
       ...task,
       messages: [activationMessage]
     },
-    flow,
-    recentMessages
+    flow
   });
   const invocationId = insertAgentInvocationStart({
     botId: task.botId,
@@ -2769,15 +2761,10 @@ function recordTagActivationOutbound({ task, binding, target, content, result, r
 }
 
 async function buildPolishedTagActivationContent({ binding, task }) {
-  const recentMessages = listConversationMessages({
-    conversationKey: task.conversationKey,
-    limit: 12
-  });
   const request = buildDclawTagActivationRequest({
     binding,
     conversationKey: task.conversationKey,
     task,
-    recentMessages,
     generalRule: getFlowMachineForBot(task.botId)?.config?.generalRule || ""
   });
   const invocationId = insertAgentInvocationStart({

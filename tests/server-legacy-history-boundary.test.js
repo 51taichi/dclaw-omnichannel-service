@@ -33,14 +33,12 @@ test("legacy preparation completes before the inbound batch is queued", () => {
   assert.match(body, /historySyncStatus === "loading"/);
 });
 
-test("coalesced legacy requests receive history once and suppress ungrounded tags", () => {
+test("coalesced legacy requests do not forward historical context or AI tag rules", () => {
   const body = asyncFunctionBody("processCoalescedIncomingBatch");
-  assert.match(body, /const legacyHistoryContext = shouldSendLegacyHistory[\s\S]*buildStoredLegacyContext/);
-  assert.match(body, /const tagContext = isLegacyWithoutHistory[\s\S]*null[\s\S]*buildTagContext/);
-  assert.match(body, /buildDclawRequest\(\{[\s\S]*legacyHistoryContext,/);
-  const validCheck = body.indexOf("if (!strictInvocation.agentReply.valid)");
-  const markSent = body.indexOf("markLegacyHistoryContextSent({");
-  assert.ok(markSent > validCheck);
+  assert.doesNotMatch(body, /buildStoredLegacyContext/);
+  assert.doesNotMatch(body, /buildTagContext/);
+  assert.doesNotMatch(body, /legacyHistoryContext/);
+  assert.doesNotMatch(body, /tagContext/);
 });
 
 test("bot-wide API history cache refreshes in the background only", () => {

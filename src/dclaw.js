@@ -1,12 +1,11 @@
 import { normalizeTagDecision } from "./tags.js";
 
 const defaultDclawRequestMessageMaxChars = 8000;
-const maxDclawCurrentMessageChars = 2400;
-const maxDclawRawMessageChars = 2400;
-const maxDclawGeneralRuleChars = 1200;
-const maxDclawFlowFieldChars = 500;
-const maxDclawFlowNodeCount = 50;
-const maxDclawFlowArrayItems = 12;
+const maxDclawCurrentMessageChars = 1200;
+const maxDclawRawMessageChars = 1200;
+const maxDclawGeneralRuleChars = 600;
+const maxDclawFlowFieldChars = 160;
+const maxDclawFlowArrayItems = 3;
 
 function boundedDclawText(value, maxChars) {
   const text = String(value || "");
@@ -24,8 +23,6 @@ function boundedDclawTextArray(value, maxItems = maxDclawFlowArrayItems, maxChar
 function compactInboundPayload(message = {}) {
   return {
     messageId: boundedDclawText(message.messageId, 200),
-    spoken: boundedDclawText(message.spoken || message.rawSpoken, maxDclawCurrentMessageChars),
-    rawSpoken: boundedDclawText(message.rawSpoken || message.spoken, maxDclawRawMessageChars),
     receivedName: boundedDclawText(message.receivedName, 200),
     groupName: boundedDclawText(message.groupName, 200),
     roomType: message.roomType ?? null,
@@ -44,11 +41,65 @@ export function getDclawRequestMessageMaxChars() {
 }
 
 function buildDclawRequestMessage(instructions, payload) {
-  return [
+  const build = (nextPayload) => [
     ...instructions,
     "",
-    JSON.stringify(payload, null, 2)
+    JSON.stringify(nextPayload, null, 2)
   ].join("\n");
+  const message = build(payload);
+  if (message.length <= getDclawRequestMessageMaxChars()) return message;
+
+  const worktoolMessage = payload?.worktoolMessage || {};
+  const reducedPayload = {
+    worktoolMessage: {
+      channel: worktoolMessage.channel,
+      eventType: worktoolMessage.eventType,
+      botId: worktoolMessage.botId,
+      agentId: worktoolMessage.agentId,
+      conversationId: worktoolMessage.conversationId,
+      sessionId: worktoolMessage.sessionId,
+      messageId: worktoolMessage.messageId,
+      message: boundedDclawText(worktoolMessage.message, 800),
+      rawMessage: boundedDclawText(worktoolMessage.rawMessage, 800),
+      roomType: worktoolMessage.roomType,
+      groupName: boundedDclawText(worktoolMessage.groupName, 100),
+      userId: boundedDclawText(worktoolMessage.userId, 100),
+      metadata: {
+        receivedName: boundedDclawText(worktoolMessage.metadata?.receivedName, 100),
+        textType: worktoolMessage.metadata?.textType,
+        atMe: boundedDclawText(worktoolMessage.metadata?.atMe, 20)
+      }
+    },
+    flow: payload?.flow
+      ? {
+          session: payload.flow.session,
+          currentNode: payload.flow.currentNode
+            ? {
+                id: boundedDclawText(payload.flow.currentNode.id, 80),
+                name: boundedDclawText(payload.flow.currentNode.name, 160),
+                goal: boundedDclawText(payload.flow.currentNode.goal, 240)
+              }
+            : null
+        }
+      : null,
+    generalRule: boundedDclawText(payload?.generalRule, 300),
+    conversationReset: Boolean(payload?.conversationReset)
+  };
+  const reducedMessage = build(reducedPayload);
+  if (reducedMessage.length <= getDclawRequestMessageMaxChars()) return reducedMessage;
+
+  return build({
+    worktoolMessage: {
+      eventType: worktoolMessage.eventType,
+      conversationId: worktoolMessage.conversationId,
+      message: boundedDclawText(worktoolMessage.message, 400),
+      roomType: worktoolMessage.roomType,
+      userId: boundedDclawText(worktoolMessage.userId, 80)
+    },
+    flow: null,
+    generalRule: "",
+    conversationReset: Boolean(payload?.conversationReset)
+  });
 }
 
 export function buildDclawRequest({
@@ -56,8 +107,6 @@ export function buildDclawRequest({
   conversation,
   message,
   flow = null,
-  tagContext: _tagContext = null,
-  legacyHistoryContext: _legacyHistoryContext = null,
   conversationReset = false,
   generalRule = ""
 }) {
@@ -223,22 +272,23 @@ export function buildDclawHandoffTranscriptRequest({
     agentId: binding.agentId,
     conversationId: conversation.conversationKey,
     sessionId: conversation.conversationKey,
-    messageId: message.messageId || "",
-    message: message.spoken || "",
-    rawMessage: message.rawSpoken || message.spoken || "",
+    messageId: boundedDclawText(message.messageId, 200),
+    message: boundedDclawText(message.spoken || message.rawSpoken, maxDclawCurrentMessageChars),
+    rawMessage: boundedDclawText(message.rawSpoken || message.spoken, maxDclawRawMessageChars),
     roomType: message.roomType,
-    groupName: isGroup ? message.groupName || "" : "",
-    userId: message.receivedName || "",
+    groupName: isGroup ? boundedDclawText(message.groupName, 200) : "",
+    userId: boundedDclawText(message.receivedName, 200),
     metadata: {
-      receivedName: message.receivedName || "",
-      atMe: message.atMe,
+      receivedName: boundedDclawText(message.receivedName, 200),
+      atMe: boundedDclawText(message.atMe, 50),
       textType: message.textType,
-      fileName: message.fileName || "",
-      filePath: message.filePath || "",
+      fileName: boundedDclawText(message.fileName, 200),
+      filePath: boundedDclawText(message.filePath, 500),
       handoffStatus: "human",
-      payload: message
+      payload: compactInboundPayload(message)
     }
   };
+  const agentFlow = compactFlowForAgent(flow);
 
   return {
     external_user_id: worktoolMessage.userId || "unknown",
@@ -254,7 +304,7 @@ export function buildDclawHandoffTranscriptRequest({
       "",
       JSON.stringify({
         worktoolMessage,
-        flow,
+        flow: agentFlow,
         generalRule: normalizedGeneralRule,
         conversationReset
       }, null, 2)
@@ -271,7 +321,7 @@ export function buildDclawHandoffTranscriptRequest({
       groupName: worktoolMessage.groupName,
       userId: worktoolMessage.userId,
       worktool: worktoolMessage,
-      flow,
+      flow: agentFlow,
       generalRule: normalizedGeneralRule,
       conversationReset
     }
@@ -369,8 +419,8 @@ export function buildDclawProactiveEventRequest({
     conversationId: conversationKey,
     sessionId: conversationKey,
     messageId: worktoolMessageId || "",
-    message: target.content || "",
-    rawMessage: target.content || "",
+    message: boundedDclawText(target.content, maxDclawCurrentMessageChars),
+    rawMessage: boundedDclawText(target.content, maxDclawRawMessageChars),
     roomType: isGroup ? 1 : 2,
     groupName: isGroup ? target.targetName : "",
     userId: isGroup ? "" : target.targetName,
@@ -378,9 +428,12 @@ export function buildDclawProactiveEventRequest({
       targetType: target.targetType,
       targetName: target.targetName,
       messageType: target.messageType || "text",
-      messagePayload: target.messagePayload || {},
-      worktoolResponse: worktoolResponse || null,
-      payload: target
+      payload: {
+        targetName: boundedDclawText(target.targetName, 200),
+        targetType: boundedDclawText(target.targetType, 50),
+        content: boundedDclawText(target.content, maxDclawCurrentMessageChars),
+        messageType: boundedDclawText(target.messageType, 50)
+      }
     }
   };
 
@@ -418,7 +471,6 @@ export function buildDclawActivationRequest({
   conversationKey,
   task,
   flow,
-  recentMessages = [],
   generalRule = ""
 }) {
   const userId = String(conversationKey || "").split(":private:")[1] || "";
@@ -482,7 +534,6 @@ export function buildDclawTagActivationRequest({
   binding,
   conversationKey,
   task,
-  recentMessages = [],
   generalRule = ""
 }) {
   const userId = String(conversationKey || "").split(":private:")[1] || "";
@@ -555,13 +606,7 @@ function compactFlowForAgent(flow) {
         name: boundedDclawText(flow.machine.name, maxDclawFlowFieldChars),
         version: boundedDclawText(flow.machine.version, maxDclawFlowFieldChars),
         entryNodeId: boundedDclawText(flow.machine.entryNodeId, maxDclawFlowFieldChars),
-        generalRule: boundedDclawText(flow.machine.generalRule, maxDclawGeneralRuleChars),
-        nodes: Array.isArray(flow.machine.nodes)
-          ? flow.machine.nodes.slice(0, maxDclawFlowNodeCount).map((node) => ({
-              id: boundedDclawText(node?.id, maxDclawFlowFieldChars),
-              name: boundedDclawText(node?.name, maxDclawFlowFieldChars)
-            }))
-          : []
+        generalRule: boundedDclawText(flow.machine.generalRule, maxDclawGeneralRuleChars)
       }
     : null;
   const session = flow.session && typeof flow.session === "object" && !Array.isArray(flow.session)

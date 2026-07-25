@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   buildDclawActivationRequest,
   buildDclawReplyFormatRetryRequest,
-  buildDclawRequest
+  buildDclawRequest,
+  getDclawRequestMessageMaxChars
 } from "../src/dclaw.js";
 
 const binding = {
@@ -97,6 +98,44 @@ test("normal inbound requests hide node activation scripts from the agent", () =
   assert.doesNotMatch(request.message, /"activation"/);
   assert.doesNotMatch(JSON.stringify(request.metadata), /刚给你发学习资料/);
   assert.doesNotMatch(JSON.stringify(request.metadata), /"activation"/);
+});
+
+test("large flow configuration is reduced below the request message limit", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:大流程客户" },
+    message: {
+      messageId: "m-large-flow",
+      spoken: "客户消息".repeat(2000),
+      rawSpoken: "客户原始消息".repeat(2000),
+      roomType: 2,
+      textType: 1,
+      receivedName: "大流程客户"
+    },
+    flow: {
+      machine: {
+        name: "流程".repeat(500),
+        version: "1.0.0",
+        entryNodeId: "node_1",
+        generalRule: "规则".repeat(500),
+        nodes: Array.from({ length: 200 }, (_, index) => ({
+          id: `node_${index}`,
+          name: "节点".repeat(500)
+        }))
+      },
+      session: { currentNodeId: "node_1" },
+      currentNode: {
+        id: "node_1",
+        name: "当前节点".repeat(500),
+        goal: "当前目标".repeat(500),
+        completionCriteria: "完成条件".repeat(500),
+        collectFields: ["字段".repeat(500)],
+        conversationTips: ["提示".repeat(500)]
+      }
+    }
+  });
+
+  assert.ok(request.message.length <= getDclawRequestMessageMaxChars());
 });
 
 test("buildDclawActivationRequest omits recent messages", () => {
