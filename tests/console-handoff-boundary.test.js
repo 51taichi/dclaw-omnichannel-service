@@ -310,6 +310,14 @@ test("proactive target list keeps a fixed scrollable height", () => {
   assert.doesNotMatch(targetListRule, /max-height/);
 });
 
+test("proactive target picker does not add a redundant outer frame", () => {
+  const targetPickerRule = cssRule(".target-picker");
+
+  assert.match(targetPickerRule, /border:\s*0/);
+  assert.match(targetPickerRule, /background:\s*transparent/);
+  assert.match(targetPickerRule, /padding:\s*12px/);
+});
+
 test("proactive form works without a message type dropdown", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
