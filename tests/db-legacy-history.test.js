@@ -766,3 +766,35 @@ test("evidence reads continue past malformed timestamp cursors", () => {
     ["唯一消息9", "证据锚点"]
   );
 });
+
+test("evidence reads preserve SQLite ordering for punctuation timestamps", () => {
+  const botId = "dedupe_binary_order_bot";
+  const conversationKey = `${botId}:private:客户`;
+  const anchorId = insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "证据锚点",
+    source: "local",
+    sourceKey: "anchor",
+    createdAt: "2026-07-25T15:22:20.000Z"
+  });
+  insertRawConversationMessage({
+    botId,
+    conversationKey,
+    content: "异常时间消息",
+    source: "worktool_customer_history",
+    sourceKey: "punctuation-time",
+    createdAt: "_bad"
+  });
+
+  assert.deepEqual(
+    db.listConversationMessagesAround({
+      botId,
+      conversationKey,
+      anchorMessageId: anchorId,
+      before: 0,
+      after: 1
+    }).map((message) => message.content),
+    ["证据锚点", "异常时间消息"]
+  );
+});

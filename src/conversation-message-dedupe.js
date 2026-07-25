@@ -29,8 +29,9 @@ function compareChronologically(left, right) {
   if (leftTime !== null && rightTime !== null) {
     return leftTime - rightTime || stableId(left) - stableId(right);
   }
-  const textOrder = String(left?.createdAt || "")
-    .localeCompare(String(right?.createdAt || ""));
+  const leftText = String(left?.createdAt || "");
+  const rightText = String(right?.createdAt || "");
+  const textOrder = leftText < rightText ? -1 : leftText > rightText ? 1 : 0;
   return textOrder || stableId(left) - stableId(right);
 }
 
