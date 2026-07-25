@@ -274,6 +274,23 @@ db.exec(`
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS worktool_api_message_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    command_index INTEGER NOT NULL,
+    target_name TEXT NOT NULL,
+    message_type INTEGER NOT NULL,
+    content TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    raw_payload_json TEXT NOT NULL,
+    cached_at TEXT NOT NULL,
+    UNIQUE(bot_id, message_id, command_index, target_name)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_worktool_api_cache_target
+  ON worktool_api_message_cache (bot_id, target_name, occurred_at);
+
   CREATE TABLE IF NOT EXISTS flow_state_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bot_id TEXT NOT NULL,
@@ -434,6 +451,19 @@ ensureColumn("flow_sessions", "handoff_status", "TEXT NOT NULL DEFAULT 'ai'");
 ensureColumn("flow_sessions", "handoff_at", "TEXT");
 ensureColumn("flow_sessions", "handoff_by", "TEXT");
 ensureColumn("flow_sessions", "handoff_reason", "TEXT");
+ensureColumn("flow_sessions", "customer_origin", "TEXT NOT NULL DEFAULT 'unknown'");
+ensureColumn("flow_sessions", "history_sync_status", "TEXT NOT NULL DEFAULT 'not_required'");
+ensureColumn("flow_sessions", "history_imported_count", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("flow_sessions", "history_synced_at", "TEXT");
+ensureColumn("flow_sessions", "history_sync_error", "TEXT");
+ensureColumn("flow_sessions", "history_context_sent_at", "TEXT");
+ensureColumn("conversation_messages", "source", "TEXT NOT NULL DEFAULT 'local'");
+ensureColumn("conversation_messages", "source_key", "TEXT");
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_messages_external_source
+  ON conversation_messages (bot_id, source, source_key)
+  WHERE source_key IS NOT NULL AND source_key != '';
+`);
 ensureColumn(
   "agent_response_validation_failures",
   "retry_outcome",
@@ -971,7 +1001,13 @@ export function getConversationKey(botId, message) {
   return `${botId}:private:${message.receivedName || "unknown"}`;
 }
 
-export function upsertConversation({ botId, agentId, conversationKey, message }) {
+export function upsertConversation({
+  botId,
+  agentId,
+  conversationKey,
+  message,
+  skipFirstSeenDateTag = false
+}) {
   const timestamp = now();
   db.prepare(`
     INSERT INTO conversations (
@@ -998,7 +1034,7 @@ export function upsertConversation({ botId, agentId, conversationKey, message })
     timestamp
   );
   const conversation = getConversation(conversationKey);
-  syncConversationFirstSeenDateTag(conversation);
+  if (!skipFirstSeenDateTag) syncConversationFirstSeenDateTag(conversation);
   return conversation;
 }
 
@@ -1388,6 +1424,12 @@ function rowToFlowSession(row) {
     handoffAt: row.handoff_at || "",
     handoffBy: row.handoff_by || "",
     handoffReason: row.handoff_reason || "",
+    customerOrigin: row.customer_origin || "unknown",
+    historySyncStatus: row.history_sync_status || "not_required",
+    historyImportedCount: Number(row.history_imported_count || 0),
+    historySyncedAt: row.history_synced_at || "",
+    historySyncError: row.history_sync_error || "",
+    historyContextSentAt: row.history_context_sent_at || "",
     activationGeneration: Number(row.activation_generation || 0),
     activationState: parseJson(row.activation_state_json),
     lastFriendAddedAt: row.last_friend_added_at || "",
@@ -1518,6 +1560,8 @@ function rowToConversationMessage(row) {
     senderName: row.sender_name,
     content: row.content,
     rawPayload: parseJson(row.raw_payload_json),
+    source: row.source || "local",
+    sourceKey: row.source_key || "",
     createdAt: row.created_at
   };
 }
@@ -1687,6 +1731,82 @@ export function getOrCreateFlowSession({ botId, conversationKey, machine }) {
   return session;
 }
 
+export function createLegacyFlowSession({ botId, conversationKey, machine }) {
+  const nodes = (machine?.config?.nodes || machine?.nodes || [])
+    .filter((node) => String(node?.id || "").trim());
+  const currentNodeId = String(nodes.at(-1)?.id || "").trim();
+  if (!botId || !conversationKey || !currentNodeId) {
+    throw new Error("botId, conversationKey, and a final flow node are required");
+  }
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO flow_sessions (
+      bot_id, conversation_key, current_node_id, collected_data_json, status,
+      customer_origin, history_sync_status, history_imported_count,
+      last_message_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, 'active', 'legacy', 'loading', 0, ?, ?, ?)
+    ON CONFLICT(conversation_key) DO UPDATE SET
+      current_node_id = excluded.current_node_id,
+      customer_origin = 'legacy',
+      history_sync_status = 'loading',
+      history_sync_error = NULL,
+      history_context_sent_at = NULL,
+      last_message_at = excluded.last_message_at,
+      updated_at = excluded.updated_at
+  `).run(
+    botId,
+    conversationKey,
+    currentNodeId,
+    json({}),
+    timestamp,
+    timestamp,
+    timestamp
+  );
+  return getFlowSessionForBot({ botId, conversationKey });
+}
+
+export function updateLegacyHistorySync({
+  botId,
+  conversationKey,
+  status,
+  importedCount = 0,
+  errorMessage = ""
+}) {
+  if (!["success", "empty", "failed"].includes(status)) {
+    throw new Error("invalid legacy history sync status");
+  }
+  const timestamp = now();
+  db.prepare(`
+    UPDATE flow_sessions
+    SET history_sync_status = ?,
+        history_imported_count = ?,
+        history_synced_at = ?,
+        history_sync_error = ?,
+        updated_at = ?
+    WHERE bot_id = ? AND conversation_key = ?
+  `).run(
+    status,
+    Math.max(0, Number(importedCount) || 0),
+    timestamp,
+    String(errorMessage || "").slice(0, 500),
+    timestamp,
+    botId,
+    conversationKey
+  );
+  return getFlowSessionForBot({ botId, conversationKey });
+}
+
+export function markLegacyHistoryContextSent({ botId, conversationKey }) {
+  const timestamp = now();
+  db.prepare(`
+    UPDATE flow_sessions
+    SET history_context_sent_at = ?, updated_at = ?
+    WHERE bot_id = ? AND conversation_key = ?
+  `).run(timestamp, timestamp, botId, conversationKey);
+  return getFlowSessionForBot({ botId, conversationKey });
+}
+
 export function resetConversationForFriendGreeting({
   botId,
   agentId,
@@ -1741,6 +1861,12 @@ export function resetConversationForFriendGreeting({
           handoff_at = NULL,
           handoff_by = '',
           handoff_reason = '',
+          customer_origin = 'new',
+          history_sync_status = 'not_required',
+          history_imported_count = 0,
+          history_synced_at = NULL,
+          history_sync_error = NULL,
+          history_context_sent_at = NULL,
           activation_state_json = NULL,
           last_message_at = ?,
           updated_at = ?
@@ -3311,6 +3437,145 @@ export function insertConversationMessage({
   );
 }
 
+export function insertImportedConversationMessages({
+  botId,
+  conversationKey,
+  source,
+  messages = []
+}) {
+  if (!["worktool_customer_history", "worktool_api_history"].includes(source)) {
+    throw new Error("invalid imported conversation message source");
+  }
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO conversation_messages (
+      bot_id, conversation_key, direction, sender_name, content,
+      raw_payload_json, source, source_key, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  let inserted = 0;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const message of messages) {
+      const sourceKey = String(message?.sourceKey || "").trim();
+      const content = String(message?.content || "").trim();
+      const createdAt = String(message?.createdAt || "").trim();
+      if (!sourceKey || !content || !createdAt) continue;
+      inserted += Number(insert.run(
+        botId,
+        conversationKey,
+        message.direction === "outbound" ? "outbound" : "inbound",
+        message.senderName || "",
+        content,
+        json(message.rawPayload || {}),
+        source,
+        sourceKey,
+        createdAt
+      ).changes || 0);
+    }
+    if (inserted > 0) {
+      db.prepare(`
+        UPDATE flow_sessions
+        SET history_context_sent_at = NULL, updated_at = ?
+        WHERE bot_id = ? AND conversation_key = ?
+      `).run(now(), botId, conversationKey);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return inserted;
+}
+
+export function listImportedConversationMessages({ botId, conversationKey }) {
+  return db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND source IN ('worktool_customer_history', 'worktool_api_history')
+    ORDER BY created_at ASC, id ASC
+  `).all(botId, conversationKey).map(rowToConversationMessage);
+}
+
+export function upsertWorktoolApiMessageCache({ botId, items = [] }) {
+  const insert = db.prepare(`
+    INSERT INTO worktool_api_message_cache (
+      bot_id, message_id, command_index, target_name, message_type,
+      content, occurred_at, raw_payload_json, cached_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(bot_id, message_id, command_index, target_name) DO UPDATE SET
+      message_type = excluded.message_type,
+      content = excluded.content,
+      occurred_at = excluded.occurred_at,
+      raw_payload_json = excluded.raw_payload_json,
+      cached_at = excluded.cached_at
+  `);
+  let changed = 0;
+  const timestamp = now();
+  for (const item of items) {
+    changed += Number(insert.run(
+      botId,
+      String(item.messageId || ""),
+      Number(item.commandIndex || 0),
+      String(item.targetName || ""),
+      Number(item.type || 0),
+      String(item.content || ""),
+      String(item.createdAt || ""),
+      json(item.rawPayload || {}),
+      timestamp
+    ).changes || 0);
+  }
+  return changed;
+}
+
+export function hasCachedWorktoolMessageId({ botId, messageId }) {
+  return Boolean(db.prepare(`
+    SELECT 1 FROM worktool_api_message_cache
+    WHERE bot_id = ? AND message_id = ?
+    LIMIT 1
+  `).get(botId, messageId));
+}
+
+export function listCachedApiMessages({ botId, targetNames = [] }) {
+  const names = [...new Set(targetNames.map((name) => String(name || "").trim()).filter(Boolean))];
+  if (!names.length) return [];
+  const placeholders = names.map(() => "?").join(", ");
+  return db.prepare(`
+    SELECT * FROM worktool_api_message_cache
+    WHERE bot_id = ? AND target_name IN (${placeholders})
+    ORDER BY occurred_at ASC, id ASC
+  `).all(botId, ...names).map((row) => ({
+    id: row.id,
+    botId: row.bot_id,
+    messageId: row.message_id,
+    commandIndex: Number(row.command_index || 0),
+    targetName: row.target_name,
+    type: Number(row.message_type || 0),
+    direction: "outbound",
+    content: row.content,
+    createdAt: row.occurred_at,
+    rawPayload: parseJson(row.raw_payload_json)
+  }));
+}
+
+export function listLegacyFlowSessionTargets({ botId }) {
+  return db.prepare(`
+    SELECT fs.conversation_key, c.received_name
+    FROM flow_sessions fs
+    JOIN conversations c ON c.conversation_key = fs.conversation_key
+    WHERE fs.bot_id = ?
+      AND fs.customer_origin = 'legacy'
+      AND fs.conversation_key LIKE '%:private:%'
+    ORDER BY fs.id ASC
+  `).all(botId).map((row) => ({
+    conversationKey: row.conversation_key,
+    receivedName: row.received_name || ""
+  }));
+}
+
 export function listConversationMessages({ botId = "", conversationKey, limit = 200 }) {
   const where = botId ? "conversation_key = ? AND bot_id = ?" : "conversation_key = ?";
   const params = botId ? [conversationKey, botId, Number(limit)] : [conversationKey, Number(limit)];
@@ -3319,7 +3584,7 @@ export function listConversationMessages({ botId = "", conversationKey, limit = 
       SELECT *
       FROM conversation_messages
       WHERE ${where}
-      ORDER BY id ASC
+      ORDER BY created_at ASC, id ASC
       LIMIT ?
     `)
     .all(...params)
