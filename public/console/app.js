@@ -3912,6 +3912,27 @@ function animateFlowSessionReorder(previousPositions) {
   });
 }
 
+function legacyHistoryStatusText(session) {
+  switch (session?.historySyncStatus) {
+    case "loading":
+      return "正在加载历史记录";
+    case "success":
+      return `已加载历史记录 ${Number(session?.historyImportedCount || 0)} 条`;
+    case "empty":
+      return "未查到历史，已按老客户接入";
+    case "failed":
+      return "历史加载失败，已按老客户接入";
+    default:
+      return "已按老客户接入";
+  }
+}
+
+function renderLegacyCustomerBadge(session, sessionType) {
+  if (sessionType !== "private" || session?.customerOrigin !== "legacy") return "";
+  const tooltip = legacyHistoryStatusText(session);
+  return `<span class="legacy-customer-badge" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">${icon("history")}<span>老客户</span></span>`;
+}
+
 function renderFlowSessions({ animateFrom = null } = {}) {
   const visibleSessions = getVisibleFlowSessions();
   const typeFilter = currentFlowSessionTypeFilter();
@@ -3948,6 +3969,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
                   <strong class="flow-session-name" title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
+                  ${renderLegacyCustomerBadge(session, sessionType)}
                 </span>
                 ${renderConversationDateTag(session.tags || [])}
                 <span
