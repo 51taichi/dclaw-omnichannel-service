@@ -1,4 +1,5 @@
-import { buildLegacyHistoryContext, createKeyedSingleFlight } from "./legacy-history.js";
+import { buildBoundedCustomerHistoryText } from "./history-analysis.js";
+import { createKeyedSingleFlight } from "./legacy-history.js";
 
 function uniqueNames(names) {
   return [...new Set(
@@ -43,7 +44,6 @@ export function createLegacyCustomerHistoryService({
   updateLegacyHistorySync,
   insertImportedConversationMessages,
   listImportedConversationMessages,
-  listConversationMessages,
   listCachedApiMessages,
   listLegacyFlowSessionTargets,
   yieldToEventLoop = () => new Promise((resolve) => setImmediate(resolve)),
@@ -122,18 +122,13 @@ export function createLegacyCustomerHistoryService({
     }
   }
 
-  function buildStoredLegacyContext({ botId, conversationKey }) {
+  function buildStoredLegacyAnalysis({ botId, conversationKey, maxChars }) {
     const imported = listImportedConversationMessages({ botId, conversationKey });
-    const localMessages = listConversationMessages({ botId, conversationKey })
-      .filter((message) => message.source === "local");
-    return buildLegacyHistoryContext({
-      customerMessages: imported.filter(
+    return buildBoundedCustomerHistoryText({
+      messages: imported.filter(
         (message) => message.source === "worktool_customer_history"
       ),
-      localMessages,
-      cachedApiMessages: imported.filter(
-        (message) => message.source === "worktool_api_history"
-      )
+      maxChars
     });
   }
 
@@ -175,7 +170,7 @@ export function createLegacyCustomerHistoryService({
     prepareLegacyCustomer(input) {
       return singleFlight.run(input.conversationKey, () => performPrepare(input));
     },
-    buildStoredLegacyContext,
+    buildStoredLegacyAnalysis,
     backfillCachedHistoryForBot
   };
 }

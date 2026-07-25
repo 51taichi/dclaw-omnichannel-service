@@ -114,7 +114,7 @@ test("imports customer history and cached API replies through all aliases", asyn
   assert.equal(state.syncUpdates.at(-1).importedCount, 1);
 });
 
-test("builds bounded context from stored imported and local messages", async () => {
+test("builds bounded analysis from imported customer messages only", async () => {
   const { service } = createHarness();
   await service.prepareLegacyCustomer({
     botId: "bot_a",
@@ -123,17 +123,16 @@ test("builds bounded context from stored imported and local messages", async () 
     machine: { config: { nodes: [{ id: "final" }] } }
   });
 
-  const context = service.buildStoredLegacyContext({
+  const analysis = service.buildStoredLegacyAnalysis({
     botId: "bot_a",
-    conversationKey: "bot_a:private:魔兮"
+    conversationKey: "bot_a:private:魔兮",
+    maxChars: 4000
   });
 
-  assert.equal(context.importedCustomerCount, 1);
-  assert.deepEqual(context.messages.map((message) => message.content), [
-    "之前已经付款",
-    "此前系统回复",
-    "当前消息"
-  ]);
+  assert.equal(analysis.text, "之前已经付款");
+  assert.equal(analysis.importedCustomerCount, 1);
+  assert.equal(analysis.earliestCustomerAt, "2026-07-20T01:00:00.000Z");
+  assert.doesNotMatch(analysis.text, /此前系统回复|当前消息/);
 });
 
 test("history failures mark the session failed and do not reject", async () => {

@@ -261,7 +261,6 @@ const legacyCustomerHistory = createLegacyCustomerHistoryService({
   updateLegacyHistorySync,
   insertImportedConversationMessages,
   listImportedConversationMessages,
-  listConversationMessages,
   listCachedApiMessages,
   listLegacyFlowSessionTargets,
   onEvent(event, fields) {
