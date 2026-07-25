@@ -75,11 +75,11 @@ test("an unmentioned group continuation may only join an existing mentioned batc
 
 test("flushed processing performs one Agent and business-decision cycle", () => {
   const start = source.indexOf("async function processCoalescedIncomingBatch");
-  const end = source.indexOf("\nfunction applyAgentTagDecision", start);
+  const end = source.indexOf("\nfunction applyManualConversationTagChange", start);
   const processor = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.equal((processor.match(/invokeStrictAgentReply\(/g) || []).length, 1);
-  assert.equal((processor.match(/applyAgentTagDecision\(/g) || []).length, 1);
+  assert.equal((processor.match(/applyAgentTagDecision\(/g) || []).length, 0);
   assert.equal((processor.match(/applyFlowDecision\(/g) || []).length, 1);
   assert.equal((processor.match(/scheduleActivationAfterFlowReply\(/g) || []).length, 1);
 });

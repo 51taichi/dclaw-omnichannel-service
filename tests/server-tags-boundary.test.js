@@ -20,22 +20,19 @@ function functionBody(name) {
   assert.fail(`${name} body is closed`);
 }
 
-test("incoming agent calls build and pass tag context", () => {
+test("incoming Agent calls do not build or pass tag context", () => {
   const body = functionBody("processCoalescedIncomingBatch");
-  assert.match(
-    body,
-    /const tagContext = isLegacyWithoutHistory[\s\S]*buildTagContext\(\{ binding, conversationKey \}\);/
-  );
-  assert.match(body, /const request = buildDclawRequest\(\{[\s\S]*\n\s+tagContext,\n[\s\S]*\}\);/);
+  assert.doesNotMatch(body, /buildTagContext\(/);
+  assert.doesNotMatch(body, /tagContext/);
+  assert.doesNotMatch(body, /tagDecision/);
 });
 
-test("server applies tag decisions only after valid agent replies", () => {
+test("normal Agent replies do not apply AI tag decisions", () => {
   const body = functionBody("processCoalescedIncomingBatch");
-  const applyIndex = body.indexOf("applyAgentTagDecision({");
   const validIndex = body.indexOf("if (!strictInvocation.agentReply.valid)");
-  assert.ok(applyIndex > validIndex);
-  assert.match(body.slice(validIndex, applyIndex), /throw failure;/);
-  assert.match(functionBody("applyAgentTagDecision"), /agentReply\?\.tagDecision/);
+  assert.ok(validIndex >= 0);
+  assert.doesNotMatch(body, /applyAgentTagDecision\(/);
+  assert.doesNotMatch(body, /tag\.decision\.applied/);
 });
 
 test("private inbound messages persist their session before coalesced agent work", () => {
@@ -53,9 +50,9 @@ test("private inbound messages persist their session before coalesced agent work
   assert.doesNotMatch(coalescedBody, /const conversation = upsertConversation\(/);
 });
 
-test("tag decisions cancel activation work for tags made inactive", () => {
+test("manual tag changes cancel activation work for tags made inactive", () => {
   const cancelBody = functionBody("cancelTagTasksForAcceptedChanges");
-  const applyBody = functionBody("applyAgentTagDecision");
+  const applyBody = functionBody("applyManualConversationTagChange");
   assert.match(applyBody, /cancelTagTasksForAcceptedChanges\(\{/);
   assert.match(cancelBody, /for \(const oldTagId of change\.oldTagIds \|\| \[\]\)/);
   assert.match(cancelBody, /tagId: oldTagId/);

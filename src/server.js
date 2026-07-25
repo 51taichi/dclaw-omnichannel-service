@@ -108,7 +108,6 @@ import {
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
   markConversationResetHandled,
-  markLegacyHistoryContextSent,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
@@ -160,7 +159,6 @@ import { listApiCommandPage, listCustomerHistory } from "./worktool-history.js";
 import { createWorktoolHistoryCache } from "./worktool-history-cache.js";
 import {
   adjudicateTagDecision,
-  compactTagRulesForAgent,
   normalizeTagSchema
 } from "./tags.js";
 
@@ -574,18 +572,6 @@ function invalidateFlowActivation({ conversationKey, reason }) {
   const session = incrementFlowActivationGeneration({ conversationKey, reason });
   cancelFlowActivationTasks({ conversationKey, reason });
   return session;
-}
-
-function buildTagContext({ binding, conversationKey }) {
-  if (!binding?.agentId) return null;
-  const schemaRow = getAgentTagSchema(binding.agentId);
-  const schema = normalizeTagSchema(schemaRow?.config || {});
-  const currentTags = listConversationTags({
-    botId: binding.botId,
-    agentId: binding.agentId,
-    conversationKey
-  });
-  return compactTagRulesForAgent({ schema, currentTags });
 }
 
 function applySystemDateTag({ botId, binding, conversationKey, firstSeenAt }) {
@@ -1318,9 +1304,9 @@ function invalidValidationAgentReply(rawReply, validationErrors) {
 function agentResponseValidationOptions(request) {
   return {
     requireFlowDecision: Boolean(request?.metadata?.flow),
-    allowTagDecision: Boolean(request?.metadata?.tagRules),
+    allowTagDecision: false,
     flow: request?.metadata?.flow || null,
-    tagContext: request?.metadata?.tagRules || null
+    tagContext: null
   };
 }
 
@@ -3487,25 +3473,11 @@ async function processCoalescedIncomingBatch(batch) {
   }
 
   const agentMessage = normalizeMessageForAgent(coalescedMessage, binding);
-  const isLegacyCustomer = flow?.session?.customerOrigin === "legacy";
-  const shouldSendLegacyHistory = isLegacyCustomer
-    && flow.session.historySyncStatus === "success"
-    && !flow.session.historyContextSentAt;
-  const legacyHistoryContext = shouldSendLegacyHistory
-    ? legacyCustomerHistory.buildStoredLegacyContext({ botId, conversationKey })
-    : null;
-  const isLegacyWithoutHistory = isLegacyCustomer
-    && flow.session.historySyncStatus !== "success";
-  const tagContext = isLegacyWithoutHistory
-    ? null
-    : buildTagContext({ binding, conversationKey });
   const request = buildDclawRequest({
     binding,
     conversation,
     message: agentMessage,
     flow,
-    tagContext,
-    legacyHistoryContext,
     conversationReset,
     generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
   });
@@ -3640,9 +3612,6 @@ async function processCoalescedIncomingBatch(batch) {
       status: "success"
     });
     agentInvocationSucceeded = true;
-    if (legacyHistoryContext?.messages?.length) {
-      markLegacyHistoryContextSent({ botId, conversationKey });
-    }
     if (conversationReset) {
       markConversationResetHandled(conversationKey);
     }
@@ -3651,20 +3620,6 @@ async function processCoalescedIncomingBatch(batch) {
     const reply = String(agentReply.reply || "").trim();
     const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
     const sources = Array.isArray(agentReply.sources) ? agentReply.sources : [];
-    const tagUpdate = applyAgentTagDecision({
-      botId,
-      binding,
-      conversationKey,
-      agentReply
-    });
-    if (tagUpdate) {
-      logInfo("tag.decision.applied", {
-        ...logContext,
-        agentId: binding.agentId,
-        invocationId,
-        tagCount: tagUpdate.tags.length
-      });
-    }
     const replyWithLinkAttachments = appendLinkAttachmentsToReply(reply, attachments);
     const hasMediaAttachments = attachments
       .map(normalizeAgentAttachment)
@@ -3743,9 +3698,8 @@ async function processCoalescedIncomingBatch(batch) {
           replyParts: sentParts.map((part) => part.content),
           attachments: sentAttachments.map((part) => part.attachment),
           sources,
-          tags: tagUpdate?.tags || listConversationTags({ botId, agentId: binding.agentId, conversationKey }),
+          tags: listConversationTags({ botId, agentId: binding.agentId, conversationKey }),
           flowDecision: agentReply.flowDecision,
-          tagDecision: agentReply.tagDecision,
           agentReply: agentReply.raw
         }
       });
@@ -3762,8 +3716,7 @@ async function processCoalescedIncomingBatch(batch) {
           replyParts: sentParts.map((part) => part.content),
           attachments: sentAttachments.map((part) => part.attachment),
           sources,
-          tags: tagUpdate?.tags || listConversationTags({ botId, agentId: binding.agentId, conversationKey }),
-          tagDecision: agentReply.tagDecision,
+          tags: listConversationTags({ botId, agentId: binding.agentId, conversationKey }),
           agentReply: agentReply.raw
         }
       });
@@ -3900,71 +3853,6 @@ async function processCoalescedIncomingBatch(batch) {
     });
     throw error;
   }
-}
-
-function applyAgentTagDecision({ botId, binding, conversationKey, agentReply }) {
-  if (!binding?.agentId) return null;
-  const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
-  if (!schema.groups.length) return null;
-  const currentTags = listConversationTags({ botId, agentId: binding.agentId, conversationKey });
-  const result = adjudicateTagDecision({
-    schema,
-    currentTags: currentTags.filter((tag) => tag.tagType !== "date"),
-    decision: agentReply?.tagDecision || {}
-  });
-  if (!result.accepted.length && !result.rejected.length) return null;
-  const canceledTagActivationTaskCount = cancelTagTasksForAcceptedChanges({
-    botId,
-    binding,
-    conversationKey,
-    accepted: result.accepted
-  });
-  const tags = applyConversationTagChanges({
-    botId,
-    agentId: binding.agentId,
-    conversationKey,
-    accepted: result.accepted,
-    rejected: result.rejected,
-    nextTags: result.nextTags,
-    source: "agent_decision"
-  });
-  const scheduledTagActivationTasks = scheduleTagActivationsForAcceptedChanges({
-    botId,
-    binding,
-    conversationKey,
-    accepted: result.accepted
-  });
-  if (canceledTagActivationTaskCount) {
-    logInfo("tag.activation.canceled", {
-      botId,
-      agentId: binding.agentId,
-      conversationKey,
-      count: canceledTagActivationTaskCount
-    });
-  }
-  for (const task of scheduledTagActivationTasks) {
-    logInfo("tag.activation.scheduled", {
-      botId,
-      agentId: binding.agentId,
-      conversationKey,
-      tagActivationTaskId: task.id,
-      groupId: task.groupId,
-      tagId: task.tagId,
-      attemptNumber: task.attemptNumber,
-      dueAt: task.dueAt
-    });
-  }
-  const tagActivationTasks = scheduledTagActivationTasks.length
-    ? listTagActivationTasks({ botId, agentId: binding.agentId, conversationKey })
-    : [];
-  return {
-    tags,
-    accepted: result.accepted,
-    rejected: result.rejected,
-    canceledTagActivationTaskCount,
-    scheduledTagActivationTasks,
-    tagActivationTasks
-  };
 }
 
 function applyManualConversationTagChange({ botId, binding, conversationKey, groupId, tagId, action = "set" }) {
