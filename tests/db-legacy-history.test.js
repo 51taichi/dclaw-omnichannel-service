@@ -271,3 +271,243 @@ test("friend-added reset clears legacy metadata", () => {
   assert.equal(session.historySyncStatus, "not_required");
   assert.equal(session.historyImportedCount, 0);
 });
+
+test("import skips a row already stored through the live callback", () => {
+  const botId = "dedupe_live_bot";
+  const conversationKey = `${botId}:private:客户`;
+  const local = db.insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: "客户",
+    content: "老师在吗",
+    rawPayload: { messageId: "live-1" }
+  });
+
+  assert.equal(db.insertImportedConversationMessages({
+    botId,
+    conversationKey,
+    source: "worktool_customer_history",
+    messages: [{
+      sourceKey: "history-1",
+      direction: "inbound",
+      senderName: "客户",
+      content: "老师在吗",
+      createdAt: local.createdAt,
+      rawPayload: {}
+    }]
+  }), 0);
+  assert.deepEqual(
+    db.listConversationMessages({ botId, conversationKey }).map((message) => message.id),
+    [local.id]
+  );
+});
+
+test("import skips alias duplicates but keeps repeated local messages", () => {
+  const botId = "dedupe_alias_bot";
+  const conversationKey = `${botId}:private:客户`;
+  const createdAt = "2026-07-25T15:22:00.000Z";
+  assert.equal(db.insertImportedConversationMessages({
+    botId,
+    conversationKey,
+    source: "worktool_customer_history",
+    messages: [
+      {
+        sourceKey: "alias-a",
+        direction: "inbound",
+        content: "你好",
+        createdAt,
+        rawPayload: { titleList: "客户" }
+      },
+      {
+        sourceKey: "alias-b",
+        direction: "inbound",
+        content: "你好",
+        createdAt,
+        rawPayload: { titleList: "客户-手机号" }
+      }
+    ]
+  }), 1);
+
+  db.insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    content: "重复发送",
+    rawPayload: { messageId: "local-a" }
+  });
+  db.insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    content: "重复发送",
+    rawPayload: { messageId: "local-b" }
+  });
+  assert.equal(
+    db.listConversationMessages({ botId, conversationKey })
+      .filter((message) => message.content === "重复发送").length,
+    2
+  );
+});
+
+test("read views prefer richer customer history without deleting API history", () => {
+  const botId = "dedupe_imported_bot";
+  const conversationKey = `${botId}:private:客户`;
+  const createdAt = "2026-07-25T15:22:00.000Z";
+  assert.equal(db.insertImportedConversationMessages({
+    botId,
+    conversationKey,
+    source: "worktool_api_history",
+    messages: [{
+      sourceKey: "api-message",
+      direction: "outbound",
+      senderName: "机器人",
+      content: "课程介绍",
+      createdAt,
+      rawPayload: { type: 203 }
+    }]
+  }), 1);
+  assert.equal(db.insertImportedConversationMessages({
+    botId,
+    conversationKey,
+    source: "worktool_customer_history",
+    messages: [{
+      sourceKey: "customer-message",
+      direction: "outbound",
+      senderName: "老师",
+      content: "课程介绍",
+      createdAt,
+      rawPayload: { fileUrl: "https://example.test/course.jpg" }
+    }]
+  }), 1);
+
+  const rawImported = db.listImportedConversationMessages({ botId, conversationKey });
+  assert.equal(rawImported.length, 2);
+  assert.deepEqual(
+    db.listConversationMessages({ botId, conversationKey }).map((message) => message.source),
+    ["worktool_customer_history"]
+  );
+});
+
+test("read views prefer local rows while evidence reads preserve imported anchors", () => {
+  const botId = "dedupe_anchor_bot";
+  const conversationKey = `${botId}:private:客户`;
+  const createdAt = new Date().toISOString();
+  db.insertImportedConversationMessages({
+    botId,
+    conversationKey,
+    source: "worktool_customer_history",
+    messages: [{
+      sourceKey: "anchor-history",
+      direction: "inbound",
+      senderName: "客户",
+      content: "想了解课程",
+      createdAt,
+      rawPayload: {}
+    }]
+  });
+  const imported = db.listImportedConversationMessages({ botId, conversationKey })[0];
+  const local = db.insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: "客户",
+    content: "想了解课程",
+    rawPayload: { messageId: "live-anchor" }
+  });
+
+  assert.deepEqual(
+    db.listConversationMessages({ botId, conversationKey }).map((message) => message.id),
+    [local.id]
+  );
+  assert.deepEqual(
+    db.listConversationMessagesAround({
+      botId,
+      conversationKey,
+      anchorMessageId: imported.id,
+      before: 10,
+      after: 10
+    }).filter((message) => message.content === "想了解课程")
+      .map((message) => message.id),
+    [imported.id]
+  );
+});
+
+test("limited reads fetch enough surplus rows to fill the visible result", () => {
+  const botId = "dedupe_limit_bot";
+  const conversationKey = `${botId}:private:客户`;
+  for (let index = 1; index <= 3; index += 1) {
+    const createdAt = `2026-07-25T15:2${index}:00.000Z`;
+    db.insertImportedConversationMessages({
+      botId,
+      conversationKey,
+      source: "worktool_api_history",
+      messages: [{
+        sourceKey: `api-${index}`,
+        direction: "outbound",
+        content: `消息${index}`,
+        createdAt,
+        rawPayload: {}
+      }]
+    });
+    db.insertImportedConversationMessages({
+      botId,
+      conversationKey,
+      source: "worktool_customer_history",
+      messages: [{
+        sourceKey: `customer-${index}`,
+        direction: "outbound",
+        content: `消息${index}`,
+        createdAt,
+        rawPayload: {}
+      }]
+    });
+  }
+
+  assert.deepEqual(
+    db.listConversationMessages({ botId, conversationKey, limit: 2 })
+      .map((message) => message.content),
+    ["消息2", "消息3"]
+  );
+});
+
+test("semantic import matching stays isolated by bot and conversation", () => {
+  const createdAt = "2026-07-25T15:22:00.000Z";
+  db.insertImportedConversationMessages({
+    botId: "dedupe_scope_bot_a",
+    conversationKey: "dedupe_scope_bot_a:private:客户甲",
+    source: "worktool_customer_history",
+    messages: [{
+      sourceKey: "scope-a",
+      direction: "inbound",
+      content: "同一句话",
+      createdAt,
+      rawPayload: {}
+    }]
+  });
+
+  assert.equal(db.insertImportedConversationMessages({
+    botId: "dedupe_scope_bot_b",
+    conversationKey: "dedupe_scope_bot_b:private:客户甲",
+    source: "worktool_customer_history",
+    messages: [{
+      sourceKey: "scope-b",
+      direction: "inbound",
+      content: "同一句话",
+      createdAt,
+      rawPayload: {}
+    }]
+  }), 1);
+  assert.equal(db.insertImportedConversationMessages({
+    botId: "dedupe_scope_bot_a",
+    conversationKey: "dedupe_scope_bot_a:private:客户乙",
+    source: "worktool_customer_history",
+    messages: [{
+      sourceKey: "scope-c",
+      direction: "inbound",
+      content: "同一句话",
+      createdAt,
+      rawPayload: {}
+    }]
+  }), 1);
+});

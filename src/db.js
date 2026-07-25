@@ -4,6 +4,10 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { mergeInlineActions } from "./action-chips.js";
 import { hashAccessKey } from "./auth.js";
+import {
+  areConversationMessagesDuplicates,
+  dedupeConversationMessages
+} from "./conversation-message-dedupe.js";
 import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags.js";
 
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
@@ -3796,6 +3800,15 @@ export function insertImportedConversationMessages({
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  const duplicateCandidates = db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND direction = ?
+      AND created_at BETWEEN ? AND ?
+    ORDER BY created_at ASC, id ASC
+  `);
   let inserted = 0;
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -3804,10 +3817,40 @@ export function insertImportedConversationMessages({
       const content = String(message?.content || "").trim();
       const createdAt = String(message?.createdAt || "").trim();
       if (!sourceKey || !content || !createdAt) continue;
+      const direction = message.direction === "outbound" ? "outbound" : "inbound";
+      const importedCandidate = {
+        botId,
+        conversationKey,
+        direction,
+        content,
+        source,
+        sourceKey,
+        createdAt
+      };
+      const createdTime = Date.parse(createdAt);
+      if (Number.isFinite(createdTime)) {
+        const candidates = duplicateCandidates.all(
+          botId,
+          conversationKey,
+          direction,
+          new Date(createdTime - 10_000).toISOString(),
+          new Date(createdTime + 10_000).toISOString()
+        ).map(rowToConversationMessage);
+        const matching = candidates.filter(
+          (candidate) => areConversationMessagesDuplicates(candidate, importedCandidate)
+        );
+        if (
+          matching.length
+          && !dedupeConversationMessages([...matching, importedCandidate])
+            .includes(importedCandidate)
+        ) {
+          continue;
+        }
+      }
       inserted += Number(insert.run(
         botId,
         conversationKey,
-        message.direction === "outbound" ? "outbound" : "inbound",
+        direction,
         message.senderName || "",
         content,
         json(message.rawPayload || {}),
@@ -3928,8 +3971,12 @@ export function listLegacyFlowSessionTargets({ botId }) {
 
 export function listConversationMessages({ botId = "", conversationKey, limit = 200 }) {
   const where = botId ? "conversation_key = ? AND bot_id = ?" : "conversation_key = ?";
-  const params = botId ? [conversationKey, botId, Number(limit)] : [conversationKey, Number(limit)];
-  return db
+  const visibleLimit = Math.max(1, Number.parseInt(limit, 10) || 200);
+  const fetchLimit = Math.min(1200, visibleLimit * 4);
+  const params = botId
+    ? [conversationKey, botId, fetchLimit]
+    : [conversationKey, fetchLimit];
+  const rows = db
     .prepare(`
       SELECT *
       FROM (
@@ -3943,6 +3990,7 @@ export function listConversationMessages({ botId = "", conversationKey, limit = 
     `)
     .all(...params)
     .map(rowToConversationMessage);
+  return dedupeConversationMessages(rows).slice(-visibleLimit);
 }
 
 function normalizedEvidenceText(value) {
@@ -4012,6 +4060,8 @@ export function listConversationMessagesAround({
   if (!anchor) return [];
   const beforeLimit = Math.max(0, Math.min(200, Number.parseInt(before, 10) || 0));
   const afterLimit = Math.max(0, Math.min(200, Number.parseInt(after, 10) || 0));
+  const beforeFetchLimit = Math.min(800, beforeLimit * 4);
+  const afterFetchLimit = Math.min(800, afterLimit * 4);
   const earlier = beforeLimit
     ? db.prepare(`
         SELECT *
@@ -4034,7 +4084,7 @@ export function listConversationMessagesAround({
         anchor.created_at,
         anchor.created_at,
         anchor.id,
-        beforeLimit
+        beforeFetchLimit
       )
     : [];
   const later = afterLimit
@@ -4055,10 +4105,19 @@ export function listConversationMessagesAround({
         anchor.created_at,
         anchor.created_at,
         anchor.id,
-        afterLimit
+        afterFetchLimit
       )
     : [];
-  return [...earlier, anchor, ...later].map(rowToConversationMessage);
+  const visible = dedupeConversationMessages(
+    [...earlier, anchor, ...later].map(rowToConversationMessage),
+    { preferredMessageId: anchor.id }
+  );
+  const anchorIndex = visible.findIndex((message) => message.id === anchor.id);
+  if (anchorIndex < 0) return [];
+  return visible.slice(
+    Math.max(0, anchorIndex - beforeLimit),
+    anchorIndex + afterLimit + 1
+  );
 }
 
 export function listFlowStateEvents({ botId = "", conversationKey, limit = 100 }) {
