@@ -74,6 +74,72 @@ test("buildDclawRequest carries the rule even when no flow context is active", (
   assert.match(request.message, /不要出现内部处理说明/);
 });
 
+test("buildDclawRequest includes legacy customer history and tag guidance", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    flow: {
+      machine: {
+        nodes: [{ id: "final", name: "持续服务" }]
+      },
+      currentNode: {
+        id: "final",
+        name: "持续服务",
+        goal: "基于历史继续交流"
+      },
+      session: {
+        currentNodeId: "final",
+        customerOrigin: "legacy"
+      }
+    },
+    tagContext: {
+      groups: [{
+        id: "status",
+        name: "客户状态",
+        tags: [{ id: "paid", name: "已付费", condition: "客户明确表示已经付款" }]
+      }],
+      currentTags: []
+    },
+    legacyHistoryContext: {
+      messages: [{
+        direction: "inbound",
+        senderName: "阿三",
+        content: "我刚刚已经付费了",
+        createdAt: "2026-07-24T03:00:00.000Z",
+        source: "worktool_customer_history"
+      }],
+      importedCustomerCount: 62,
+      includedCount: 1,
+      truncated: true
+    }
+  });
+
+  assert.equal(request.metadata.legacyHistory.importedCustomerCount, 62);
+  assert.equal(request.metadata.legacyHistory.messages[0].content, "我刚刚已经付费了");
+  assert.match(request.message, /老客户历史上下文/);
+  assert.match(request.message, /我刚刚已经付费了/);
+  assert.match(request.message, /结合历史记录和当前表达判断标签/);
+});
+
+test("buildDclawRequest omits empty legacy history", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    legacyHistoryContext: {
+      messages: [],
+      importedCustomerCount: 0,
+      includedCount: 0,
+      truncated: false
+    }
+  });
+
+  assert.equal(request.metadata.legacyHistory, null);
+  assert.doesNotMatch(request.message, /老客户历史上下文/);
+  assert.doesNotMatch(request.message, /结合历史记录和当前表达判断标签/);
+});
+
 test("buildDclawTagActivationRequest carries the general rule", () => {
   const request = buildDclawTagActivationRequest({
     binding,

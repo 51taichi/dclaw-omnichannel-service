@@ -6,6 +6,7 @@ export function buildDclawRequest({
   message,
   flow = null,
   tagContext = null,
+  legacyHistoryContext = null,
   conversationReset = false,
   generalRule = ""
 }) {
@@ -35,6 +36,17 @@ export function buildDclawRequest({
   };
   const agentFlow = compactFlowForAgent(flow);
   const agentTagRules = tagContext && typeof tagContext === "object" ? tagContext : null;
+  const legacyHistory = Array.isArray(legacyHistoryContext?.messages)
+    && legacyHistoryContext.messages.length > 0
+    ? {
+        customerOrigin: "legacy",
+        messages: legacyHistoryContext.messages,
+        importedCustomerCount: Number(legacyHistoryContext.importedCustomerCount) || 0,
+        includedCount: Number(legacyHistoryContext.includedCount)
+          || legacyHistoryContext.messages.length,
+        truncated: Boolean(legacyHistoryContext.truncated)
+      }
+    : null;
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
   const responseSchema = responseSchemaForRequest({
     hasFlow: Boolean(agentFlow),
@@ -70,6 +82,13 @@ export function buildDclawRequest({
       "tagDecision 格式：{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\"}],\"remove\":[]}。没有变化时使用 {\"add\":[],\"remove\":[]}。"
     );
   }
+  if (legacyHistory) {
+    instructions.push(
+      "本次请求包含老客户历史上下文 legacyHistory。这是老客户首次接入本系统，不是新添加好友。",
+      "先结合历史上下文回应客户当前问题，再围绕当前最后任务节点继续交流；不要重新执行新客户开场流程。",
+      "标签判断必须结合历史记录和当前表达判断标签，不能把系统发送内容当成客户意图证据。"
+    );
+  }
   if (flow) {
     instructions.push(
       "当前私聊会话启用了客服流程状态机。你必须围绕 flow.currentNode 的 goal、completionCriteria、collectFields 和 conversationTips 推进对话。",
@@ -97,6 +116,7 @@ export function buildDclawRequest({
         worktoolMessage,
         flow: agentFlow,
         tagRules: agentTagRules,
+        legacyHistory,
         generalRule: normalizedGeneralRule,
         conversationReset
       }, null, 2)
@@ -114,6 +134,7 @@ export function buildDclawRequest({
       worktool: worktoolMessage,
       flow: agentFlow,
       tagRules: agentTagRules,
+      legacyHistory,
       generalRule: normalizedGeneralRule,
       conversationReset
     }
