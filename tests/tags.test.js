@@ -72,6 +72,31 @@ test("normalizeTagSchema keeps enabled groups and normalizes activation messages
   assert.equal(schema.groups[0].tags[0].activation.polishByAgent, false);
 });
 
+test("normalizeTagSchema defaults and preserves voice alert settings", () => {
+  const schema = normalizeTagSchema({
+    groups: [{
+      id: "intent",
+      name: "意向",
+      tags: [
+        {
+          id: "a",
+          name: "A类",
+          condition: "明确成交",
+          voiceAlertEnabled: true
+        },
+        {
+          id: "b",
+          name: "B类",
+          condition: "询问细节"
+        }
+      ]
+    }]
+  });
+
+  assert.equal(schema.groups[0].tags[0].voiceAlertEnabled, true);
+  assert.equal(schema.groups[0].tags[1].voiceAlertEnabled, false);
+});
+
 test("compactTagRulesForAgent removes activation payload and includes current tags", () => {
   const schema = normalizeTagSchema({
     groups: [
@@ -81,7 +106,12 @@ test("compactTagRulesForAgent removes activation payload and includes current ta
         enabled: true,
         exclusive: true,
         oneWay: true,
-        tags: [{ id: "b", name: "B类", condition: "询问细节" }]
+        tags: [{
+          id: "b",
+          name: "B类",
+          condition: "询问细节",
+          voiceAlertEnabled: true
+        }]
       }
     ]
   });
@@ -93,7 +123,28 @@ test("compactTagRulesForAgent removes activation payload and includes current ta
 
   assert.equal(rules.groups[0].tags[0].condition, "询问细节");
   assert.equal(rules.groups[0].tags[0].activation, undefined);
+  assert.equal(rules.groups[0].tags[0].voiceAlertEnabled, undefined);
   assert.equal(rules.currentTags[0].tagId, "b");
+});
+
+test("normalizeTagDecision preserves bounded evidence fields", () => {
+  const decision = normalizeTagDecision({
+    add: [{
+      groupId: "intent",
+      tagId: "b",
+      reason: "询问老师",
+      evidenceMessageId: "msg-123",
+      evidenceText: "你们老师水平怎么样"
+    }]
+  });
+
+  assert.deepEqual(decision.add[0], {
+    groupId: "intent",
+    tagId: "b",
+    reason: "询问老师",
+    evidenceMessageId: "msg-123",
+    evidenceText: "你们老师水平怎么样"
+  });
 });
 
 test("adjudicateTagDecision allows one-way exclusive upgrade and cancels old tag", () => {

@@ -94,6 +94,7 @@ export function normalizeTagSchema(raw = {}) {
                 condition: String(tag.condition || "").trim(),
                 order: tagIndex,
                 enabled: tag.enabled !== false,
+                voiceAlertEnabled: Boolean(tag.voiceAlertEnabled),
                 activation: normalizeTagActivation(tag.activation || {})
               };
             }).filter((tag) => tag.id && tag.enabled)
@@ -143,11 +144,16 @@ function normalizeAction(item = {}) {
   const groupId = asId(item.groupId || item.group_id);
   const tagId = asId(item.tagId || item.tag_id);
   if (!groupId || !tagId) return null;
-  return {
+  const action = {
     groupId,
     tagId,
     reason: String(item.reason || "").trim()
   };
+  const evidenceMessageId = String(item.evidenceMessageId || item.evidence_message_id || "").trim().slice(0, 240);
+  const evidenceText = String(item.evidenceText || item.evidence_text || "").trim().slice(0, 1000);
+  if (evidenceMessageId) action.evidenceMessageId = evidenceMessageId;
+  if (evidenceText) action.evidenceText = evidenceText;
+  return action;
 }
 
 export function normalizeTagDecision(raw = {}) {

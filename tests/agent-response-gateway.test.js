@@ -94,6 +94,36 @@ test("validation accepts only a structured reply object", () => {
   assert.equal(result.agentReply.flowDecision.nextNodeId, "node_1");
 });
 
+test("validation preserves tag decision evidence fields", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "老师都是经过严格筛选的。",
+    attachments: [],
+    sources: [],
+    tagDecision: {
+      add: [{
+        groupId: "intent",
+        tagId: "b",
+        reason: "询问老师水平",
+        evidenceMessageId: "msg-123",
+        evidenceText: "你们老师水平怎么样"
+      }],
+      remove: []
+    }
+  }), {
+    allowTagDecision: true,
+    tagContext: {
+      groups: [{
+        id: "intent",
+        tags: [{ id: "b" }]
+      }]
+    }
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.agentReply.tagDecision.add[0].evidenceMessageId, "msg-123");
+  assert.equal(result.agentReply.tagDecision.add[0].evidenceText, "你们老师水平怎么样");
+});
+
 test("validation rejects prose wrapped around JSON", () => {
   const result = validateAgentResponseText('我先处理一下。{"reply":"你好","attachments":[],"sources":[]}');
 
