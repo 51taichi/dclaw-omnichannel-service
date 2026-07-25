@@ -2,15 +2,42 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   dateTagIdFor,
+  normalizeDateTagCutoffTime,
   normalizeTagSchema,
   compactTagRulesForAgent,
   adjudicateTagDecision,
   normalizeTagDecision
 } from "../src/tags.js";
 
+test("normalizeDateTagCutoffTime returns a stable HH:mm value", () => {
+  assert.equal(normalizeDateTagCutoffTime("20:00"), "20:00");
+  assert.equal(normalizeDateTagCutoffTime("7:05"), "07:05");
+  assert.equal(normalizeDateTagCutoffTime("24:00"), "00:00");
+  assert.equal(normalizeDateTagCutoffTime(""), "00:00");
+});
+
 test("dateTagIdFor formats server date tags in Beijing time as yyyymmdd", () => {
   assert.equal(dateTagIdFor("2026-07-17T03:04:05.000Z"), "20260717");
   assert.equal(dateTagIdFor("2026-07-17T16:30:00.000Z"), "20260718");
+});
+
+test("dateTagIdFor advances the business date at the configured Beijing cutoff", () => {
+  assert.equal(dateTagIdFor("2026-07-25T11:59:00.000Z", "20:00"), "20260725");
+  assert.equal(dateTagIdFor("2026-07-25T12:00:00.000Z", "20:00"), "20260726");
+  assert.equal(dateTagIdFor("2026-12-31T12:00:00.000Z", "20:00"), "20270101");
+  assert.equal(dateTagIdFor("2026-07-25T16:30:00.000Z", "00:00"), "20260726");
+});
+
+test("normalizeTagSchema supplies cutoff defaults for legacy date tag settings", () => {
+  const schema = normalizeTagSchema({
+    dateTag: { enabled: true }
+  });
+
+  assert.deepEqual(schema.dateTag, {
+    enabled: true,
+    cutoffTime: "00:00",
+    effectiveAt: ""
+  });
 });
 
 test("normalizeTagSchema keeps enabled groups and normalizes activation messages", () => {

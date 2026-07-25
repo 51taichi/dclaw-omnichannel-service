@@ -6,13 +6,50 @@ function beijingDateParts(value = new Date()) {
     timeZone: BEIJING_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
-    day: "2-digit"
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
   }).formatToParts(date);
   return Object.fromEntries(parts.map((part) => [part.type, part.value]));
 }
 
-export function dateTagIdFor(value = new Date()) {
+export function normalizeDateTagCutoffTime(value = "00:00") {
+  const match = String(value || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return "00:00";
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return "00:00";
+  return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+}
+
+function normalizeEffectiveAt(value) {
+  const candidate = String(value || "").trim();
+  if (!candidate) return "";
+  const date = new Date(candidate);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString();
+}
+
+export function dateTagIdFor(value = new Date(), cutoffTime = "00:00") {
   const parts = beijingDateParts(value);
+  const normalizedCutoff = normalizeDateTagCutoffTime(cutoffTime);
+  if (normalizedCutoff !== "00:00") {
+    const [cutoffHours, cutoffMinutes] = normalizedCutoff.split(":").map(Number);
+    const localMinutes = Number(parts.hour) * 60 + Number(parts.minute);
+    const cutoffTotalMinutes = cutoffHours * 60 + cutoffMinutes;
+    if (localMinutes >= cutoffTotalMinutes) {
+      const nextDate = new Date(Date.UTC(
+        Number(parts.year),
+        Number(parts.month) - 1,
+        Number(parts.day) + 1
+      ));
+      return [
+        nextDate.getUTCFullYear(),
+        String(nextDate.getUTCMonth() + 1).padStart(2, "0"),
+        String(nextDate.getUTCDate()).padStart(2, "0")
+      ].join("");
+    }
+  }
   return `${parts.year}${parts.month}${parts.day}`;
 }
 
@@ -73,7 +110,11 @@ export function normalizeTagSchema(raw = {}) {
     : [];
   return {
     version: String(source.version || "1.0.0"),
-    dateTag: { enabled: Boolean(source.dateTag?.enabled) },
+    dateTag: {
+      enabled: Boolean(source.dateTag?.enabled),
+      cutoffTime: normalizeDateTagCutoffTime(source.dateTag?.cutoffTime),
+      effectiveAt: normalizeEffectiveAt(source.dateTag?.effectiveAt)
+    },
     groups
   };
 }
