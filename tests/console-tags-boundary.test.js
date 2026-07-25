@@ -105,7 +105,10 @@ test("console renders tag chips and tag filters", () => {
   assert.match(html, /id="icon-tag"/);
   assert.match(js, /icon\("tag"\)/);
   assert.match(js, /flowSessionTagFilter/);
-  assert.match(html, /id="flowSessionTagFilterButton"[\s\S]*全部/);
+  assert.match(
+    html,
+    /<label class="flow-session-tag-filter tag-multi-select">[\s\S]*href="#icon-tag"[\s\S]*按标签选择[\s\S]*id="flowSessionTagFilterButton"[\s\S]*选择标签/
+  );
   assert.match(html, /id="flowSessionTagFilterMenu" class="tag-multi-select-menu"[\s\S]*role="listbox"/);
   assert.match(html, /id="flowSessionTagFilter" multiple hidden/);
   assert.match(js, /function selectedFlowSessionTagFilterValues\(\)/);
@@ -136,9 +139,13 @@ test("console renders tag chips and tag filters", () => {
   assert.doesNotMatch(js, /openFlowSessionDatePicker/);
   assert.match(js, /for \(const group of enabledManualTagGroups\(\)\)/);
   assert.match(js, /const key = `\$\{group\.id\}:\$\{tag\.id\}`/);
-  assert.match(js, /const label = `\$\{group\.name \|\| "标签"\}：\$\{tag\.name\}`/);
-  assert.match(js, /if \(!options\.has\(value\)\) options\.set\(value, value\)/);
-  assert.match(css, /\.flow-session-filters\s*\{[\s\S]*minmax\(208px,\s*220px\)/);
+  assert.match(js, /label: tag\.name/);
+  assert.match(js, /groupLabel: group\.name \|\| "未分组标签"/);
+  assert.match(js, /emptyLabel: "选择标签"/);
+  assert.match(
+    css,
+    /\.flow-session-filters\s*\{[^}]*grid-template-columns:\s*minmax\(260px,\s*1fr\) minmax\(208px,\s*220px\) minmax\(132px,\s*170px\) minmax\(208px,\s*220px\)/
+  );
   assert.match(css, /\.flow-session-filters \.flow-session-date-filter\s*\{[\s\S]*minmax\(122px,\s*1fr\)/);
   assert.match(css, /\.tag-chip/);
   assert.match(css, /\.tag-chip \.icon\s*\{[\s\S]*width:\s*12px[\s\S]*height:\s*12px/);

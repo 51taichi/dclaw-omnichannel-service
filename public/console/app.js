@@ -3841,25 +3841,34 @@ function renderFlowSessionNodeFilter() {
 function renderFlowSessionTagFilter() {
   if (!els.flowSessionTagFilter) return;
   const current = new Set(selectedFlowSessionTagFilterValues());
-  const options = new Map([["all", "全部"]]);
+  const options = [];
   for (const group of enabledManualTagGroups()) {
     for (const tag of group.tags || []) {
       const key = `${group.id}:${tag.id}`;
-      const label = `${group.name || "标签"}：${tag.name}`;
-      options.set(key, label);
+      options.push({
+        value: key,
+        label: tag.name,
+        groupLabel: group.name || "未分组标签"
+      });
     }
   }
   for (const value of current) {
-    if (!options.has(value)) options.set(value, value);
+    if (!options.some((option) => option.value === value)) {
+      options.push({
+        value,
+        label: value,
+        groupLabel: "已选标签"
+      });
+    }
   }
-  const selected = [...current].filter((value) => options.has(value));
+  const selected = [...current].filter((value) => options.some((option) => option.value === value));
   renderTagMultiSelectControl({
     select: els.flowSessionTagFilter,
     button: els.flowSessionTagFilterButton,
     menu: els.flowSessionTagFilterMenu,
-    options: [...options].map(([value, label]) => ({ value, label })),
+    options,
     selectedValues: selected,
-    emptyLabel: "全部"
+    emptyLabel: "选择标签"
   });
 }
 

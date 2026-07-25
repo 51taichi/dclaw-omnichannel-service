@@ -533,17 +533,13 @@
                 <option value="all">全部</option>
               </select>
             </label>
-            <label>
-              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>标签</span>
-              <div class="tag-multi-select">
-                <button id="flowSessionTagFilterButton" class="tag-multi-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
-                  全部
-                </button>
-                <div id="flowSessionTagFilterMenu" class="tag-multi-select-menu" role="listbox" aria-label="标签筛选" hidden></div>
-              </div>
-              <select id="flowSessionTagFilter" multiple hidden>
-                <option value="all">全部</option>
-              </select>
+            <label class="flow-session-tag-filter tag-multi-select">
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>按标签选择</span>
+              <button id="flowSessionTagFilterButton" class="tag-multi-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+                选择标签
+              </button>
+              <div id="flowSessionTagFilterMenu" class="tag-multi-select-menu" role="listbox" aria-label="会话标签选择" hidden></div>
+              <select id="flowSessionTagFilter" multiple hidden></select>
             </label>
           </div>
           <div class="section-actions">

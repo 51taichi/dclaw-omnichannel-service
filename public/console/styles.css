@@ -3111,7 +3111,7 @@ textarea[data-action-target-activation].is-action-target-focused {
 
 .flow-session-filters {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) minmax(208px, 220px) minmax(132px, 170px) minmax(132px, 160px);
+  grid-template-columns: minmax(260px, 1fr) minmax(208px, 220px) minmax(132px, 170px) minmax(208px, 220px);
   gap: 10px;
   align-items: center;
   min-width: 0;
