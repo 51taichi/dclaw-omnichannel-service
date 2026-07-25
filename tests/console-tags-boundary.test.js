@@ -54,6 +54,23 @@ test("date tags render as the fixed first special group with a cutoff time", () 
   assert.match(css, /\.date-tag-special-group/);
 });
 
+test("date tag cutoff aligns beside the group name and explains the business-day boundary", () => {
+  const specialGroup = functionBody("renderDateTagSpecialGroup");
+
+  assert.match(specialGroup, /class="activation-help-icon date-tag-help"/);
+  assert.match(specialGroup, /aria-label="切日时间说明"/);
+  assert.match(specialGroup, /icon\("info"\)/);
+  assert.match(specialGroup, /设置为 20:00/);
+  assert.match(specialGroup, /19:59/);
+  assert.match(specialGroup, /20:00 起/);
+  assert.match(specialGroup, /设置为 00:00 时按自然日/);
+  assert.match(
+    css,
+    /\.date-tag-special-group \.tag-group-head\s*\{[^}]*grid-template-columns:\s*max-content minmax\(240px,\s*1fr\) 300px 34px;/
+  );
+  assert.match(css, /\.date-tag-help\s*\{[^}]*justify-self:\s*end/);
+});
+
 test("date tag drafts normalize and export only editable rule fields", () => {
   assert.match(js, /dateTag:\s*\{\s*enabled: false,\s*cutoffTime: "00:00",\s*effectiveAt: ""\s*\}/);
   assert.match(js, /function normalizeDateTagCutoffTimeDraft/);

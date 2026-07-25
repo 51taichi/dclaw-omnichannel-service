@@ -2718,7 +2718,7 @@ textarea[data-action-target-activation].is-action-target-focused {
 
 .date-tag-special-group .tag-group-head {
   display: grid;
-  grid-template-columns: max-content minmax(240px, 1fr) minmax(220px, 280px);
+  grid-template-columns: max-content minmax(240px, 1fr) 300px 34px;
   flex-wrap: nowrap;
 }
 
@@ -2734,6 +2734,10 @@ textarea[data-action-target-activation].is-action-target-focused {
   padding: 0 14px;
   color: #302321;
   font-size: 13px;
+}
+
+.date-tag-help {
+  justify-self: end;
 }
 
 .tag-row-list {

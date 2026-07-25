@@ -2822,6 +2822,11 @@ function editableDateTagRule() {
 
 function renderDateTagSpecialGroup() {
   const dateTag = state.tagSchema.dateTag || defaultTagSchema().dateTag;
+  const cutoffHelp = [
+    "切日时间决定“添加日期”标签何时进入下一天。",
+    "例如设置为 20:00：7月25日 19:59 添加的客户标记为 20260725；20:00 起标记为 20260726。",
+    "设置为 00:00 时按自然日归类。"
+  ].join("\n");
   return `
     <article class="tag-group-card date-tag-special-group">
       <div class="tag-group-head">
@@ -2838,6 +2843,9 @@ function renderDateTagSpecialGroup() {
           <span class="field-label">${icon("clock")}切日时间</span>
           <input id="dateTagCutoffTime" type="time" step="60" value="${escapeHtml(dateTag.cutoffTime || "00:00")}" />
         </label>
+        <button class="activation-help-icon date-tag-help" type="button" aria-label="切日时间说明" title="${escapeHtml(cutoffHelp)}">
+          ${icon("info")}
+        </button>
       </div>
     </article>
   `;
