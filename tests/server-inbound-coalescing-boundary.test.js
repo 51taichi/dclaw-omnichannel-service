@@ -27,6 +27,7 @@ test("callbacks persist and cancel old activation before entering the buffer", (
   assert.ok(source.indexOf("ingestIncomingMessage", handlerStart) < push);
   assert.ok(source.indexOf("persistInboundConversation", handlerStart) < push);
   assert.match(source, /function persistInboundConversation\([\s\S]*insertConversationMessage\(/);
+  assert.match(source, /conversationMessageId: persisted\.messageRecord\?\.id/);
   assert.ok(source.indexOf("invalidateFlowActivation", handlerStart) < push);
 });
 

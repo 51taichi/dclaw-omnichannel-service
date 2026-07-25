@@ -44,6 +44,35 @@ test("buildDclawRequest includes tag rules when explicitly requested", () => {
   assert.equal(request.metadata.tagRules.groups[0].id, "intent");
 });
 
+test("buildDclawRequest includes bounded evidence candidates for tag decisions", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    tagContext: {
+      groups: [{
+        id: "intent",
+        name: "意向",
+        tags: [{ id: "b", name: "B类", condition: "询问老师" }]
+      }],
+      currentTags: []
+    },
+    tagEvidenceCandidates: [{
+      id: "321",
+      conversationMessageId: 321,
+      text: "你们老师的水平怎么样"
+    }]
+  });
+
+  assert.deepEqual(request.metadata.tagEvidenceCandidates, [{
+    id: "321",
+    conversationMessageId: 321,
+    text: "你们老师的水平怎么样"
+  }]);
+  assert.match(request.message, /evidenceMessageId/);
+  assert.match(request.message, /你们老师的水平怎么样/);
+});
+
 test("buildDclawRequest omits tag rules from normal requests", () => {
   const request = buildDclawRequest({ binding, conversation, message });
 

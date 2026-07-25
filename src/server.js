@@ -85,6 +85,7 @@ import {
   insertMockProactiveTargets,
   resetBotFlowStateForAgentRebind,
   resetConversationForFriendGreeting,
+  applyAgentTagOutcome,
   applyConversationTagChanges,
   getAgentTagSchema,
   listConversationMessages,
@@ -119,6 +120,7 @@ import {
   resetInterruptedProactiveTargets,
   reserveFlowActionExecution,
   reserveTagActivationTaskForSend,
+  resolveConversationMessageEvidence,
   scheduleFlowActivationTask,
   scheduleTagActivationTask,
   setSetting,
@@ -668,17 +670,17 @@ function persistInboundConversation({
       touchFlowSession(conversationKey);
     }
   }
-  if (shouldRecordConversationHistory(message)) {
-    insertConversationMessage({
+  const messageRecord = shouldRecordConversationHistory(message)
+    ? insertConversationMessage({
       botId,
       conversationKey,
       direction: "inbound",
       senderName: message.receivedName || "",
       content: message.spoken || message.rawSpoken || "",
       rawPayload: message
-    });
-  }
-  return conversation;
+    })
+    : null;
+  return { conversation, messageRecord };
 }
 
 function buildFlowContext({ botId, conversationKey, message }) {
@@ -810,7 +812,38 @@ function buildTagContext({ binding, conversationKey }) {
   return compactTagRulesForAgent({ schema, currentTags });
 }
 
-function applyAgentTagDecision({ botId, binding, conversationKey, agentReply }) {
+function buildTagEvidenceCandidates({ items = [], legacyHistoryAnalysis = null }) {
+  const candidates = [];
+  for (const historyMessage of legacyHistoryAnalysis?.selectedMessages || []) {
+    const conversationMessageId = Number(historyMessage?.id);
+    const text = String(historyMessage?.content || "").trim();
+    if (!Number.isInteger(conversationMessageId) || conversationMessageId <= 0 || !text) continue;
+    candidates.push({
+      id: String(conversationMessageId),
+      conversationMessageId,
+      text
+    });
+  }
+  for (const item of items) {
+    const conversationMessageId = Number(item?.conversationMessageId);
+    const text = String(item?.message?.spoken || item?.message?.rawSpoken || "").trim();
+    if (!Number.isInteger(conversationMessageId) || conversationMessageId <= 0 || !text) continue;
+    candidates.push({
+      id: String(conversationMessageId),
+      conversationMessageId,
+      text
+    });
+  }
+  return [...new Map(candidates.map((candidate) => [candidate.id, candidate])).values()];
+}
+
+function applyAgentTagDecision({
+  botId,
+  binding,
+  conversationKey,
+  agentReply,
+  evidenceCandidates = []
+}) {
   if (!binding?.agentId) return null;
   const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
   if (!schema.groups.length) return null;
@@ -829,39 +862,67 @@ function applyAgentTagDecision({ botId, binding, conversationKey, agentReply }) 
       tags: currentTags,
       accepted: [],
       rejected: [],
-      canceledTagActivationTaskCount: 0,
-      scheduledTagActivationTasks: []
+      scheduledTagActivationTasks: [],
+      alerts: []
     };
   }
 
-  const canceledTagActivationTaskCount = cancelTagTasksForAcceptedChanges({
-    botId,
-    binding,
-    conversationKey,
-    accepted: result.accepted
-  });
-  const tags = applyConversationTagChanges({
+  const anchorAt = new Date().toISOString();
+  const candidateMessageIds = evidenceCandidates
+    .map((candidate) => candidate.conversationMessageId)
+    .filter(Boolean);
+  const activationCandidates = [];
+  const alertCandidates = [];
+  const conversation = getConversation(conversationKey);
+  for (const change of result.accepted) {
+    if (!["add", "replace"].includes(change.action)) continue;
+    const group = schema.groups.find((item) => item.id === change.groupId);
+    const tag = group?.tags.find((item) => item.id === change.tagId);
+    if (!group || !tag) continue;
+
+    const firstActivationMessage = tag.activation?.messages?.[0];
+    if (tag.activation?.enabled && firstActivationMessage) {
+      activationCandidates.push({
+        groupId: group.id,
+        tagId: tag.id,
+        activation: tag.activation,
+        dueAt: activationDueAtForAttempt(
+          anchorAt,
+          firstActivationMessage.intervalMinutes,
+          1
+        ),
+        attemptNumber: 1,
+        messageIndex: 0
+      });
+    }
+    if (!tag.voiceAlertEnabled) continue;
+    const evidence = resolveConversationMessageEvidence({
+      botId,
+      conversationKey,
+      evidenceMessageId: change.evidenceMessageId,
+      evidenceText: change.evidenceText,
+      candidateMessageIds
+    });
+    alertCandidates.push({
+      groupId: group.id,
+      tagId: tag.id,
+      customerName: conversation?.receivedName || privateTargetNameFromConversationKey(conversationKey),
+      evidenceMessageId: evidence?.id || null,
+      evidenceText: evidence?.content || change.evidenceText || ""
+    });
+  }
+
+  return applyAgentTagOutcome({
     botId,
     agentId: binding.agentId,
     conversationKey,
     accepted: result.accepted,
     rejected: result.rejected,
     nextTags: result.nextTags,
-    source: "agent_decision"
+    source: "agent_decision",
+    activationCandidates,
+    alertCandidates
   });
-  const scheduledTagActivationTasks = scheduleTagActivationsForAcceptedChanges({
-    botId,
-    binding,
-    conversationKey,
-    accepted: result.accepted
-  });
-  return {
-    tags,
-    accepted: result.accepted,
-    rejected: result.rejected,
-    canceledTagActivationTaskCount,
-    scheduledTagActivationTasks
-  };
 }
 
 function scheduleNextTagActivationTask({ task, sentAt }) {
@@ -1416,7 +1477,8 @@ function invalidValidationAgentReply(rawReply, validationErrors) {
 function agentResponseValidationOptions(request) {
   const tagContext = request?.metadata?.tagRules || null;
   return {
-    requireFlowDecision: Boolean(request?.metadata?.flow),
+    requireFlowDecision: Boolean(request?.metadata?.flow)
+      && request?.metadata?.eventType !== "handoff_transcript_message",
     allowTagDecision: Boolean(tagContext),
     flow: request?.metadata?.flow || null,
     tagContext
@@ -3388,15 +3450,15 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     invalidateFlowActivation({ conversationKey, reason: "customer_replied" });
   }
 
-  if (isPrivateMessage(message) || isGroupMessage(message)) {
-    persistInboundConversation({
-      botId,
-      binding,
-      conversationKey,
-      message,
-      skipFirstSeenDateTag: legacyCandidate
-    });
-  }
+  const persisted = (isPrivateMessage(message) || isGroupMessage(message))
+    ? persistInboundConversation({
+        botId,
+        binding,
+        conversationKey,
+        message,
+        skipFirstSeenDateTag: legacyCandidate
+      })
+    : { conversation: null, messageRecord: null };
 
   if (!shouldProcessInboundForAgent(message)) {
     logInfo("incoming.skipped", {
@@ -3446,15 +3508,24 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     });
   }
 
-  const conversation = getConversation(conversationKey);
+  const conversation = persisted.conversation || getConversation(conversationKey);
   const flow = buildFlowContext({ botId, conversationKey, message });
   const conversationReset = getConversationResetPending(conversationKey);
   if (isPrivateMessage(message) && flow?.session?.handoffStatus === "human") {
+    const tagContext = buildTagContext({ binding, conversationKey });
+    const tagEvidenceCandidates = buildTagEvidenceCandidates({
+      items: [{
+        message,
+        conversationMessageId: persisted.messageRecord?.id
+      }]
+    });
     const request = buildDclawHandoffTranscriptRequest({
       binding,
       conversation,
       message,
       flow,
+      tagContext,
+      tagEvidenceCandidates,
       conversationReset,
       generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
     });
@@ -3473,28 +3544,84 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     });
 
     try {
-      const invocation = await enqueueAgentInvocation(() =>
-        invokeDclawAgentWithRetry({
+      const onRetry = (retry) => {
+        logWarn("agent.handoff_sync.retry", {
+          ...logContext,
+          agentId: binding.agentId,
+          invocationId,
+          attempt: retry.attempt,
+          maxAttempts: retry.maxAttempts,
+          timeoutMs: retry.timeoutMs,
+          error: retry.error.message
+        });
+      };
+      let invocation;
+      let agentReply = null;
+      if (tagContext) {
+        const strictInvocation = await invokeStrictAgentReply({
           binding,
           request,
-          onRetry: (retry) => {
-            logWarn("agent.handoff_sync.retry", {
-              ...logContext,
-              agentId: binding.agentId,
+          onRetry,
+          onValidationFailure: ({
+            attemptNumber,
+            stage,
+            retryRequested,
+            errors,
+            rawReply
+          }) => {
+            recordAgentResponseValidationFailures({
               invocationId,
-              attempt: retry.attempt,
-              maxAttempts: retry.maxAttempts,
-              timeoutMs: retry.timeoutMs,
-              error: retry.error.message
+              botId,
+              agentId: binding.agentId,
+              conversationKey,
+              incomingMessageId: message.messageId,
+              attemptNumber,
+              stage,
+              retryRequested,
+              errors,
+              rawReply
+            });
+          },
+          onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
+            recordAgentValidationRetryOutcome({
+              invocationId,
+              botId,
+              agentId: binding.agentId,
+              conversationKey,
+              incomingMessageId: message.messageId,
+              eventPrefix: "agent.handoff_sync.reply",
+              outcome,
+              attemptNumber,
+              error
             });
           }
-        })
-      );
+        });
+        if (!strictInvocation.agentReply.valid) {
+          const error = new Error("invalid_agent_reply_format");
+          error.response = strictInvocation.invocation.response;
+          throw error;
+        }
+        invocation = strictInvocation.invocation;
+        agentReply = strictInvocation.agentReply;
+      } else {
+        invocation = await enqueueAgentInvocation(() =>
+          invokeDclawAgentWithRetry({ binding, request, onRetry })
+        );
+      }
       finishAgentInvocation({
         id: invocationId,
         response: invocation.response,
         status: "success"
       });
+      const tagResult = tagContext
+        ? applyAgentTagDecision({
+            botId,
+            binding,
+            conversationKey,
+            agentReply,
+            evidenceCandidates: tagEvidenceCandidates
+          })
+        : null;
       if (conversationReset) {
         markConversationResetHandled(conversationKey);
       }
@@ -3506,7 +3633,9 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         attempts: invocation.attempts || 1,
         timeoutMs: getDclawAgentTimeoutMs(),
         maxAttempts: getDclawAgentMaxAttempts(),
-        sessionId: invocation.sessionId || ""
+        sessionId: invocation.sessionId || "",
+        acceptedTagCount: Number(tagResult?.accepted?.length || 0),
+        rejectedTagCount: Number(tagResult?.rejected?.length || 0)
       });
     } catch (error) {
       finishAgentInvocation({
@@ -3540,6 +3669,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     conversationKey,
     message,
     messageKey,
+    conversationMessageId: persisted.messageRecord?.id,
     acceptedAt: new Date().toISOString()
   }, {
     baseQuietMs: replyWaitConfig.baseSeconds * 1000,
@@ -3627,9 +3757,13 @@ async function processCoalescedIncomingBatch(batch) {
       earliestCustomerAt: legacyHistoryAnalysis?.earliestCustomerAt || ""
     });
   }
-  const tagContext = legacyHistoryAnalysis?.text
+  const tagContext = isPrivateMessage(message)
     ? buildTagContext({ binding, conversationKey })
     : null;
+  const tagEvidenceCandidates = buildTagEvidenceCandidates({
+    items: batch.items,
+    legacyHistoryAnalysis
+  });
   const agentMessage = normalizeMessageForAgent(coalescedMessage, binding);
   const request = buildDclawRequest({
     binding,
@@ -3637,6 +3771,7 @@ async function processCoalescedIncomingBatch(batch) {
     message: agentMessage,
     flow,
     tagContext,
+    tagEvidenceCandidates,
     legacyHistoryAnalysis,
     conversationReset,
     generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
@@ -3798,6 +3933,15 @@ async function processCoalescedIncomingBatch(batch) {
     }
 
     const agentReply = strictInvocation.agentReply;
+    const tagResult = tagContext
+      ? applyAgentTagDecision({
+          botId,
+          binding,
+          conversationKey,
+          agentReply,
+          evidenceCandidates: tagEvidenceCandidates
+        })
+      : null;
     const reply = String(agentReply.reply || "").trim();
     const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
     const sources = Array.isArray(agentReply.sources) ? agentReply.sources : [];
@@ -3879,14 +4023,6 @@ async function processCoalescedIncomingBatch(batch) {
     const attachmentMessageIds = sentAttachments.map((part) => part.result?.data || "").filter(Boolean);
     const worktoolMessageIds = [...textMessageIds, ...attachmentMessageIds].filter(Boolean);
     if (flow) {
-      const tagResult = tagContext
-        ? applyAgentTagDecision({
-            botId,
-            binding,
-            conversationKey,
-            agentReply
-          })
-        : null;
       await applyFlowDecision({
         botId,
         binding,

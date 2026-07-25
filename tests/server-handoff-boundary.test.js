@@ -4,15 +4,32 @@ import test from "node:test";
 
 const serverSource = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 
+function processIncomingBody() {
+  const start = serverSource.indexOf("async function processIncomingMessage");
+  const end = serverSource.indexOf("async function processCoalescedIncomingBatch", start);
+  assert.ok(start >= 0 && end > start);
+  return serverSource.slice(start, end);
+}
+
 test("server exposes a bot-scoped handoff route", () => {
   assert.equal(serverSource.includes('"/api/flow-sessions/:conversationKey/handoff"'), true);
   assert.equal(serverSource.includes("updateFlowSessionHandoff"), true);
 });
 
 test("server branches human handoff before sending WorkTool replies", () => {
+  const body = processIncomingBody();
+  const handoffStart = body.indexOf('flow?.session?.handoffStatus === "human"');
+  const handoffEnd = body.indexOf("finishMessageProcessing({ messageKey, status: \"human_handoff\" })");
+  const handoffBlock = body.slice(handoffStart, handoffEnd);
+
   assert.equal(serverSource.includes("buildDclawHandoffTranscriptRequest"), true);
   assert.equal(serverSource.includes('status: "human_handoff"'), true);
   assert.equal(serverSource.includes("flow?.session?.handoffStatus === \"human\""), true);
+  assert.match(handoffBlock, /buildTagContext\(\{ binding, conversationKey \}\)/);
+  assert.match(handoffBlock, /invokeStrictAgentReply\(\{/);
+  assert.match(handoffBlock, /applyAgentTagDecision\(\{/);
+  assert.doesNotMatch(handoffBlock, /sendTextReplyParts\(/);
+  assert.doesNotMatch(handoffBlock, /sendAgentAttachments\(/);
 });
 
 test("human handoff is evaluated before debug auto-reply", () => {

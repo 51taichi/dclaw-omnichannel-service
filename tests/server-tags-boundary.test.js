@@ -20,20 +20,25 @@ function functionBody(name) {
   assert.fail(`${name} body is closed`);
 }
 
-test("incoming Agent calls build tag context only for bounded legacy analysis", () => {
+test("every private Agent call builds tag context while group calls do not", () => {
   const body = functionBody("processCoalescedIncomingBatch");
-  assert.match(body, /const tagContext = legacyHistoryAnalysis\?\.text/);
+  assert.match(body, /const tagContext = isPrivateMessage\(message\)/);
   assert.match(body, /buildTagContext\(\{ binding, conversationKey \}\)/);
   assert.match(body, /tagContext,/);
+  assert.doesNotMatch(body, /const tagContext = legacyHistoryAnalysis\?\.text/);
 });
 
-test("validated legacy Agent replies apply AI tag decisions", () => {
+test("validated Agent replies apply tag decisions before empty reply or WorkTool send handling", () => {
   const body = functionBody("processCoalescedIncomingBatch");
   const validIndex = body.indexOf("if (!strictInvocation.agentReply.valid)");
+  const decisionIndex = body.indexOf("applyAgentTagDecision");
+  const emptyIndex = body.indexOf('logWarn("agent.reply.empty"');
+  const sendIndex = body.indexOf("sendTextReplyParts");
   assert.ok(validIndex >= 0);
-  assert.match(body, /applyAgentTagDecision\(\{/);
-  assert.match(body, /legacy_history\.analysis_applied/);
-  assert.ok(body.indexOf("applyAgentTagDecision") > validIndex);
+  assert.ok(decisionIndex > validIndex);
+  assert.ok(decisionIndex < emptyIndex);
+  assert.ok(decisionIndex < sendIndex);
+  assert.match(body, /evidenceCandidates:/);
 });
 
 test("private inbound messages persist their session before coalesced agent work", () => {
@@ -42,11 +47,14 @@ test("private inbound messages persist their session before coalesced agent work
   const persistBody = functionBody("persistInboundConversation");
   assert.match(source, /function persistInboundConversation\(\{/);
   assert.match(persistBody, /skipFirstSeenDateTag/);
-  assert.match(incomingBody, /persistInboundConversation\(\{[\s\S]*message\n\s+\}\);/);
+  assert.match(incomingBody, /const persisted =[\s\S]*persistInboundConversation\(\{[\s\S]*message,[\s\S]*\}/);
   assert.ok(
     incomingBody.indexOf("persistInboundConversation") < incomingBody.indexOf("inboundCoalescer.push"),
     "conversation persistence must happen before the coalescer waits or invokes the Agent"
   );
+  assert.match(incomingBody, /conversationMessageId: persisted\.messageRecord\?\.id/);
+  assert.match(persistBody, /const messageRecord = shouldRecordConversationHistory\(message\)/);
+  assert.match(persistBody, /return \{ conversation, messageRecord \}/);
   assert.match(coalescedBody, /const conversation = getConversation\(conversationKey\);/);
   assert.doesNotMatch(coalescedBody, /const conversation = upsertConversation\(/);
 });

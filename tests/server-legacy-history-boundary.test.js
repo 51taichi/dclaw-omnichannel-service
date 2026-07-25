@@ -41,9 +41,10 @@ test("coalesced legacy requests forward one bounded customer history analysis", 
   assert.match(body, /!flow\.session\.historyContextSentAt/);
   assert.match(body, /getHistoryAnalysisConfig\(botId\)/);
   assert.match(body, /buildStoredLegacyAnalysis\(\{/);
-  assert.match(body, /const tagContext = legacyHistoryAnalysis\?\.text/);
+  assert.match(body, /const tagContext = isPrivateMessage\(message\)/);
   assert.match(body, /legacyHistoryAnalysis,/);
   assert.match(body, /tagContext,/);
+  assert.match(body, /tagEvidenceCandidates,/);
   assert.match(body, /markLegacyHistoryContextSent\(\{/);
 });
 

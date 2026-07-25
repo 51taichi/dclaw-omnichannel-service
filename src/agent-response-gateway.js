@@ -307,15 +307,6 @@ function validateTagDecision(decision, { allowTagDecision, tagContext, errors })
     }
   }
 
-  const groups = new Map(
-    (tagContext?.groups || [])
-      .map((group) => [String(group?.id || "").trim(), new Set(
-        (group?.tags || []).map((tag) => String(tag?.id || "").trim()).filter(Boolean)
-      )])
-      .filter(([groupId]) => groupId)
-  );
-  if (!groups.size) return;
-
   for (const key of ["add", "remove"]) {
     const items = Array.isArray(decision[key]) ? decision[key] : [];
     items.forEach((item, index) => {
@@ -326,14 +317,6 @@ function validateTagDecision(decision, { allowTagDecision, tagContext, errors })
           type: "schema",
           path: `tagDecision.${key}[${index}]`,
           message: "tag decision items require groupId and tagId"
-        });
-        return;
-      }
-      if (!groups.has(groupId) || !groups.get(groupId).has(tagId)) {
-        errors.push({
-          type: "semantic",
-          path: `tagDecision.${key}[${index}]`,
-          message: `tag '${groupId}:${tagId}' is not in the current tag rules`
         });
       }
     });

@@ -6,6 +6,8 @@ const maxDclawRawMessageChars = 1200;
 const maxDclawGeneralRuleChars = 600;
 const maxDclawFlowFieldChars = 160;
 const maxDclawFlowArrayItems = 3;
+const maxDclawTagEvidenceCandidates = 24;
+const maxDclawTagEvidenceTextChars = 600;
 
 function boundedDclawText(value, maxChars) {
   const text = String(value || "");
@@ -31,6 +33,28 @@ function compactInboundPayload(message = {}) {
     fileName: boundedDclawText(message.fileName, 200),
     filePath: boundedDclawText(message.filePath, 500)
   };
+}
+
+function compactTagEvidenceCandidates(value) {
+  const seen = new Set();
+  const candidates = [];
+  const source = (Array.isArray(value) ? value : []).slice(-maxDclawTagEvidenceCandidates);
+  for (const item of source) {
+    const id = boundedDclawText(item?.id || item?.conversationMessageId, 240).trim();
+    const conversationMessageId = Number(item?.conversationMessageId);
+    const text = boundedDclawText(item?.text, maxDclawTagEvidenceTextChars).trim();
+    if (!id || !text || seen.has(id)) continue;
+    seen.add(id);
+    candidates.push({
+      id,
+      ...(Number.isInteger(conversationMessageId) && conversationMessageId > 0
+        ? { conversationMessageId }
+        : {}),
+      text
+    });
+    if (candidates.length >= maxDclawTagEvidenceCandidates) break;
+  }
+  return candidates;
 }
 
 function privateUserIdFromConversationKey(conversationKey) {
@@ -116,6 +140,7 @@ export function buildDclawRequest({
   message,
   flow = null,
   tagContext = null,
+  tagEvidenceCandidates = [],
   legacyHistoryAnalysis = null,
   conversationReset = false,
   generalRule = ""
@@ -156,6 +181,9 @@ export function buildDclawRequest({
     && Array.isArray(tagContext.groups)
     && tagContext.groups.length
   ) ? tagContext : null;
+  const agentTagEvidenceCandidates = agentTagRules
+    ? compactTagEvidenceCandidates(tagEvidenceCandidates)
+    : [];
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
   const responseSchema = responseSchemaForRequest({
     hasFlow: Boolean(agentFlow),
@@ -188,7 +216,8 @@ export function buildDclawRequest({
     instructions.push(
       "本次请求包含 tagRules。请结合客户历史发言和当前表达判断是否满足标签条件，并在最终 JSON 中通过 tagDecision 给出建议。",
       "tagDecision 只是建议，服务端会执行标签存在性、组内互斥和单向变更裁决；不要在 reply 中解释标签规则。",
-      "tagDecision 格式：{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\"}],\"remove\":[]}。没有变化时使用 {\"add\":[],\"remove\":[]}。"
+      "tagEvidenceCandidates 是本次允许引用的客户消息。命中标签时，evidenceMessageId 必须使用其中一个 id，并原样摘录对应 evidenceText。",
+      "tagDecision 格式：{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\",\"evidenceMessageId\":\"证据候选ID\",\"evidenceText\":\"客户原话\"}],\"remove\":[]}。没有变化时使用 {\"add\":[],\"remove\":[]}。"
     );
   }
   if (legacyHistoryText) {
@@ -219,6 +248,9 @@ export function buildDclawRequest({
     worktoolMessage,
     flow: agentFlow,
     ...(agentTagRules ? { tagRules: agentTagRules } : {}),
+    ...(agentTagEvidenceCandidates.length
+      ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
+      : {}),
     generalRule: normalizedGeneralRule,
     conversationReset
   };
@@ -249,6 +281,9 @@ export function buildDclawRequest({
       worktool: worktoolMessage,
       flow: agentFlow,
       ...(agentTagRules ? { tagRules: agentTagRules } : {}),
+      ...(agentTagEvidenceCandidates.length
+        ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
+        : {}),
       ...(historyAnalysis ? { historyAnalysis } : {}),
       generalRule: normalizedGeneralRule,
       conversationReset
@@ -310,6 +345,8 @@ export function buildDclawHandoffTranscriptRequest({
   conversation,
   message,
   flow = null,
+  tagContext = null,
+  tagEvidenceCandidates = [],
   conversationReset = false,
   generalRule = ""
 }) {
@@ -340,6 +377,23 @@ export function buildDclawHandoffTranscriptRequest({
     }
   };
   const agentFlow = compactFlowForAgent(flow);
+  const agentTagRules = (
+    tagContext
+    && typeof tagContext === "object"
+    && !Array.isArray(tagContext)
+    && Array.isArray(tagContext.groups)
+    && tagContext.groups.length
+  ) ? tagContext : null;
+  const agentTagEvidenceCandidates = agentTagRules
+    ? compactTagEvidenceCandidates(tagEvidenceCandidates)
+    : [];
+  const tagInstructions = agentTagRules
+    ? [
+        "本次请求包含 tagRules。仍需判断当前客户消息是否达成标签，但 reply 必须为空字符串。",
+        "tagEvidenceCandidates 是唯一可引用的证据消息；命中标签时必须返回其 id 和客户原话。",
+        "最终只输出 JSON：{\"reply\":\"\",\"attachments\":[],\"sources\":[],\"tagDecision\":{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\",\"evidenceMessageId\":\"证据候选ID\",\"evidenceText\":\"客户原话\"}],\"remove\":[]}}。"
+      ]
+    : ["最终请输出空字符串。"];
 
   return {
     external_user_id: worktoolMessage.userId || "unknown",
@@ -351,11 +405,15 @@ export function buildDclawHandoffTranscriptRequest({
       "不要生成客户可见回复。",
       "不要推进状态机。",
       "不要输出话术。",
-      "最终请输出空字符串。",
+      ...tagInstructions,
       "",
       JSON.stringify({
         worktoolMessage,
         flow: agentFlow,
+        ...(agentTagRules ? { tagRules: agentTagRules } : {}),
+        ...(agentTagEvidenceCandidates.length
+          ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
+          : {}),
         generalRule: normalizedGeneralRule,
         conversationReset
       }, null, 2)
@@ -373,6 +431,10 @@ export function buildDclawHandoffTranscriptRequest({
       userId: worktoolMessage.userId,
       worktool: worktoolMessage,
       flow: agentFlow,
+      ...(agentTagRules ? { tagRules: agentTagRules } : {}),
+      ...(agentTagEvidenceCandidates.length
+        ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
+        : {}),
       generalRule: normalizedGeneralRule,
       conversationReset
     }

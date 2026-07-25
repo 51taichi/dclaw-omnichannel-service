@@ -124,6 +124,33 @@ test("validation preserves tag decision evidence fields", () => {
   assert.equal(result.agentReply.tagDecision.add[0].evidenceText, "你们老师水平怎么样");
 });
 
+test("unknown tag decisions remain valid for server-side adjudication", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "老师都是经过严格筛选的。",
+    attachments: [],
+    sources: [],
+    tagDecision: {
+      add: [{
+        groupId: "unknown-group",
+        tagId: "unknown-tag",
+        reason: "模型返回了过期标签"
+      }],
+      remove: []
+    }
+  }), {
+    allowTagDecision: true,
+    tagContext: {
+      groups: [{
+        id: "intent",
+        tags: [{ id: "b" }]
+      }]
+    }
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.agentReply.tagDecision.add[0].tagId, "unknown-tag");
+});
+
 test("validation rejects prose wrapped around JSON", () => {
   const result = validateAgentResponseText('我先处理一下。{"reply":"你好","attachments":[],"sources":[]}');
 
