@@ -3968,8 +3968,8 @@ function renderFlowSessions({ animateFrom = null } = {}) {
               <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
-                  <strong class="flow-session-name" title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
                   ${renderLegacyCustomerBadge(session, sessionType)}
+                  <strong class="flow-session-name" title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
                 </span>
                 ${renderConversationDateTag(session.tags || [])}
                 <span

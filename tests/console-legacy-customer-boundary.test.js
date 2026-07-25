@@ -11,7 +11,7 @@ test("console provides a history icon for the legacy customer badge", () => {
   assert.match(js, /icon\("history"\)/);
 });
 
-test("legacy badge is limited to private legacy sessions beside the customer name", () => {
+test("legacy badge is limited to private legacy sessions above the customer name", () => {
   assert.match(js, /function renderLegacyCustomerBadge\(session, sessionType\)/);
   assert.match(js, /sessionType !== "private"/);
   assert.match(js, /session\?\.customerOrigin !== "legacy"/);
@@ -19,8 +19,10 @@ test("legacy badge is limited to private legacy sessions beside the customer nam
   assert.match(js, /<span>老客户<\/span>/);
   assert.match(
     js,
-    /class="flow-session-name-row">[\s\S]*flow-session-name[\s\S]*renderLegacyCustomerBadge\(session, sessionType\)/
+    /class="flow-session-name-row">[\s\S]*renderLegacyCustomerBadge\(session, sessionType\)[\s\S]*flow-session-name/
   );
+  assert.match(css, /\.flow-session-name-row\s*\{[^}]*flex-direction:\s*column;[^}]*align-items:\s*flex-start;[^}]*justify-content:\s*center;/);
+  assert.match(css, /\.legacy-customer-badge\s*\{[^}]*min-height:\s*15px;/);
 });
 
 test("legacy badge tooltip explains every history sync result", () => {
@@ -33,7 +35,7 @@ test("legacy badge tooltip explains every history sync result", () => {
 
 test("legacy badge uses handoff gold without card highlighting or sorting", () => {
   assert.match(css, /\.legacy-customer-badge\s*\{[^}]*#f59e0b/);
-  assert.match(css, /\.legacy-customer-badge \.icon\s*\{[^}]*width:\s*11px/);
+  assert.match(css, /\.legacy-customer-badge \.icon\s*\{[^}]*width:\s*9px/);
   assert.doesNotMatch(css, /\.flow-session-card\.is-legacy/);
   assert.doesNotMatch(js, /customerOrigin === "legacy" \? 1 : 0/);
 });
