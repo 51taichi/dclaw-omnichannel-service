@@ -60,6 +60,7 @@ import {
   getConversationKey,
   getConversationResetPending,
   getConversationAssets,
+  ensureLegacyHistoryDateTag,
   getFlowMachineForBot,
   getFlowActivationProgress,
   getFlowSession,
@@ -109,6 +110,7 @@ import {
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
   markConversationResetHandled,
+  markLegacyHistoryContextSent,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
@@ -161,6 +163,7 @@ import { listApiCommandPage, listCustomerHistory } from "./worktool-history.js";
 import { createWorktoolHistoryCache } from "./worktool-history-cache.js";
 import {
   adjudicateTagDecision,
+  compactTagRulesForAgent,
   normalizeTagSchema
 } from "./tags.js";
 
@@ -795,6 +798,72 @@ function scheduleTagActivationsForAcceptedChanges({ botId, binding, conversation
   return scheduled;
 }
 
+function buildTagContext({ binding, conversationKey }) {
+  if (!binding?.agentId) return null;
+  const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
+  if (!schema.groups.length) return null;
+  const currentTags = listConversationTags({
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationKey
+  }).filter((tag) => tag.tagType !== "date");
+  return compactTagRulesForAgent({ schema, currentTags });
+}
+
+function applyAgentTagDecision({ botId, binding, conversationKey, agentReply }) {
+  if (!binding?.agentId) return null;
+  const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
+  if (!schema.groups.length) return null;
+  const currentTags = listConversationTags({
+    botId,
+    agentId: binding.agentId,
+    conversationKey
+  });
+  const result = adjudicateTagDecision({
+    schema,
+    currentTags: currentTags.filter((tag) => tag.tagType !== "date"),
+    decision: agentReply?.tagDecision || {}
+  });
+  if (!result.accepted.length && !result.rejected.length) {
+    return {
+      tags: currentTags,
+      accepted: [],
+      rejected: [],
+      canceledTagActivationTaskCount: 0,
+      scheduledTagActivationTasks: []
+    };
+  }
+
+  const canceledTagActivationTaskCount = cancelTagTasksForAcceptedChanges({
+    botId,
+    binding,
+    conversationKey,
+    accepted: result.accepted
+  });
+  const tags = applyConversationTagChanges({
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    accepted: result.accepted,
+    rejected: result.rejected,
+    nextTags: result.nextTags,
+    source: "agent_decision"
+  });
+  const scheduledTagActivationTasks = scheduleTagActivationsForAcceptedChanges({
+    botId,
+    binding,
+    conversationKey,
+    accepted: result.accepted
+  });
+  return {
+    tags,
+    accepted: result.accepted,
+    rejected: result.rejected,
+    canceledTagActivationTaskCount,
+    scheduledTagActivationTasks
+  };
+}
+
 function scheduleNextTagActivationTask({ task, sentAt }) {
   if (!task?.messages?.length) return null;
   sentAt = sentAt || new Date().toISOString();
@@ -1345,11 +1414,12 @@ function invalidValidationAgentReply(rawReply, validationErrors) {
 }
 
 function agentResponseValidationOptions(request) {
+  const tagContext = request?.metadata?.tagRules || null;
   return {
     requireFlowDecision: Boolean(request?.metadata?.flow),
-    allowTagDecision: false,
+    allowTagDecision: Boolean(tagContext),
     flow: request?.metadata?.flow || null,
-    tagContext: null
+    tagContext
   };
 }
 
@@ -3523,12 +3593,51 @@ async function processCoalescedIncomingBatch(batch) {
     return;
   }
 
+  const shouldAnalyzeLegacyHistory = Boolean(
+    flow?.session?.customerOrigin === "legacy"
+    && flow.session.historySyncStatus === "success"
+    && !flow.session.historyContextSentAt
+  );
+  const historyAnalysisConfig = shouldAnalyzeLegacyHistory
+    ? getHistoryAnalysisConfig(botId)
+    : null;
+  const legacyHistoryAnalysis = shouldAnalyzeLegacyHistory
+    ? legacyCustomerHistory.buildStoredLegacyAnalysis({
+        botId,
+        conversationKey,
+        maxChars: historyAnalysisConfig.historyCustomerTextMaxChars
+      })
+    : null;
+  if (legacyHistoryAnalysis?.earliestCustomerAt) {
+    ensureLegacyHistoryDateTag({
+      botId,
+      agentId: binding.agentId,
+      conversationKey,
+      firstSeenAt: legacyHistoryAnalysis.earliestCustomerAt
+    });
+  }
+  if (shouldAnalyzeLegacyHistory) {
+    logInfo("legacy_history.analysis_prepared", {
+      ...logContext,
+      agentId: binding.agentId,
+      selectedCount: Number(legacyHistoryAnalysis?.selectedCount || 0),
+      omittedCount: Number(legacyHistoryAnalysis?.omittedCount || 0),
+      selectedChars: Number(legacyHistoryAnalysis?.selectedChars || 0),
+      configuredLimit: Number(legacyHistoryAnalysis?.configuredLimit || 0),
+      earliestCustomerAt: legacyHistoryAnalysis?.earliestCustomerAt || ""
+    });
+  }
+  const tagContext = legacyHistoryAnalysis?.text
+    ? buildTagContext({ binding, conversationKey })
+    : null;
   const agentMessage = normalizeMessageForAgent(coalescedMessage, binding);
   const request = buildDclawRequest({
     binding,
     conversation,
     message: agentMessage,
     flow,
+    tagContext,
+    legacyHistoryAnalysis,
     conversationReset,
     generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
   });
@@ -3770,6 +3879,14 @@ async function processCoalescedIncomingBatch(batch) {
     const attachmentMessageIds = sentAttachments.map((part) => part.result?.data || "").filter(Boolean);
     const worktoolMessageIds = [...textMessageIds, ...attachmentMessageIds].filter(Boolean);
     if (flow) {
+      const tagResult = tagContext
+        ? applyAgentTagDecision({
+            botId,
+            binding,
+            conversationKey,
+            agentReply
+          })
+        : null;
       await applyFlowDecision({
         botId,
         binding,
@@ -3778,6 +3895,19 @@ async function processCoalescedIncomingBatch(batch) {
         flow,
         decision: agentReply.flowDecision
       });
+      if (shouldAnalyzeLegacyHistory) {
+        markLegacyHistoryContextSent({ botId, conversationKey });
+        logInfo("legacy_history.analysis_applied", {
+          ...logContext,
+          agentId: binding.agentId,
+          invocationId,
+          acceptedTagCount: Number(tagResult?.accepted?.length || 0),
+          rejectedTagCount: Number(tagResult?.rejected?.length || 0),
+          collectedFieldNames: Object.keys(
+            agentReply.flowDecision?.collectedDataPatch || {}
+          )
+        });
+      }
       insertConversationMessage({
         botId,
         conversationKey,

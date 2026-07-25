@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { dateTagIdFor } from "../src/tags.js";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-legacy-history-test-"));
 process.env.DATA_DIR = dataDir;
@@ -102,6 +103,46 @@ test("new imported history reopens one-time Agent context delivery", () => {
     }]
   });
   assert.equal(db.getFlowSessionForBot({ botId, conversationKey }).historyContextSentAt, "");
+});
+
+test("legacy history uses the earliest imported timestamp for one date tag", () => {
+  const botId = "legacy_date_bot";
+  const agentId = "legacy_date_agent";
+  const conversationKey = `${botId}:private:历史客户`;
+  const earliestCustomerAt = "2026-06-30T14:01:00.000Z";
+  db.upsertAgentTagSchema({
+    agentId,
+    schema: {
+      dateTag: { enabled: true, cutoffTime: "20:00" },
+      groups: []
+    }
+  });
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    skipFirstSeenDateTag: true,
+    message: { roomType: 2, receivedName: "历史客户", groupName: "历史客户" }
+  });
+
+  db.ensureLegacyHistoryDateTag({
+    botId,
+    agentId,
+    conversationKey,
+    firstSeenAt: earliestCustomerAt
+  });
+  db.ensureLegacyHistoryDateTag({
+    botId,
+    agentId,
+    conversationKey,
+    firstSeenAt: earliestCustomerAt
+  });
+
+  const dateTags = db.listConversationTags({ botId, agentId, conversationKey })
+    .filter((tag) => tag.tagType === "date");
+  assert.equal(dateTags.length, 1);
+  assert.equal(dateTags[0].tagId, dateTagIdFor(earliestCustomerAt, "20:00"));
+  assert.equal(dateTags[0].source, "legacy_history");
 });
 
 test("stores and queries API messages through contact aliases", () => {

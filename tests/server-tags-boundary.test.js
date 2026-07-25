@@ -20,19 +20,20 @@ function functionBody(name) {
   assert.fail(`${name} body is closed`);
 }
 
-test("incoming Agent calls do not build or pass tag context", () => {
+test("incoming Agent calls build tag context only for bounded legacy analysis", () => {
   const body = functionBody("processCoalescedIncomingBatch");
-  assert.doesNotMatch(body, /buildTagContext\(/);
-  assert.doesNotMatch(body, /tagContext/);
-  assert.doesNotMatch(body, /tagDecision/);
+  assert.match(body, /const tagContext = legacyHistoryAnalysis\?\.text/);
+  assert.match(body, /buildTagContext\(\{ binding, conversationKey \}\)/);
+  assert.match(body, /tagContext,/);
 });
 
-test("normal Agent replies do not apply AI tag decisions", () => {
+test("validated legacy Agent replies apply AI tag decisions", () => {
   const body = functionBody("processCoalescedIncomingBatch");
   const validIndex = body.indexOf("if (!strictInvocation.agentReply.valid)");
   assert.ok(validIndex >= 0);
-  assert.doesNotMatch(body, /applyAgentTagDecision\(/);
-  assert.doesNotMatch(body, /tag\.decision\.applied/);
+  assert.match(body, /applyAgentTagDecision\(\{/);
+  assert.match(body, /legacy_history\.analysis_applied/);
+  assert.ok(body.indexOf("applyAgentTagDecision") > validIndex);
 });
 
 test("private inbound messages persist their session before coalesced agent work", () => {

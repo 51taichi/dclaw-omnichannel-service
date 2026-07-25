@@ -3236,6 +3236,34 @@ export function ensureConversationDateTag({
   });
 }
 
+export function ensureLegacyHistoryDateTag({
+  botId,
+  agentId,
+  conversationKey,
+  firstSeenAt
+}) {
+  const conversation = getConversation(conversationKey);
+  if (
+    !conversation
+    || conversation.botId !== botId
+    || conversation.agentId !== agentId
+    || ![2, 4].includes(Number(conversation.roomType))
+  ) {
+    return null;
+  }
+  const schema = normalizeTagSchema(getAgentTagSchema(agentId)?.config || {});
+  if (!schema.dateTag.enabled) return null;
+  const firstSeenDate = new Date(firstSeenAt);
+  if (Number.isNaN(firstSeenDate.getTime())) return null;
+  return upsertSystemDateTag({
+    botId,
+    agentId,
+    conversationKey,
+    dateTagId: dateTagIdFor(firstSeenDate, schema.dateTag.cutoffTime),
+    source: "legacy_history"
+  });
+}
+
 export function scheduleTagActivationTask({
   botId,
   agentId,

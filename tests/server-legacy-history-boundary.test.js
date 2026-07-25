@@ -33,12 +33,18 @@ test("legacy preparation completes before the inbound batch is queued", () => {
   assert.match(body, /historySyncStatus === "loading"/);
 });
 
-test("coalesced legacy requests do not forward historical context or AI tag rules", () => {
+test("coalesced legacy requests forward one bounded customer history analysis", () => {
   const body = asyncFunctionBody("processCoalescedIncomingBatch");
-  assert.doesNotMatch(body, /buildStoredLegacyContext/);
-  assert.doesNotMatch(body, /buildTagContext/);
-  assert.doesNotMatch(body, /legacyHistoryContext/);
-  assert.doesNotMatch(body, /tagContext/);
+  assert.match(body, /const shouldAnalyzeLegacyHistory =/);
+  assert.match(body, /customerOrigin === "legacy"/);
+  assert.match(body, /historySyncStatus === "success"/);
+  assert.match(body, /!flow\.session\.historyContextSentAt/);
+  assert.match(body, /getHistoryAnalysisConfig\(botId\)/);
+  assert.match(body, /buildStoredLegacyAnalysis\(\{/);
+  assert.match(body, /const tagContext = legacyHistoryAnalysis\?\.text/);
+  assert.match(body, /legacyHistoryAnalysis,/);
+  assert.match(body, /tagContext,/);
+  assert.match(body, /markLegacyHistoryContextSent\(\{/);
 });
 
 test("bot-wide API history cache refreshes in the background only", () => {
