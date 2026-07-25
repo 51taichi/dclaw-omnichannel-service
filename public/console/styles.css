@@ -700,36 +700,27 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
 }
 
 .bot-card button.bot-delete-button {
-  width: auto;
-  min-width: 58px;
+  width: 30px;
+  min-width: 30px;
   height: 30px;
   min-height: 30px;
   margin-right: auto;
-  padding: 0 10px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 0;
   border-color: transparent;
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--bot-accent) 64%, #1b2148),
-    color-mix(in srgb, var(--bot-accent) 86%, #1b2148)
-  );
+  background: linear-gradient(90deg, var(--danger), var(--orange));
   color: #ffffff;
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--bot-accent) 20%, transparent);
-  font-size: 12px;
-  font-weight: 900;
+  box-shadow: 0 8px 18px rgba(239, 38, 37, 0.18);
 }
 
 .bot-card button.bot-delete-button:hover {
-  background: linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--bot-accent) 54%, #11162f),
-    color-mix(in srgb, var(--bot-accent) 78%, #11162f)
-  );
+  background: linear-gradient(90deg, var(--danger-dark), var(--danger), var(--orange));
   border-color: transparent;
   color: #ffffff;
+  box-shadow: 0 10px 22px rgba(239, 38, 37, 0.24);
 }
 
 .icon-button .icon,

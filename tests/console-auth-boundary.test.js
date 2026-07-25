@@ -184,13 +184,20 @@ test("admin bot cards expose a dangerous delete action with password confirmatio
   assert.equal(app.includes('session?.role === "admin"'), true);
   assert.equal(app.includes('data-action="delete"'), true);
   assert.equal(app.includes('class="danger bot-delete-button"'), true);
-  assert.equal(app.includes("<span>删除</span>"), true);
+  assert.equal(app.includes("<span>删除</span>"), false);
   assert.equal(app.includes('async function deleteBot(bot)'), true);
   assert.equal(app.includes("删除 Bot 需要管理员密码"), true);
   assert.equal(app.includes("确认删除该 Bot 及其所有数据？此操作不可恢复。"), true);
   assert.match(app, /request\(`\/api\/bots\/\$\{encodeURIComponent\(botId\)\}`,\s*\{[\s\S]*method:\s*"DELETE"/);
   assert.match(app, /clearBotSession\(botId\);[\s\S]*resetBotContext\(\);[\s\S]*loadBots\(\)/);
-  assert.match(css, /\.bot-card button\.bot-delete-button\s*\{[^}]*var\(--bot-accent\)[^}]*color:\s*#ffffff/);
+  assert.match(css, /\.bot-card button\.bot-delete-button\s*\{[^}]*width:\s*30px[^}]*background:\s*linear-gradient\(90deg,\s*var\(--danger\),\s*var\(--orange\)\)[^}]*color:\s*#ffffff/);
+  assert.doesNotMatch(css, /\.bot-card button\.bot-delete-button\s*\{[^}]*var\(--bot-accent\)/);
+});
+
+test("semantic primary and danger actions keep system colors outside Bot theming", () => {
+  assert.match(css, /button\.primary\s*\{[^}]*linear-gradient\(90deg,\s*var\(--accent\),\s*#2847f0 54%,\s*var\(--cyan\)\)/);
+  assert.match(css, /button\.danger\s*\{[^}]*linear-gradient\(90deg,\s*var\(--danger\),\s*var\(--orange\)\)/);
+  assert.doesNotMatch(css, /button\.(?:primary|danger)\s*\{[^}]*var\(--bot-accent\)/);
 });
 
 test("bot delete action anchors left while quick actions stay right", () => {
