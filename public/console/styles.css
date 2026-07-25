@@ -2520,8 +2520,19 @@ textarea[data-action-target-activation].is-action-target-focused {
   grid-column: 1 / -1;
 }
 
+.reply-wait-fallback-label {
+  gap: 4px;
+  padding: 0 9px;
+}
+
 .response-wait-help {
-  margin-bottom: 2px;
+  flex: 0 0 22px;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  min-height: 22px;
+  margin-left: auto;
+  padding: 0;
 }
 
 @media (max-width: 920px) {
