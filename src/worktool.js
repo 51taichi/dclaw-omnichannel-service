@@ -14,12 +14,13 @@ function getRobotId(robotId) {
   return robotId;
 }
 
-async function requestWorkTool(path, { robotId, ...options } = {}) {
+export async function requestWorkTool(path, { robotId, timeoutMs = 0, ...options } = {}) {
   const url = new URL(`${getBaseUrl()}${path}`);
   url.searchParams.set("robotId", getRobotId(robotId));
 
   const response = await fetch(url, {
     ...options,
+    signal: timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : options.signal,
     headers: {
       "Content-Type": "application/json",
       ...(options.headers || {})
