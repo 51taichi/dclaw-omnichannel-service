@@ -298,7 +298,6 @@ function syncRoleVisibility() {
   document.body.classList.toggle("is-workspace-locked", workspaceLocked);
   els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig);
   document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", hideConfig);
-  document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig);
   els.resetFormButton.hidden = !hasBot;
   if (els.accessKeyPanel) els.accessKeyPanel.hidden = !isAdmin;
   if (els.agentManagementPanel) els.agentManagementPanel.hidden = !hasBot || !isAdmin;
@@ -602,7 +601,7 @@ function expandPanel(panel) {
   if (button) button.setAttribute("aria-expanded", "true");
 }
 
-async function applyBotContext(bot, { scrollTo = null } = {}) {
+async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
   if (!isBotUnlocked(bot?.botId)) {
     openUnlockDialog(bot);
     return;
@@ -610,6 +609,7 @@ async function applyBotContext(bot, { scrollTo = null } = {}) {
   const contextVersion = beginBotContext();
   const shouldReloadLogs = Boolean(els.logsOutput.textContent.trim());
   setBindingState(bot);
+  if (tabName) switchWorkspaceTab(tabName);
   clearBotScopedContent();
   let activeBot = bot;
   if (bot?.botId) {
@@ -968,10 +968,9 @@ function renderBots(bots) {
         return;
       }
       if (actionTarget.dataset.action === "open") {
-        if (getBotSession(botId)?.role === "admin") {
-          switchWorkspaceTab("config");
-        }
-        await applyBotContext(bot);
+        await applyBotContext(bot, {
+          tabName: getBotSession(botId)?.role === "admin" ? "config" : ""
+        });
         return;
       }
       if (actionTarget.dataset.action === "push") {

@@ -63,7 +63,7 @@ test("console hides config tab for bot role and exposes access-key reset for adm
   assert.equal(app.includes("isAdminWorkspaceTab"), false);
   assert.equal(app.includes('els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig)'), true);
   assert.equal(app.includes('document.querySelector(\'[data-workspace-tab="config"]\')?.toggleAttribute("hidden", hideConfig)'), true);
-  assert.equal(app.includes('document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig)'), true);
+  assert.equal(app.includes('document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig)'), false);
   assert.equal(app.includes("els.agentManagementPanel.hidden = !hasBot || !isAdmin"), true);
   assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), true);
   assert.equal(app.includes("state.currentRole === \"admin\""), true);
@@ -245,7 +245,24 @@ test("bot card quick actions let applyBotContext own form synchronization", () =
   const renderEnd = app.indexOf("let currentBots", renderStart);
   const body = app.slice(renderStart, renderEnd);
   assert.equal(body.includes("fillForm(bot);"), false);
-  assert.match(body, /await applyBotContext\(bot\)/);
+  assert.match(body, /await applyBotContext\(bot(?:,\s*\{[\s\S]*?\})?\)/);
+});
+
+test("switching from a Bot session to an admin Bot opens config after context synchronization", () => {
+  const renderStart = app.indexOf("function renderBots");
+  const renderEnd = app.indexOf("let currentBots", renderStart);
+  const body = app.slice(renderStart, renderEnd);
+  const openStart = body.indexOf('if (actionTarget.dataset.action === "open")');
+  const openEnd = body.indexOf('if (actionTarget.dataset.action === "push")', openStart);
+  const openAction = body.slice(openStart, openEnd);
+  const applyStart = app.indexOf("async function applyBotContext");
+  const applyEnd = app.indexOf("function openUnlockDialog", applyStart);
+  const applyBody = app.slice(applyStart, applyEnd);
+
+  assert.match(openAction, /await applyBotContext\(bot,\s*\{\s*tabName:\s*getBotSession\(botId\)\?\.role === "admin" \? "config" : ""\s*\}\)/);
+  assert.doesNotMatch(openAction, /switchWorkspaceTab\("config"\)/);
+  assert.match(applyBody, /setBindingState\(bot\);[\s\S]*if \(tabName\) switchWorkspaceTab\(tabName\);/);
+  assert.equal(applyBody.indexOf("setBindingState(bot);") < applyBody.indexOf("switchWorkspaceTab(tabName)"), true);
 });
 
 test("switching bots clears old scoped content before loading the new bot", () => {
