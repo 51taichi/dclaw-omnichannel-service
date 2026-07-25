@@ -240,9 +240,9 @@ h2 {
 
 .workspace-tabs button.active {
   z-index: 1;
-  background: #ffffff;
-  color: var(--workspace-tab-link);
-  box-shadow: 0 8px 18px rgba(42, 48, 216, 0.14);
+  background: linear-gradient(90deg, var(--danger), var(--orange));
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(239, 38, 37, 0.2);
 }
 
 .workspace-tabs button:disabled {
@@ -256,9 +256,9 @@ h2 {
 }
 
 .workspace-tabs.is-bound button.active {
-  background: #ffffff;
-  color: var(--workspace-tab-link);
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--bot-accent) 18%, transparent);
+  background: linear-gradient(90deg, var(--danger), var(--orange));
+  color: #ffffff;
+  box-shadow: 0 8px 18px rgba(239, 38, 37, 0.2);
 }
 
 .workspace-tabs.is-bound button:not(.active) {
