@@ -138,6 +138,53 @@ test("large flow configuration is reduced below the request message limit", () =
   assert.ok(request.message.length <= getDclawRequestMessageMaxChars());
 });
 
+test("maximum legacy history keeps history, tags, and ten asset fields within the request limit", () => {
+  const historyText = "历".repeat(6000);
+  const collectFields = Array.from({ length: 10 }, (_, index) => `资产字段${index + 1}`);
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:历史客户" },
+    message: {
+      messageId: "m-history-max",
+      spoken: "老师在吗",
+      rawSpoken: "老师在吗",
+      roomType: 2,
+      textType: 1,
+      receivedName: "历史客户"
+    },
+    flow: {
+      machine: { name: "历史客户流程", nodes: [{ id: "final" }] },
+      session: { currentNodeId: "final", customerOrigin: "legacy" },
+      currentNode: { id: "final", name: "持续跟进", collectFields }
+    },
+    tagContext: {
+      groups: [{
+        id: "intent",
+        name: "意向",
+        exclusive: true,
+        oneWay: true,
+        tags: [{ id: "a", name: "A类", condition: "客户表达明确需求" }]
+      }],
+      currentTags: []
+    },
+    legacyHistoryAnalysis: {
+      text: historyText,
+      selectedCount: 200,
+      omittedCount: 300,
+      selectedChars: 6000,
+      configuredLimit: 6000
+    }
+  });
+
+  assert.match(request.message, new RegExp("历".repeat(100)));
+  assert.match(request.message, /tagDecision/);
+  for (const field of collectFields) {
+    assert.match(request.message, new RegExp(field));
+  }
+  assert.doesNotMatch(request.message, /history_context/);
+  assert.ok(request.message.length <= getDclawRequestMessageMaxChars());
+});
+
 test("buildDclawActivationRequest omits recent messages", () => {
   const request = buildDclawActivationRequest({
     binding,

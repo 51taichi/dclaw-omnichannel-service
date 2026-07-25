@@ -27,7 +27,7 @@ const message = {
   textType: 1
 };
 
-test("buildDclawRequest omits tag rules from the Agent contract", () => {
+test("buildDclawRequest includes tag rules when explicitly requested", () => {
   const request = buildDclawRequest({
     binding,
     conversation,
@@ -38,6 +38,14 @@ test("buildDclawRequest omits tag rules from the Agent contract", () => {
       currentTags: []
     }
   });
+
+  assert.match(request.message, /tagRules/);
+  assert.match(request.message, /tagDecision/);
+  assert.equal(request.metadata.tagRules.groups[0].id, "intent");
+});
+
+test("buildDclawRequest omits tag rules from normal requests", () => {
+  const request = buildDclawRequest({ binding, conversation, message });
 
   assert.doesNotMatch(request.message, /tagRules/);
   assert.doesNotMatch(request.message, /tagDecision/);
@@ -74,7 +82,7 @@ test("buildDclawRequest carries the rule even when no flow context is active", (
   assert.match(request.message, /不要出现内部处理说明/);
 });
 
-test("buildDclawRequest omits legacy customer history and tag guidance", () => {
+test("buildDclawRequest includes bounded legacy customer text and tag guidance", () => {
   const request = buildDclawRequest({
     binding,
     conversation,
@@ -101,25 +109,23 @@ test("buildDclawRequest omits legacy customer history and tag guidance", () => {
       }],
       currentTags: []
     },
-    legacyHistoryContext: {
-      messages: [{
-        direction: "inbound",
-        senderName: "阿三",
-        content: "我刚刚已经付费了",
-        createdAt: "2026-07-24T03:00:00.000Z",
-        source: "worktool_customer_history"
-      }],
-      importedCustomerCount: 62,
-      includedCount: 1,
-      truncated: true
+    legacyHistoryAnalysis: {
+      text: "之前咨询过课程\n我刚刚已经付费了",
+      selectedCount: 2,
+      omittedCount: 60,
+      selectedChars: 17,
+      configuredLimit: 4000
     }
   });
 
-  assert.equal(request.metadata.legacyHistory, undefined);
-  assert.doesNotMatch(request.message, /老客户历史上下文/);
-  assert.doesNotMatch(request.message, /我刚刚已经付费了/);
-  assert.doesNotMatch(request.message, /结合历史记录和当前表达判断标签/);
+  assert.match(request.message, /客户历史发言（纯文本，按时间从旧到新）/);
+  assert.match(request.message, /之前咨询过课程\n我刚刚已经付费了/);
+  assert.match(request.message, /tagDecision/);
   assert.doesNotMatch(request.message, /history_context/);
+  assert.doesNotMatch(request.message, /"messages":\s*\[/);
+  assert.equal(request.metadata.historyAnalysis.selectedCount, 2);
+  assert.equal(request.metadata.historyAnalysis.omittedCount, 60);
+  assert.equal(request.metadata.historyAnalysis.text, undefined);
 });
 
 test("buildDclawRequest omits empty legacy history", () => {
@@ -127,17 +133,17 @@ test("buildDclawRequest omits empty legacy history", () => {
     binding,
     conversation,
     message,
-    legacyHistoryContext: {
-      messages: [],
-      importedCustomerCount: 0,
-      includedCount: 0,
-      truncated: false
+    legacyHistoryAnalysis: {
+      text: "",
+      selectedCount: 0,
+      omittedCount: 0,
+      selectedChars: 0,
+      configuredLimit: 4000
     }
   });
 
-  assert.equal(request.metadata.legacyHistory, undefined);
-  assert.doesNotMatch(request.message, /老客户历史上下文/);
-  assert.doesNotMatch(request.message, /结合历史记录和当前表达判断标签/);
+  assert.equal(request.metadata.historyAnalysis, undefined);
+  assert.doesNotMatch(request.message, /客户历史发言（纯文本/);
 });
 
 test("buildDclawTagActivationRequest carries the general rule", () => {
@@ -165,8 +171,41 @@ test("parseAgentReply extracts tagDecision", () => {
   assert.equal(reply.tagDecision.add[0].tagId, "b");
 });
 
-test("retry prompts do not add a tagDecision schema", () => {
-  const request = buildDclawRequest({ binding, conversation, message, tagContext: { groups: [], currentTags: [] } });
-  assert.doesNotMatch(buildDclawReplyFormatRetryRequest(request).message, /tagDecision/);
-  assert.doesNotMatch(buildDclawAttachmentSourceRetryRequest(request, {}).message, /tagDecision/);
+test("retry prompts preserve an enabled tagDecision schema", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    tagContext: {
+      groups: [{ id: "intent", tags: [{ id: "b" }] }],
+      currentTags: []
+    }
+  });
+  assert.match(buildDclawReplyFormatRetryRequest(request).message, /tagDecision/);
+  assert.match(buildDclawAttachmentSourceRetryRequest(request, {}).message, /tagDecision/);
+});
+
+test("legacy flow requests preserve ten collectible asset fields", () => {
+  const collectFields = Array.from({ length: 10 }, (_, index) => `字段${index + 1}`);
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    flow: {
+      machine: { nodes: [{ id: "final" }] },
+      session: { currentNodeId: "final", customerOrigin: "legacy" },
+      currentNode: { id: "final", collectFields }
+    },
+    legacyHistoryAnalysis: {
+      text: "客户历史",
+      selectedCount: 1,
+      omittedCount: 0,
+      selectedChars: 4,
+      configuredLimit: 4000
+    }
+  });
+
+  for (const field of collectFields) {
+    assert.match(request.message, new RegExp(field));
+  }
 });

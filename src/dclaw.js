@@ -1,6 +1,6 @@
 import { normalizeTagDecision } from "./tags.js";
 
-const defaultDclawRequestMessageMaxChars = 8000;
+const defaultDclawRequestMessageMaxChars = 16000;
 const maxDclawCurrentMessageChars = 1200;
 const maxDclawRawMessageChars = 1200;
 const maxDclawGeneralRuleChars = 600;
@@ -47,7 +47,7 @@ export function getDclawRequestMessageMaxChars() {
     : defaultDclawRequestMessageMaxChars;
 }
 
-function buildDclawRequestMessage(instructions, payload) {
+function buildDclawRequestMessage(instructions, payload, { preserveDecisionContext = false } = {}) {
   const build = (nextPayload) => [
     ...instructions,
     "",
@@ -55,6 +55,7 @@ function buildDclawRequestMessage(instructions, payload) {
   ].join("\n");
   const message = build(payload);
   if (message.length <= getDclawRequestMessageMaxChars()) return message;
+  if (preserveDecisionContext) return message;
 
   const worktoolMessage = payload?.worktoolMessage || {};
   const reducedPayload = {
@@ -114,6 +115,8 @@ export function buildDclawRequest({
   conversation,
   message,
   flow = null,
+  tagContext = null,
+  legacyHistoryAnalysis = null,
   conversationReset = false,
   generalRule = ""
 }) {
@@ -142,9 +145,18 @@ export function buildDclawRequest({
     }
   };
   const agentFlow = compactFlowForAgent(flow);
+  const agentTagRules = (
+    tagContext
+    && typeof tagContext === "object"
+    && !Array.isArray(tagContext)
+    && Array.isArray(tagContext.groups)
+    && tagContext.groups.length
+  ) ? tagContext : null;
+  const legacyHistoryText = String(legacyHistoryAnalysis?.text || "").trim();
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
   const responseSchema = responseSchemaForRequest({
-    hasFlow: Boolean(agentFlow)
+    hasFlow: Boolean(agentFlow),
+    hasTags: Boolean(agentTagRules)
   });
 
   const instructions = [
@@ -169,6 +181,20 @@ export function buildDclawRequest({
     "如果回复实际命中或参考了企业智库、任务节点、控制台配置资源、控制台上传资源、会话上下文、客户档案或大模型兜底，请在最终 JSON 中增加 sources 数组，格式为 {\"type\":\"enterprise_knowledge|flow_node|configured_resource|console_upload|conversation|profile|llm_fallback\",\"name\":\"来源名称\",\"reason\":\"为什么用于本次回复\"}；未命中的来源不要写入 sources。",
     "需要连续发送 2-3 条短回复时，请用空行分隔每段。"
   ];
+  if (agentTagRules) {
+    instructions.push(
+      "本次请求包含 tagRules。请结合客户历史发言和当前表达判断是否满足标签条件，并在最终 JSON 中通过 tagDecision 给出建议。",
+      "tagDecision 只是建议，服务端会执行标签存在性、组内互斥和单向变更裁决；不要在 reply 中解释标签规则。",
+      "tagDecision 格式：{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\"}],\"remove\":[]}。没有变化时使用 {\"add\":[],\"remove\":[]}。"
+    );
+  }
+  if (legacyHistoryText) {
+    instructions.push(
+      "以下是该客户最近一段历史发言，只用于判断客户意图、标签和已经提供的资料。",
+      "客户历史发言（纯文本，按时间从旧到新）：",
+      legacyHistoryText
+    );
+  }
   if (flow) {
     instructions.push(
       "当前私聊会话启用了客服流程状态机。你必须围绕 flow.currentNode 的 goal、completionCriteria、collectFields 和 conversationTips 推进对话。",
@@ -189,13 +215,24 @@ export function buildDclawRequest({
   const payload = {
     worktoolMessage,
     flow: agentFlow,
+    ...(agentTagRules ? { tagRules: agentTagRules } : {}),
     generalRule: normalizedGeneralRule,
     conversationReset
   };
+  const historyAnalysis = legacyHistoryText
+    ? {
+        selectedCount: Number(legacyHistoryAnalysis?.selectedCount || 0),
+        omittedCount: Number(legacyHistoryAnalysis?.omittedCount || 0),
+        selectedChars: Number(legacyHistoryAnalysis?.selectedChars || 0),
+        configuredLimit: Number(legacyHistoryAnalysis?.configuredLimit || 0)
+      }
+    : null;
   return {
     external_user_id: worktoolMessage.userId || "unknown",
     external_session_id: worktoolMessage.conversationId,
-    message: buildDclawRequestMessage(instructions, payload),
+    message: buildDclawRequestMessage(instructions, payload, {
+      preserveDecisionContext: Boolean(agentTagRules || legacyHistoryText)
+    }),
     stream: true,
     metadata: {
       source: "worktool",
@@ -208,6 +245,8 @@ export function buildDclawRequest({
       userId: worktoolMessage.userId,
       worktool: worktoolMessage,
       flow: agentFlow,
+      ...(agentTagRules ? { tagRules: agentTagRules } : {}),
+      ...(historyAnalysis ? { historyAnalysis } : {}),
       generalRule: normalizedGeneralRule,
       conversationReset
     }
@@ -216,7 +255,8 @@ export function buildDclawRequest({
 
 export function buildDclawReplyFormatRetryRequest(request) {
   const responseSchema = responseSchemaForRequest({
-    hasFlow: Boolean(request?.metadata?.flow)
+    hasFlow: Boolean(request?.metadata?.flow),
+    hasTags: Boolean(request?.metadata?.tagRules)
   });
   return {
     ...request,
@@ -236,7 +276,8 @@ export function buildDclawReplyFormatRetryRequest(request) {
 
 export function buildDclawAttachmentSourceRetryRequest(request, issue = {}) {
   const responseSchema = responseSchemaForRequest({
-    hasFlow: Boolean(request?.metadata?.flow)
+    hasFlow: Boolean(request?.metadata?.flow),
+    hasTags: Boolean(request?.metadata?.tagRules)
   });
   const urls = Array.isArray(issue.attachmentUrls)
     ? issue.attachmentUrls.filter(Boolean)
@@ -636,7 +677,7 @@ function compactFlowForAgent(flow) {
       name: boundedDclawText(node.name, maxDclawFlowFieldChars),
       goal: boundedDclawText(node.goal, maxDclawFlowFieldChars),
       completionCriteria: boundedDclawText(node.completionCriteria, maxDclawFlowFieldChars),
-      collectFields: boundedDclawTextArray(node.collectFields),
+        collectFields: boundedDclawTextArray(node.collectFields, 10),
       conversationTips: boundedDclawTextArray(node.conversationTips)
     };
   };
@@ -669,10 +710,11 @@ function resolveGeneralRule(flow) {
   return normalizeGeneralRule(flow?.generalRule || flow?.machine?.generalRule || flow?.config?.generalRule);
 }
 
-function responseSchemaForRequest({ hasFlow }) {
+function responseSchemaForRequest({ hasFlow, hasTags = false }) {
+  const tagPart = hasTags ? `,"tagDecision":{"add":[],"remove":[]}` : "";
   return hasFlow
-    ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"建议下一节点ID或当前节点ID","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}}`
-    : `{"reply":"发给客户的文本","attachments":[],"sources":[]}`;
+    ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"建议下一节点ID或当前节点ID","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}${tagPart}}`
+    : `{"reply":"发给客户的文本","attachments":[],"sources":[]${tagPart}}`;
 }
 
 const defaultDclawTimeoutMs = 25000;
