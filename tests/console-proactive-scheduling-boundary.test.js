@@ -80,6 +80,17 @@ test("proactive task cancellation style is scoped to proactive rows", () => {
   assert.match(css, /\.proactive-task-cancel/);
 });
 
+test("empty proactive task state spans the full table as one compact row", () => {
+  assert.match(
+    app,
+    /<tr class="proactive-task-empty-row"><td class="proactive-task-empty" colspan="6">暂无当前 Bot 的主动推送任务<\/td><\/tr>/
+  );
+  assert.match(
+    css,
+    /\.proactive-task-empty\s*\{[^}]*display:\s*table-cell;[^}]*height:\s*64px;[^}]*text-align:\s*center;[^}]*vertical-align:\s*middle;/
+  );
+});
+
 test("proactive app loads tags and selects matching targets across every page", () => {
   assert.match(app, /loadProactiveTargetTags/);
   assert.match(app, /fetchAllAddressBookTargetsByTag/);

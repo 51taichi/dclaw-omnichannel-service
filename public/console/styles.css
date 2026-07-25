@@ -1275,6 +1275,18 @@ button.danger:hover {
   max-width: 260px;
 }
 
+.proactive-task-empty {
+  display: table-cell;
+  height: 64px;
+  color: var(--muted);
+  text-align: center;
+  vertical-align: middle;
+}
+
+.proactive-task-empty-row:hover {
+  background: transparent;
+}
+
 .task-content-cell {
   min-width: 0;
 }

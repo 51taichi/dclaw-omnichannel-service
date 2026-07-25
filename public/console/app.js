@@ -4803,7 +4803,7 @@ async function loadProactiveTasks({ contextVersion = state.botContextVersion } =
 
 function renderProactiveTasks(tasks) {
   if (!tasks.length) {
-    els.proactiveTasksTable.innerHTML = `<tr><td class="empty-state" colspan="6">暂无当前 Bot 的主动推送任务</td></tr>`;
+    els.proactiveTasksTable.innerHTML = `<tr class="proactive-task-empty-row"><td class="proactive-task-empty" colspan="6">暂无当前 Bot 的主动推送任务</td></tr>`;
     return;
   }
   els.proactiveTasksTable.innerHTML = tasks
