@@ -2757,8 +2757,10 @@ textarea[data-action-target-activation].is-action-target-focused {
 }
 
 .date-tag-special-group {
-  border-color: rgba(47, 64, 229, 0.42);
-  background: rgba(247, 249, 255, 0.96);
+  --date-tag-accent: var(--bot-accent, var(--accent));
+  border-color: color-mix(in srgb, var(--date-tag-accent) 48%, var(--line));
+  background: color-mix(in srgb, var(--date-tag-accent) 7%, #ffffff);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--date-tag-accent) 12%, transparent);
 }
 
 .date-tag-special-group .tag-group-head {
@@ -2773,6 +2775,31 @@ textarea[data-action-target-activation].is-action-target-focused {
   min-height: 42px;
 }
 
+.date-tag-special-group :is(.tag-group-enabled-toggle, .date-tag-name-field, .date-tag-cutoff-field) {
+  border-color: color-mix(in srgb, var(--date-tag-accent) 26%, var(--line));
+  background: #ffffff;
+}
+
+.date-tag-special-group .field-label {
+  border-right-color: color-mix(in srgb, var(--date-tag-accent) 22%, var(--line));
+  background: color-mix(in srgb, var(--date-tag-accent) 8%, #ffffff);
+}
+
+.date-tag-special-group .field-label .icon {
+  color: var(--date-tag-accent);
+}
+
+.date-tag-special-group .switch-slider {
+  border-color: color-mix(in srgb, var(--date-tag-accent) 36%, var(--line));
+  background: color-mix(in srgb, var(--date-tag-accent) 10%, #ffffff);
+}
+
+.date-tag-special-group .switch-toggle input[type="checkbox"]:checked + .switch-slider {
+  border-color: transparent;
+  background: var(--date-tag-accent);
+  box-shadow: 0 8px 16px color-mix(in srgb, var(--date-tag-accent) 22%, transparent);
+}
+
 .date-tag-name-field .field-control {
   display: flex;
   align-items: center;
@@ -2783,6 +2810,12 @@ textarea[data-action-target-activation].is-action-target-focused {
 
 .date-tag-help {
   justify-self: end;
+}
+
+.date-tag-special-group .date-tag-help {
+  border-color: color-mix(in srgb, var(--date-tag-accent) 36%, var(--line));
+  background: color-mix(in srgb, var(--date-tag-accent) 7%, #ffffff);
+  color: var(--date-tag-accent);
 }
 
 .tag-row-list {

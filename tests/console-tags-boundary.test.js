@@ -71,6 +71,14 @@ test("date tag cutoff aligns beside the group name and explains the business-day
   assert.match(css, /\.date-tag-help\s*\{[^}]*justify-self:\s*end/);
 });
 
+test("date tag special group follows the selected Bot accent color", () => {
+  assert.match(css, /\.date-tag-special-group\s*\{[^}]*--date-tag-accent:\s*var\(--bot-accent,\s*var\(--accent\)\)[^}]*border-color:\s*color-mix\(in srgb,\s*var\(--date-tag-accent\) 48%,\s*var\(--line\)\)[^}]*background:\s*color-mix\(in srgb,\s*var\(--date-tag-accent\) 7%,\s*#ffffff\)/);
+  assert.match(css, /\.date-tag-special-group \.field-label\s*\{[^}]*background:\s*color-mix\(in srgb,\s*var\(--date-tag-accent\) 8%,\s*#ffffff\)/);
+  assert.match(css, /\.date-tag-special-group \.field-label \.icon\s*\{[^}]*color:\s*var\(--date-tag-accent\)/);
+  assert.match(css, /\.date-tag-special-group \.switch-toggle input\[type="checkbox"\]:checked \+ \.switch-slider\s*\{[^}]*background:\s*var\(--date-tag-accent\)/);
+  assert.match(css, /\.date-tag-special-group \.date-tag-help\s*\{[^}]*border-color:\s*color-mix\(in srgb,\s*var\(--date-tag-accent\) 36%,\s*var\(--line\)\)[^}]*color:\s*var\(--date-tag-accent\)/);
+});
+
 test("date tag drafts normalize and export only editable rule fields", () => {
   assert.match(js, /dateTag:\s*\{\s*enabled: false,\s*cutoffTime: "00:00",\s*effectiveAt: ""\s*\}/);
   assert.match(js, /function normalizeDateTagCutoffTimeDraft/);
