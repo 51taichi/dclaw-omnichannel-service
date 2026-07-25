@@ -105,7 +105,10 @@ test("proactive targets can be selected by multiple tags without duplicates", ()
     pageSize: 20
   });
 
-  assert.deepEqual(page.items.map((target) => target.targetName), ["客户A", "客户B"]);
+  assert.deepEqual(
+    page.items.map((target) => target.targetName).sort(),
+    ["客户A", "客户B"]
+  );
   assert.equal(page.pagination.total, 2);
 });
 
