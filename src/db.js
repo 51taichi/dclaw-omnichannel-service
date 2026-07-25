@@ -1185,6 +1185,18 @@ export function insertAgentInvocationStart({
   incomingMessageId,
   request
 }) {
+  const historyAnalysis = request?.metadata?.historyAnalysis;
+  const auditRequest = historyAnalysis
+    ? {
+        ...request,
+        message: [
+          "历史客户发言已从审计记录中省略。",
+          `selectedCount=${Number(historyAnalysis.selectedCount || 0)}`,
+          `selectedChars=${Number(historyAnalysis.selectedChars || 0)}`,
+          `configuredLimit=${Number(historyAnalysis.configuredLimit || 0)}`
+        ].join(" ")
+      }
+    : request;
   const result = db.prepare(`
     INSERT INTO agent_invocations (
       bot_id, agent_id, conversation_key, incoming_message_id, request_json,
@@ -1196,7 +1208,7 @@ export function insertAgentInvocationStart({
     agentId,
     conversationKey,
     incomingMessageId || "",
-    json(request),
+    json(auditRequest),
     "started",
     now()
   );
@@ -3517,7 +3529,7 @@ export function insertImportedConversationMessages({
         createdAt
       ).changes || 0);
     }
-    if (inserted > 0) {
+    if (inserted > 0 && source === "worktool_customer_history") {
       db.prepare(`
         UPDATE flow_sessions
         SET history_context_sent_at = NULL, updated_at = ?

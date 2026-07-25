@@ -122,6 +122,8 @@ export function buildDclawRequest({
 }) {
   const roomType = Number(message.roomType);
   const isGroup = roomType === 1 || roomType === 3;
+  const legacyHistoryText = String(legacyHistoryAnalysis?.text || "").trim();
+  const currentMessage = String(message.spoken || message.rawSpoken || "");
   const worktoolMessage = {
     channel: "wecom-worktool",
     eventType: "inbound_message",
@@ -130,7 +132,9 @@ export function buildDclawRequest({
     conversationId: conversation.conversationKey,
     sessionId: conversation.conversationKey,
     messageId: boundedDclawText(message.messageId, 200),
-    message: boundedDclawText(message.spoken || message.rawSpoken, maxDclawCurrentMessageChars),
+    message: legacyHistoryText
+      ? currentMessage
+      : boundedDclawText(currentMessage, maxDclawCurrentMessageChars),
     rawMessage: boundedDclawText(message.rawSpoken || message.spoken, maxDclawRawMessageChars),
     roomType: message.roomType,
     groupName: isGroup ? boundedDclawText(message.groupName, 200) : "",
@@ -152,7 +156,6 @@ export function buildDclawRequest({
     && Array.isArray(tagContext.groups)
     && tagContext.groups.length
   ) ? tagContext : null;
-  const legacyHistoryText = String(legacyHistoryAnalysis?.text || "").trim();
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
   const responseSchema = responseSchemaForRequest({
     hasFlow: Boolean(agentFlow),

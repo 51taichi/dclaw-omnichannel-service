@@ -105,6 +105,37 @@ test("new imported history reopens one-time Agent context delivery", () => {
   assert.equal(db.getFlowSessionForBot({ botId, conversationKey }).historyContextSentAt, "");
 });
 
+test("outbound API history backfill does not reopen completed customer analysis", () => {
+  const botId = "outbound_context_bot";
+  const conversationKey = `${botId}:private:阿三`;
+  db.createLegacyFlowSession({
+    botId,
+    conversationKey,
+    machine: { config: { nodes: [{ id: "final" }] } }
+  });
+  db.markLegacyHistoryContextSent({ botId, conversationKey });
+  const completedAt = db.getFlowSessionForBot({ botId, conversationKey }).historyContextSentAt;
+
+  db.insertImportedConversationMessages({
+    botId,
+    conversationKey,
+    source: "worktool_api_history",
+    messages: [{
+      sourceKey: "outbound-history",
+      direction: "outbound",
+      senderName: "机器人",
+      content: "此前系统回复",
+      createdAt: "2026-07-17T17:22:28.000Z",
+      rawPayload: {}
+    }]
+  });
+
+  assert.equal(
+    db.getFlowSessionForBot({ botId, conversationKey }).historyContextSentAt,
+    completedAt
+  );
+});
+
 test("legacy history uses the earliest imported timestamp for one date tag", () => {
   const botId = "legacy_date_bot";
   const agentId = "legacy_date_agent";

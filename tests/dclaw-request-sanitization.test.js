@@ -185,6 +185,37 @@ test("maximum legacy history keeps history, tags, and ten asset fields within th
   assert.ok(request.message.length <= getDclawRequestMessageMaxChars());
 });
 
+test("legacy analysis keeps the complete live customer message outside the history budget", () => {
+  const liveMessage = `${"当".repeat(1490)}完整尾部`;
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:长消息客户" },
+    message: {
+      messageId: "m-long-live-message",
+      spoken: liveMessage,
+      rawSpoken: liveMessage,
+      roomType: 2,
+      textType: 1,
+      receivedName: "长消息客户"
+    },
+    flow: {
+      machine: { name: "历史客户流程", nodes: [{ id: "final" }] },
+      session: { currentNodeId: "final", customerOrigin: "legacy" },
+      currentNode: { id: "final", name: "持续跟进", collectFields: ["需求"] }
+    },
+    legacyHistoryAnalysis: {
+      text: "历史发言",
+      selectedCount: 1,
+      omittedCount: 0,
+      selectedChars: 4,
+      configuredLimit: 4000
+    }
+  });
+
+  assert.match(request.message, /完整尾部/);
+  assert.match(request.message, new RegExp("当".repeat(1490)));
+});
+
 test("buildDclawActivationRequest omits recent messages", () => {
   const request = buildDclawActivationRequest({
     binding,

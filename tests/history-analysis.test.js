@@ -32,7 +32,17 @@ test("normalizes the per-Bot history character budget", () => {
   assert.equal(
     normalizeHistoryAnalysisConfig({ historyCustomerTextMaxChars: 4250.4 })
       .historyCustomerTextMaxChars,
-    4250
+    4300
+  );
+  assert.equal(
+    normalizeHistoryAnalysisConfig({ historyCustomerTextMaxChars: "" })
+      .historyCustomerTextMaxChars,
+    4000
+  );
+  assert.equal(
+    normalizeHistoryAnalysisConfig({ historyCustomerTextMaxChars: null })
+      .historyCustomerTextMaxChars,
+    4000
   );
 });
 

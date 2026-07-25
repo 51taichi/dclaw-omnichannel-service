@@ -7,9 +7,13 @@ function unicodeLength(value) {
 }
 
 export function normalizeHistoryAnalysisConfig(config = {}) {
-  const requested = Number(config.historyCustomerTextMaxChars);
+  const rawValue = config.historyCustomerTextMaxChars;
+  const hasValue = rawValue !== null
+    && rawValue !== undefined
+    && String(rawValue).trim() !== "";
+  const requested = hasValue ? Number(rawValue) : Number.NaN;
   const value = Number.isFinite(requested)
-    ? Math.round(requested)
+    ? Math.round(requested / 100) * 100
     : DEFAULT_HISTORY_CUSTOMER_TEXT_MAX_CHARS;
   return {
     historyCustomerTextMaxChars: Math.min(

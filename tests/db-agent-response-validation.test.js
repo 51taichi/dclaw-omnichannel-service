@@ -81,3 +81,29 @@ test("validation failure records whether its retry succeeded", () => {
   assert.equal(row.retryErrorMessage, "");
   assert.ok(row.retryFinishedAt);
 });
+
+test("legacy history text is omitted from Agent invocation audit records", () => {
+  insertAgentInvocationStart({
+    botId: "bot-a",
+    agentId: "agent-a",
+    conversationKey: "bot-a:private:客户-c",
+    incomingMessageId: "message-c",
+    request: {
+      external_session_id: "bot-a:private:客户-c",
+      message: "客户历史发言（纯文本）：\n不应进入审计的历史正文",
+      stream: true,
+      metadata: {
+        historyAnalysis: {
+          selectedCount: 3,
+          selectedChars: 20,
+          configuredLimit: 4000
+        }
+      }
+    }
+  });
+
+  const [row] = listRecords("agent-invocations", { botId: "bot-a", limit: 1 });
+  assert.doesNotMatch(row.request.message, /不应进入审计的历史正文/);
+  assert.match(row.request.message, /历史客户发言已从审计记录中省略/);
+  assert.equal(row.request.metadata.historyAnalysis.selectedCount, 3);
+});
