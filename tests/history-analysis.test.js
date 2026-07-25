@@ -128,3 +128,29 @@ test("ignores invalid timestamps when determining the earliest customer date", (
 
   assert.equal(result.earliestCustomerAt, "2026-07-02T00:00:00.000Z");
 });
+
+test("duplicate imported customer rows consume the history budget once", () => {
+  const result = buildBoundedCustomerHistoryText({
+    maxChars: 100,
+    messages: [
+      inbound("之前已付款", "2026-07-01T00:00:00.000Z", {
+        id: 1,
+        botId: "bot-a",
+        conversationKey: "bot-a:private:客户",
+        sourceKey: "alias-a"
+      }),
+      inbound("之前已付款", "2026-07-01T00:00:00.000Z", {
+        id: 2,
+        botId: "bot-a",
+        conversationKey: "bot-a:private:客户",
+        sourceKey: "alias-b"
+      })
+    ]
+  });
+
+  assert.equal(result.text, "之前已付款");
+  assert.equal(result.importedCustomerCount, 1);
+  assert.equal(result.selectedCount, 1);
+  assert.equal(result.selectedChars, 5);
+  assert.equal(result.omittedCount, 0);
+});

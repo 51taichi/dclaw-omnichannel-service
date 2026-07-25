@@ -1,3 +1,5 @@
+import { dedupeConversationMessages } from "./conversation-message-dedupe.js";
+
 export const DEFAULT_HISTORY_CUSTOMER_TEXT_MAX_CHARS = 4000;
 export const MIN_HISTORY_CUSTOMER_TEXT_MAX_CHARS = 1000;
 export const MAX_HISTORY_CUSTOMER_TEXT_MAX_CHARS = 6000;
@@ -30,7 +32,7 @@ export function buildBoundedCustomerHistoryText({
   maxChars = DEFAULT_HISTORY_CUSTOMER_TEXT_MAX_CHARS
 } = {}) {
   const configuredLimit = Math.max(1, Math.floor(Number(maxChars) || DEFAULT_HISTORY_CUSTOMER_TEXT_MAX_CHARS));
-  const customerMessages = (Array.isArray(messages) ? messages : [])
+  const normalizedCustomerMessages = (Array.isArray(messages) ? messages : [])
     .filter((message) => (
       message?.direction === "inbound"
       && message?.source === "worktool_customer_history"
@@ -41,6 +43,7 @@ export function buildBoundedCustomerHistoryText({
       createdAt: String(message?.createdAt || "").trim()
     }))
     .filter((message) => message.content);
+  const customerMessages = dedupeConversationMessages(normalizedCustomerMessages);
   const validDates = customerMessages
     .map((message) => ({ value: message.createdAt, time: new Date(message.createdAt).getTime() }))
     .filter((item) => Number.isFinite(item.time))
