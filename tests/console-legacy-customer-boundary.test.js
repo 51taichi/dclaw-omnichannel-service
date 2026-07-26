@@ -6,36 +6,20 @@ const html = fs.readFileSync(new URL("../public/console/index.html", import.meta
 const js = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 
-test("console provides a history icon for the legacy customer badge", () => {
-  assert.match(html, /id="icon-history"/);
-  assert.match(js, /icon\("history"\)/);
+test("legacy customer identity is limited to private session avatars", () => {
+  assert.match(js, /const isLegacyCustomer = sessionType === "private" && session\?\.customerOrigin === "legacy"/);
+  assert.match(js, /class="flow-session-avatar-shell \$\{isLegacyCustomer \? "is-legacy" : ""\}"/);
+  assert.match(js, /title="\$\{isLegacyCustomer \? "老客户" : ""\}"/);
+  assert.doesNotMatch(js, /class="legacy-customer-badge"/);
+  assert.doesNotMatch(js, /<span>老客户<\/span>/);
 });
 
-test("legacy badge is limited to private legacy sessions above the customer name", () => {
-  assert.match(js, /function renderLegacyCustomerBadge\(session, sessionType\)/);
-  assert.match(js, /sessionType !== "private"/);
-  assert.match(js, /session\?\.customerOrigin !== "legacy"/);
-  assert.match(js, /class="legacy-customer-badge"/);
-  assert.match(js, /<span>老客户<\/span>/);
-  assert.match(
-    js,
-    /class="flow-session-name-row">[\s\S]*renderLegacyCustomerBadge\(session, sessionType\)[\s\S]*flow-session-name/
-  );
-  assert.match(css, /\.flow-session-name-row\s*\{[^}]*flex-direction:\s*column;[^}]*align-items:\s*flex-start;[^}]*justify-content:\s*center;/);
-  assert.match(css, /\.legacy-customer-badge\s*\{[^}]*min-height:\s*15px;/);
+test("legacy customer avatar uses a gold gradient and native tooltip", () => {
+  assert.match(css, /\.flow-session-avatar-shell\.is-legacy\s*\{[^}]*linear-gradient\([^}]*#f59e0b[^}]*cursor:\s*help/);
+  assert.match(css, /\.flow-session-avatar-shell\.is-legacy \.flow-session-avatar\s*\{[^}]*mix-blend-mode:\s*multiply/);
 });
 
-test("legacy badge tooltip explains every history sync result", () => {
-  assert.match(js, /function legacyHistoryStatusText\(session\)/);
-  assert.match(js, /正在加载历史记录/);
-  assert.match(js, /已加载历史记录 \$\{Number\(session\?\.historyImportedCount \|\| 0\)\} 条/);
-  assert.match(js, /未查到历史，已按老客户接入/);
-  assert.match(js, /历史加载失败，已按老客户接入/);
-});
-
-test("legacy badge uses handoff gold without card highlighting or sorting", () => {
-  assert.match(css, /\.legacy-customer-badge\s*\{[^}]*#f59e0b/);
-  assert.match(css, /\.legacy-customer-badge \.icon\s*\{[^}]*width:\s*9px/);
+test("legacy avatar treatment does not highlight or reorder the card", () => {
   assert.doesNotMatch(css, /\.flow-session-card\.is-legacy/);
   assert.doesNotMatch(js, /customerOrigin === "legacy" \? 1 : 0/);
 });

@@ -87,7 +87,7 @@ test("flow session status labels do not change card or chat header layout", () =
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*gap:\s*10px 9px/);
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*position:\s*relative[\s\S]*padding:\s*9px/);
   assert.doesNotMatch(css, /\.flow-session-card\s*\{[\s\S]*min-height:\s*78px/);
-  assert.match(css, /\.flow-session-avatar\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*1/);
+  assert.match(css, /\.flow-session-avatar-shell\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*1/);
   assert.match(css, /\.flow-session-main\s*\{[\s\S]*display:\s*contents/);
   assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*grid-column:\s*2[\s\S]*width:\s*auto[\s\S]*align-self:\s*center/);
   assert.match(app, /class="flow-session-name" title="\$\{escapeHtml\(name\)\}"/);

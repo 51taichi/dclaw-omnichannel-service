@@ -4080,27 +4080,6 @@ function animateFlowSessionReorder(previousPositions) {
   });
 }
 
-function legacyHistoryStatusText(session) {
-  switch (session?.historySyncStatus) {
-    case "loading":
-      return "正在加载历史记录";
-    case "success":
-      return `已加载历史记录 ${Number(session?.historyImportedCount || 0)} 条`;
-    case "empty":
-      return "未查到历史，已按老客户接入";
-    case "failed":
-      return "历史加载失败，已按老客户接入";
-    default:
-      return "已按老客户接入";
-  }
-}
-
-function renderLegacyCustomerBadge(session, sessionType) {
-  if (sessionType !== "private" || session?.customerOrigin !== "legacy") return "";
-  const tooltip = legacyHistoryStatusText(session);
-  return `<span class="legacy-customer-badge" title="${escapeHtml(tooltip)}" aria-label="${escapeHtml(tooltip)}">${icon("history")}<span>老客户</span></span>`;
-}
-
 function renderFlowSessions({ animateFrom = null } = {}) {
   const visibleSessions = getVisibleFlowSessions();
   const typeFilter = currentFlowSessionTypeFilter();
@@ -4116,6 +4095,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
           const sessionType = flowSessionType(session);
           const name = flowSessionDisplayName(session);
           const avatar = sessionType === "group" ? "./assets/group.png" : "./assets/ddeer.png";
+          const isLegacyCustomer = sessionType === "private" && session?.customerOrigin === "legacy";
           const status = flowNodeName(session.currentNodeId);
           const assets = session.assets || {};
           const assetSummary = assets.totalCount
@@ -4133,10 +4113,11 @@ function renderFlowSessions({ animateFrom = null } = {}) {
             : "";
           return `
             <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
-              <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
+              <span class="flow-session-avatar-shell ${isLegacyCustomer ? "is-legacy" : ""}" title="${isLegacyCustomer ? "老客户" : ""}">
+                <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
+              </span>
               <span class="flow-session-main">
                 <span class="flow-session-name-row">
-                  ${renderLegacyCustomerBadge(session, sessionType)}
                   <strong class="flow-session-name" title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
                 </span>
                 ${renderConversationDateTag(session.tags || [])}
