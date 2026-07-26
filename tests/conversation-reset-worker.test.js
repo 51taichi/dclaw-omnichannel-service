@@ -9,6 +9,7 @@ test("worker completes a claimed reset task after ordered DClaw cleanup", async 
     botId: "bot_a",
     agentId: "agent_a",
     conversationKey: "bot_a:private:张三",
+    conversationEpoch: "epoch-old",
     attemptNumber: 1
   };
   let available = true;
@@ -19,7 +20,8 @@ test("worker completes a claimed reset task after ordered DClaw cleanup", async 
       return task;
     },
     getBinding: () => ({ botId: "bot_a", agentId: "agent_a", enabled: true }),
-    syncTask: async () => {
+    syncTask: async (input) => {
+      assert.equal(input.conversationEpoch, "epoch-old");
       events.push("workspace_then_memory");
       return { status: "synced" };
     },

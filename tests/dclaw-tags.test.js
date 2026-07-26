@@ -8,6 +8,7 @@ import {
   buildDclawTagActivationRequest,
   parseAgentReply
 } from "../src/dclaw.js";
+import { buildDclawConversationIdentity } from "../src/dclaw-conversation-identity.js";
 
 const binding = {
   botId: "tag_bot",
@@ -17,7 +18,8 @@ const binding = {
 };
 
 const conversation = {
-  conversationKey: "tag_bot:private:魔兮"
+  conversationKey: "tag_bot:private:魔兮",
+  conversationEpoch: "epoch-tag-1"
 };
 
 const message = {
@@ -159,6 +161,11 @@ test("buildDclawRequest includes bounded legacy customer text and tag guidance",
 });
 
 test("buildDclawLegacyHistoryAnalysisRequest isolates background analysis and forbids customer replies", () => {
+  const liveRequest = buildDclawRequest({
+    binding,
+    conversation,
+    message
+  });
   const request = buildDclawLegacyHistoryAnalysisRequest({
     binding,
     conversation,
@@ -198,13 +205,15 @@ test("buildDclawLegacyHistoryAnalysisRequest isolates background analysis and fo
     }
   });
 
+  assert.equal(request.external_user_id, liveRequest.external_user_id);
   assert.equal(
-    request.external_session_id,
-    `${conversation.conversationKey}:legacy-history-analysis`
+    request.metadata.worktool.conversationId,
+    liveRequest.metadata.worktool.conversationId
   );
+  assert.notEqual(request.external_session_id, liveRequest.external_session_id);
   assert.equal(request.metadata.eventType, "legacy_history_analysis");
-  assert.equal(request.metadata.worktool.conversationId, request.external_session_id);
   assert.equal(request.metadata.liveConversationId, conversation.conversationKey);
+  assert.equal(request.metadata.localConversationId, conversation.conversationKey);
   assert.match(request.message, /后台历史智能分析/);
   assert.match(request.message, /reply 必须为空字符串/);
   assert.match(request.message, /我的手机号是18570860666/);
@@ -232,7 +241,7 @@ test("buildDclawRequest omits empty legacy history", () => {
 test("buildDclawTagActivationRequest carries the general rule", () => {
   const request = buildDclawTagActivationRequest({
     binding,
-    conversationKey: conversation.conversationKey,
+    conversation,
     task: { id: 3, messageContent: "跟进一下" },
     generalRule: "回复不要附带未确认链接"
   });
@@ -240,6 +249,15 @@ test("buildDclawTagActivationRequest carries the general rule", () => {
   assert.equal(request.metadata.generalRule, "回复不要附带未确认链接");
   assert.match(request.message, /最高优先级业务规则/);
   assert.match(request.message, /不要附带未确认链接/);
+  const identity = buildDclawConversationIdentity({
+    botId: binding.botId,
+    ...conversation,
+    purpose: "conversation"
+  });
+  assert.equal(request.external_user_id, identity.externalUserId);
+  assert.equal(request.external_session_id, identity.externalSessionId);
+  assert.equal(request.metadata.conversationId, identity.runtimeConversationId);
+  assert.equal(request.metadata.localConversationId, conversation.conversationKey);
 });
 
 test("parseAgentReply extracts tagDecision", () => {

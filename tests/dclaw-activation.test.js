@@ -1,11 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildDclawActivationRequest } from "../src/dclaw.js";
+import { buildDclawConversationIdentity } from "../src/dclaw-conversation-identity.js";
 
 test("buildDclawActivationRequest creates a flow activation event without history", () => {
+  const conversation = {
+    conversationKey: "bot_1:private:张三",
+    conversationEpoch: "epoch-activation"
+  };
   const request = buildDclawActivationRequest({
     binding: { botId: "bot_1", agentId: "agent_1" },
-    conversationKey: "bot_1:private:张三",
+    conversation,
     task: {
       id: 7,
       nodeId: "node_1",
@@ -25,7 +30,15 @@ test("buildDclawActivationRequest creates a flow activation event without histor
 
   assert.equal(request.metadata.eventType, "flow_activation_due");
   assert.equal(request.metadata.worktool.eventType, "flow_activation_due");
-  assert.equal(request.external_session_id, "bot_1:private:张三");
+  const identity = buildDclawConversationIdentity({
+    botId: "bot_1",
+    ...conversation,
+    purpose: "conversation"
+  });
+  assert.equal(request.external_user_id, identity.externalUserId);
+  assert.equal(request.external_session_id, identity.externalSessionId);
+  assert.equal(request.metadata.conversationId, identity.runtimeConversationId);
+  assert.equal(request.metadata.localConversationId, conversation.conversationKey);
   assert.match(request.message, /请结合当前会话上下文/);
   assert.match(request.message, /最终只输出一个 JSON 对象/);
   assert.match(request.message, /"reply":"发给客户的激活话术"/);
@@ -37,7 +50,10 @@ test("buildDclawActivationRequest creates a flow activation event without histor
 test("buildDclawActivationRequest carries the highest-priority business rule", () => {
   const request = buildDclawActivationRequest({
     binding: { botId: "bot_1", agentId: "agent_1" },
-    conversationKey: "bot_1:private:张三",
+    conversation: {
+      conversationKey: "bot_1:private:张三",
+      conversationEpoch: "epoch-rule"
+    },
     task: { id: 8, nodeId: "node_1", attemptNumber: 1, maxTimes: 1, messages: ["提醒一下"] },
     flow: {
       machine: {

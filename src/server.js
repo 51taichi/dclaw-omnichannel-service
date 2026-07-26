@@ -117,7 +117,7 @@ import {
   markFlowActivationTaskFailed,
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
-  markConversationResetHandled,
+  markConversationResetHandledForEpoch,
   markLegacyHistoryContextSent,
   markTagAlertRead,
   markProactiveTargetFailed,
@@ -1410,6 +1410,7 @@ const conversationResetWorkerConfig = {
 export async function syncConversationResetToAgent({
   binding,
   conversationKey,
+  conversationEpoch,
   reason = "console_reset",
   invoke = null
 }) {
@@ -1420,12 +1421,14 @@ export async function syncConversationResetToAgent({
   const request = buildDclawConversationResetRequest({
     binding,
     conversationKey,
+    conversationEpoch,
     reason,
     generalRule: getFlowMachineForBot(binding.botId)?.config?.generalRule || ""
   });
   const memoryClearRequest = buildDclawConversationMemoryClearRequest({
     binding,
     conversationKey,
+    conversationEpoch,
     reason
   });
   const invocationId = insertAgentInvocationStart({
@@ -1452,7 +1455,7 @@ export async function syncConversationResetToAgent({
       memoryClearRequest,
       invoke: invokeResetRequest
     });
-    const result = invoke ? await runReset() : await enqueueAgentInvocation(runReset);
+    const result = await runReset();
     if (!result.ok) {
       const errors = [result.workspaceError, result.memoryError].filter(Boolean);
       const error = new Error(errors.map((item) => item.message).join("; "));
@@ -1467,7 +1470,7 @@ export async function syncConversationResetToAgent({
       },
       status: "success"
     });
-    markConversationResetHandled(conversationKey);
+    markConversationResetHandledForEpoch(conversationKey, conversationEpoch);
     logInfo("agent.conversation_reset.success", {
       botId: binding.botId,
       agentId: binding.agentId,
@@ -2312,6 +2315,7 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
     void syncConversationResetToAgent({
       binding,
       conversationKey,
+      conversationEpoch: existingConversation.conversationEpoch,
       reason: "friend_added_reentry"
     });
     resetConversationForFriendGreeting({
@@ -2712,7 +2716,7 @@ async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse 
   }
 
   const conversationKey = getProactiveConversationKey(target);
-  upsertConversation({
+  const conversation = upsertConversation({
     botId: target.botId,
     agentId: binding.agentId,
     conversationKey,
@@ -2720,7 +2724,7 @@ async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse 
   });
   const request = buildDclawProactiveEventRequest({
     binding,
-    conversationKey,
+    conversation,
     target,
     worktoolMessageId: messageId,
     worktoolResponse,
@@ -2911,6 +2915,8 @@ async function sendActivationPolishedMessage({ task, binding, delivery }) {
   }
   const machine = getFlowMachineForBot(task.botId);
   const session = getFlowSession(task.conversationKey);
+  const conversation = getConversation(task.conversationKey);
+  if (!conversation) throw new Error("missing activation conversation");
   const flow = machine && session
     ? {
         machine: {
@@ -2926,7 +2932,7 @@ async function sendActivationPolishedMessage({ task, binding, delivery }) {
     : null;
   const request = buildDclawActivationRequest({
     binding,
-    conversationKey: task.conversationKey,
+    conversation,
     task: {
       ...task,
       messages: [activationMessage]
@@ -3268,9 +3274,11 @@ function recordTagActivationOutbound({ task, binding, target, content, result, r
 }
 
 async function buildPolishedTagActivationContent({ binding, task }) {
+  const conversation = getConversation(task.conversationKey);
+  if (!conversation) throw new Error("missing tag activation conversation");
   const request = buildDclawTagActivationRequest({
     binding,
-    conversationKey: task.conversationKey,
+    conversation,
     task,
     generalRule: getFlowMachineForBot(task.botId)?.config?.generalRule || ""
   });
@@ -3757,7 +3765,6 @@ async function processIncomingMessage({ botId, message, intake = null }) {
 
   let resetState = { resetPending: false };
   if (isPrivateMessage(message) && !hadConversation) {
-    await conversationResetWorker.waitForConversation(conversationKey);
     resetState = prepareConversationResetForNewActivity({
       botId,
       conversationKey
@@ -3945,7 +3952,10 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         : null;
       publishCommittedTagAlerts({ botId, invocationId, tagResult });
       if (conversationReset) {
-        markConversationResetHandled(conversationKey);
+        markConversationResetHandledForEpoch(
+          conversationKey,
+          conversation.conversationEpoch
+        );
       }
       logInfo("agent.handoff_sync.success", {
         ...logContext,
@@ -4248,7 +4258,10 @@ async function processCoalescedIncomingBatch(batch) {
     });
     agentInvocationSucceeded = true;
     if (conversationReset) {
-      markConversationResetHandled(conversationKey);
+      markConversationResetHandledForEpoch(
+        conversationKey,
+        conversation.conversationEpoch
+      );
     }
 
     const agentReply = strictInvocation.agentReply;

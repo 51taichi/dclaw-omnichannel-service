@@ -1,5 +1,6 @@
 import { normalizeTagDecision } from "./tags.js";
 import { listConfiguredFlowCollectFields } from "./flow-assets.js";
+import { buildDclawConversationIdentity } from "./dclaw-conversation-identity.js";
 
 const defaultDclawRequestMessageMaxChars = 16000;
 const maxDclawCurrentMessageChars = 1200;
@@ -144,19 +145,27 @@ export function buildDclawRequest({
   tagEvidenceCandidates = [],
   legacyHistoryAnalysis = null,
   conversationReset = false,
-  generalRule = ""
+  generalRule = "",
+  dclawPurpose = "conversation"
 }) {
   const roomType = Number(message.roomType);
   const isGroup = roomType === 1 || roomType === 3;
   const legacyHistoryText = String(legacyHistoryAnalysis?.text || "").trim();
   const currentMessage = String(message.spoken || message.rawSpoken || "");
+  const localConversationId = String(conversation.conversationKey || "").trim();
+  const identity = buildDclawConversationIdentity({
+    botId: binding.botId,
+    conversationKey: localConversationId,
+    conversationEpoch: conversation.conversationEpoch,
+    purpose: dclawPurpose
+  });
   const worktoolMessage = {
     channel: "wecom-worktool",
     eventType: "inbound_message",
     botId: binding.botId,
     agentId: binding.agentId,
-    conversationId: conversation.conversationKey,
-    sessionId: conversation.conversationKey,
+    conversationId: identity.runtimeConversationId,
+    sessionId: identity.runtimeConversationId,
     messageId: boundedDclawText(message.messageId, 200),
     message: legacyHistoryText
       ? currentMessage
@@ -166,6 +175,7 @@ export function buildDclawRequest({
     groupName: isGroup ? boundedDclawText(message.groupName, 200) : "",
     userId: boundedDclawText(message.receivedName, 200),
     metadata: {
+      localConversationId,
       receivedName: boundedDclawText(message.receivedName, 200),
       atMe: boundedDclawText(message.atMe, 50),
       textType: message.textType,
@@ -269,8 +279,8 @@ export function buildDclawRequest({
       }
     : null;
   return {
-    external_user_id: worktoolMessage.userId || "unknown",
-    external_session_id: worktoolMessage.conversationId,
+    external_user_id: identity.externalUserId,
+    external_session_id: identity.externalSessionId,
     message: buildDclawRequestMessage(instructions, payload, {
       preserveDecisionContext: Boolean(agentTagRules || legacyHistoryText)
     }),
@@ -280,6 +290,7 @@ export function buildDclawRequest({
       botId: worktoolMessage.botId,
       agentId: worktoolMessage.agentId,
       conversationId: worktoolMessage.conversationId,
+      localConversationId,
       messageId: worktoolMessage.messageId,
       roomType: worktoolMessage.roomType,
       groupName: worktoolMessage.groupName,
@@ -299,17 +310,12 @@ export function buildDclawRequest({
 
 export function buildDclawLegacyHistoryAnalysisRequest(input) {
   const conversationKey = String(input?.conversation?.conversationKey || "").trim();
-  const analysisSessionId = `${conversationKey}:legacy-history-analysis`;
   const request = buildDclawRequest({
     ...input,
-    conversation: {
-      ...(input.conversation || {}),
-      conversationKey: analysisSessionId
-    }
+    dclawPurpose: "legacy-history-analysis"
   });
   return {
     ...request,
-    external_session_id: analysisSessionId,
     message: [
       request.message,
       "",
@@ -322,7 +328,7 @@ export function buildDclawLegacyHistoryAnalysisRequest(input) {
       ...(request.metadata || {}),
       eventType: "legacy_history_analysis",
       liveConversationId: conversationKey,
-      conversationId: analysisSessionId
+      localConversationId: conversationKey
     }
   };
 }
@@ -389,13 +395,20 @@ export function buildDclawHandoffTranscriptRequest({
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
   const roomType = Number(message.roomType);
   const isGroup = roomType === 1 || roomType === 3;
+  const localConversationId = String(conversation.conversationKey || "").trim();
+  const identity = buildDclawConversationIdentity({
+    botId: binding.botId,
+    conversationKey: localConversationId,
+    conversationEpoch: conversation.conversationEpoch,
+    purpose: "conversation"
+  });
   const worktoolMessage = {
     channel: "wecom-worktool",
     eventType: "handoff_transcript_message",
     botId: binding.botId,
     agentId: binding.agentId,
-    conversationId: conversation.conversationKey,
-    sessionId: conversation.conversationKey,
+    conversationId: identity.runtimeConversationId,
+    sessionId: identity.runtimeConversationId,
     messageId: boundedDclawText(message.messageId, 200),
     message: boundedDclawText(message.spoken || message.rawSpoken, maxDclawCurrentMessageChars),
     rawMessage: boundedDclawText(message.rawSpoken || message.spoken, maxDclawRawMessageChars),
@@ -403,6 +416,7 @@ export function buildDclawHandoffTranscriptRequest({
     groupName: isGroup ? boundedDclawText(message.groupName, 200) : "",
     userId: boundedDclawText(message.receivedName, 200),
     metadata: {
+      localConversationId,
       receivedName: boundedDclawText(message.receivedName, 200),
       atMe: boundedDclawText(message.atMe, 50),
       textType: message.textType,
@@ -432,8 +446,8 @@ export function buildDclawHandoffTranscriptRequest({
     : ["最终请输出空字符串。"];
 
   return {
-    external_user_id: worktoolMessage.userId || "unknown",
-    external_session_id: worktoolMessage.conversationId,
+    external_user_id: identity.externalUserId,
+    external_session_id: identity.externalSessionId,
     message: [
       "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
       "eventType=handoff_transcript_message 表示这是人工接手期间的聊天记录。",
@@ -461,6 +475,7 @@ export function buildDclawHandoffTranscriptRequest({
       botId: worktoolMessage.botId,
       agentId: worktoolMessage.agentId,
       conversationId: worktoolMessage.conversationId,
+      localConversationId,
       messageId: worktoolMessage.messageId,
       roomType: worktoolMessage.roomType,
       groupName: worktoolMessage.groupName,
@@ -480,30 +495,41 @@ export function buildDclawHandoffTranscriptRequest({
 export function buildDclawConversationResetRequest({
   binding,
   conversationKey,
+  conversationEpoch,
   reason = "console_reset",
   generalRule = ""
 }) {
   const normalizedGeneralRule = normalizeGeneralRule(generalRule);
-  const externalUserId = privateUserIdFromConversationKey(conversationKey) || "system";
+  const localConversationId = String(conversationKey || "").trim();
+  const identity = buildDclawConversationIdentity({
+    botId: binding.botId,
+    conversationKey: localConversationId,
+    conversationEpoch,
+    purpose: "conversation-reset"
+  });
+  const customerName = privateUserIdFromConversationKey(localConversationId) || "system";
   const worktoolMessage = {
     channel: "wecom-worktool",
     eventType: "conversation_reset",
     botId: binding.botId,
     agentId: binding.agentId,
-    conversationId: conversationKey,
-    sessionId: conversationKey,
+    conversationId: identity.runtimeConversationId,
+    sessionId: identity.runtimeConversationId,
     messageId: "",
     message: "",
     rawMessage: "",
     roomType: null,
     groupName: "",
-    userId: externalUserId,
-    metadata: { reason }
+    userId: customerName,
+    metadata: {
+      localConversationId,
+      reason
+    }
   };
 
   return {
-    external_user_id: externalUserId,
-    external_session_id: conversationKey,
+    external_user_id: identity.externalUserId,
+    external_session_id: identity.externalSessionId,
     message: [
       "你收到的是 WorkTool 回调服务器的内部会话清理事件。",
       "eventType=conversation_reset，不是客户消息，绝不生成客服话术。",
@@ -524,7 +550,8 @@ export function buildDclawConversationResetRequest({
       eventType: "conversation_reset",
       botId: worktoolMessage.botId,
       agentId: worktoolMessage.agentId,
-      conversationId: conversationKey,
+      conversationId: identity.runtimeConversationId,
+      localConversationId,
       reason,
       generalRule: normalizedGeneralRule,
       worktool: worktoolMessage
@@ -535,13 +562,21 @@ export function buildDclawConversationResetRequest({
 export function buildDclawConversationMemoryClearRequest({
   binding,
   conversationKey,
+  conversationEpoch,
   reason = "console_reset"
 }) {
-  const externalUserId = privateUserIdFromConversationKey(conversationKey);
-  if (!externalUserId) return null;
+  const localConversationId = String(conversationKey || "").trim();
+  const customerName = privateUserIdFromConversationKey(localConversationId);
+  if (!customerName) return null;
+  const identity = buildDclawConversationIdentity({
+    botId: binding.botId,
+    conversationKey: localConversationId,
+    conversationEpoch,
+    purpose: "conversation"
+  });
   return {
-    external_user_id: externalUserId,
-    external_session_id: conversationKey,
+    external_user_id: identity.externalUserId,
+    external_session_id: identity.externalSessionId,
     message: "/clear",
     stream: true,
     metadata: {
@@ -549,9 +584,10 @@ export function buildDclawConversationMemoryClearRequest({
       eventType: "conversation_memory_clear",
       botId: binding.botId,
       agentId: binding.agentId,
-      conversationId: conversationKey,
+      conversationId: identity.runtimeConversationId,
+      localConversationId,
       reason,
-      userId: externalUserId
+      userId: customerName
     }
   };
 }
@@ -584,7 +620,7 @@ export function parseConversationMemoryClearAcknowledgement(rawReply) {
 
 export function buildDclawProactiveEventRequest({
   binding,
-  conversationKey,
+  conversation,
   target,
   worktoolMessageId,
   worktoolResponse,
@@ -592,13 +628,20 @@ export function buildDclawProactiveEventRequest({
 }) {
   const normalizedGeneralRule = normalizeGeneralRule(generalRule);
   const isGroup = target.targetType === "group";
+  const localConversationId = String(conversation?.conversationKey || "").trim();
+  const identity = buildDclawConversationIdentity({
+    botId: binding.botId,
+    conversationKey: localConversationId,
+    conversationEpoch: conversation?.conversationEpoch,
+    purpose: "conversation"
+  });
   const worktoolMessage = {
     channel: "wecom-worktool",
     eventType: "outbound_proactive_message",
     botId: binding.botId,
     agentId: binding.agentId,
-    conversationId: conversationKey,
-    sessionId: conversationKey,
+    conversationId: identity.runtimeConversationId,
+    sessionId: identity.runtimeConversationId,
     messageId: worktoolMessageId || "",
     message: boundedDclawText(target.content, maxDclawCurrentMessageChars),
     rawMessage: boundedDclawText(target.content, maxDclawRawMessageChars),
@@ -606,6 +649,7 @@ export function buildDclawProactiveEventRequest({
     groupName: isGroup ? target.targetName : "",
     userId: isGroup ? "" : target.targetName,
     metadata: {
+      localConversationId,
       targetType: target.targetType,
       targetName: target.targetName,
       messageType: target.messageType || "text",
@@ -619,8 +663,8 @@ export function buildDclawProactiveEventRequest({
   };
 
   return {
-    external_user_id: worktoolMessage.userId || worktoolMessage.groupName || "unknown",
-    external_session_id: worktoolMessage.conversationId,
+    external_user_id: identity.externalUserId,
+    external_session_id: identity.externalSessionId,
     message: [
       "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
       "eventType=outbound_proactive_message 表示机器人已经主动向客户或群发送了一条消息。",
@@ -636,6 +680,7 @@ export function buildDclawProactiveEventRequest({
       botId: worktoolMessage.botId,
       agentId: worktoolMessage.agentId,
       conversationId: worktoolMessage.conversationId,
+      localConversationId,
       messageId: worktoolMessage.messageId,
       eventType: worktoolMessage.eventType,
       roomType: worktoolMessage.roomType,
@@ -649,19 +694,26 @@ export function buildDclawProactiveEventRequest({
 
 export function buildDclawActivationRequest({
   binding,
-  conversationKey,
+  conversation,
   task,
   flow,
   generalRule = ""
 }) {
-  const userId = String(conversationKey || "").split(":private:")[1] || "";
+  const localConversationId = String(conversation?.conversationKey || "").trim();
+  const userId = privateUserIdFromConversationKey(localConversationId);
+  const identity = buildDclawConversationIdentity({
+    botId: binding.botId,
+    conversationKey: localConversationId,
+    conversationEpoch: conversation?.conversationEpoch,
+    purpose: "conversation"
+  });
   const worktoolMessage = {
     channel: "wecom-worktool",
     eventType: "flow_activation_due",
     botId: binding.botId,
     agentId: binding.agentId,
-    conversationId: conversationKey,
-    sessionId: conversationKey,
+    conversationId: identity.runtimeConversationId,
+    sessionId: identity.runtimeConversationId,
     messageId: `activation:${task.id}`,
     message: "",
     rawMessage: "",
@@ -669,6 +721,7 @@ export function buildDclawActivationRequest({
     groupName: "",
     userId,
     metadata: {
+      localConversationId,
       activationTaskId: task.id,
       nodeId: task.nodeId,
       attemptNumber: task.attemptNumber,
@@ -681,8 +734,8 @@ export function buildDclawActivationRequest({
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
 
   return {
-    external_user_id: worktoolMessage.userId || "unknown",
-    external_session_id: conversationKey,
+    external_user_id: identity.externalUserId,
+    external_session_id: identity.externalSessionId,
     message: [
       "你收到的是 WorkTool 回调服务器生成的节点激活任务。",
       "eventType=flow_activation_due 表示客户在当前节点长时间未回复，需要发送一次自然的激活提醒。",
@@ -703,7 +756,8 @@ export function buildDclawActivationRequest({
       eventType: "flow_activation_due",
       botId: binding.botId,
       agentId: binding.agentId,
-      conversationId: conversationKey,
+      conversationId: identity.runtimeConversationId,
+      localConversationId,
       worktool: worktoolMessage,
       flow: agentFlow,
       generalRule: normalizedGeneralRule
@@ -713,19 +767,26 @@ export function buildDclawActivationRequest({
 
 export function buildDclawTagActivationRequest({
   binding,
-  conversationKey,
+  conversation,
   task,
   generalRule = ""
 }) {
-  const userId = String(conversationKey || "").split(":private:")[1] || "";
+  const localConversationId = String(conversation?.conversationKey || "").trim();
+  const userId = privateUserIdFromConversationKey(localConversationId);
+  const identity = buildDclawConversationIdentity({
+    botId: binding.botId,
+    conversationKey: localConversationId,
+    conversationEpoch: conversation?.conversationEpoch,
+    purpose: "conversation"
+  });
   const normalizedGeneralRule = normalizeGeneralRule(generalRule);
   const worktoolMessage = {
     channel: "wecom-worktool",
     eventType: "tag_activation_due",
     botId: binding.botId,
     agentId: binding.agentId,
-    conversationId: conversationKey,
-    sessionId: conversationKey,
+    conversationId: identity.runtimeConversationId,
+    sessionId: identity.runtimeConversationId,
     messageId: `tag_activation:${task.id}`,
     message: task.messageContent || "",
     rawMessage: task.messageContent || "",
@@ -733,6 +794,7 @@ export function buildDclawTagActivationRequest({
     groupName: "",
     userId,
     metadata: {
+      localConversationId,
       tagActivationTaskId: task.id,
       groupId: task.groupId,
       tagId: task.tagId,
@@ -740,8 +802,8 @@ export function buildDclawTagActivationRequest({
     }
   };
   return {
-    external_user_id: userId || "unknown",
-    external_session_id: conversationKey,
+    external_user_id: identity.externalUserId,
+    external_session_id: identity.externalSessionId,
     message: [
       "你收到的是 WorkTool 回调服务器的标签触发跟进事件。",
       "eventType=tag_activation_due 表示某个客户标签仍然有效，需要发送一次自然跟进。",
@@ -762,7 +824,8 @@ export function buildDclawTagActivationRequest({
       eventType: "tag_activation_due",
       botId: binding.botId,
       agentId: binding.agentId,
-      conversationId: conversationKey,
+      conversationId: identity.runtimeConversationId,
+      localConversationId,
       worktool: worktoolMessage,
       generalRule: normalizedGeneralRule
     }

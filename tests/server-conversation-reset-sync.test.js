@@ -13,8 +13,9 @@ test("conversation reset sync clears workspace history before customer session m
   assert.match(sync, /buildDclawConversationResetRequest/);
   assert.match(sync, /buildDclawConversationMemoryClearRequest/);
   assert.match(sync, /runConversationResetRequests/);
-  assert.match(sync, /markConversationResetHandled\(conversationKey\)/);
+  assert.match(sync, /markConversationResetHandledForEpoch/);
   assert.match(sync, /agent\.conversation_reset\.failed/);
+  assert.doesNotMatch(sync, /enqueueAgentInvocation\(runReset\)/);
 });
 
 test("agent replies are discarded when their conversation epoch became stale", () => {
@@ -41,15 +42,14 @@ test("reset route stays local-first and wakes background cleanup without awaitin
   assert.match(route, /reason: "conversation_reset"/);
 });
 
-test("private new activity waits for an active reset attempt and cancels obsolete retries", () => {
+test("private new activity rotates epoch without waiting for an old reset attempt", () => {
   const start = source.indexOf("async function processIncomingMessage");
   const end = source.indexOf("async function processCoalescedIncomingBatch", start);
   const handler = source.slice(start, end);
-  const wait = handler.indexOf("await conversationResetWorker.waitForConversation(conversationKey)");
   const prepare = handler.indexOf("prepareConversationResetForNewActivity");
   const persist = handler.indexOf("persistInboundConversation");
 
-  assert.ok(wait >= 0 && wait < prepare);
-  assert.ok(prepare > wait && prepare < persist);
+  assert.doesNotMatch(handler, /waitForConversation/);
+  assert.ok(prepare >= 0 && prepare < persist);
   assert.match(handler, /resetPending: resetState\.resetPending/);
 });

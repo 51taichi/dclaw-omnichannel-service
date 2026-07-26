@@ -35,7 +35,10 @@ const heavyHistoryMessage = {
 test("buildDclawRequest omits recent messages and nested raw payloads", () => {
   const request = buildDclawRequest({
     binding,
-    conversation: { conversationKey: "bot_1:private:魔兮" },
+    conversation: {
+      conversationKey: "bot_1:private:魔兮",
+      conversationEpoch: "epoch-1"
+    },
     message: {
       messageId: "m1",
       spoken: "产品的呢",
@@ -57,6 +60,13 @@ test("buildDclawRequest omits recent messages and nested raw payloads", () => {
   assert.doesNotMatch(request.message, /agentReply/);
   assert.doesNotMatch(request.message, /worktoolMessageIds/);
   assert.doesNotMatch(JSON.stringify(request.metadata), /agentReply/);
+  assert.match(request.external_user_id, /^wt-u-[a-f0-9]+$/);
+  assert.match(request.external_session_id, /^wt-s-[a-f0-9]+$/);
+  assert.match(request.metadata.worktool.conversationId, /^wt-c-[a-f0-9]+$/);
+  assert.equal(request.metadata.localConversationId, "bot_1:private:魔兮");
+  assert.equal(request.metadata.worktool.metadata.localConversationId, "bot_1:private:魔兮");
+  assert.notEqual(request.external_user_id, "魔兮");
+  assert.notEqual(request.external_session_id, "bot_1:private:魔兮");
 });
 
 test("normal inbound requests hide node activation scripts from the agent", () => {
@@ -219,7 +229,10 @@ test("legacy analysis keeps the complete live customer message outside the histo
 test("buildDclawActivationRequest omits recent messages", () => {
   const request = buildDclawActivationRequest({
     binding,
-    conversationKey: "bot_1:private:魔兮",
+    conversation: {
+      conversationKey: "bot_1:private:魔兮",
+      conversationEpoch: "epoch-activation-sanitize"
+    },
     task: {
       id: 7,
       nodeId: "node_1",

@@ -453,6 +453,7 @@ db.exec(`
     bot_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
     conversation_key TEXT NOT NULL,
+    conversation_epoch TEXT NOT NULL DEFAULT '',
     status TEXT NOT NULL DEFAULT 'pending',
     attempts INTEGER NOT NULL DEFAULT 0,
     max_attempts INTEGER NOT NULL DEFAULT 3,
@@ -483,6 +484,7 @@ ensureColumn("bot_agent_bindings", "access_key_hash", "TEXT");
 ensureColumn("bot_agent_bindings", "access_key_updated_at", "TEXT");
 ensureColumn("conversations", "reset_pending", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("conversations", "conversation_epoch", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("conversation_reset_tasks", "conversation_epoch", "TEXT NOT NULL DEFAULT ''");
 db.exec(`
   UPDATE conversations
   SET conversation_epoch = lower(hex(randomblob(16)))
@@ -1117,13 +1119,15 @@ export function getConversationResetPending(conversationKey) {
   return Boolean(row?.reset_pending);
 }
 
-export function markConversationResetHandled(conversationKey) {
-  db.prepare(`
+export function markConversationResetHandledForEpoch(conversationKey, conversationEpoch) {
+  const result = db.prepare(`
     UPDATE conversations
     SET reset_pending = 0,
         updated_at = ?
     WHERE conversation_key = ?
-  `).run(now(), conversationKey);
+      AND conversation_epoch = ?
+  `).run(now(), conversationKey, conversationEpoch);
+  return Boolean(result.changes);
 }
 
 export function getConversation(conversationKey) {
@@ -1655,6 +1659,7 @@ function rowToConversationResetTask(row) {
     botId: row.bot_id,
     agentId: row.agent_id,
     conversationKey: row.conversation_key,
+    conversationEpoch: row.conversation_epoch || "",
     status: row.status,
     attemptNumber: Number(row.attempts || 0),
     maxAttempts: Number(row.max_attempts || 3),
@@ -4298,14 +4303,16 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
     `).run(timestamp, timestamp, botId, conversationKey);
     const resetTask = db.prepare(`
       INSERT INTO conversation_reset_tasks (
-        bot_id, agent_id, conversation_key, status, attempts, max_attempts,
+        bot_id, agent_id, conversation_key, conversation_epoch,
+        status, attempts, max_attempts,
         due_at, created_at, updated_at
       )
-      VALUES (?, ?, ?, 'pending', 0, 3, ?, ?, ?)
+      VALUES (?, ?, ?, ?, 'pending', 0, 3, ?, ?, ?)
     `).run(
       botId,
       conversation.agentId,
       conversationKey,
+      conversation.conversationEpoch,
       timestamp,
       timestamp,
       timestamp

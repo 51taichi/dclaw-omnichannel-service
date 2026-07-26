@@ -21,6 +21,7 @@ export function createConversationResetWorker({
       const result = await syncTask({
         binding,
         conversationKey: task.conversationKey,
+        conversationEpoch: task.conversationEpoch,
         reason: "background_console_reset"
       });
       if (result?.status !== "synced") {

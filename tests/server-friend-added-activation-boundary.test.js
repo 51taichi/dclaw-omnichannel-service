@@ -108,6 +108,10 @@ test("friend-added callback queues old Agent memory cleanup without blocking loc
   assert.ok(syncIndex < resetIndex);
   assert.ok(resetIndex < entryIndex);
   assert.equal(handler.includes("await syncConversationResetToAgent"), false);
+  assert.match(
+    handler,
+    /syncConversationResetToAgent\(\{[\s\S]*conversationEpoch:\s*existingConversation\.conversationEpoch/
+  );
 });
 
 test("friend-added re-entry cancels any buffered messages from the old conversation epoch", () => {

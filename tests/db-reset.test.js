@@ -65,6 +65,7 @@ test("clearConversationForReset deletes one flow conversation for a fresh agent 
       groupName: "张三"
     }
   });
+  const deletedEpoch = db.getConversation(conversationKey).conversationEpoch;
   db.updateConversationSession(conversationKey, "dclaw-session-old");
   db.getOrCreateFlowSession({ botId, conversationKey, machine });
   db.mergeFlowSessionData({ conversationKey, patch: { phone: "13800000000" } });
@@ -93,6 +94,7 @@ test("clearConversationForReset deletes one flow conversation for a fresh agent 
   assert.equal(result.deleted, true);
   assert.equal(result.resetTask.status, "pending");
   assert.equal(result.resetTask.conversationKey, conversationKey);
+  assert.equal(result.resetTask.conversationEpoch, deletedEpoch);
   assert.equal(db.listConversationResetTasks({ botId, conversationKey }).length, 1);
   assert.equal(db.getFlowSessionForBot({ botId, conversationKey }), null);
   assert.equal(db.listConversationMessages({ conversationKey }).length, 0);
@@ -112,7 +114,8 @@ test("new activity cancels obsolete reset retries and inherits reset pending", (
     conversationKey,
     message: { roomType: 2, receivedName: "新客户", groupName: "新客户" }
   });
-  db.clearConversationForReset({ botId, conversationKey });
+  const deletedEpoch = db.getConversation(conversationKey).conversationEpoch;
+  const reset = db.clearConversationForReset({ botId, conversationKey });
 
   const resetState = db.prepareConversationResetForNewActivity({
     botId,
@@ -128,6 +131,21 @@ test("new activity cancels obsolete reset retries and inherits reset pending", (
 
   assert.equal(resetState.resetPending, true);
   assert.equal(conversation.resetPending, true);
+  assert.equal(reset.resetTask.conversationEpoch, deletedEpoch);
+  assert.notEqual(conversation.conversationEpoch, deletedEpoch);
+  assert.equal(
+    db.markConversationResetHandledForEpoch(conversationKey, deletedEpoch),
+    false
+  );
+  assert.equal(db.getConversationResetPending(conversationKey), true);
+  assert.equal(
+    db.markConversationResetHandledForEpoch(
+      conversationKey,
+      conversation.conversationEpoch
+    ),
+    true
+  );
+  assert.equal(db.getConversationResetPending(conversationKey), false);
   assert.equal(
     db.listConversationResetTasks({ botId, conversationKey }).at(-1).status,
     "canceled"
