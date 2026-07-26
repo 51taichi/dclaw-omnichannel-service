@@ -3957,11 +3957,6 @@ html.has-bot-context .action-toolbox-toggle:hover {
   justify-self: end;
 }
 
-.flow-session-card.is-legacy .flow-session-switch.handoff-switch {
-  border-color: color-mix(in srgb, #f59e0b 64%, var(--line));
-  box-shadow: 0 10px 22px color-mix(in srgb, #f59e0b 20%, transparent);
-}
-
 .handoff-switch[hidden] {
   display: none;
 }
@@ -3980,10 +3975,6 @@ html.has-bot-context .action-toolbox-toggle:hover {
   height: 30px;
   color: color-mix(in srgb, var(--muted) 72%, var(--accent));
   transition: color 0.16s ease;
-}
-
-.flow-session-card.is-legacy .handoff-switch-option {
-  color: #a16207;
 }
 
 .handoff-switch-option.is-ai {
@@ -4006,11 +3997,6 @@ html.has-bot-context .action-toolbox-toggle:hover {
   transition: transform 0.18s ease, background 0.18s ease;
 }
 
-.flow-session-card.is-legacy .handoff-switch-thumb {
-  background: linear-gradient(135deg, #fde68a, #f59e0b);
-  box-shadow: 0 8px 18px color-mix(in srgb, #f59e0b 26%, transparent);
-}
-
 .handoff-switch.is-human .handoff-switch-thumb {
   background: linear-gradient(135deg, #f59e0b, #fbbf24);
   transform: translateX(32px);
@@ -4019,11 +4005,6 @@ html.has-bot-context .action-toolbox-toggle:hover {
 .handoff-switch:not(.is-human) .handoff-switch-option.is-ai,
 .handoff-switch.is-human .handoff-switch-option.is-human {
   color: #ffffff;
-}
-
-.flow-session-card.is-legacy .handoff-switch:not(.is-human) .handoff-switch-option.is-ai,
-.flow-session-card.is-legacy .handoff-switch.is-human .handoff-switch-option.is-human {
-  color: #7c4a03;
 }
 
 .handoff-switch .icon {

@@ -22,9 +22,12 @@ test("legacy customer avatar uses a gold gradient and native tooltip", () => {
 
 test("legacy customer controls use gold borders and icons", () => {
   assert.match(css, /\.flow-session-card\.is-legacy :is\(\.flow-session-manual-tag-trigger,\s*\.flow-session-icons span\)\s*\{[^}]*#f59e0b[^}]*color:\s*#a16207/);
-  assert.match(css, /\.flow-session-card\.is-legacy \.flow-session-switch\.handoff-switch\s*\{[^}]*#f59e0b/);
-  assert.match(css, /\.flow-session-card\.is-legacy \.handoff-switch-option\s*\{[^}]*color:\s*#a16207/);
-  assert.match(css, /\.flow-session-card\.is-legacy \.handoff-switch-thumb\s*\{[^}]*linear-gradient\([^}]*#f59e0b/);
+});
+
+test("legacy customer handoff switch keeps the regular Bot theme", () => {
+  assert.doesNotMatch(css, /\.flow-session-card\.is-legacy \.flow-session-switch\.handoff-switch/);
+  assert.doesNotMatch(css, /\.flow-session-card\.is-legacy \.handoff-switch-option/);
+  assert.doesNotMatch(css, /\.flow-session-card\.is-legacy \.handoff-switch-thumb/);
 });
 
 test("legacy control treatment does not highlight or reorder the card", () => {
