@@ -1,4 +1,5 @@
 import { normalizeTagDecision } from "./tags.js";
+import { normalizeTagEvaluation } from "./tag-audit.js";
 import { listConfiguredFlowCollectFields } from "./flow-assets.js";
 import { buildDclawConversationIdentity } from "./dclaw-conversation-identity.js";
 
@@ -1098,6 +1099,7 @@ export function parseAgentReply(rawReply) {
     attachments: normalizeAgentAttachments(parsed.attachments || parsed.resources || parsed.files),
     sources: normalizeAgentSources(parsed.sources || parsed.references || parsed.evidence),
     flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
+    tagEvaluation: normalizeTagEvaluation(parsed.tagEvaluation),
     tagDecision: normalizeTagDecision(parsed.tagDecision || parsed.tags || {}),
     raw: parsed
   };
@@ -1117,6 +1119,7 @@ export function degradeAgentReply(rawReply) {
     attachments: [],
     sources: [],
     flowDecision: null,
+    tagEvaluation: [],
     tagDecision: { add: [], remove: [] },
     raw: rawReply,
     degraded: true
@@ -1236,6 +1239,7 @@ function invalidAgentReply(rawReply) {
     attachments: [],
     sources: [],
     flowDecision: null,
+    tagEvaluation: [],
     tagDecision: { add: [], remove: [] },
     raw: rawReply
   };

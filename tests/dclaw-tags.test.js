@@ -320,15 +320,24 @@ test("buildDclawTagActivationRequest carries the general rule", () => {
   assert.equal(request.metadata.localConversationId, conversation.conversationKey);
 });
 
-test("parseAgentReply extracts tagDecision", () => {
+test("parseAgentReply extracts tagEvaluation and tagDecision", () => {
   const reply = parseAgentReply(JSON.stringify({
     reply: "可以",
     attachments: [],
     sources: [],
+    tagEvaluation: [{
+      groupId: "intent",
+      tagId: "b",
+      matched: true,
+      reason: "询问细节",
+      evidenceMessageId: "321",
+      evidenceText: "你们老师怎么样"
+    }],
     tagDecision: { add: [{ groupId: "intent", tagId: "b", reason: "询问细节" }], remove: [] }
   }));
 
   assert.equal(reply.valid, true);
+  assert.equal(reply.tagEvaluation[0].matched, true);
   assert.equal(reply.tagDecision.add[0].tagId, "b");
 });
 

@@ -7,6 +7,48 @@ import {
   validateAndRetryAgentResponse
 } from "../src/agent-response-gateway.js";
 
+const auditedTagContext = {
+  groups: [{
+    id: "intent",
+    exclusive: true,
+    oneWay: true,
+    tags: [{ id: "c" }, { id: "b" }]
+  }],
+  currentTags: [{ groupId: "intent", tagId: "c" }]
+};
+
+const auditedTagEvidenceCandidates = [{
+  id: "1013",
+  text: "如果请假会扣钱吗"
+}];
+
+const validAuditedReply = {
+  reply: "请假不会扣费。",
+  attachments: [],
+  sources: [],
+  tagEvaluation: [
+    { groupId: "intent", tagId: "c", matched: false, reason: "未命中" },
+    {
+      groupId: "intent",
+      tagId: "b",
+      matched: true,
+      reason: "客户提出咨询问题",
+      evidenceMessageId: "1013",
+      evidenceText: "如果请假会扣钱吗"
+    }
+  ],
+  tagDecision: {
+    add: [{
+      groupId: "intent",
+      tagId: "b",
+      reason: "客户提出咨询问题",
+      evidenceMessageId: "1013",
+      evidenceText: "如果请假会扣钱吗"
+    }],
+    remove: []
+  }
+};
+
 test("gateway retries a deliberately broken successful JSON response and validates the repair", async () => {
   const validResponse = JSON.stringify({
     reply: "您好，我来帮您了解一下。",
@@ -99,6 +141,14 @@ test("validation preserves tag decision evidence fields", () => {
     reply: "老师都是经过严格筛选的。",
     attachments: [],
     sources: [],
+    tagEvaluation: [{
+      groupId: "intent",
+      tagId: "b",
+      matched: true,
+      reason: "询问老师水平",
+      evidenceMessageId: "msg-123",
+      evidenceText: "你们老师水平怎么样"
+    }],
     tagDecision: {
       add: [{
         groupId: "intent",
@@ -116,19 +166,30 @@ test("validation preserves tag decision evidence fields", () => {
         id: "intent",
         tags: [{ id: "b" }]
       }]
-    }
+    },
+    tagEvidenceCandidates: [{
+      id: "msg-123",
+      text: "你们老师水平怎么样"
+    }]
   });
 
   assert.equal(result.valid, true);
+  assert.equal(result.agentReply.tagEvaluation[0].matched, true);
   assert.equal(result.agentReply.tagDecision.add[0].evidenceMessageId, "msg-123");
   assert.equal(result.agentReply.tagDecision.add[0].evidenceText, "你们老师水平怎么样");
 });
 
-test("unknown tag decisions remain valid for server-side adjudication", () => {
+test("unknown tag decisions are rejected before server-side adjudication", () => {
   const result = validateAgentResponseText(JSON.stringify({
     reply: "老师都是经过严格筛选的。",
     attachments: [],
     sources: [],
+    tagEvaluation: [{
+      groupId: "intent",
+      tagId: "b",
+      matched: false,
+      reason: "未命中"
+    }],
     tagDecision: {
       add: [{
         groupId: "unknown-group",
@@ -147,8 +208,60 @@ test("unknown tag decisions remain valid for server-side adjudication", () => {
     }
   });
 
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) => /unknown-group:unknown-tag/.test(error.message)));
+});
+
+test("gateway repairs an empty decision that omitted mandatory evaluation", async () => {
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：如果请假会扣钱吗" },
+    validationOptions: {
+      allowTagDecision: true,
+      tagContext: auditedTagContext,
+      tagEvidenceCandidates: auditedTagEvidenceCandidates
+    },
+    invoke: async ({ attemptNumber }) => ({
+      reply: JSON.stringify(attemptNumber === 1
+        ? {
+            reply: "不会扣费",
+            attachments: [],
+            sources: [],
+            tagDecision: { add: [], remove: [] }
+          }
+        : validAuditedReply),
+      response: { attemptNumber }
+    })
+  });
+
   assert.equal(result.valid, true);
-  assert.equal(result.agentReply.tagDecision.add[0].tagId, "unknown-tag");
+  assert.equal(result.attempts.length, 2);
+  assert.equal(
+    result.agentReply.tagEvaluation.find((item) => item.tagId === "b").matched,
+    true
+  );
+});
+
+test("a valid audited response performs one Agent invocation", async () => {
+  let calls = 0;
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：如果请假会扣钱吗" },
+    validationOptions: {
+      allowTagDecision: true,
+      tagContext: auditedTagContext,
+      tagEvidenceCandidates: auditedTagEvidenceCandidates
+    },
+    invoke: async () => {
+      calls += 1;
+      return {
+        reply: JSON.stringify(validAuditedReply),
+        response: { calls }
+      };
+    }
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(calls, 1);
+  assert.equal(result.attempts.length, 1);
 });
 
 test("validation rejects prose wrapped around JSON", () => {

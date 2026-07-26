@@ -1,10 +1,15 @@
 import { normalizeTagDecision } from "./tags.js";
+import {
+  normalizeTagEvaluation,
+  validateTagAuditContract
+} from "./tag-audit.js";
 
 export function validateAgentResponseText(rawText, {
   requireFlowDecision = false,
   allowTagDecision = false,
   flow = null,
-  tagContext = null
+  tagContext = null,
+  tagEvidenceCandidates = []
 } = {}) {
   const raw = String(rawText || "");
   const { text, normalizations } = normalizeResponseText(raw);
@@ -27,7 +32,8 @@ export function validateAgentResponseText(rawText, {
     requireFlowDecision,
     allowTagDecision,
     flow,
-    tagContext
+    tagContext,
+    tagEvidenceCandidates
   });
   if (errors.length) {
     return invalidResult(raw, text, normalizations, errors);
@@ -45,6 +51,7 @@ export function validateAgentResponseText(rawText, {
       attachments: normalizeAgentAttachments(parsed.attachments || parsed.resources || parsed.files),
       sources: normalizeAgentSources(parsed.sources || parsed.references || parsed.evidence),
       flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
+      tagEvaluation: normalizeTagEvaluation(parsed.tagEvaluation),
       tagDecision: normalizeTagDecision(parsed.tagDecision || parsed.tags || {}),
       raw: parsed
     }
@@ -183,7 +190,8 @@ function validateResponseObject(parsed, {
   requireFlowDecision,
   allowTagDecision,
   flow,
-  tagContext
+  tagContext,
+  tagEvidenceCandidates
 }) {
   const errors = [];
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -224,6 +232,37 @@ function validateResponseObject(parsed, {
     tagContext,
     errors
   });
+  const tagAuditEnabled = Boolean(
+    allowTagDecision
+    && tagContext
+    && Array.isArray(tagContext.groups)
+    && tagContext.groups.length
+  );
+  if (tagAuditEnabled) {
+    if (!Array.isArray(parsed.tagEvaluation)) {
+      errors.push({
+        type: "schema",
+        path: "tagEvaluation",
+        message: "tagEvaluation is required and must be an array when tags are enabled"
+      });
+    }
+    if (!parsed.tagDecision || typeof parsed.tagDecision !== "object" || Array.isArray(parsed.tagDecision)) {
+      errors.push({
+        type: "schema",
+        path: "tagDecision",
+        message: "tagDecision is required and must be an object when tags are enabled"
+      });
+    }
+    if (Array.isArray(parsed.tagEvaluation) && parsed.tagDecision && typeof parsed.tagDecision === "object") {
+      const audit = validateTagAuditContract({
+        evaluation: parsed.tagEvaluation,
+        decision: parsed.tagDecision,
+        tagContext,
+        evidenceCandidates: tagEvidenceCandidates
+      });
+      errors.push(...audit.errors);
+    }
+  }
   return errors;
 }
 
@@ -379,6 +418,7 @@ function invalidResult(rawText, normalizedText, normalizations, errors) {
       attachments: [],
       sources: [],
       flowDecision: null,
+      tagEvaluation: [],
       tagDecision: { add: [], remove: [] },
       raw: rawText,
       validationErrors: errors
