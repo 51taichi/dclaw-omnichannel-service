@@ -135,6 +135,27 @@ db.exec(`
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS agent_tag_evaluations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    invocation_id INTEGER NOT NULL,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    incoming_message_id TEXT,
+    group_id TEXT NOT NULL,
+    tag_id TEXT NOT NULL,
+    matched INTEGER NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    evidence_message_id TEXT NOT NULL DEFAULT '',
+    evidence_text TEXT NOT NULL DEFAULT '',
+    decision_action TEXT NOT NULL DEFAULT 'none',
+    created_at TEXT NOT NULL,
+    UNIQUE (invocation_id, group_id, tag_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_agent_tag_evaluations_bot_created
+  ON agent_tag_evaluations (bot_id, created_at);
+
   CREATE TABLE IF NOT EXISTS app_settings (
     key TEXT PRIMARY KEY,
     value_json TEXT NOT NULL,
@@ -1359,6 +1380,94 @@ export function updateAgentResponseValidationRetryOutcome({
     invocationId ?? null
   );
   return result.changes;
+}
+
+function rowToAgentTagEvaluation(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    invocationId: row.invocation_id,
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    conversationKey: row.conversation_key,
+    incomingMessageId: row.incoming_message_id,
+    groupId: row.group_id,
+    tagId: row.tag_id,
+    matched: Boolean(row.matched),
+    evidenceMessageId: row.evidence_message_id || "",
+    evidenceText: row.evidence_text || "",
+    decisionAction: row.decision_action || "none",
+    createdAt: row.created_at
+  };
+}
+
+export function insertAgentTagEvaluations({
+  invocationId,
+  botId,
+  agentId,
+  conversationKey,
+  incomingMessageId,
+  evaluations = [],
+  decision = {}
+}) {
+  const addKeys = new Set(
+    (Array.isArray(decision?.add) ? decision.add : [])
+      .map((item) => `${String(item?.groupId || "").trim()}:${String(item?.tagId || "").trim()}`)
+  );
+  const removeKeys = new Set(
+    (Array.isArray(decision?.remove) ? decision.remove : [])
+      .map((item) => `${String(item?.groupId || "").trim()}:${String(item?.tagId || "").trim()}`)
+  );
+  const upsert = db.prepare(`
+    INSERT INTO agent_tag_evaluations (
+      invocation_id, bot_id, agent_id, conversation_key, incoming_message_id,
+      group_id, tag_id, matched, reason, evidence_message_id, evidence_text,
+      decision_action, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT (invocation_id, group_id, tag_id) DO UPDATE SET
+      matched = excluded.matched,
+      reason = excluded.reason,
+      evidence_message_id = excluded.evidence_message_id,
+      evidence_text = excluded.evidence_text,
+      decision_action = excluded.decision_action,
+      created_at = excluded.created_at
+  `);
+  const select = db.prepare(`
+    SELECT *
+    FROM agent_tag_evaluations
+    WHERE invocation_id = ? AND group_id = ? AND tag_id = ?
+  `);
+  const rows = [];
+
+  for (const evaluation of Array.isArray(evaluations) ? evaluations : []) {
+    const groupId = String(evaluation?.groupId || "").trim();
+    const tagId = String(evaluation?.tagId || "").trim();
+    if (!groupId || !tagId) continue;
+    const evaluationKey = `${groupId}:${tagId}`;
+    const decisionAction = addKeys.has(evaluationKey)
+      ? "add"
+      : removeKeys.has(evaluationKey)
+        ? "remove"
+        : "none";
+    upsert.run(
+      invocationId,
+      botId,
+      agentId,
+      conversationKey,
+      incomingMessageId || "",
+      groupId,
+      tagId,
+      evaluation?.matched === true ? 1 : 0,
+      String(evaluation?.reason || ""),
+      String(evaluation?.evidenceMessageId || ""),
+      String(evaluation?.evidenceText || ""),
+      decisionAction,
+      now()
+    );
+    rows.push(rowToAgentTagEvaluation(select.get(invocationId, groupId, tagId)));
+  }
+  return rows;
 }
 
 function rowToProactiveTask(row) {
@@ -5223,6 +5332,11 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
         retryErrorMessage: row.retry_error_message || "",
         retryFinishedAt: row.retry_finished_at || ""
       })
+    },
+    "agent-tag-evaluations": {
+      table: "agent_tag_evaluations",
+      mapper: rowToAgentTagEvaluation,
+      orderBy: "created_at"
     },
     "message-processing": {
       table: "message_processing",
