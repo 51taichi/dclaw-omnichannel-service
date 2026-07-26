@@ -53,7 +53,11 @@ test("flow asset patches are constrained by current task configuration", () => {
   assert.match(applyBody, /if \(Object\.keys\(patch\)\.length\)/);
   assert.match(
     coalescedBody,
-    /applyFlowDecision\(\{[\s\S]*fillOnlyMissing: shouldAnalyzeLegacyHistory/
+    /applyFlowDecision\(\{[\s\S]*fillOnlyMissing: false/
+  );
+  assert.match(
+    functionBody("runLegacyHistoryAnalysis"),
+    /filterConfiguredCollectedDataPatch\(\{[\s\S]*fillOnlyMissing: true/
   );
 });
 

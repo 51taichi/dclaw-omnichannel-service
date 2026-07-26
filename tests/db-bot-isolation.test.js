@@ -497,6 +497,7 @@ test("deleteBotData removes the bot binding and bot scoped records", () => {
   const botId = "bot_delete_me";
   const otherBotId = "bot_keep_me";
   const conversationKey = `${botId}:private:待删除客户`;
+  const resetConversationKey = `${botId}:private:待重置客户`;
 
   db.upsertBotBinding({
     botId,
@@ -520,6 +521,21 @@ test("deleteBotData removes the bot binding and bot scoped records", () => {
   });
   createSession(botId, "待删除客户", "node_delete");
   createSession(otherBotId, "保留客户", "node_keep");
+  db.upsertConversation({
+    botId,
+    agentId: "agent_delete",
+    conversationKey: resetConversationKey,
+    message: {
+      roomType: 2,
+      receivedName: "待重置客户",
+      groupName: "待重置客户"
+    }
+  });
+  db.clearConversationForReset({
+    botId,
+    conversationKey: resetConversationKey
+  });
+  assert.equal(db.listConversationResetTasks({ botId }).length, 1);
   db.createProactiveTask({
     botId,
     agentId: "agent_delete",
@@ -569,6 +585,7 @@ test("deleteBotData removes the bot binding and bot scoped records", () => {
   assert.deepEqual(db.listConversationMessages({ botId, conversationKey }), []);
   assert.equal(db.listProactiveTasks({ botId }).length, 0);
   assert.equal(db.listProactiveAddressBookTargets({ botId }).length, 0);
+  assert.equal(db.listConversationResetTasks({ botId }).length, 0);
   assert.ok(db.getBotBinding(otherBotId));
   assert.ok(db.listFlowSessions({ botId: otherBotId }).length > 0);
 });

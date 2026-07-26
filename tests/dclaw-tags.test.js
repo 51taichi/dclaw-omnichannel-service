@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildDclawAttachmentSourceRetryRequest,
+  buildDclawLegacyHistoryAnalysisRequest,
   buildDclawReplyFormatRetryRequest,
   buildDclawRequest,
   buildDclawTagActivationRequest,
@@ -155,6 +156,59 @@ test("buildDclawRequest includes bounded legacy customer text and tag guidance",
   assert.equal(request.metadata.historyAnalysis.selectedCount, 2);
   assert.equal(request.metadata.historyAnalysis.omittedCount, 60);
   assert.equal(request.metadata.historyAnalysis.text, undefined);
+});
+
+test("buildDclawLegacyHistoryAnalysisRequest isolates background analysis and forbids customer replies", () => {
+  const request = buildDclawLegacyHistoryAnalysisRequest({
+    binding,
+    conversation,
+    message,
+    flow: {
+      machine: {
+        nodes: [{
+          id: "node_1",
+          name: "收集信息",
+          collectFields: ["手机"]
+        }]
+      },
+      currentNode: {
+        id: "node_1",
+        name: "收集信息",
+        collectFields: ["手机"]
+      },
+      session: {
+        currentNodeId: "node_1",
+        collectedData: {}
+      }
+    },
+    tagContext: {
+      groups: [{
+        id: "intent",
+        name: "意向",
+        tags: [{ id: "a", name: "A类", condition: "明确付费" }]
+      }],
+      currentTags: []
+    },
+    legacyHistoryAnalysis: {
+      text: "我的手机号是18570860666",
+      selectedCount: 1,
+      omittedCount: 0,
+      selectedChars: 19,
+      configuredLimit: 4000
+    }
+  });
+
+  assert.equal(
+    request.external_session_id,
+    `${conversation.conversationKey}:legacy-history-analysis`
+  );
+  assert.equal(request.metadata.eventType, "legacy_history_analysis");
+  assert.equal(request.metadata.worktool.conversationId, request.external_session_id);
+  assert.equal(request.metadata.liveConversationId, conversation.conversationKey);
+  assert.match(request.message, /后台历史智能分析/);
+  assert.match(request.message, /reply 必须为空字符串/);
+  assert.match(request.message, /我的手机号是18570860666/);
+  assert.match(request.message, /"collectibleFields":\s*\[\s*"手机"/);
 });
 
 test("buildDclawRequest omits empty legacy history", () => {

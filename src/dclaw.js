@@ -297,6 +297,36 @@ export function buildDclawRequest({
   };
 }
 
+export function buildDclawLegacyHistoryAnalysisRequest(input) {
+  const conversationKey = String(input?.conversation?.conversationKey || "").trim();
+  const analysisSessionId = `${conversationKey}:legacy-history-analysis`;
+  const request = buildDclawRequest({
+    ...input,
+    conversation: {
+      ...(input.conversation || {}),
+      conversationKey: analysisSessionId
+    }
+  });
+  return {
+    ...request,
+    external_session_id: analysisSessionId,
+    message: [
+      request.message,
+      "",
+      "这是服务器后台历史智能分析，不是实时客户消息。",
+      "禁止向客户发送任何内容；最终 JSON 中 reply 必须为空字符串，attachments 和 sources 必须为空数组。",
+      "只判断 tagDecision，并从明确的客户历史原话补充 flowDecision.collectedDataPatch。",
+      "不得把历史分析用于推进任务节点：nodeCompleted 必须为 false，nextNodeId 必须保持当前节点。"
+    ].join("\n"),
+    metadata: {
+      ...(request.metadata || {}),
+      eventType: "legacy_history_analysis",
+      liveConversationId: conversationKey,
+      conversationId: analysisSessionId
+    }
+  };
+}
+
 export function buildDclawReplyFormatRetryRequest(request) {
   const responseSchema = responseSchemaForRequest({
     hasFlow: Boolean(request?.metadata?.flow),

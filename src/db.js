@@ -447,6 +447,27 @@ db.exec(`
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS conversation_reset_tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    due_at TEXT NOT NULL,
+    processing_started_at TEXT,
+    completed_at TEXT,
+    canceled_at TEXT,
+    cancel_reason TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_conversation_reset_tasks_due
+  ON conversation_reset_tasks (status, due_at, id);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -928,6 +949,7 @@ export function deleteBotData(botId) {
   if (!binding) return null;
 
   const tables = [
+    "conversation_reset_tasks",
     "flow_activation_tasks",
     "flow_state_events",
     "conversation_messages",
@@ -1044,15 +1066,17 @@ export function upsertConversation({
   agentId,
   conversationKey,
   message,
+  resetPending = false,
   skipFirstSeenDateTag = false
 }) {
   const timestamp = now();
   db.prepare(`
     INSERT INTO conversations (
-      conversation_key, bot_id, agent_id, conversation_epoch, room_type, received_name, group_name,
+      conversation_key, bot_id, agent_id, conversation_epoch, reset_pending,
+      room_type, received_name, group_name,
       last_message_at, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(conversation_key) DO UPDATE SET
       agent_id = excluded.agent_id,
       room_type = excluded.room_type,
@@ -1065,6 +1089,7 @@ export function upsertConversation({
     botId,
     agentId,
     crypto.randomUUID(),
+    resetPending ? 1 : 0,
     message.roomType ?? null,
     message.receivedName || "",
     message.groupName || "",
@@ -1618,6 +1643,27 @@ function rowToTagActivationTask(row) {
     cancelReason: row.cancel_reason || "",
     errorMessage: row.error_message || "",
     worktoolMessageIds: parseJson(row.worktool_message_ids_json) || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToConversationResetTask(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    conversationKey: row.conversation_key,
+    status: row.status,
+    attemptNumber: Number(row.attempts || 0),
+    maxAttempts: Number(row.max_attempts || 3),
+    dueAt: row.due_at,
+    processingStartedAt: row.processing_started_at || "",
+    completedAt: row.completed_at || "",
+    canceledAt: row.canceled_at || "",
+    cancelReason: row.cancel_reason || "",
+    errorMessage: row.error_message || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -4236,9 +4282,35 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
   const timestamp = now();
   const conversation = getConversation(conversationKey);
   if (!conversation || conversation.botId !== botId) throw new Error("flow session not found");
+  let resetTaskId = null;
 
   db.exec("BEGIN IMMEDIATE");
   try {
+    db.prepare(`
+      UPDATE conversation_reset_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = 'superseded_by_new_reset',
+          updated_at = ?
+      WHERE bot_id = ?
+        AND conversation_key = ?
+        AND status IN ('pending', 'processing')
+    `).run(timestamp, timestamp, botId, conversationKey);
+    const resetTask = db.prepare(`
+      INSERT INTO conversation_reset_tasks (
+        bot_id, agent_id, conversation_key, status, attempts, max_attempts,
+        due_at, created_at, updated_at
+      )
+      VALUES (?, ?, ?, 'pending', 0, 3, ?, ?, ?)
+    `).run(
+      botId,
+      conversation.agentId,
+      conversationKey,
+      timestamp,
+      timestamp,
+      timestamp
+    );
+    resetTaskId = resetTask.lastInsertRowid;
     db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ? AND bot_id = ?")
       .run(conversationKey, botId);
     db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
@@ -4279,8 +4351,166 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
     botId,
     conversationKey,
     deleted: true,
-    reason
+    reason,
+    resetTask: rowToConversationResetTask(
+      db.prepare("SELECT * FROM conversation_reset_tasks WHERE id = ?").get(resetTaskId)
+    )
   };
+}
+
+export function listConversationResetTasks({
+  botId = "",
+  conversationKey = "",
+  limit = 100
+} = {}) {
+  const clauses = [];
+  const params = [];
+  if (botId) {
+    clauses.push("bot_id = ?");
+    params.push(botId);
+  }
+  if (conversationKey) {
+    clauses.push("conversation_key = ?");
+    params.push(conversationKey);
+  }
+  const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+  return db.prepare(`
+    SELECT *
+    FROM conversation_reset_tasks
+    ${where}
+    ORDER BY id ASC
+    LIMIT ?
+  `).all(...params, Math.max(1, Number(limit) || 100)).map(rowToConversationResetTask);
+}
+
+export function claimNextConversationResetTask({
+  nowIso = now(),
+  staleBeforeIso = ""
+} = {}) {
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (staleBeforeIso) {
+      db.prepare(`
+        UPDATE conversation_reset_tasks
+        SET status = 'pending',
+            processing_started_at = NULL,
+            due_at = ?,
+            updated_at = ?
+        WHERE status = 'processing'
+          AND processing_started_at < ?
+      `).run(timestamp, timestamp, staleBeforeIso);
+    }
+    const row = db.prepare(`
+      SELECT *
+      FROM conversation_reset_tasks
+      WHERE status = 'pending'
+        AND due_at <= ?
+      ORDER BY due_at ASC, id ASC
+      LIMIT 1
+    `).get(nowIso);
+    if (!row) {
+      db.exec("COMMIT");
+      return null;
+    }
+    const claimed = db.prepare(`
+      UPDATE conversation_reset_tasks
+      SET status = 'processing',
+          attempts = attempts + 1,
+          processing_started_at = ?,
+          updated_at = ?
+      WHERE id = ?
+        AND status = 'pending'
+    `).run(timestamp, timestamp, row.id);
+    db.exec("COMMIT");
+    if (!claimed.changes) return null;
+    return rowToConversationResetTask(
+      db.prepare("SELECT * FROM conversation_reset_tasks WHERE id = ?").get(row.id)
+    );
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function completeConversationResetTask({ id }) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE conversation_reset_tasks
+    SET status = 'succeeded',
+        completed_at = ?,
+        processing_started_at = NULL,
+        error_message = '',
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'processing'
+  `).run(timestamp, timestamp, id);
+  if (!result.changes) return null;
+  return rowToConversationResetTask(
+    db.prepare("SELECT * FROM conversation_reset_tasks WHERE id = ?").get(id)
+  );
+}
+
+export function failConversationResetTask({
+  id,
+  error = "",
+  retryDelayMs = 5000
+}) {
+  const row = db.prepare("SELECT * FROM conversation_reset_tasks WHERE id = ?").get(id);
+  if (!row || row.status !== "processing") return null;
+  const timestamp = now();
+  const retry = Number(row.attempts || 0) < Number(row.max_attempts || 3);
+  const dueAt = new Date(Date.now() + Math.max(0, Number(retryDelayMs) || 0)).toISOString();
+  db.prepare(`
+    UPDATE conversation_reset_tasks
+    SET status = ?,
+        due_at = ?,
+        processing_started_at = NULL,
+        error_message = ?,
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'processing'
+  `).run(
+    retry ? "pending" : "failed",
+    retry ? dueAt : row.due_at,
+    String(error || "").slice(0, 1000),
+    timestamp,
+    id
+  );
+  return rowToConversationResetTask(
+    db.prepare("SELECT * FROM conversation_reset_tasks WHERE id = ?").get(id)
+  );
+}
+
+export function prepareConversationResetForNewActivity({ botId, conversationKey }) {
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const latest = db.prepare(`
+      SELECT *
+      FROM conversation_reset_tasks
+      WHERE bot_id = ?
+        AND conversation_key = ?
+      ORDER BY id DESC
+      LIMIT 1
+    `).get(botId, conversationKey);
+    const resetPending = Boolean(latest && latest.status !== "succeeded");
+    db.prepare(`
+      UPDATE conversation_reset_tasks
+      SET status = 'canceled',
+          canceled_at = ?,
+          cancel_reason = 'new_customer_activity',
+          updated_at = ?
+      WHERE bot_id = ?
+        AND conversation_key = ?
+        AND status IN ('pending', 'processing', 'failed')
+    `).run(timestamp, timestamp, botId, conversationKey);
+    db.exec("COMMIT");
+    return { resetPending };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
 
 export function upsertProactiveAddressBookTarget({

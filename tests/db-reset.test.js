@@ -91,11 +91,47 @@ test("clearConversationForReset deletes one flow conversation for a fresh agent 
 
   assert.equal(result.conversationKey, conversationKey);
   assert.equal(result.deleted, true);
+  assert.equal(result.resetTask.status, "pending");
+  assert.equal(result.resetTask.conversationKey, conversationKey);
+  assert.equal(db.listConversationResetTasks({ botId, conversationKey }).length, 1);
   assert.equal(db.getFlowSessionForBot({ botId, conversationKey }), null);
   assert.equal(db.listConversationMessages({ conversationKey }).length, 0);
   assert.equal(db.listFlowStateEvents({ conversationKey }).length, 0);
   assert.equal(db.getConversation(conversationKey), null);
   assert.equal(db.getConversationResetPending(conversationKey), false);
+});
+
+test("new activity cancels obsolete reset retries and inherits reset pending", () => {
+  const botId = "bot_reset_new_activity";
+  const agentId = "agent_reset_new_activity";
+  const conversationKey = `${botId}:private:新客户`;
+  ensureBotAgent(botId, agentId);
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "新客户", groupName: "新客户" }
+  });
+  db.clearConversationForReset({ botId, conversationKey });
+
+  const resetState = db.prepareConversationResetForNewActivity({
+    botId,
+    conversationKey
+  });
+  const conversation = db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    resetPending: resetState.resetPending,
+    message: { roomType: 2, receivedName: "新客户", groupName: "新客户" }
+  });
+
+  assert.equal(resetState.resetPending, true);
+  assert.equal(conversation.resetPending, true);
+  assert.equal(
+    db.listConversationResetTasks({ botId, conversationKey }).at(-1).status,
+    "canceled"
+  );
 });
 
 test("clearConversationForReset removes the conversation from visible session lists and clears tags", () => {

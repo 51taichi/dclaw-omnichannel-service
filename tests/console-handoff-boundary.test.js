@@ -376,8 +376,9 @@ test("proactive submit locks message fields while uploading attachments", () => 
   assert.match(css, /\.upload-overlay-image\s*\{[\s\S]*object-fit:\s*contain/);
 });
 
-test("conversation reset shows a non-dismissible loading dialog while Agent memory sync runs", () => {
-  assert.match(html, /id="conversationResetLoadingDialog"[\s\S]*src="assets\/sorry\.png"[\s\S]*正在删除会话并同步 Agent 记录/);
+test("conversation reset shows a non-dismissible loading dialog while local deletion runs", () => {
+  assert.match(html, /id="conversationResetLoadingDialog"[\s\S]*src="assets\/sorry\.png"[\s\S]*正在删除会话/);
+  assert.doesNotMatch(html, /正在删除会话并同步 Agent 记录/);
   assert.match(app, /function setConversationResetSubmitting\(submitting\)/);
   assert.match(app, /els\.conversationResetLoadingDialog\.hidden = !submitting/);
   assert.match(app, /setConversationResetSubmitting\(true\)[\s\S]*finally[\s\S]*setConversationResetSubmitting\(false\)/);
@@ -420,6 +421,20 @@ test("conversation reset clears the selected session instead of reopening the de
   assert.match(body, /els\.chatTitle\.textContent = emptyFlowSessionTitle\(\)/);
   assert.match(body, /await loadFlowSessions\(\)/);
   assert.equal(body.includes("openFlowSession(conversationKey)"), false);
+});
+
+test("conversation delete success is committed before a separately handled list refresh", () => {
+  const start = app.indexOf("async function resetSelectedConversation()");
+  const end = app.indexOf("\nfunction setConversationResetSubmitting", start);
+  const body = app.slice(start, end);
+  const success = body.indexOf('toast("会话已删除")');
+  const refresh = body.indexOf("await loadFlowSessions()");
+
+  assert.ok(success >= 0 && refresh > success);
+  assert.match(
+    body,
+    /try \{[\s\S]*await loadFlowSessions\(\)[\s\S]*\} catch \(error\) \{[\s\S]*会话已删除，但列表刷新失败/
+  );
 });
 
 test("opening a flow session shows a local mascot loading state in the chat pane", () => {

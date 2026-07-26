@@ -33,9 +33,9 @@ test("legacy preparation completes before the inbound batch is queued", () => {
   assert.match(body, /historySyncStatus === "loading"/);
 });
 
-test("coalesced legacy requests forward one bounded customer history analysis", () => {
+test("coalesced legacy requests reply first and schedule bounded history analysis after send", () => {
   const body = asyncFunctionBody("processCoalescedIncomingBatch");
-  assert.match(body, /const shouldAnalyzeLegacyHistory =/);
+  assert.match(body, /const shouldScheduleLegacyHistoryAnalysis =/);
   assert.match(
     body,
     /shouldAnalyzeLegacyHistoryForSession\(\s*flow\?\.session\s*\)/
@@ -43,10 +43,15 @@ test("coalesced legacy requests forward one bounded customer history analysis", 
   assert.match(body, /getHistoryAnalysisConfig\(botId\)/);
   assert.match(body, /buildStoredLegacyAnalysis\(\{/);
   assert.match(body, /const tagContext = isPrivateMessage\(message\)/);
-  assert.match(body, /legacyHistoryAnalysis,/);
+  assert.match(body, /legacyHistoryAnalysis:\s*null,/);
   assert.match(body, /tagContext,/);
-  assert.match(body, /tagEvidenceCandidates,/);
-  assert.match(body, /markLegacyHistoryContextSent\(\{/);
+  const sendIndex = body.indexOf("sendTextReplyParts");
+  const scheduleIndex = body.indexOf("scheduleLegacyHistoryAnalysis({");
+  assert.ok(sendIndex >= 0 && scheduleIndex > sendIndex);
+  assert.doesNotMatch(
+    body.slice(0, scheduleIndex),
+    /markLegacyHistoryContextSent\(\{/
+  );
 });
 
 test("legacy asset rollout reopens old analysis exactly once", () => {

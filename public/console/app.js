@@ -4669,9 +4669,16 @@ async function resetSelectedConversation() {
     els.flowEventsOutput.textContent = "";
     els.chatTitle.textContent = emptyFlowSessionTitle();
     els.chatMessages.innerHTML = `<div class="empty-state">${escapeHtml(emptyFlowSessionTitle())}</div>`;
-    await loadFlowSessions();
   } finally {
     setConversationResetSubmitting(false);
+  }
+  try {
+    await loadFlowSessions();
+  } catch (error) {
+    const authExpired = /解锁|登录|access|required|401/i.test(error.message);
+    toast(authExpired
+      ? "会话已删除，请重新登录后刷新列表"
+      : "会话已删除，但列表刷新失败");
   }
 }
 

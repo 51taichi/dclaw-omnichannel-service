@@ -30,11 +30,26 @@ test("agent replies are discarded when their conversation epoch became stale", (
   assert.match(handler, /agent\.reply\.stale_skipped/);
 });
 
-test("reset route stays local-first and returns Agent sync status", () => {
+test("reset route stays local-first and wakes background cleanup without awaiting DClaw", () => {
   const routeStart = source.indexOf('"/api/flow-sessions/:conversationKey/reset"');
   const route = source.slice(routeStart, routeStart + 1800);
   assert.equal(routeStart >= 0, true);
-  assert.equal(route.indexOf("clearConversationForReset") < route.indexOf("syncConversationResetToAgent"), true);
-  assert.match(route, /agentSync/);
+  assert.match(route, /clearConversationForReset/);
+  assert.match(route, /conversationResetWorker\.wake\(\)/);
+  assert.doesNotMatch(route, /await syncConversationResetToAgent/);
+  assert.doesNotMatch(route, /agentSync/);
   assert.match(route, /reason: "conversation_reset"/);
+});
+
+test("private new activity waits for an active reset attempt and cancels obsolete retries", () => {
+  const start = source.indexOf("async function processIncomingMessage");
+  const end = source.indexOf("async function processCoalescedIncomingBatch", start);
+  const handler = source.slice(start, end);
+  const wait = handler.indexOf("await conversationResetWorker.waitForConversation(conversationKey)");
+  const prepare = handler.indexOf("prepareConversationResetForNewActivity");
+  const persist = handler.indexOf("persistInboundConversation");
+
+  assert.ok(wait >= 0 && wait < prepare);
+  assert.ok(prepare > wait && prepare < persist);
+  assert.match(handler, /resetPending: resetState\.resetPending/);
 });
