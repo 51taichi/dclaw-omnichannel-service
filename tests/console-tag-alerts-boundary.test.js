@@ -90,6 +90,13 @@ test("alert UI pauses animation on hover or focus and opens evidence from a list
   assert.match(app, /await tagAlertClient\.markRead\(alert\.id\)/);
 });
 
+test("open alert panel keeps a continuous hover path from the button", () => {
+  assert.match(
+    css,
+    /\.tag-alert-center\.is-paused::before\s*\{[^}]*bottom:\s*100%[^}]*height:\s*10px/
+  );
+});
+
 test("opening an alert resets every conversation filter before selecting the customer", () => {
   assert.match(app, /function resetFlowSessionFiltersForTagAlert\(\)/);
   assert.match(app, /dataset\.flowSessionType === "all"/);

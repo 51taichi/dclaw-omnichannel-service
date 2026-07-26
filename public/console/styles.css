@@ -4928,6 +4928,15 @@ td .muted {
   display: none;
 }
 
+.tag-alert-center.is-paused::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 100%;
+  width: min(340px, calc(100vw - 32px));
+  height: 10px;
+}
+
 .tag-alert-button {
   position: relative;
   display: inline-grid;
