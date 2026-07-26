@@ -55,6 +55,16 @@ test("tag alert client uses authenticated fetch streaming without polling", () =
   assert.doesNotMatch(client, /setInterval/);
 });
 
+test("expired stream authentication stops retries and refreshes console auth", () => {
+  assert.match(client, /onAuthExpired/);
+  assert.match(client, /error\?\.status === 401/);
+  assert.match(client, /onAuthExpired\?\.\(error\)/);
+  assert.match(
+    app,
+    /onAuthExpired:\s*\(\)\s*=>\s*\{[\s\S]*expireBotSession\(botId\)[\s\S]*state\.apiKey[\s\S]*connectTagAlerts\(botId\)/
+  );
+});
+
 test("tag alert client replaces snapshots silently and sounds once per created batch", () => {
   assert.match(client, /function replaceSnapshot\(\w+\)/);
   assert.match(client, /emitChange\("snapshot"\)/);

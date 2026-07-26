@@ -6,7 +6,8 @@
     onChange,
     playSound,
     unlockSound,
-    onError
+    onError,
+    onAuthExpired
   } = {}) {
     const alerts = new Map();
     let botId = "";
@@ -101,6 +102,12 @@
       }, delay);
     }
 
+    function responseError(prefix, response) {
+      const error = new Error(`${prefix}: HTTP ${response.status}`);
+      error.status = response.status;
+      return error;
+    }
+
     async function openStream(expectedGeneration) {
       if (!botId || expectedGeneration !== generation) return;
       controller = new AbortController();
@@ -113,7 +120,7 @@
           cache: "no-store"
         });
         if (!response.ok || !response.body) {
-          throw new Error(`Tag alert stream failed: HTTP ${response.status}`);
+          throw responseError("Tag alert stream failed", response);
         }
         reconnectAttempt = 0;
         const reader = response.body.getReader();
@@ -136,6 +143,14 @@
         }
       } catch (error) {
         if (expectedGeneration !== generation || controller?.signal.aborted) return;
+        if (error?.status === 401) {
+          generation += 1;
+          clearReconnectTimer();
+          controller?.abort();
+          controller = null;
+          onAuthExpired?.(error);
+          return;
+        }
         onError?.(error);
         scheduleReconnect(expectedGeneration);
       }

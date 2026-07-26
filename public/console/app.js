@@ -1055,6 +1055,12 @@ const tagAlertClient = window.createTagAlertClient({
   onChange: renderTagAlerts,
   playSound: playTagAlertSound,
   unlockSound: unlockTagAlertAudio,
+  onAuthExpired: () => {
+    const botId = state.selectedBotId;
+    if (!botId) return;
+    expireBotSession(botId);
+    if (state.apiKey) connectTagAlerts(botId);
+  },
   onError: (error) => console.warn("Tag alert stream disconnected", error)
 });
 
