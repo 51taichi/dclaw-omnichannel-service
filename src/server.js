@@ -81,6 +81,7 @@ import {
   incrementFlowActivationGeneration,
   insertAgentInvocationStart,
   insertAgentResponseValidationFailure,
+  insertAgentTagEvaluations,
   updateAgentResponseValidationRetryOutcome,
   insertConversationMessage,
   insertImportedConversationMessages,
@@ -1544,6 +1545,8 @@ function invalidSendabilityAgentReply(rawReply, sendabilityIssue) {
     attachments: [],
     sources: [],
     flowDecision: null,
+    tagEvaluation: [],
+    tagDecision: { add: [], remove: [] },
     raw: rawReply,
     sendabilityIssue
   };
@@ -1556,6 +1559,7 @@ function invalidValidationAgentReply(rawReply, validationErrors) {
     attachments: [],
     sources: [],
     flowDecision: null,
+    tagEvaluation: [],
     tagDecision: { add: [], remove: [] },
     raw: rawReply,
     validationErrors
@@ -1569,8 +1573,38 @@ function agentResponseValidationOptions(request) {
       && request?.metadata?.eventType !== "handoff_transcript_message",
     allowTagDecision: Boolean(tagContext),
     flow: request?.metadata?.flow || null,
-    tagContext
+    tagContext,
+    tagEvidenceCandidates: request?.metadata?.tagEvidenceCandidates || []
   };
+}
+
+function persistAgentTagAudit({
+  invocationId,
+  botId,
+  binding,
+  conversationKey,
+  incomingMessageId,
+  agentReply
+}) {
+  if (!agentReply?.tagEvaluation?.length) return [];
+  const records = insertAgentTagEvaluations({
+    invocationId,
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    incomingMessageId,
+    evaluations: agentReply.tagEvaluation,
+    decision: agentReply.tagDecision
+  });
+  logInfo("agent.tag_audit.persisted", {
+    botId,
+    agentId: binding.agentId,
+    conversationKey,
+    invocationId,
+    evaluationCount: records.length,
+    matchedCount: records.filter((record) => record.matched).length
+  });
+  return records;
 }
 
 function validateStrictAgentReply({ invocation, request, attemptNumber, stage, retryRequested, onValidationFailure }) {
@@ -1950,11 +1984,12 @@ async function runLegacyHistoryAnalysis({
     conversationReset: false,
     generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
   });
+  const incomingMessageId = `legacy_history_analysis:${message.messageId || Date.now()}`;
   const invocationId = insertAgentInvocationStart({
     botId,
     agentId: binding.agentId,
     conversationKey,
-    incomingMessageId: `legacy_history_analysis:${message.messageId || Date.now()}`,
+    incomingMessageId,
     request
   });
   const startedAt = Date.now();
@@ -2021,6 +2056,14 @@ async function runLegacyHistoryAnalysis({
 
     const latestFlow = buildFlowContext({ botId, conversationKey, message });
     const agentReply = strictInvocation.agentReply;
+    persistAgentTagAudit({
+      invocationId,
+      botId,
+      binding,
+      conversationKey,
+      incomingMessageId,
+      agentReply
+    });
     const tagResult = tagContext
       ? applyAgentTagDecision({
           botId,
@@ -3941,6 +3984,14 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         response: invocation.response,
         status: "success"
       });
+      persistAgentTagAudit({
+        invocationId,
+        botId,
+        binding,
+        conversationKey,
+        incomingMessageId: message.messageId,
+        agentReply
+      });
       const tagResult = tagContext
         ? applyAgentTagDecision({
             botId,
@@ -4265,6 +4316,14 @@ async function processCoalescedIncomingBatch(batch) {
     }
 
     const agentReply = strictInvocation.agentReply;
+    persistAgentTagAudit({
+      invocationId,
+      botId,
+      binding,
+      conversationKey,
+      incomingMessageId: message.messageId,
+      agentReply
+    });
     const tagResult = tagContext
       ? applyAgentTagDecision({
           botId,

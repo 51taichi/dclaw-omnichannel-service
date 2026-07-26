@@ -48,3 +48,10 @@ test("server persists and logs deterministic validation retry outcomes", () => {
   assert.match(serverSource, /onValidationRetryOutcome/);
   assert.match(serverSource, /validation_retry_/);
 });
+
+test("invalid Agent reply placeholders cannot carry tag evaluations", () => {
+  assert.match(
+    serverSource,
+    /function invalidValidationAgentReply[\s\S]*tagEvaluation:\s*\[\]/
+  );
+});

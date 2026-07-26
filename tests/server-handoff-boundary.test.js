@@ -27,7 +27,12 @@ test("server branches human handoff before sending WorkTool replies", () => {
   assert.equal(serverSource.includes("flow?.session?.handoffStatus === \"human\""), true);
   assert.match(handoffBlock, /buildTagContext\(\{ binding, conversationKey \}\)/);
   assert.match(handoffBlock, /invokeStrictAgentReply\(\{/);
+  assert.match(handoffBlock, /persistAgentTagAudit\(\{/);
   assert.match(handoffBlock, /applyAgentTagDecision\(\{/);
+  assert.ok(
+    handoffBlock.indexOf("persistAgentTagAudit({")
+      < handoffBlock.indexOf("applyAgentTagDecision({")
+  );
   assert.doesNotMatch(handoffBlock, /sendTextReplyParts\(/);
   assert.doesNotMatch(handoffBlock, /sendAgentAttachments\(/);
 });

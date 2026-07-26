@@ -31,14 +31,33 @@ test("every private Agent call builds tag context while group calls do not", () 
 test("validated Agent replies apply tag decisions before empty reply or WorkTool send handling", () => {
   const body = functionBody("processCoalescedIncomingBatch");
   const validIndex = body.indexOf("if (!strictInvocation.agentReply.valid)");
+  const auditIndex = body.indexOf("persistAgentTagAudit");
   const decisionIndex = body.indexOf("applyAgentTagDecision");
   const emptyIndex = body.indexOf('logWarn("agent.reply.empty"');
   const sendIndex = body.indexOf("sendTextReplyParts");
   assert.ok(validIndex >= 0);
+  assert.ok(auditIndex > validIndex);
+  assert.ok(auditIndex < decisionIndex);
   assert.ok(decisionIndex > validIndex);
   assert.ok(decisionIndex < emptyIndex);
   assert.ok(decisionIndex < sendIndex);
   assert.match(body, /evidenceCandidates:/);
+});
+
+test("strict validation receives the exact tag evidence candidates", () => {
+  const body = functionBody("agentResponseValidationOptions");
+  assert.match(
+    body,
+    /tagEvidenceCandidates:\s*request\?\.metadata\?\.tagEvidenceCandidates \|\| \[\]/
+  );
+});
+
+test("tag audit persistence records final validated evaluations", () => {
+  const body = functionBody("persistAgentTagAudit");
+  assert.match(body, /insertAgentTagEvaluations\(\{/);
+  assert.match(body, /evaluations:\s*agentReply\.tagEvaluation/);
+  assert.match(body, /decision:\s*agentReply\.tagDecision/);
+  assert.match(body, /agent\.tag_audit\.persisted/);
 });
 
 test("flow asset patches are constrained by current task configuration", () => {

@@ -54,6 +54,17 @@ test("coalesced legacy requests reply first and schedule bounded history analysi
   );
 });
 
+test("legacy history persists a valid tag audit before applying decisions", () => {
+  const start = source.indexOf("async function runLegacyHistoryAnalysis");
+  const end = source.indexOf("function scheduleLegacyHistoryAnalysis", start);
+  const body = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  const auditIndex = body.indexOf("persistAgentTagAudit({");
+  const decisionIndex = body.indexOf("applyAgentTagDecision({");
+  assert.ok(auditIndex >= 0);
+  assert.ok(decisionIndex > auditIndex);
+});
+
 test("legacy asset rollout reopens old analysis exactly once", () => {
   assert.match(
     source,
