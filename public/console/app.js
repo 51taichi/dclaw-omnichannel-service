@@ -4112,7 +4112,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
               </span>`
             : "";
           return `
-            <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
+            <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""} ${isLegacyCustomer ? "is-legacy" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <span class="flow-session-avatar-shell ${isLegacyCustomer ? "is-legacy" : ""}" title="${isLegacyCustomer ? "老客户" : ""}">
                 <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               </span>
