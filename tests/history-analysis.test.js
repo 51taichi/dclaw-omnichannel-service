@@ -148,9 +148,22 @@ test("duplicate imported customer rows consume the history budget once", () => {
     ]
   });
 
-  assert.equal(result.text, "之前已付款");
+  assert.equal(result.text, "[1] 之前已付款");
   assert.equal(result.importedCustomerCount, 1);
   assert.equal(result.selectedCount, 1);
-  assert.equal(result.selectedChars, 5);
+  assert.equal(result.selectedChars, 9);
   assert.equal(result.omittedCount, 0);
+});
+
+test("history budget counts stable message ids and separators", () => {
+  const result = buildBoundedCustomerHistoryText({
+    maxChars: 10,
+    messages: [
+      inbound("旧问题", "2026-07-01T00:00:00.000Z", { id: 11 }),
+      inbound("新问题", "2026-07-02T00:00:00.000Z", { id: 12 })
+    ]
+  });
+
+  assert.equal(result.text, "[12] 新问题");
+  assert.equal(result.selectedChars, Array.from("[12] 新问题").length);
 });

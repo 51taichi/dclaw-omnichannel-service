@@ -202,6 +202,18 @@ export function buildDclawRequest({
     hasFlow: Boolean(agentFlow),
     hasTags: Boolean(agentTagRules)
   });
+  const tagAuditInstructions = agentTagRules
+    ? [
+        "标签审计是必做步骤，必须在组织客户回复、查询企业智库、推进流程或匹配资源之前完成。",
+        "tagRules 中管理员配置的标签达标条件是强制判断标准，不得自行提高达标条件，也不得用额外条件替代。",
+        "必须在 tagEvaluation 中对每个启用标签恰好评估一次；matched 必须是布尔值，并说明简洁原因。",
+        "tagEvidenceCandidates 是本次唯一允许引用的客户证据。matched=true 时，evidenceMessageId 必须使用其中一个 id，evidenceText 必须原样使用该候选的 text；matched=false 时证据字段留空。",
+        "tagDecision 只是建议，服务端会执行标签存在性、组内互斥、单向变更和人工标签裁决；不要在 reply 中解释标签规则。",
+        "任何 matched=true 且依据当前标签状态应新增或替换的标签，都必须出现在 tagDecision.add 中。只有完成所有标签的否定评估后，tagDecision 才能为空。",
+        "tagEvaluation 格式：[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"matched\":false,\"reason\":\"判断原因\",\"evidenceMessageId\":\"\",\"evidenceText\":\"\"}]。",
+        "tagDecision 格式：{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\",\"evidenceMessageId\":\"证据候选ID\",\"evidenceText\":\"客户原话\"}],\"remove\":[]}。没有变化时使用 {\"add\":[],\"remove\":[]}。"
+      ]
+    : [];
 
   const instructions = [
     "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
@@ -209,6 +221,7 @@ export function buildDclawRequest({
     "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
     "群聊和私聊只在是否触发回复上不同；一旦触发回复，客户意图识别、资源索取、企业智库、附件输出、事实边界和 human_reply_style 润色必须完全一致。",
     "不要因为是群聊就跳过资源索取、附件发送或企业智库，也不要改用另一套回答逻辑。",
+    ...tagAuditInstructions,
     "企业智库负责业务事实和公开资源边界；状态机只负责推进当前节点目标，不能独占回答或替代事实检索。",
     "当前任务节点相关咨询不能只用状态机回答；客户询问资料、活动、直播、试听、邀约、服务内容、价值、流程、怎么领取或下一步动作时，先判断是否需要企业智库或公开资源。",
     "客户明确提到以前同事怎么答、历史沟通案例或优秀话术时，只能结合当前会话、状态机交流技巧和 human_reply_style 组织表达；不要声称查询内部目录。",
@@ -225,14 +238,6 @@ export function buildDclawRequest({
     "如果回复实际命中或参考了企业智库、任务节点、控制台配置资源、控制台上传资源、会话上下文、客户档案或大模型兜底，请在最终 JSON 中增加 sources 数组，格式为 {\"type\":\"enterprise_knowledge|flow_node|configured_resource|console_upload|conversation|profile|llm_fallback\",\"name\":\"来源名称\",\"reason\":\"为什么用于本次回复\"}；未命中的来源不要写入 sources。",
     "需要连续发送 2-3 条短回复时，请用空行分隔每段。"
   ];
-  if (agentTagRules) {
-    instructions.push(
-      "本次请求包含 tagRules。请结合客户历史发言和当前表达判断是否满足标签条件，并在最终 JSON 中通过 tagDecision 给出建议。",
-      "tagDecision 只是建议，服务端会执行标签存在性、组内互斥和单向变更裁决；不要在 reply 中解释标签规则。",
-      "tagEvidenceCandidates 是本次允许引用的客户消息。命中标签时，evidenceMessageId 必须使用其中一个 id，并原样摘录对应 evidenceText。",
-      "tagDecision 格式：{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\",\"evidenceMessageId\":\"证据候选ID\",\"evidenceText\":\"客户原话\"}],\"remove\":[]}。没有变化时使用 {\"add\":[],\"remove\":[]}。"
-    );
-  }
   if (legacyHistoryText) {
     instructions.push(
       "以下是该客户最近一段历史发言，只用于判断客户意图、标签和已经提供的资料。",
@@ -439,9 +444,10 @@ export function buildDclawHandoffTranscriptRequest({
     : [];
   const tagInstructions = agentTagRules
     ? [
-        "本次请求包含 tagRules。仍需判断当前客户消息是否达成标签，但 reply 必须为空字符串。",
-        "tagEvidenceCandidates 是唯一可引用的证据消息；命中标签时必须返回其 id 和客户原话。",
-        "最终只输出 JSON：{\"reply\":\"\",\"attachments\":[],\"sources\":[],\"tagDecision\":{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\",\"evidenceMessageId\":\"证据候选ID\",\"evidenceText\":\"客户原话\"}],\"remove\":[]}}。"
+        "标签审计是必做步骤。仍需先判断每个启用标签是否达标，但 reply 必须为空字符串。",
+        "tagRules 中管理员配置的条件是强制标准，不得自行提高达标条件。",
+        "tagEvaluation 必须恰好覆盖每个启用标签；tagEvidenceCandidates 是唯一可引用的证据消息，命中标签时必须返回其 id 和客户原话。",
+        "最终只输出 JSON：{\"reply\":\"\",\"attachments\":[],\"sources\":[],\"tagEvaluation\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"matched\":false,\"reason\":\"判断原因\",\"evidenceMessageId\":\"\",\"evidenceText\":\"\"}],\"tagDecision\":{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\",\"evidenceMessageId\":\"证据候选ID\",\"evidenceText\":\"客户原话\"}],\"remove\":[]}}。"
       ]
     : ["最终请输出空字符串。"];
 
@@ -893,7 +899,9 @@ function resolveGeneralRule(flow) {
 }
 
 function responseSchemaForRequest({ hasFlow, hasTags = false }) {
-  const tagPart = hasTags ? `,"tagDecision":{"add":[],"remove":[]}` : "";
+  const tagPart = hasTags
+    ? `,"tagEvaluation":[{"groupId":"标签组ID","tagId":"标签ID","matched":false,"reason":"判断原因","evidenceMessageId":"","evidenceText":""}],"tagDecision":{"add":[],"remove":[]}`
+    : "";
   return hasFlow
     ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"建议下一节点ID或当前节点ID","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}${tagPart}}`
     : `{"reply":"发给客户的文本","attachments":[],"sources":[]${tagPart}}`;

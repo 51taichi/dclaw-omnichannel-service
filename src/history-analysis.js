@@ -8,6 +8,11 @@ function unicodeLength(value) {
   return Array.from(String(value || "")).length;
 }
 
+function historyEvidenceLine(message) {
+  const id = String(message?.id || "").trim();
+  return id ? `[${id}] ${message.content}` : message.content;
+}
+
 export function normalizeHistoryAnalysisConfig(config = {}) {
   const rawValue = config.historyCustomerTextMaxChars;
   const isNumericValue = typeof rawValue === "number";
@@ -59,14 +64,14 @@ export function buildBoundedCustomerHistoryText({
   let selectedChars = 0;
   for (const message of newestFirst) {
     const separatorChars = selectedNewestFirst.length ? 1 : 0;
-    const nextChars = separatorChars + unicodeLength(message.content);
+    const nextChars = separatorChars + unicodeLength(historyEvidenceLine(message));
     if (selectedChars + nextChars > configuredLimit) break;
     selectedNewestFirst.push(message);
     selectedChars += nextChars;
   }
   const selectedMessages = selectedNewestFirst.reverse();
   return {
-    text: selectedMessages.map((message) => message.content).join("\n"),
+    text: selectedMessages.map(historyEvidenceLine).join("\n"),
     selectedMessages,
     selectedCount: selectedMessages.length,
     omittedCount: customerMessages.length - selectedMessages.length,

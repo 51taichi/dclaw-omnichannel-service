@@ -76,6 +76,40 @@ test("buildDclawRequest includes bounded evidence candidates for tag decisions",
   assert.match(request.message, /你们老师的水平怎么样/);
 });
 
+test("tag-enabled requests require a complete audit before the customer reply", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message: { ...message, spoken: "如果请假会扣钱吗" },
+    tagContext: {
+      groups: [{
+        id: "intent",
+        name: "意向等级",
+        exclusive: true,
+        oneWay: true,
+        tags: [
+          { id: "c", name: "C类", condition: "愿意回答问题" },
+          { id: "b", name: "B类", condition: "客户咨询过一个问题" }
+        ]
+      }],
+      currentTags: [{ groupId: "intent", tagId: "c" }]
+    },
+    tagEvidenceCandidates: [{
+      id: "1013",
+      conversationMessageId: 1013,
+      text: "如果请假会扣钱吗"
+    }]
+  });
+
+  assert.match(request.message, /标签审计是必做步骤/);
+  assert.match(request.message, /不得自行提高达标条件/);
+  assert.match(request.message, /tagEvaluation/);
+  assert.ok(
+    request.message.indexOf("标签审计是必做步骤")
+      < request.message.indexOf("企业智库负责业务事实")
+  );
+});
+
 test("buildDclawRequest omits tag rules from normal requests", () => {
   const request = buildDclawRequest({ binding, conversation, message });
 
@@ -158,6 +192,32 @@ test("buildDclawRequest includes bounded legacy customer text and tag guidance",
   assert.equal(request.metadata.historyAnalysis.selectedCount, 2);
   assert.equal(request.metadata.historyAnalysis.omittedCount, 60);
   assert.equal(request.metadata.historyAnalysis.text, undefined);
+});
+
+test("legacy history requests preserve stable evidence message ids", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    tagContext: {
+      groups: [{
+        id: "intent",
+        name: "意向",
+        tags: [{ id: "b", name: "B类", condition: "咨询问题" }]
+      }],
+      currentTags: []
+    },
+    legacyHistoryAnalysis: {
+      text: "[321] 你们老师的水平怎么样",
+      selectedCount: 1,
+      omittedCount: 0,
+      selectedChars: 17,
+      configuredLimit: 4000
+    }
+  });
+
+  assert.match(request.message, /\[321\] 你们老师的水平怎么样/);
+  assert.doesNotMatch(request.message, /"messages":\s*\[/);
 });
 
 test("buildDclawLegacyHistoryAnalysisRequest isolates background analysis and forbids customer replies", () => {
