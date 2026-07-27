@@ -152,10 +152,12 @@ test("console renders tag chips and tag filters", () => {
 });
 
 test("multi-tag menus expose a persistent vertical scrollbar", () => {
+  const menuRule = css.match(/\.tag-multi-select-menu\s*\{[^}]*\}/)?.[0] || "";
   assert.match(
     css,
     /\.tag-multi-select-menu\s*\{[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*scroll[^}]*scrollbar-gutter:\s*stable/
   );
+  assert.doesNotMatch(menuRule, /scrollbar-(?:width|color)/);
   assert.match(css, /\.tag-multi-select-menu::-webkit-scrollbar\s*\{[^}]*width:\s*8px/);
   assert.match(css, /\.tag-multi-select-menu::-webkit-scrollbar-thumb\s*\{[^}]*background:/);
 });

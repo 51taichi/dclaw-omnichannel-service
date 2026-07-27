@@ -3360,8 +3360,6 @@ html.has-bot-context .action-toolbox-toggle:hover {
   padding: 8px;
   overflow-x: hidden;
   overflow-y: scroll;
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--bot-accent, var(--accent)) 58%, #ffffff) #f3f5fc;
   scrollbar-gutter: stable;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -3381,7 +3379,7 @@ html.has-bot-context .action-toolbox-toggle:hover {
 .tag-multi-select-menu::-webkit-scrollbar-thumb {
   border: 2px solid #f3f5fc;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--bot-accent, var(--accent)) 58%, #ffffff);
+  background: color-mix(in srgb, var(--bot-accent, var(--accent)) 78%, #ffffff);
 }
 
 .tag-multi-select-menu[hidden] {
