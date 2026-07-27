@@ -170,6 +170,36 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS workspaces (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    slug TEXT NOT NULL UNIQUE,
+    challenge_text TEXT NOT NULL,
+    response_hash TEXT NOT NULL,
+    auth_version INTEGER NOT NULL DEFAULT 1,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS workspace_bots (
+    workspace_id INTEGER NOT NULL,
+    bot_id TEXT NOT NULL UNIQUE,
+    assigned_at TEXT NOT NULL,
+    PRIMARY KEY (workspace_id, bot_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS workspace_sessions (
+    token_hash TEXT PRIMARY KEY,
+    workspace_id INTEGER NOT NULL,
+    auth_version INTEGER NOT NULL,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_workspace_sessions_expiry
+  ON workspace_sessions (expires_at);
+
   CREATE TABLE IF NOT EXISTS message_processing (
     message_key TEXT PRIMARY KEY,
     bot_id TEXT NOT NULL,
@@ -980,6 +1010,7 @@ export function deleteBotData(botId) {
   if (!binding) return null;
 
   const tables = [
+    "workspace_bots",
     "conversation_reset_tasks",
     "flow_activation_tasks",
     "flow_state_events",
@@ -1128,6 +1159,255 @@ export function updateGlobalAdminCredential({ passwordHash }) {
   `).run(normalizedHash, timestamp);
   if (!result.changes) throw new Error("admin credential is not initialized");
   return getGlobalAdminCredential();
+}
+
+function rowToWorkspace(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    challengeText: row.challenge_text,
+    responseHash: row.response_hash,
+    authVersion: Number(row.auth_version || 1),
+    enabled: Boolean(row.enabled),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function insertWorkspace({
+  name,
+  slug,
+  challengeText,
+  responseHash,
+  authVersion = 1,
+  enabled = true
+}) {
+  const timestamp = now();
+  const result = db.prepare(`
+    INSERT INTO workspaces (
+      name, slug, challenge_text, response_hash, auth_version, enabled, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    String(name || "").trim(),
+    String(slug || "").trim(),
+    String(challengeText || "").trim(),
+    String(responseHash || ""),
+    authVersion,
+    enabled === false ? 0 : 1,
+    timestamp,
+    timestamp
+  );
+  return getWorkspaceById(result.lastInsertRowid);
+}
+
+export function updateWorkspaceRecord({
+  id,
+  name,
+  slug,
+  challengeText,
+  responseHash,
+  authVersion,
+  enabled
+}) {
+  const result = db.prepare(`
+    UPDATE workspaces
+    SET name = ?,
+        slug = ?,
+        challenge_text = ?,
+        response_hash = ?,
+        auth_version = ?,
+        enabled = ?,
+        updated_at = ?
+    WHERE id = ?
+  `).run(
+    name,
+    slug,
+    challengeText,
+    responseHash,
+    authVersion,
+    enabled === false ? 0 : 1,
+    now(),
+    id
+  );
+  if (!result.changes) throw new Error("workspace not found");
+  return getWorkspaceById(id);
+}
+
+export function getWorkspaceById(id) {
+  return rowToWorkspace(db.prepare("SELECT * FROM workspaces WHERE id = ?").get(id));
+}
+
+export function getWorkspaceBySlug(slug) {
+  return rowToWorkspace(db.prepare("SELECT * FROM workspaces WHERE slug = ?").get(slug));
+}
+
+export function listWorkspaces() {
+  return db.prepare("SELECT * FROM workspaces ORDER BY created_at ASC, id ASC").all()
+    .map((row) => ({
+      ...rowToWorkspace(row),
+      botCount: Number(
+        db.prepare("SELECT COUNT(*) AS count FROM workspace_bots WHERE workspace_id = ?")
+          .get(row.id)?.count || 0
+      )
+    }));
+}
+
+export function deleteWorkspaceRecord(id) {
+  const workspace = getWorkspaceById(id);
+  if (!workspace) return null;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const unassignedBotCount = db.prepare(
+      "DELETE FROM workspace_bots WHERE workspace_id = ?"
+    ).run(id).changes;
+    db.prepare("DELETE FROM workspace_sessions WHERE workspace_id = ?").run(id);
+    db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
+    db.exec("COMMIT");
+    return { workspace, unassignedBotCount };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function assignBotsToWorkspace({ workspaceId, botIds }) {
+  if (!getWorkspaceById(workspaceId)) throw new Error("workspace not found");
+  const ids = [...new Set((botIds || []).map((item) => String(item || "").trim()).filter(Boolean))];
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    for (const botId of ids) {
+      if (!getBotBinding(botId)) throw new Error(`bot not found: ${botId}`);
+      const current = db.prepare(
+        "SELECT workspace_id FROM workspace_bots WHERE bot_id = ?"
+      ).get(botId);
+      if (current) throw new Error(`bot already assigned: ${botId}`);
+      db.prepare(`
+        INSERT INTO workspace_bots (workspace_id, bot_id, assigned_at)
+        VALUES (?, ?, ?)
+      `).run(workspaceId, botId, now());
+    }
+    db.exec("COMMIT");
+    return listWorkspaceBots(workspaceId);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function unassignBotFromWorkspace({ workspaceId, botId }) {
+  return Boolean(db.prepare(`
+    DELETE FROM workspace_bots
+    WHERE workspace_id = ? AND bot_id = ?
+  `).run(workspaceId, botId).changes);
+}
+
+export function transferBotToWorkspace({ botId, targetWorkspaceId }) {
+  if (!getWorkspaceById(targetWorkspaceId)) throw new Error("workspace not found");
+  if (!getBotBinding(botId)) throw new Error("bot not found");
+  const result = db.prepare(`
+    UPDATE workspace_bots
+    SET workspace_id = ?,
+        assigned_at = ?
+    WHERE bot_id = ?
+  `).run(targetWorkspaceId, now(), botId);
+  if (!result.changes) {
+    db.prepare(`
+      INSERT INTO workspace_bots (workspace_id, bot_id, assigned_at)
+      VALUES (?, ?, ?)
+    `).run(targetWorkspaceId, botId, now());
+  }
+  return listWorkspaceBots(targetWorkspaceId).find((item) => item.botId === botId);
+}
+
+export function listWorkspaceBots(workspaceId) {
+  return db.prepare(`
+    SELECT bindings.*
+    FROM workspace_bots assignments
+    JOIN bot_agent_bindings bindings ON bindings.bot_id = assignments.bot_id
+    WHERE assignments.workspace_id = ?
+    ORDER BY assignments.assigned_at ASC, bindings.bot_id ASC
+  `).all(workspaceId).map(rowToBinding);
+}
+
+export function listUnassignedBotBindings() {
+  return db.prepare(`
+    SELECT bindings.*
+    FROM bot_agent_bindings bindings
+    LEFT JOIN workspace_bots assignments ON assignments.bot_id = bindings.bot_id
+    WHERE assignments.bot_id IS NULL
+    ORDER BY bindings.updated_at DESC
+  `).all().map(rowToBinding);
+}
+
+export function getWorkspaceAssignment(botId) {
+  const row = db.prepare(`
+    SELECT workspaces.*
+    FROM workspace_bots
+    JOIN workspaces ON workspaces.id = workspace_bots.workspace_id
+    WHERE workspace_bots.bot_id = ?
+  `).get(botId);
+  return rowToWorkspace(row);
+}
+
+export function insertWorkspaceSession({
+  tokenHash,
+  workspaceId,
+  authVersion,
+  expiresAt,
+  createdAt = now()
+}) {
+  db.prepare(`
+    INSERT INTO workspace_sessions (
+      token_hash, workspace_id, auth_version, expires_at, created_at
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `).run(tokenHash, workspaceId, authVersion, expiresAt, createdAt);
+  return getWorkspaceSessionByTokenHash(tokenHash);
+}
+
+export function getWorkspaceSessionByTokenHash(tokenHash) {
+  const row = db.prepare(`
+    SELECT sessions.*, workspaces.name, workspaces.slug, workspaces.challenge_text,
+           workspaces.response_hash, workspaces.auth_version AS workspace_auth_version,
+           workspaces.enabled, workspaces.created_at AS workspace_created_at,
+           workspaces.updated_at AS workspace_updated_at
+    FROM workspace_sessions sessions
+    JOIN workspaces ON workspaces.id = sessions.workspace_id
+    WHERE sessions.token_hash = ?
+  `).get(tokenHash);
+  if (!row) return null;
+  return {
+    tokenHash: row.token_hash,
+    workspaceId: row.workspace_id,
+    authVersion: row.auth_version,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    workspace: rowToWorkspace({
+      id: row.workspace_id,
+      name: row.name,
+      slug: row.slug,
+      challenge_text: row.challenge_text,
+      response_hash: row.response_hash,
+      auth_version: row.workspace_auth_version,
+      enabled: row.enabled,
+      created_at: row.workspace_created_at,
+      updated_at: row.workspace_updated_at
+    })
+  };
+}
+
+export function deleteWorkspaceSessionByTokenHash(tokenHash) {
+  return Boolean(
+    db.prepare("DELETE FROM workspace_sessions WHERE token_hash = ?").run(tokenHash).changes
+  );
+}
+
+export function deleteWorkspaceSessions(workspaceId) {
+  return db.prepare("DELETE FROM workspace_sessions WHERE workspace_id = ?")
+    .run(workspaceId).changes;
 }
 
 export function getConversationKey(botId, message) {
