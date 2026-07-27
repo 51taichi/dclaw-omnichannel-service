@@ -257,7 +257,9 @@ export function buildDclawRequest({
       "不要机械追问；先回应客户当前表达，再自然推进当前节点目标。",
       "最终请只输出一个 JSON 对象，不要输出 Markdown 或分析过程。",
       `JSON 格式：${responseSchema}`,
-      "如果当前节点已经完成，可以设置 nodeCompleted=true，并给出合法 nextNodeId；服务器会最终决定是否迁移。"
+      "flow.currentNode.nextNodeId 是管理员在“完成后进入”中配置的唯一迁移目标。",
+      "如果当前节点已经完成，设置 nodeCompleted=true，并把 nextNodeId 填为 flow.currentNode.nextNodeId；服务器只按“完成后进入”配置迁移，不接受自行选择其他节点。",
+      "如果当前节点尚未完成，设置 nodeCompleted=false，并让 nextNodeId 保持当前节点 ID。"
     );
   } else {
     instructions.push(
@@ -848,7 +850,8 @@ function compactFlowForAgent(flow, { includeAllCollectFields = false } = {}) {
       name: boundedDclawText(node.name, maxDclawFlowFieldChars),
       goal: boundedDclawText(node.goal, maxDclawFlowFieldChars),
       completionCriteria: boundedDclawText(node.completionCriteria, maxDclawFlowFieldChars),
-        collectFields: boundedDclawTextArray(node.collectFields, 10),
+      nextNodeId: boundedDclawText(node.nextNodeId, maxDclawFlowFieldChars),
+      collectFields: boundedDclawTextArray(node.collectFields, 10),
       conversationTips: boundedDclawTextArray(node.conversationTips)
     };
   };
@@ -904,7 +907,7 @@ function responseSchemaForRequest({ hasFlow, hasTags = false }) {
     ? `,"tagEvaluation":[{"groupId":"标签组ID","tagId":"标签ID","matched":false,"reason":"判断原因","evidenceMessageId":"","evidenceText":""}],"tagDecision":{"add":[],"remove":[]}`
     : "";
   return hasFlow
-    ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"建议下一节点ID或当前节点ID","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}${tagPart}}`
+    ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"未完成时填当前节点ID，完成时填 flow.currentNode.nextNodeId","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}${tagPart}}`
     : `{"reply":"发给客户的文本","attachments":[],"sources":[]${tagPart}}`;
 }
 

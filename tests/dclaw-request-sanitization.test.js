@@ -110,6 +110,42 @@ test("normal inbound requests hide node activation scripts from the agent", () =
   assert.doesNotMatch(JSON.stringify(request.metadata), /"activation"/);
 });
 
+test("flow requests expose the configured completion target to the Agent", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:流程客户" },
+    message: {
+      messageId: "m-flow-next-node",
+      spoken: "老师在吗",
+      rawSpoken: "老师在吗",
+      roomType: 2,
+      textType: 1,
+      receivedName: "流程客户",
+      atMe: "false"
+    },
+    flow: {
+      machine: {
+        name: "课程销售状态机",
+        nodes: [
+          { id: "node_5", name: "开场白", nextNodeId: "node_2" },
+          { id: "node_2", name: "建立链接", nextNodeId: "" }
+        ]
+      },
+      session: { currentNodeId: "node_5" },
+      currentNode: {
+        id: "node_5",
+        name: "开场白",
+        completionCriteria: "只需要客户回答即可",
+        nextNodeId: "node_2"
+      }
+    }
+  });
+
+  assert.match(request.message, /"nextNodeId": "node_2"/);
+  assert.match(request.message, /完成后进入/);
+  assert.match(request.message, /nodeCompleted=true/);
+});
+
 test("large flow configuration is reduced below the request message limit", () => {
   const request = buildDclawRequest({
     binding,

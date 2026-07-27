@@ -1192,20 +1192,24 @@ async function applyFlowDecision({
     mergeFlowSessionData({ conversationKey, patch });
   }
 
-  const nextNodeId = String(decision.nextNodeId || "").trim();
   const completedNode = getFlowNode(flow.machine, flow.session.currentNodeId);
+  const configuredNextNodeId = String(completedNode?.nextNodeId || "").trim();
   if (
     decision.nodeCompleted === true &&
-    nextNodeId &&
-    nextNodeId !== flow.session.currentNodeId &&
-    isValidFlowNode(flow.machine, nextNodeId)
+    configuredNextNodeId &&
+    configuredNextNodeId !== flow.session.currentNodeId &&
+    isValidFlowNode(flow.machine, configuredNextNodeId)
   ) {
+    const appliedDecision = {
+      ...decision,
+      nextNodeId: configuredNextNodeId
+    };
     updateFlowSessionNode({
       botId,
       conversationKey,
-      nextNodeId,
+      nextNodeId: configuredNextNodeId,
       reason: decision.reason || "Agent 判断节点完成",
-      decision
+      decision: appliedDecision
     });
     invalidateFlowActivation({ conversationKey, reason: "node_transition" });
     await executeFlowActions({

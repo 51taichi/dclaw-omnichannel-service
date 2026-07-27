@@ -42,6 +42,22 @@ test("node completion actions run after a valid node transition", () => {
   );
 });
 
+test("node completion uses the configured completion target instead of the Agent suggestion", () => {
+  const start = source.indexOf("async function applyFlowDecision");
+  const end = source.indexOf("\nfunction looksLikeInternalNonReplyAnalysis", start);
+  const helper = source.slice(start, end);
+
+  assert.match(
+    helper,
+    /const configuredNextNodeId = String\(completedNode\?\.nextNodeId \|\| ""\)\.trim\(\)/
+  );
+  assert.doesNotMatch(helper, /String\(decision\.nextNodeId \|\| ""\)/);
+  assert.match(
+    helper,
+    /updateFlowSessionNode\(\{[\s\S]*nextNodeId: configuredNextNodeId/
+  );
+});
+
 test("activation actions run only after delivery is finalized", () => {
   const start = source.indexOf("async function processFlowActivationTask");
   const end = source.indexOf("\nasync function processFlowActivationBatch", start);
