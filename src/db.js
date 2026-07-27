@@ -162,6 +162,14 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS global_admin_credentials (
+    singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+    username TEXT NOT NULL DEFAULT 'admin',
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS message_processing (
     message_key TEXT PRIMARY KEY,
     bot_id TEXT NOT NULL,
@@ -1074,6 +1082,52 @@ export function setSetting(key, value) {
       updated_at = excluded.updated_at
   `).run(key, json(value), now());
   return getSetting(key);
+}
+
+function rowToGlobalAdminCredential(row) {
+  if (!row) return null;
+  return {
+    username: row.username,
+    passwordHash: row.password_hash,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function getGlobalAdminCredential() {
+  return rowToGlobalAdminCredential(
+    db.prepare("SELECT * FROM global_admin_credentials WHERE singleton_id = 1").get()
+  );
+}
+
+export function initializeGlobalAdminCredential({ passwordHash }) {
+  const normalizedHash = String(passwordHash || "").trim();
+  if (!normalizedHash) throw new Error("passwordHash is required");
+  const timestamp = now();
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO global_admin_credentials (
+      singleton_id, username, password_hash, created_at, updated_at
+    )
+    VALUES (1, 'admin', ?, ?, ?)
+  `).run(normalizedHash, timestamp, timestamp);
+  return {
+    initialized: Boolean(result.changes),
+    credential: getGlobalAdminCredential()
+  };
+}
+
+export function updateGlobalAdminCredential({ passwordHash }) {
+  const normalizedHash = String(passwordHash || "").trim();
+  if (!normalizedHash) throw new Error("passwordHash is required");
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE global_admin_credentials
+    SET password_hash = ?,
+        updated_at = ?
+    WHERE singleton_id = 1
+  `).run(normalizedHash, timestamp);
+  if (!result.changes) throw new Error("admin credential is not initialized");
+  return getGlobalAdminCredential();
 }
 
 export function getConversationKey(botId, message) {
