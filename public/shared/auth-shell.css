@@ -1,0 +1,199 @@
+.auth-shell {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  color: #1f2430;
+  background:
+    linear-gradient(145deg, rgba(231, 238, 255, 0.94), rgba(255, 242, 234, 0.88)),
+    #f5f7fc;
+}
+
+.auth-shell-card {
+  width: min(760px, 100%);
+  min-height: 470px;
+  padding: 28px 32px 24px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 93, 45, 0.42);
+  border-top: 4px solid #ff5d2d;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 64px rgba(45, 55, 95, 0.16);
+}
+
+.auth-shell-logo {
+  display: block;
+  width: clamp(240px, 28vw, 300px);
+  max-width: 100%;
+  height: 76px;
+  object-fit: contain;
+  object-position: left center;
+}
+
+.auth-shell-content {
+  min-height: 340px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 220px);
+  align-items: stretch;
+  gap: 20px;
+}
+
+.auth-shell-form-column {
+  min-width: 0;
+  padding-top: 30px;
+}
+
+.auth-shell-heading h1 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  letter-spacing: 0;
+}
+
+.auth-shell-prompt {
+  min-height: 48px;
+  margin: 12px 0 22px;
+  color: #656a79;
+  line-height: 1.6;
+}
+
+.auth-shell-account,
+.auth-shell-form label {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  align-items: center;
+  min-height: 48px;
+  border: 1px solid #dce3f5;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.auth-shell-account {
+  margin-bottom: 12px;
+}
+
+.auth-shell-account span,
+.auth-shell-field-label {
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  color: #30364a;
+  font-weight: 700;
+  background: #eef3ff;
+  border-right: 1px solid #dce3f5;
+}
+
+.auth-shell-account strong {
+  padding: 0 14px;
+}
+
+.auth-shell-input {
+  min-width: 0;
+  height: 46px;
+  padding: 0 14px;
+  border: 0;
+  outline: 0;
+  font: inherit;
+  background: transparent;
+}
+
+.auth-shell-form label:focus-within {
+  border-color: #3155e7;
+  box-shadow: 0 0 0 3px rgba(49, 85, 231, 0.13);
+}
+
+.auth-shell-message {
+  min-height: 42px;
+  margin: 8px 0;
+  display: flex;
+  align-items: center;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.auth-shell.is-failure .auth-shell-message {
+  color: #d9342b;
+}
+
+.auth-shell.is-success .auth-shell-message {
+  color: #087f5b;
+  font-weight: 700;
+}
+
+.auth-shell-submit {
+  min-width: 138px;
+  height: 42px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 7px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(90deg, #3155e7, #18bdd2);
+}
+
+.auth-shell-submit:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.auth-shell-mascot-slot {
+  align-self: end;
+  justify-self: end;
+  width: min(34%, 220px);
+  min-width: 180px;
+  height: 280px;
+  display: grid;
+  align-items: end;
+  justify-items: end;
+}
+
+.auth-shell.is-failure .auth-shell-mascot-slot {
+  width: min(38%, 250px);
+}
+
+.auth-shell-mascot {
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  object-position: right bottom;
+}
+
+@media (max-width: 640px) {
+  .auth-shell {
+    padding: 14px;
+  }
+
+  .auth-shell-card {
+    min-height: 560px;
+    padding: 20px;
+  }
+
+  .auth-shell-logo {
+    width: clamp(190px, 62vw, 230px);
+    height: 64px;
+  }
+
+  .auth-shell-content {
+    min-height: 440px;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .auth-shell-form-column {
+    padding-top: 18px;
+  }
+
+  .auth-shell-mascot-slot,
+  .auth-shell.is-failure .auth-shell-mascot-slot {
+    width: clamp(112px, 34vw, 140px);
+    min-width: 112px;
+    height: 150px;
+  }
+
+  .auth-shell-mascot {
+    max-height: 150px;
+  }
+}
