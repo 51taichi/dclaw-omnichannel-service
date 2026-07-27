@@ -32,7 +32,7 @@ test("console has unified unlock and relock controls", () => {
   assert.match(html, /id="unlockKeyLabel" class="field-label"[\s\S]*?<use href="#icon-key"><\/use>[\s\S]*?密钥/);
   assert.equal(app.includes('fieldLabelIcon("key", "密钥")'), true);
   assert.equal(app.includes('fieldLabelIcon("key", "管理员密码")'), true);
-  assert.equal(app.includes("/api/public/bots"), true);
+  assert.equal(app.includes("window.WorkspaceContext.loadBots()"), true);
   assert.equal(app.includes("/unlock"), true);
   assert.equal(app.includes("lockCurrentBot"), true);
 });
@@ -54,18 +54,15 @@ test("console header actions do not show the current bot status label", () => {
 test("console hides config tab for bot role and exposes access-key reset for admin", () => {
   assert.equal(html.includes("accessKeyForm"), true);
   assert.equal(html.includes('data-workspace-tab="agents"'), false);
-  assert.equal(html.includes("agentForm"), true);
-  assert.equal(html.includes("agentsList"), true);
-  assert.match(html, /id="configTab"[\s\S]*id="agentManagementPanel"[\s\S]*id="flowTab"/);
-  assert.match(html, /id="agentManagementPanel" class="panel bot-context-panel collapsible-panel"/);
-  assert.match(html, /id="agentManagementPanel"[\s\S]*data-collapse-target="agentManagementPanel"/);
+  assert.equal(html.includes("agentForm"), false);
+  assert.equal(html.includes("agentsList"), false);
   assert.equal(app.includes("syncRoleVisibility"), true);
   assert.equal(app.includes("shouldHideConfigTab"), true);
   assert.equal(app.includes("isAdminWorkspaceTab"), false);
   assert.equal(app.includes('els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig)'), true);
   assert.equal(app.includes('document.querySelector(\'[data-workspace-tab="config"]\')?.toggleAttribute("hidden", hideConfig)'), true);
   assert.equal(app.includes('document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig)'), false);
-  assert.equal(app.includes("els.agentManagementPanel.hidden = !hasBot || !isAdmin"), true);
+  assert.equal(app.includes("agentManagementPanel"), false);
   assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), true);
   assert.equal(app.includes("state.currentRole === \"admin\""), true);
   assert.equal(app.includes("/access-key"), true);
@@ -108,14 +105,11 @@ test("bot binding form selects a saved agent instead of storing agent credential
   assert.equal(botForm.includes('name="dclawPublicId"'), false);
   assert.equal(botForm.includes('name="agentApiKey"'), false);
   assert.equal(app.includes("/api/agents"), true);
-  assert.equal(app.includes("renderAgents"), true);
   assert.equal(app.includes("renderAgentOptions"), true);
   assert.equal(app.includes("`${agent.agentName} (${agent.agentId})`"), false);
   assert.equal(css.includes("#botForm.form-grid"), true);
-  assert.equal(app.includes("data-agent-delete"), true);
-  assert.equal(app.includes("deleteAgent(agent)"), true);
-  assert.equal(app.includes("删除 Agent 需要管理员密码"), true);
-  assert.match(app, /class="danger" data-agent-delete/);
+  assert.equal(app.includes("data-agent-delete"), false);
+  assert.equal(app.includes("deleteAgent(agent)"), false);
 });
 
 test("admin Bot context reloads Agent data with the selected Bot session", () => {
@@ -132,20 +126,11 @@ test("admin Bot context reloads Agent data with the selected Bot session", () =>
 test("startup toggles render as switch components instead of plain checkboxes", () => {
   assert.match(html, /class="toggle switch-toggle action-toggle"[\s\S]*name="enabled" type="checkbox" checked[\s\S]*class="switch-slider"/);
   assert.match(html, /id="debugReplyForm"[\s\S]*class="toggle switch-toggle"[\s\S]*name="enabled" type="checkbox"[\s\S]*class="switch-slider"/);
-  assert.match(html, /id="agentForm"[\s\S]*class="toggle switch-toggle action-toggle"[\s\S]*name="enabled" type="checkbox" checked[\s\S]*class="switch-slider"/);
   assert.match(html, /id="flowMachineForm"[\s\S]*class="toggle switch-toggle"[\s\S]*name="enabled" type="checkbox"[\s\S]*class="switch-slider"/);
   assert.match(app, /id="dateTagEnabled" type="checkbox"[\s\S]*class="switch-slider"/);
   assert.match(css, /\.switch-toggle/);
   assert.match(css, /\.switch-toggle input\[type="checkbox"\]/);
   assert.match(css, /\.switch-slider/);
-});
-
-test("agent cards hide base url and enabled status tag", () => {
-  assert.equal(app.includes('Public ID：${escapeHtml(agent.dclawPublicId || "-")}'), true);
-  assert.equal(app.includes("已绑定 Bot：${boundCount}"), true);
-  assert.equal(app.includes('escapeHtml(agent.dclawBaseUrl || "-")'), false);
-  assert.equal(app.includes('${agent.enabled ? "启用" : "停用"}'), false);
-  assert.doesNotMatch(app, /class="pill \$\{agent\.enabled \? "ok" : "off"\}/);
 });
 
 test("config saves can request admin password on demand", () => {
@@ -243,14 +228,14 @@ test("unselected unlocked bot cards keep their own accent color", () => {
   assert.match(css, /\.bot-card\.is-unlocked:hover\s*\{[\s\S]*?border-color: color-mix\(in srgb, var\(--bot-accent\) 48%, var\(--line\)\);/);
 });
 
-test("admin bot context loads full binding before filling config form", () => {
+test("admin bot context reloads only scoped Bots before filling config form", () => {
   const applyStart = app.indexOf("async function applyBotContext");
   const applyEnd = app.indexOf("function openUnlockDialog", applyStart);
   const body = app.slice(applyStart, applyEnd);
-  assert.match(body, /const data = await request\("\/api\/bots"\)/);
+  assert.match(body, /const data = await window\.WorkspaceContext\.loadBots\(\)/);
   assert.match(body, /activeBot = currentBots\.find\(\(item\) => item\.botId === bot\.botId\) \|\| bot/);
   assert.match(body, /fillForm\(activeBot\)/);
-  assert.equal(body.indexOf('const data = await request("/api/bots")') < body.indexOf("fillForm(activeBot)"), true);
+  assert.equal(body.indexOf("const data = await window.WorkspaceContext.loadBots()") < body.indexOf("fillForm(activeBot)"), true);
 });
 
 test("bot card quick actions let applyBotContext own form synchronization", () => {

@@ -5347,3 +5347,14 @@ td .muted {
     justify-content: stretch;
   }
 }
+.workspace-gated > :not(#workspaceAuthRoot) {
+  display: none !important;
+}
+
+#workspaceAuthRoot[hidden] {
+  display: none;
+}
+
+.workspace-entry-logout {
+  flex: 0 0 auto;
+}

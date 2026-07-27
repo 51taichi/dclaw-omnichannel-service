@@ -5,9 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>微信AI销售客服管理中台</title>
     <link rel="icon" type="image/png" href="./assets/ddeer.png" />
+    <link rel="stylesheet" href="/shared/auth-shell.css" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body>
+  <body class="workspace-gated">
+    <div id="workspaceAuthRoot"></div>
     <svg class="icon-sprite" aria-hidden="true">
       <symbol id="icon-refresh" viewBox="0 0 24 24">
         <path d="M21 12a9 9 0 0 1-15.1 6.6" />
@@ -177,6 +179,16 @@
           </div>
         </div>
         <div class="topbar-platforms" aria-label="支持平台">
+          <button
+            id="workspaceLogoutButton"
+            class="secondary icon-button workspace-entry-logout"
+            type="button"
+            aria-label="退出当前入口"
+            title="退出当前入口"
+            hidden
+          >
+            <svg class="icon" aria-hidden="true"><use href="#icon-lock"></use></svg>
+          </button>
           <span class="platform-logo wechat" aria-label="微信" role="img">
             <img src="./assets/wechat.png" alt="" />
           </span>
@@ -409,57 +421,6 @@
         </div>
       </section>
 
-      <section id="agentManagementPanel" class="panel bot-context-panel collapsible-panel">
-        <div class="section-head binding-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>Agent 管理</h2>
-          <div class="section-actions">
-            <span id="agentCount" class="muted"></span>
-            <button class="collapse-button" data-collapse-target="agentManagementPanel" type="button" aria-label="收起 Agent 管理">
-              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
-            </button>
-          </div>
-        </div>
-        <div class="collapsible-content">
-          <form id="agentForm" class="form-grid">
-            <label>
-              <span class="field-label">Agent ID</span>
-              <input name="agentId" required placeholder="例如 xzj_business_manager" />
-            </label>
-            <label>
-              <span class="field-label">Agent 名称</span>
-              <input name="agentName" placeholder="业务经理 Agent" />
-            </label>
-            <label>
-              <span class="field-label">DClaw Base URL</span>
-              <input name="dclawBaseUrl" required placeholder="https://dclaw.deepmega.cn" />
-            </label>
-            <label>
-              <span class="field-label">OpenAPI Public ID</span>
-              <input name="dclawPublicId" required placeholder="例如 xzj_zsjl" />
-            </label>
-            <label class="wide">
-              <span class="field-label">OpenAPI API Key</span>
-              <input name="agentApiKey" type="password" placeholder="可选" autocomplete="off" />
-            </label>
-            <div class="actions">
-              <label class="toggle switch-toggle action-toggle">
-                <input name="enabled" type="checkbox" checked />
-                <span class="switch-slider" aria-hidden="true"></span>
-                <span class="switch-label">启用</span>
-              </label>
-              <button class="secondary" id="resetAgentFormButton" type="button">
-                <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
-                新增 Agent
-              </button>
-              <button class="primary" type="submit">
-                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-                保存 Agent
-              </button>
-            </div>
-          </form>
-          <div id="agentsList" class="agent-card-grid"></div>
-        </div>
-      </section>
       </div>
 
       <div id="flowTab" class="tab-panel" data-tab-panel="flow" hidden>
@@ -947,6 +908,8 @@
         </span>
       </div>
     </div>
+    <script src="/shared/auth-shell.js"></script>
+    <script src="./workspace-entry.js"></script>
     <script src="./tag-alert-client.js"></script>
     <script src="./app.js"></script>
   </body>

@@ -52,11 +52,6 @@ const els = {
   tabPanels: document.querySelectorAll("[data-tab-panel]"),
   workspaceLockPanel: document.querySelector("#workspaceLockPanel"),
   botForm: document.querySelector("#botForm"),
-  agentManagementPanel: document.querySelector("#agentManagementPanel"),
-  agentForm: document.querySelector("#agentForm"),
-  resetAgentFormButton: document.querySelector("#resetAgentFormButton"),
-  agentCount: document.querySelector("#agentCount"),
-  agentsList: document.querySelector("#agentsList"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
   replyWaitPanel: document.querySelector("#replyWaitPanel"),
   replyWaitForm: document.querySelector("#replyWaitForm"),
@@ -308,7 +303,6 @@ function syncRoleVisibility() {
   document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", hideConfig);
   els.resetFormButton.hidden = !hasBot;
   if (els.accessKeyPanel) els.accessKeyPanel.hidden = !isAdmin;
-  if (els.agentManagementPanel) els.agentManagementPanel.hidden = !hasBot || !isAdmin;
   if (els.lockBotButton) els.lockBotButton.hidden = !hasBot || workspaceLocked;
   if (els.workspaceLockPanel) els.workspaceLockPanel.hidden = !workspaceLocked;
   if (workspaceLocked) {
@@ -414,18 +408,6 @@ function formData() {
     botId: String(data.get("botId") || "").trim(),
     botName: String(data.get("botName") || "").trim(),
     agentId: String(data.get("agentId") || "").trim(),
-    enabled: data.get("enabled") === "on"
-  };
-}
-
-function agentFormData() {
-  const data = new FormData(els.agentForm);
-  return {
-    agentId: String(data.get("agentId") || "").trim(),
-    agentName: String(data.get("agentName") || "").trim(),
-    dclawBaseUrl: String(data.get("dclawBaseUrl") || "").trim(),
-    dclawPublicId: String(data.get("dclawPublicId") || "").trim(),
-    agentApiKey: String(data.get("agentApiKey") || "").trim(),
     enabled: data.get("enabled") === "on"
   };
 }
@@ -646,7 +628,7 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
   let activeBot = bot;
   if (bot?.botId) {
     if (state.currentRole === "admin") {
-      const data = await request("/api/bots");
+      const data = await window.WorkspaceContext.loadBots();
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       currentBots = data.bots || currentBots;
       activeBot = currentBots.find((item) => item.botId === bot.botId) || bot;
@@ -871,70 +853,8 @@ function fillForm(bot) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function fillAgentForm(agent) {
-  els.agentForm.agentId.value = agent?.agentId || "";
-  els.agentForm.agentName.value = agent?.agentName || "";
-  els.agentForm.dclawBaseUrl.value = agent?.dclawBaseUrl || "";
-  els.agentForm.dclawPublicId.value = agent?.dclawPublicId || agent?.agentId || "";
-  els.agentForm.agentApiKey.value = agent?.agentApiKey || "";
-  els.agentForm.enabled.checked = agent?.enabled !== false;
-}
-
-function resetAgentForm() {
-  els.agentForm.reset();
-  els.agentForm.enabled.checked = true;
-}
-
-function renderAgents(agents) {
-  if (els.agentCount) els.agentCount.textContent = `${agents.length} 个`;
+function renderAgents() {
   renderAgentOptions();
-  if (!els.agentsList) return;
-  if (!agents.length) {
-    els.agentsList.innerHTML = `<div class="empty-state">暂无 Agent，请先创建一个 Agent</div>`;
-    return;
-  }
-  els.agentsList.innerHTML = agents
-    .map((agent) => {
-      const boundCount = currentBots.filter((bot) => bot.agentId === agent.agentId).length;
-      const safeAgent = encodeURIComponent(agent.agentId);
-      return `
-        <article class="agent-card ${agent.enabled ? "is-enabled" : "is-disabled"}" data-agent="${safeAgent}">
-          <div class="agent-card-head">
-            <img class="agent-avatar" src="./assets/bot-avatar.png" alt="" aria-hidden="true" />
-            <span class="agent-summary">
-              <strong>${escapeHtml(agent.agentName || agent.agentId)}</strong>
-              <small>${escapeHtml(agent.agentId)}</small>
-            </span>
-          </div>
-          <div class="agent-meta">
-            <span>Public ID：${escapeHtml(agent.dclawPublicId || "-")}</span>
-            <span>已绑定 Bot：${boundCount}</span>
-          </div>
-          <div class="row-actions">
-            <button class="secondary" data-agent-edit="${safeAgent}" type="button">${icon("edit")}编辑</button>
-            <button class="danger" data-agent-delete="${safeAgent}" type="button">${icon("reset")}删除</button>
-          </div>
-        </article>
-      `;
-    })
-    .join("");
-  els.agentsList.querySelectorAll("[data-agent-edit]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const agentId = decodeURIComponent(button.dataset.agentEdit || "");
-      const agent = currentAgents.find((item) => item.agentId === agentId);
-      if (!agent) return;
-      fillAgentForm(agent);
-      els.agentForm.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-  });
-  els.agentsList.querySelectorAll("[data-agent-delete]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      const agentId = decodeURIComponent(button.dataset.agentDelete || "");
-      const agent = currentAgents.find((item) => item.agentId === agentId);
-      if (!agent) return;
-      await deleteAgent(agent);
-    });
-  });
 }
 
 function renderBots(bots) {
@@ -1591,7 +1511,7 @@ async function loadAddressBookTargets({ contextVersion = state.botContextVersion
 }
 
 async function loadBots() {
-  const data = await request("/api/public/bots");
+  const data = await window.WorkspaceContext.loadBots();
   currentBots = data.bots || [];
   await loadAgents({ silent: true });
   if (state.selectedBotId && !currentBots.some((bot) => bot.botId === state.selectedBotId)) {
@@ -1602,6 +1522,24 @@ async function loadBots() {
     updateWorkspaceTabAccess(false);
   }
   renderBots(currentBots);
+}
+
+let directBotHandled = false;
+
+async function openDirectBotFromUrl() {
+  if (directBotHandled) return;
+  directBotHandled = true;
+  const directBotId = new URLSearchParams(window.location.search).get("bot");
+  if (!directBotId) return;
+  const bot = currentBots.find((item) => item.botId === directBotId);
+  if (!bot) return;
+  if (isBotUnlocked(directBotId)) {
+    await applyBotContext(bot, {
+      tabName: getBotSession(directBotId)?.role === "admin" ? "config" : ""
+    });
+    return;
+  }
+  openUnlockDialog(bot);
 }
 
 async function loadAgents({ silent = false, headers: requestHeaders = {} } = {}) {
@@ -1686,50 +1624,12 @@ async function saveBot(event) {
   });
   const unlockedBot = await ensureAdminBotSession(bot.botId, adminHeaders);
   toast(result.callbackBinding?.ok === false ? "绑定已保存，回调自动绑定失败" : "绑定已保存，回调已自动绑定");
-  const data = await request("/api/bots", { headers: adminHeaders });
+  const data = await window.WorkspaceContext.loadBots();
   currentBots = data.bots || [];
   renderBots(currentBots);
   const savedBot = currentBots.find((item) => item.botId === bot.botId) || unlockedBot || result.binding;
   if (savedBot && unlockedBot) Object.assign(savedBot, unlockedBot);
   if (savedBot) await applyBotContext(savedBot);
-}
-
-async function saveAgent(event) {
-  event.preventDefault();
-  const adminHeaders = await promptAdminHeaders("保存 Agent 配置需要管理员密码。");
-  if (!adminHeaders) return;
-  const agent = agentFormData();
-  if (!agent.agentId || !agent.dclawBaseUrl || !agent.dclawPublicId) {
-    toast("请填写 Agent ID、DClaw Base URL 和 Public ID");
-    return;
-  }
-  const result = await request(`/api/agents/${encodeURIComponent(agent.agentId)}`, {
-    method: "PUT",
-    botId: "",
-    headers: adminHeaders,
-    body: JSON.stringify(agent)
-  });
-  await loadAgents({ headers: adminHeaders });
-  renderAgentOptions(result.agent?.agentId || agent.agentId);
-  toast("Agent 已保存");
-}
-
-async function deleteAgent(agent) {
-  const agentId = agent?.agentId || "";
-  if (!agentId) return;
-  const agentName = agent.agentName || agentId;
-  const adminKey = await openAdminKeyDialog(`删除 Agent 需要管理员密码。确认删除 ${agentName}？已绑定 Bot 的 Agent 不允许删除。`);
-  if (!adminKey) return;
-  await request(`/api/agents/${encodeURIComponent(agentId)}`, {
-    method: "DELETE",
-    botId: "",
-    headers: { "x-api-key": adminKey }
-  });
-  if (els.agentForm.agentId.value === agentId) {
-    resetAgentForm();
-  }
-  await loadAgents({ headers: { "x-api-key": adminKey } });
-  toast("Agent 已删除");
 }
 
 async function saveAccessKey(event) {
@@ -5142,8 +5042,6 @@ els.unlockAcceptButton.addEventListener("click", () =>
   acceptUnlockDialog().catch(toastError)
 );
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch(toastError));
-els.agentForm?.addEventListener("submit", (event) => saveAgent(event).catch(toastError));
-els.resetAgentFormButton?.addEventListener("click", resetAgentForm);
 els.accessKeyForm.addEventListener("submit", (event) =>
   saveAccessKey(event).catch(toastError)
 );
@@ -5371,11 +5269,16 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-ensureActionToolbox();
-syncRoleVisibility();
-loadBots()
-  .catch((error) => {
-    els.logsOutput.textContent = `无法加载配置：${error.message}`;
-  });
-syncMessageTypeFields();
-syncProactiveScheduleFields();
+async function startConsole() {
+  await window.WorkspaceContext.ready;
+  ensureActionToolbox();
+  syncRoleVisibility();
+  await loadBots();
+  await openDirectBotFromUrl();
+  syncMessageTypeFields();
+  syncProactiveScheduleFields();
+}
+
+startConsole().catch((error) => {
+  els.logsOutput.textContent = `无法加载配置：${error.message}`;
+});
