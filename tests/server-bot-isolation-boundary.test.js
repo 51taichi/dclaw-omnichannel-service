@@ -43,5 +43,6 @@ test("missing service secrets fail closed instead of granting cross-Bot access",
   const adminStart = serverSource.indexOf("function isAdminKey");
   const adminEnd = serverSource.indexOf("function getRequestBotSession", adminStart);
   const adminBody = serverSource.slice(adminStart, adminEnd);
-  assert.match(adminBody, /if \(!expected\) return false;/);
+  assert.match(adminBody, /verifyAdminPassword\(getRequestAdminKey\(req\)\)/);
+  assert.doesNotMatch(adminBody, /return true/);
 });

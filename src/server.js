@@ -40,6 +40,25 @@ import {
   verifyAccessKey
 } from "./auth.js";
 import {
+  changeAdminPassword,
+  createAdminSession,
+  deleteAdminSession,
+  getAdminSession,
+  initializeAdminAuth,
+  verifyAdminPassword
+} from "./admin-auth.js";
+import {
+  createWorkspace,
+  createWorkspaceSessionForAdmin,
+  getWorkspaceChallenge,
+  logoutWorkspace,
+  publicWorkspaceView,
+  removeWorkspace,
+  resolveWorkspaceSession,
+  unlockWorkspace,
+  updateWorkspace
+} from "./workspaces.js";
+import {
   beginMessageProcessing,
   beginFriendAddedFlowEntry,
   buildMessageKey,
@@ -111,6 +130,9 @@ import {
   listProactiveTaskTargets,
   listAgents,
   listBotBindings,
+  listUnassignedBotBindings,
+  listWorkspaceBots,
+  listWorkspaces,
   finalizeFlowActivationTaskDelivery,
   listRecords,
   markFlowActionExecutionFailed,
@@ -148,6 +170,12 @@ import {
   upsertBotBinding,
   upsertConversation,
   upsertWorktoolApiMessageCache
+} from "./db.js";
+import {
+  assignBotsToWorkspace,
+  getWorkspaceById,
+  transferBotToWorkspace,
+  unassignBotFromWorkspace
 } from "./db.js";
 import {
   buildRawMediaCommand,
@@ -229,7 +257,15 @@ const upload = multer({
 });
 
 app.use(express.json({ limit: "2mb" }));
+app.get("/console", (req, res) => res.redirect(302, "/admin/"));
+app.get("/console/", (req, res) => res.redirect(302, "/admin/"));
+app.get(/^\/console\/[^/]+\/$/, (req, res) => res.redirect(302, req.path.slice(0, -1)));
+app.use("/shared", express.static(path.join(publicDir, "shared")));
+app.use("/admin", express.static(path.join(publicDir, "admin")));
 app.use("/console", express.static(path.join(publicDir, "console")));
+app.get(/^\/console\/[^/]+$/, (req, res) => {
+  res.sendFile(path.join(publicDir, "console", "index.html"));
+});
 app.use("/uploads", express.static(uploadDir));
 
 async function cleanupUploadCache() {
@@ -272,6 +308,12 @@ setInterval(() => {
 }, uploadCleanupIntervalMs).unref();
 
 await loadBotBindingsFromConfig();
+const adminAuthState = initializeAdminAuth({
+  bootstrapPassword: process.env.ADMIN_API_KEY
+});
+if (!adminAuthState.ready) {
+  logWarn("admin_auth.not_ready", { reason: adminAuthState.reason });
+}
 resetInterruptedProactiveTargets();
 
 const legacyCustomerHistory = createLegacyCustomerHistoryService({
@@ -337,14 +379,12 @@ function assertCallbackSecret(req) {
 }
 
 function assertAdmin(req) {
-  const expected = process.env.ADMIN_API_KEY;
-  if (!expected) {
+  if (!adminAuthState.ready) {
     const error = new Error("admin API key is not configured");
     error.status = 503;
     throw error;
   }
-  const actual = req.header("x-api-key") || req.header("authorization")?.replace(/^Bearer\s+/i, "");
-  if (actual !== expected) {
+  if (!verifyAdminPassword(getRequestAdminKey(req))) {
     const error = new Error("invalid admin api key");
     error.status = 401;
     throw error;
@@ -356,9 +396,11 @@ function getRequestAdminKey(req) {
 }
 
 function isAdminKey(req) {
-  const expected = process.env.ADMIN_API_KEY;
-  if (!expected) return false;
-  return getRequestAdminKey(req) === expected;
+  return verifyAdminPassword(getRequestAdminKey(req));
+}
+
+function getRequestAdminSession(req) {
+  return getAdminSession(req.header("x-admin-session-token"));
 }
 
 function getRequestBotSession(req) {
@@ -368,6 +410,8 @@ function getRequestBotSession(req) {
 
 function assertAdminAccess(req) {
   if (isAdminKey(req)) return { role: "admin", botId: "*" };
+  const adminSession = getRequestAdminSession(req);
+  if (adminSession) return adminSession;
   const session = getRequestBotSession(req);
   if (session?.role === "admin") return session;
   const error = new Error("admin access required");
@@ -398,11 +442,27 @@ function assertAdminForBot(req, botId) {
     throw error;
   }
   if (isAdminKey(req)) return { role: "admin", botId: expectedBotId };
+  const adminSession = getRequestAdminSession(req);
+  if (adminSession) return { ...adminSession, botId: expectedBotId };
   const session = getRequestBotSession(req);
   if (session?.role === "admin" && session.botId === expectedBotId) return session;
   const error = new Error("admin access required");
   error.status = 401;
   throw error;
+}
+
+function getRequestWorkspaceToken(req) {
+  return req.header("x-workspace-session-token") || "";
+}
+
+function assertWorkspaceAccess(req, slug) {
+  const session = resolveWorkspaceSession(getRequestWorkspaceToken(req));
+  if (!session || session.workspace.slug !== String(slug || "")) {
+    const error = new Error("workspace access required");
+    error.status = 401;
+    throw error;
+  }
+  return session;
 }
 
 function assertConsoleAccess(req) {
@@ -423,7 +483,10 @@ function applyUploadCors(req, res, next) {
     res.setHeader("Access-Control-Allow-Origin", allowAnyOrigin ? "*" : origin);
     res.setHeader("Vary", "Origin");
     res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "x-api-key, x-bot-session-token, authorization, content-type");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "x-api-key, x-admin-session-token, x-workspace-session-token, x-bot-session-token, authorization, content-type"
+    );
     res.setHeader("Access-Control-Max-Age", "86400");
   }
 
@@ -4912,6 +4975,231 @@ app.get(
 );
 
 app.post(
+  "/api/admin/login",
+  asyncHandler(async (req, res) => {
+    if (!adminAuthState.ready) {
+      res.status(503).json({ ok: false, message: adminAuthState.reason });
+      return;
+    }
+    const password = String(req.body?.password || "");
+    if (!verifyAdminPassword(password)) {
+      res.status(401).json({ ok: false, message: "invalid admin password" });
+      return;
+    }
+    const session = createAdminSession();
+    res.json({ ok: true, session });
+  })
+);
+
+app.post(
+  "/api/admin/logout",
+  asyncHandler(async (req, res) => {
+    const token = req.header("x-admin-session-token");
+    if (token) deleteAdminSession(token);
+    res.json({ ok: true });
+  })
+);
+
+app.get(
+  "/api/admin/session",
+  asyncHandler(async (req, res) => {
+    const session = getRequestAdminSession(req);
+    if (!session) {
+      res.status(401).json({ ok: false, message: "admin session required" });
+      return;
+    }
+    res.json({ ok: true, session });
+  })
+);
+
+app.put(
+  "/api/admin/password",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const password = String(req.body?.password || "");
+    if (!password) {
+      res.status(400).json({ ok: false, message: "password is required" });
+      return;
+    }
+    changeAdminPassword(password);
+    res.json({ ok: true, reauthenticate: true });
+  })
+);
+
+app.get(
+  "/api/admin/workspaces",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    res.json({
+      ok: true,
+      workspaces: listWorkspaces().map(publicWorkspaceView)
+    });
+  })
+);
+
+app.post(
+  "/api/admin/workspaces",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    try {
+      const workspace = createWorkspace(req.body || {});
+      res.status(201).json({ ok: true, workspace });
+    } catch (error) {
+      if (String(error.message || "").includes("UNIQUE constraint failed")) {
+        error.status = 409;
+        error.message = "workspace slug already exists";
+      }
+      throw error;
+    }
+  })
+);
+
+app.get(
+  "/api/admin/workspaces/unassigned-bots",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    res.json({
+      ok: true,
+      bots: listUnassignedBotBindings().map(publicBotView)
+    });
+  })
+);
+
+app.get(
+  "/api/admin/workspaces/:id",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const workspace = getWorkspaceById(Number(req.params.id));
+    if (!workspace) {
+      res.status(404).json({ ok: false, message: "workspace not found" });
+      return;
+    }
+    res.json({
+      ok: true,
+      workspace: publicWorkspaceView(workspace),
+      bots: listWorkspaceBots(workspace.id).map(publicBotView)
+    });
+  })
+);
+
+app.put(
+  "/api/admin/workspaces/:id",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    try {
+      const workspace = updateWorkspace(Number(req.params.id), req.body || {});
+      res.json({ ok: true, workspace });
+    } catch (error) {
+      if (String(error.message || "").includes("UNIQUE constraint failed")) {
+        error.status = 409;
+        error.message = "workspace slug already exists";
+      }
+      throw error;
+    }
+  })
+);
+
+app.delete(
+  "/api/admin/workspaces/:id",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const result = removeWorkspace(Number(req.params.id));
+    res.json({ ok: true, ...result });
+  })
+);
+
+app.post(
+  "/api/admin/workspaces/:id/bots",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    try {
+      const bots = assignBotsToWorkspace({
+        workspaceId: Number(req.params.id),
+        botIds: Array.isArray(req.body?.botIds) ? req.body.botIds : []
+      });
+      res.json({ ok: true, bots: bots.map(publicBotView) });
+    } catch (error) {
+      if (String(error.message || "").includes("already assigned")) error.status = 409;
+      throw error;
+    }
+  })
+);
+
+app.delete(
+  "/api/admin/workspaces/:id/bots/:botId",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const removed = unassignBotFromWorkspace({
+      workspaceId: Number(req.params.id),
+      botId: req.params.botId
+    });
+    if (!removed) {
+      res.status(404).json({ ok: false, message: "workspace Bot assignment not found" });
+      return;
+    }
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  "/api/admin/workspaces/:id/bots/:botId/transfer",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const bot = transferBotToWorkspace({
+      botId: req.params.botId,
+      targetWorkspaceId: Number(req.body?.targetWorkspaceId)
+    });
+    res.json({ ok: true, bot: publicBotView(bot) });
+  })
+);
+
+app.post(
+  "/api/admin/workspaces/:id/session",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const session = createWorkspaceSessionForAdmin(Number(req.params.id));
+    res.json({ ok: true, session });
+  })
+);
+
+app.get(
+  "/api/workspaces/:slug/challenge",
+  asyncHandler(async (req, res) => {
+    const workspace = getWorkspaceChallenge(req.params.slug);
+    res.json({ ok: true, workspace });
+  })
+);
+
+app.post(
+  "/api/workspaces/:slug/unlock",
+  asyncHandler(async (req, res) => {
+    const session = unlockWorkspace({
+      slug: req.params.slug,
+      response: req.body?.response
+    });
+    res.json({ ok: true, session });
+  })
+);
+
+app.post(
+  "/api/workspaces/:slug/logout",
+  asyncHandler(async (req, res) => {
+    const session = assertWorkspaceAccess(req, req.params.slug);
+    logoutWorkspace(getRequestWorkspaceToken(req));
+    res.json({ ok: true, workspace: session.workspace });
+  })
+);
+
+app.get(
+  "/api/workspaces/:slug/bots",
+  asyncHandler(async (req, res) => {
+    const session = assertWorkspaceAccess(req, req.params.slug);
+    const bots = listWorkspaceBots(session.workspace.id).map(publicBotView);
+    res.json({ ok: true, workspace: session.workspace, bots });
+  })
+);
+
+app.post(
   "/api/bots/:botId/unlock",
   asyncHandler(async (req, res) => {
     const binding = getBotBinding(req.params.botId);
@@ -4926,7 +5214,7 @@ app.post(
     }
 
     let role = "";
-    if (process.env.ADMIN_API_KEY && key === process.env.ADMIN_API_KEY) {
+    if (verifyAdminPassword(key)) {
       role = "admin";
     } else if (verifyAccessKey(key, binding.accessKeyHash)) {
       role = "bot";
