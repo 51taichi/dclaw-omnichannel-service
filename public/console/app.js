@@ -1513,7 +1513,6 @@ async function loadAddressBookTargets({ contextVersion = state.botContextVersion
 async function loadBots() {
   const data = await window.WorkspaceContext.loadBots();
   currentBots = data.bots || [];
-  await loadAgents({ silent: true });
   if (state.selectedBotId && !currentBots.some((bot) => bot.botId === state.selectedBotId)) {
     setBindingState(null);
     return;

@@ -35,6 +35,9 @@ test("workspace entry requires an exact console slug and stores scoped sessions"
 
 test("workspace context gates startup and only loads assigned Bots", () => {
   const entry = fs.readFileSync(entryUrl, "utf8");
+  const loadBotsStart = app.indexOf("async function loadBots()");
+  const loadBotsEnd = app.indexOf("\n}\n\nlet directBotHandled", loadBotsStart);
+  const loadBotsSource = app.slice(loadBotsStart, loadBotsEnd);
 
   assert.match(entry, /(?:window|global)\.WorkspaceContext/);
   assert.equal(entry.includes("ready"), true);
@@ -45,6 +48,7 @@ test("workspace context gates startup and only loads assigned Bots", () => {
   assert.equal(app.includes("window.WorkspaceContext.loadBots()"), true);
   assert.equal(app.includes('request("/api/public/bots")'), false);
   assert.equal(app.includes("x-workspace-session-token"), false);
+  assert.equal(loadBotsSource.includes("loadAgents"), false);
 });
 
 test("workspace entry supports direct Bot selection without bypassing Bot unlock", () => {
