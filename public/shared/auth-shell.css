@@ -72,6 +72,10 @@
   margin-bottom: 12px;
 }
 
+.auth-shell-account[hidden] {
+  display: none;
+}
+
 .auth-shell-account span,
 .auth-shell-field-label {
   align-self: stretch;
@@ -161,6 +165,11 @@
   object-position: right bottom;
 }
 
+.auth-shell.is-failure .auth-shell-mascot {
+  transform: scale(1.55);
+  transform-origin: right bottom;
+}
+
 @media (max-width: 640px) {
   .auth-shell {
     padding: 14px;
@@ -195,5 +204,9 @@
 
   .auth-shell-mascot {
     max-height: 150px;
+  }
+
+  .auth-shell.is-failure .auth-shell-mascot {
+    transform: scale(1.35);
   }
 }

@@ -49,6 +49,7 @@ test("console header actions do not show the current bot status label", () => {
   assert.equal(app.includes("bindingState"), false);
   assert.equal(app.includes("当前Bot："), false);
   assert.equal(css.includes(".binding-state"), false);
+  assert.match(css, /\.current-bot-actions button\[hidden\]\s*\{[^}]*display:\s*none !important/);
 });
 
 test("console hides config tab for bot role and exposes access-key reset for admin", () => {

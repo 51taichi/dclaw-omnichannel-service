@@ -25,7 +25,7 @@
         <section class="auth-shell-card" aria-live="polite">
           <img
             class="auth-shell-logo"
-            src="/console/assets/deepmega-dclaw-logo.png"
+            src="/console/assets/deepmega-dclaw-logo-cropped.png"
             alt="DeepMega DClaw"
           />
           <div class="auth-shell-content">

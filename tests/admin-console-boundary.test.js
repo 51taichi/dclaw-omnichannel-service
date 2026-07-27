@@ -7,6 +7,7 @@ const app = fs.readFileSync(new URL("../public/admin/app.js", import.meta.url), 
 const css = fs.readFileSync(new URL("../public/admin/styles.css", import.meta.url), "utf8");
 
 test("admin console exposes global management tabs without user management", () => {
+  assert.equal(html.includes("/console/assets/deepmega-dclaw-logo-cropped.png"), true);
   for (const label of ["工作区", "Bots", "Agents", "系统设置", "退出"]) {
     assert.equal(html.includes(label), true, `missing ${label}`);
   }

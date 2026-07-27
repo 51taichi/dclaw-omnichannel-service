@@ -36,5 +36,7 @@ test("server serves independent admin and slug-scoped console entries", () => {
   assert.equal(source.includes('app.use("/admin", express.static'), true);
   assert.equal(source.includes('app.use("/shared", express.static'), true);
   assert.equal(source.includes('app.get("/console"'), true);
+  assert.equal(source.includes('app.get("/console/:slug"'), true);
   assert.equal(source.includes('path.join(publicDir, "console", "index.html")'), true);
+  assert.match(source, /res\.type\("html"\)\.send\(fs\.readFileSync\(consoleIndexPath,\s*"utf8"\)\)/);
 });

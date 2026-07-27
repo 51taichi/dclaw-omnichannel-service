@@ -208,6 +208,10 @@ h2 {
   min-width: 0;
 }
 
+.current-bot-actions button[hidden] {
+  display: none !important;
+}
+
 .current-bot-actions :is(#lockBotButton, #resetFormButton) {
   flex: 0 0 auto;
   height: 42px;

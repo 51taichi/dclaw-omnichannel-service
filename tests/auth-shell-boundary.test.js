@@ -8,7 +8,7 @@ const styleUrl = new URL("../public/shared/auth-shell.css", import.meta.url);
 test("shared auth shell exposes stable three-state login behavior", () => {
   const source = fs.readFileSync(scriptUrl, "utf8");
 
-  assert.equal(source.includes("/console/assets/deepmega-dclaw-logo.png"), true);
+  assert.equal(source.includes("/console/assets/deepmega-dclaw-logo-cropped.png"), true);
   assert.equal(source.includes("/shared/assets/auth-question.png"), true);
   assert.equal(source.includes("/shared/assets/auth-failure.png"), true);
   assert.equal(source.includes("/shared/assets/auth-success.png"), true);
@@ -22,8 +22,10 @@ test("shared auth shell sizes brand and mascots without layout jumps", () => {
   const css = fs.readFileSync(styleUrl, "utf8");
 
   assert.match(css, /\.auth-shell-logo\s*\{[^}]*width:\s*clamp\(240px,\s*28vw,\s*300px\)/);
+  assert.match(css, /\.auth-shell-account\[hidden\]\s*\{[^}]*display:\s*none/);
   assert.match(css, /\.auth-shell-mascot-slot\s*\{[^}]*width:\s*min\(34%,\s*220px\)/);
   assert.match(css, /\.auth-shell\.is-failure \.auth-shell-mascot-slot\s*\{[^}]*width:\s*min\(38%,\s*250px\)/);
+  assert.match(css, /\.auth-shell\.is-failure \.auth-shell-mascot\s*\{[^}]*transform:\s*scale\(1\.55\)/);
   assert.match(css, /@media \(max-width:\s*640px\)[\s\S]*width:\s*clamp\(112px,\s*34vw,\s*140px\)/);
 });
 

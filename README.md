@@ -49,6 +49,7 @@ WORKTOOL_BASE_URL=https://api.worktool.ymdyes.cn
 PUBLIC_BASE_URL=https://你的公网域名
 CALLBACK_SECRET=自己生成一串随机字符串
 ADMIN_API_KEY=自己生成一串管理密钥
+ADMIN_SESSION_TTL_HOURS=8
 BOT_SESSION_TTL_HOURS=8
 UPLOAD_MAX_MB=100
 UPLOAD_ALLOWED_ORIGINS=https://你的外部应用域名
@@ -305,25 +306,55 @@ Nginx 应代理到：
 http://127.0.0.1:18765
 ```
 
-## 9. 管理后台
+## 9. 管理后台与独立入口
 
 后台页面和回调服务共用同一个容器和端口：
 
 ```text
-https://worktool.deepmega.cn/console/
+全局管理员：https://worktool.deepmega.cn/admin/
+员工入口：https://worktool.deepmega.cn/console/管理员设置的尾巴
 ```
 
-首次打开后会直接显示已配置 Bot。每个 Bot 默认是灰色锁定状态，点击 Bot 后在同一个解锁框里输入“当前 Bot 独立密钥”或 `.env` 里的 `ADMIN_API_KEY`：
+首次升级启动时，服务会用 `.env` 的 `ADMIN_API_KEY` 初始化数据库中的唯一管理员密码。初始化完成后，管理员密码以数据库为准；后续修改 `.env` 不会覆盖它。管理员可以在 `/admin/` 的系统设置中修改密码，也可以在服务器执行：
+
+```bash
+npm run admin:reset-password
+```
+
+全局管理员页面负责：
+
+```text
+创建、停用和删除独立入口
+设置 URL 尾巴和上下句口令
+分配、移除或转移 Bot（一个 Bot 只能属于一个入口）
+维护全部 Bot 和 Agent
+修改唯一管理员密码
+```
+
+员工首次打开独立入口时，需要根据上半句输入下半句口令。验证成功会倒计时 3 秒进入，浏览器会保存 30 天入口会话。进入后只显示分配给该入口的 Bot，不会显示其他入口的数据。
+
+每个 Bot 仍保持原有的独立密码和权限逻辑。Bot 默认是灰色锁定状态，点击 Bot 后输入“当前 Bot 独立密钥”或管理员密码：
 
 - 输入 Bot 独立密钥：只解锁当前 Bot，不显示配置 Tab。
-- 输入 `ADMIN_API_KEY`：以管理员身份解锁当前 Bot，显示配置 Tab，并可以修改当前 Bot 独立密钥。
+- 输入当前管理员密码：以管理员身份解锁当前 Bot，显示配置 Tab，并可以修改当前 Bot 独立密钥。
 - 点击“上锁”会清除当前 Bot 的本地 token，恢复锁定态。
 
-页面支持：
+员工页面保持原有的会话、任务、标签、推送和日志能力。Agent 属于全局资源，因此 Agent 的新增、编辑和删除统一放在 `/admin/`，Bot 配置仍可选择已经维护好的 Agent。
+
+### 现有环境升级步骤
+
+1. 更新代码并重新构建容器，原有 Bot、会话、任务、标签和推送数据不会迁移或重建。
+2. 打开 `/admin/`，使用升级前 `.env` 中的 `ADMIN_API_KEY` 登录。
+3. 创建所需入口，设置自定义 URL 尾巴与上下句口令。
+4. 将现有 Bot 分配到对应入口。分配只改变可见范围，不改 Bot 配置、密码或业务数据。
+5. 把 `/console/自定义尾巴` 发给负责人或员工。
+
+`/console` 和 `/console/` 会跳转到 `/admin/`，不再作为员工兼容入口。
+
+员工页面支持：
 
 ```text
 查看 bot 绑定
-新增/编辑 botId -> DClaw Agent
 一键绑定 WorkTool 消息回调和指令回调
 配置调试自动回复的开关、触发词和回复内容
 查看最近消息、会话、Agent 调用、指令回调

@@ -215,6 +215,7 @@ const port = Number(process.env.PORT || 8765);
 const host = process.env.HOST || "0.0.0.0";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, "../public");
+const consoleIndexPath = path.join(publicDir, "console", "index.html");
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
 const uploadDir = path.join(dataDir, "uploads");
 const uploadMaxMb = Number(process.env.UPLOAD_MAX_MB || 100);
@@ -262,10 +263,14 @@ app.get("/console/", (req, res) => res.redirect(302, "/admin/"));
 app.get(/^\/console\/[^/]+\/$/, (req, res) => res.redirect(302, req.path.slice(0, -1)));
 app.use("/shared", express.static(path.join(publicDir, "shared")));
 app.use("/admin", express.static(path.join(publicDir, "admin")));
-app.use("/console", express.static(path.join(publicDir, "console")));
-app.get(/^\/console\/[^/]+$/, (req, res) => {
-  res.sendFile(path.join(publicDir, "console", "index.html"));
+app.get("/console/:slug", (req, res, next) => {
+  if (!/^[a-z0-9-]{3,32}$/.test(req.params.slug)) {
+    next();
+    return;
+  }
+  res.type("html").send(fs.readFileSync(consoleIndexPath, "utf8"));
 });
+app.use("/console", express.static(path.join(publicDir, "console")));
 app.use("/uploads", express.static(uploadDir));
 
 async function cleanupUploadCache() {
