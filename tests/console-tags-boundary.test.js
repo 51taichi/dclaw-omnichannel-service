@@ -151,6 +151,15 @@ test("console renders tag chips and tag filters", () => {
   assert.match(css, /\.tag-chip \.icon\s*\{[\s\S]*width:\s*12px[\s\S]*height:\s*12px/);
 });
 
+test("multi-tag menus expose a persistent vertical scrollbar", () => {
+  assert.match(
+    css,
+    /\.tag-multi-select-menu\s*\{[^}]*overflow-x:\s*hidden[^}]*overflow-y:\s*scroll[^}]*scrollbar-gutter:\s*stable/
+  );
+  assert.match(css, /\.tag-multi-select-menu::-webkit-scrollbar\s*\{[^}]*width:\s*8px/);
+  assert.match(css, /\.tag-multi-select-menu::-webkit-scrollbar-thumb\s*\{[^}]*background:/);
+});
+
 test("opening a conversation refreshes its card after detail tags arrive", () => {
   const body = functionBody("openFlowSession");
 
