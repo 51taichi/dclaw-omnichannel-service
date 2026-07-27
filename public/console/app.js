@@ -5245,10 +5245,17 @@ window.addEventListener("resize", () => {
   closeTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
   closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
 });
-window.addEventListener("scroll", () => {
+function closeTagMultiSelectMenusOnExternalScroll(event) {
+  if (
+    event.target instanceof Element &&
+    event.target.closest(".tag-multi-select-menu")
+  ) {
+    return;
+  }
   closeTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
   closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
-}, true);
+}
+window.addEventListener("scroll", closeTagMultiSelectMenusOnExternalScroll, true);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     hideFlowSessionManualTagMenu();

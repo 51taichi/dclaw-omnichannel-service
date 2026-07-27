@@ -160,6 +160,14 @@ test("multi-tag menus expose a persistent vertical scrollbar", () => {
   assert.doesNotMatch(menuRule, /scrollbar-(?:width|color)/);
   assert.match(css, /\.tag-multi-select-menu::-webkit-scrollbar\s*\{[^}]*width:\s*8px/);
   assert.match(css, /\.tag-multi-select-menu::-webkit-scrollbar-thumb\s*\{[^}]*background:/);
+  assert.match(
+    js,
+    /function closeTagMultiSelectMenusOnExternalScroll\(event\)\s*\{[\s\S]*event\.target instanceof Element[\s\S]*closest\("\.tag-multi-select-menu"\)[\s\S]*return/
+  );
+  assert.match(
+    js,
+    /window\.addEventListener\("scroll", closeTagMultiSelectMenusOnExternalScroll, true\)/
+  );
 });
 
 test("opening a conversation refreshes its card after detail tags arrive", () => {
