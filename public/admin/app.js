@@ -433,7 +433,7 @@ function renderBotList() {
     const workspace = workspaceNameForBot(bot.botId);
     return `
       <div class="admin-table-row">
-        <span><strong>${escapeHtml(bot.botName || bot.botId)}</strong><small>${escapeHtml(bot.botId)}</small></span>
+        <span><strong>${escapeHtml(bot.botName || bot.botId)}</strong></span>
         <span>${escapeHtml(bot.agentName || bot.agentId)}</span>
         <span>${workspace ? escapeHtml(workspace.name) : "未分配"}</span>
         <span class="admin-actions">

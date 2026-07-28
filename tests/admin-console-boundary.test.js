@@ -90,6 +90,18 @@ test("admin enabled fields consistently use switch controls", () => {
   assert.match(css, /\.admin-switch-field \.switch-slider\s*\{[\s\S]*?margin-left:\s*auto/);
 });
 
+test("admin Bot table hides internal Bot IDs from the visible name column", () => {
+  const renderStart = app.indexOf("function renderBotList()");
+  const renderEnd = app.indexOf("async function saveBot", renderStart);
+  const renderSource = app.slice(renderStart, renderEnd);
+
+  assert.match(
+    renderSource,
+    /<span><strong>\$\{escapeHtml\(bot\.botName \|\| bot\.botId\)\}<\/strong><\/span>/
+  );
+  assert.doesNotMatch(renderSource, /<small>\$\{escapeHtml\(bot\.botId\)\}<\/small>/);
+});
+
 test("admin console owns Agent and Bot global maintenance", () => {
   assert.equal(app.includes("/api/agents"), true);
   assert.equal(app.includes("/api/bots"), true);
