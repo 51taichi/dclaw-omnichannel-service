@@ -233,9 +233,13 @@ body {
 }
 
 .admin-switch-field {
+  align-self: center;
+  justify-self: start;
   justify-content: flex-start;
-  width: 100%;
+  width: min(220px, 100%);
+  height: 44px;
   padding: 0 12px;
+  box-sizing: border-box;
   border: 1px solid var(--line);
   border-radius: 7px;
   background: #fff;
@@ -252,7 +256,8 @@ body {
 }
 
 .admin-form .admin-actions {
-  grid-column: 1 / -1;
+  grid-column: 2;
+  align-self: center;
   justify-content: flex-end;
 }
 
@@ -437,6 +442,10 @@ body {
 
   .admin-form label:not(.toggle-line) {
     grid-template-columns: 190px minmax(0, 1fr);
+  }
+
+  .admin-form .admin-actions {
+    grid-column: 1;
   }
 }
 
