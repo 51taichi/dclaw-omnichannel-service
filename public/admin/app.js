@@ -119,7 +119,7 @@ function showAdminLogin(message = "") {
     title: "管理员登录",
     prompt: message,
     accountLabel: "admin",
-    fieldLabel: "管理员密码",
+    fieldLabel: "密码",
     fieldIconId: "admin-icon-key",
     inputType: "password",
     submitLabel: "进入管理后台",
