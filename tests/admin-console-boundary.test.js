@@ -102,6 +102,24 @@ test("admin Bot table hides internal Bot IDs from the visible name column", () =
   assert.doesNotMatch(renderSource, /<small>\$\{escapeHtml\(bot\.botId\)\}<\/small>/);
 });
 
+test("admin Agent list uses the console Agent card layout", () => {
+  const renderStart = app.indexOf("function renderAgentList()");
+  const renderEnd = app.indexOf("async function saveAgent", renderStart);
+  const renderSource = app.slice(renderStart, renderEnd);
+
+  assert.match(html, /id="agentList" class="agent-card-grid admin-agent-card-grid"/);
+  assert.match(renderSource, /class="agent-card admin-agent-card/);
+  assert.match(renderSource, /class="agent-card-head"/);
+  assert.match(renderSource, /class="agent-avatar" src="\/console\/assets\/bot-avatar\.png"/);
+  assert.match(renderSource, /class="agent-summary"/);
+  assert.match(renderSource, /class="agent-meta"/);
+  assert.match(renderSource, /Public ID：/);
+  assert.match(renderSource, /已绑定 Bot：\$\{boundCount\}/);
+  assert.match(renderSource, /class="row-actions admin-agent-actions"/);
+  assert.doesNotMatch(renderSource, /agent\.dclawBaseUrl/);
+  assert.doesNotMatch(renderSource, />启用<\/span>|>停用<\/span>/);
+});
+
 test("admin console owns Agent and Bot global maintenance", () => {
   assert.equal(app.includes("/api/agents"), true);
   assert.equal(app.includes("/api/bots"), true);

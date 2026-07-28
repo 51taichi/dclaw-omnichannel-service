@@ -479,18 +479,32 @@ async function saveBot(event) {
 }
 
 function renderAgentList() {
-  els.agentList.innerHTML = state.agents.map((agent) => `
-    <article class="admin-item">
-      <div class="admin-item-main">
-        <strong>${escapeHtml(agent.agentName || agent.agentId)}</strong>
-        <small>${escapeHtml(agent.agentId)} · Public ID ${escapeHtml(agent.dclawPublicId)}</small>
-      </div>
-      <div class="admin-actions">
-        <button data-edit-agent="${escapeHtml(agent.agentId)}">${adminIcon("edit")}编辑</button>
-        <button class="danger" data-delete-agent="${escapeHtml(agent.agentId)}">${adminIcon("trash")}删除</button>
-      </div>
-    </article>
-  `).join("");
+  if (!state.agents.length) {
+    els.agentList.innerHTML = `<div class="empty-state">暂无 Agent，请先创建一个 Agent</div>`;
+    return;
+  }
+  els.agentList.innerHTML = state.agents.map((agent) => {
+    const boundCount = state.bots.filter((bot) => bot.agentId === agent.agentId).length;
+    return `
+      <article class="agent-card admin-agent-card ${agent.enabled ? "is-enabled" : "is-disabled"}">
+        <div class="agent-card-head">
+          <img class="agent-avatar" src="/console/assets/bot-avatar.png" alt="" aria-hidden="true" />
+          <span class="agent-summary">
+            <strong>${escapeHtml(agent.agentName || agent.agentId)}</strong>
+            <small>${escapeHtml(agent.agentId)}</small>
+          </span>
+        </div>
+        <div class="agent-meta">
+          <span>Public ID：${escapeHtml(agent.dclawPublicId || "-")}</span>
+          <span>已绑定 Bot：${boundCount}</span>
+        </div>
+        <div class="row-actions admin-agent-actions">
+          <button class="secondary" data-edit-agent="${escapeHtml(agent.agentId)}">${adminIcon("edit")}编辑</button>
+          <button class="danger" data-delete-agent="${escapeHtml(agent.agentId)}">${adminIcon("trash")}删除</button>
+        </div>
+      </article>
+    `;
+  }).join("");
   els.agentList.querySelectorAll("[data-edit-agent]").forEach((button) => {
     button.addEventListener("click", () => {
       const agent = state.agents.find((item) => item.agentId === button.dataset.editAgent);

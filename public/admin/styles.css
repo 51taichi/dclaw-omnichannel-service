@@ -287,6 +287,25 @@ body {
   color: var(--muted);
 }
 
+.admin-agent-card-grid {
+  align-items: stretch;
+}
+
+.admin-agent-card {
+  grid-template-rows: auto 1fr auto;
+  min-height: 166px;
+}
+
+.admin-agent-card .agent-card-head {
+  grid-template-columns: 38px minmax(0, 1fr);
+}
+
+.admin-agent-actions {
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: auto;
+}
+
 .admin-inline-form {
   margin: 18px 0;
 }
