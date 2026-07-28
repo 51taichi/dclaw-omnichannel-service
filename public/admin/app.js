@@ -286,17 +286,29 @@ async function deleteWorkspace() {
 async function openWorkspace(botId = "") {
   const detail = state.workspaceDetails.get(state.selectedWorkspaceId);
   if (!detail) return;
-  const data = await adminRequest(`/api/admin/workspaces/${state.selectedWorkspaceId}/session`, {
-    method: "POST"
-  });
-  const sessions = readJson(WORKSPACE_SESSION_KEY) || {};
-  sessions[detail.workspace.slug] = {
-    token: data.session.token,
-    expiresAt: data.session.expiresAt
-  };
-  localStorage.setItem(WORKSPACE_SESSION_KEY, JSON.stringify(sessions));
-  const suffix = botId ? `?bot=${encodeURIComponent(botId)}` : "";
-  window.location.href = `/console/${encodeURIComponent(detail.workspace.slug)}${suffix}`;
+  const workspaceTab = window.open("about:blank", "_blank");
+  if (!workspaceTab) {
+    throw new Error("浏览器阻止了新页签，请允许弹出窗口后重试");
+  }
+  workspaceTab.opener = null;
+
+  try {
+    const data = await adminRequest(`/api/admin/workspaces/${state.selectedWorkspaceId}/session`, {
+      method: "POST"
+    });
+    const sessions = readJson(WORKSPACE_SESSION_KEY) || {};
+    sessions[detail.workspace.slug] = {
+      token: data.session.token,
+      expiresAt: data.session.expiresAt
+    };
+    localStorage.setItem(WORKSPACE_SESSION_KEY, JSON.stringify(sessions));
+    const suffix = botId ? `?bot=${encodeURIComponent(botId)}` : "";
+    const targetUrl = `/console/${encodeURIComponent(detail.workspace.slug)}${suffix}`;
+    workspaceTab.location.replace(targetUrl);
+  } catch (error) {
+    workspaceTab.close();
+    throw error;
+  }
 }
 
 async function openAssignmentModal() {

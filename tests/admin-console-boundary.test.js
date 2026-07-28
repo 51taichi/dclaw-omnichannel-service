@@ -45,6 +45,10 @@ test("admin workspace UI supports assignment transfer removal and direct opening
   assert.equal(app.includes("原入口"), true);
   assert.equal(app.includes("worktool_workspace_sessions"), true);
   assert.equal(app.includes("?bot="), true);
+  assert.match(app, /window\.open\("about:blank",\s*"_blank"\)/);
+  assert.match(app, /workspaceTab\.location\.replace\(targetUrl\)/);
+  assert.match(app, /catch \(error\) \{[\s\S]*workspaceTab\.close\(\);[\s\S]*throw error/);
+  assert.equal(app.includes("window.location.href = `/console/"), false);
 });
 
 test("admin console owns Agent and Bot global maintenance", () => {
