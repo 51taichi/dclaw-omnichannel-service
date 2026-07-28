@@ -29,6 +29,15 @@ test("shared auth shell sizes brand and mascots without layout jumps", () => {
   assert.match(css, /@media \(max-width:\s*640px\)[\s\S]*width:\s*clamp\(112px,\s*34vw,\s*140px\)/);
 });
 
+test("auth submit keeps its primary gradient and readable text on hover", () => {
+  const css = fs.readFileSync(styleUrl, "utf8");
+
+  assert.match(
+    css,
+    /\.auth-shell-submit:not\(:disabled\):hover\s*\{[^}]*background:\s*linear-gradient\([^}]*color:\s*#fff[^}]*transform:\s*translateY\(-1px\)/
+  );
+});
+
 test("all auth state assets are nonempty PNG files", () => {
   for (const name of ["auth-question.png", "auth-failure.png", "auth-success.png"]) {
     const file = new URL(`../public/shared/assets/${name}`, import.meta.url);

@@ -136,6 +136,22 @@
   font-weight: 700;
   cursor: pointer;
   background: linear-gradient(90deg, #3155e7, #18bdd2);
+  box-shadow: 0 8px 20px rgba(49, 85, 231, 0.18);
+  transition:
+    background 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.auth-shell-submit:not(:disabled):hover {
+  background: linear-gradient(90deg, #2848dc, #12aec2);
+  color: #fff;
+  box-shadow: 0 11px 24px rgba(49, 85, 231, 0.24);
+  transform: translateY(-1px);
+}
+
+.auth-shell-submit:not(:disabled):active {
+  transform: translateY(0);
 }
 
 .auth-shell-submit:disabled {
