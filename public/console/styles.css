@@ -2892,6 +2892,14 @@ textarea[data-action-target-activation].is-action-target-focused {
   box-shadow: 0 8px 16px color-mix(in srgb, var(--date-tag-accent) 22%, transparent);
 }
 
+.date-tag-special-group .tag-group-enabled-toggle {
+  cursor: default;
+}
+
+.date-tag-special-group .switch-toggle input[type="checkbox"]:disabled + .switch-slider {
+  opacity: 1;
+}
+
 .date-tag-name-field .field-control {
   display: flex;
   align-items: center;

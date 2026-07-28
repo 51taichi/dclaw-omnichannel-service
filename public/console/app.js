@@ -26,7 +26,7 @@ const state = {
   proactiveTargetsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   proactiveTasksPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   tagSchema: {
-    dateTag: { enabled: false, cutoffTime: "00:00", effectiveAt: "" },
+    dateTag: { enabled: true, cutoffTime: "00:00", effectiveAt: "" },
     groups: []
   }
 };
@@ -1858,7 +1858,7 @@ function normalizeActivationDraft(value = {}) {
 
 function defaultTagSchema() {
   return {
-    dateTag: { enabled: false, cutoffTime: "00:00", effectiveAt: "" },
+    dateTag: { enabled: true, cutoffTime: "00:00", effectiveAt: "" },
     groups: []
   };
 }
@@ -1904,7 +1904,7 @@ function normalizeTagSchemaDraft(schema = {}) {
   const source = schema && typeof schema === "object" && !Array.isArray(schema) ? schema : {};
   return {
     dateTag: {
-      enabled: Boolean(source.dateTag?.enabled),
+      enabled: true,
       cutoffTime: normalizeDateTagCutoffTimeDraft(source.dateTag?.cutoffTime),
       effectiveAt: normalizeDateTagEffectiveAtDraft(source.dateTag?.effectiveAt)
     },
@@ -2874,17 +2874,13 @@ function collapseAllTagCards() {
   });
 }
 
-function dateTagEnabledInput() {
-  return els.tagGroupList?.querySelector("#dateTagEnabled") || null;
-}
-
 function dateTagCutoffInput() {
   return els.tagGroupList?.querySelector("#dateTagCutoffTime") || null;
 }
 
 function editableDateTagRule() {
   return {
-    enabled: Boolean(dateTagEnabledInput()?.checked),
+    enabled: true,
     cutoffTime: normalizeDateTagCutoffTimeDraft(dateTagCutoffInput()?.value)
   };
 }
@@ -2900,7 +2896,7 @@ function renderDateTagSpecialGroup() {
     <article class="tag-group-card date-tag-special-group">
       <div class="tag-group-head">
         <label class="toggle switch-toggle tag-group-enabled-toggle">
-          <input id="dateTagEnabled" type="checkbox" ${dateTag.enabled ? "checked" : ""} />
+          <input id="dateTagEnabled" type="checkbox" checked disabled aria-label="添加日期标签始终启用" />
           <span class="switch-slider" aria-hidden="true"></span>
           <span class="switch-label">启用</span>
         </label>
@@ -3051,11 +3047,6 @@ function renderTagSchemaEditor() {
 }
 
 function bindTagSchemaEditorEvents() {
-  dateTagEnabledInput()?.addEventListener("change", (event) => {
-    state.tagSchema.dateTag.enabled = event.currentTarget.checked;
-    renderFlowSessionDateTagFilter();
-    reloadFlowSessionsFromFirstPage().catch(toastError);
-  });
   dateTagCutoffInput()?.addEventListener("change", (event) => {
     const cutoffTime = normalizeDateTagCutoffTimeDraft(event.currentTarget.value);
     state.tagSchema.dateTag.cutoffTime = cutoffTime;

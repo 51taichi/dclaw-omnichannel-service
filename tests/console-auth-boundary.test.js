@@ -155,6 +155,14 @@ test("startup toggles render as switch components instead of plain checkboxes", 
   assert.match(css, /\.switch-slider/);
 });
 
+test("the built-in date tag group is always enabled and cannot be disabled", () => {
+  assert.match(app, /dateTag:\s*\{\s*enabled:\s*true,\s*cutoffTime:\s*"00:00"/);
+  assert.match(app, /function normalizeTagSchemaDraft[\s\S]*?dateTag:\s*\{\s*enabled:\s*true,/);
+  assert.match(app, /function editableDateTagRule\(\)\s*\{\s*return\s*\{\s*enabled:\s*true,/);
+  assert.match(app, /id="dateTagEnabled" type="checkbox" checked disabled/);
+  assert.doesNotMatch(app, /dateTagEnabledInput\(\)\?\.addEventListener\("change"/);
+});
+
 test("config saves can request admin password on demand", () => {
   assert.equal(html.includes("unlockKeyLabel"), true);
   assert.equal(app.includes("openAdminKeyDialog"), true);
