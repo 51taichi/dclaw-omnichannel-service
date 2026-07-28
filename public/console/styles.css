@@ -308,7 +308,7 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
     height: 15px;
     border-style: solid;
     border-color: var(--workspace-tab-link);
-    border-width: 0 1px 3px;
+    border-width: 0 0 3px;
     background: transparent;
     pointer-events: none;
   }

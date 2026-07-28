@@ -105,7 +105,7 @@ test("workspace tab strip follows the selected Bot accent and connects to its co
   assert.match(css, /@media \(min-width:\s*761px\)\s*\{[\s\S]*\.workspace-tabs\s*\{[\s\S]*overflow:\s*visible/);
   assert.match(css, /\.workspace-tabs\s*\{[\s\S]*--workspace-tab-link:\s*var\(--accent\)[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.78\)/);
   assert.match(css, /\.workspace-tabs\.is-bound\s*\{[\s\S]*--workspace-tab-link:\s*var\(--bot-accent\)/);
-  assert.match(css, /\.workspace-tabs::after\s*\{[\s\S]*content:\s*""[\s\S]*top:\s*100%[\s\S]*height:\s*15px[\s\S]*border-width:\s*0 1px 3px[\s\S]*background:\s*transparent/);
+  assert.match(css, /\.workspace-tabs::after\s*\{[\s\S]*content:\s*""[\s\S]*top:\s*100%[\s\S]*height:\s*15px[\s\S]*border-width:\s*0 0 3px[\s\S]*background:\s*transparent/);
   assert.match(css, /\.workspace-tabs button\.active\s*\{[^}]*background:\s*linear-gradient\(90deg,\s*var\(--danger\),\s*var\(--orange\)\)[^}]*color:\s*#ffffff/);
   assert.match(css, /\.workspace-tabs\.is-bound button\.active\s*\{[^}]*var\(--bot-accent\)[^}]*color:\s*#ffffff/);
   assert.match(css, /\.bot-context-panel\.is-bound \.segmented button\.active\s*\{[^}]*var\(--bot-accent\)[^}]*color:\s*#fff/);

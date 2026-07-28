@@ -57,6 +57,22 @@ test("admin workspace UI supports assignment transfer removal and direct opening
   assert.equal(app.includes("window.location.href = `/console/"), false);
 });
 
+test("assigned workspace Bots use the same card layout as Agents", () => {
+  const renderStart = app.indexOf("function renderWorkspaceBots(bots)");
+  const renderEnd = app.indexOf("async function saveWorkspace", renderStart);
+  const renderSource = app.slice(renderStart, renderEnd);
+
+  assert.match(html, /id="workspaceBots" class="agent-card-grid admin-workspace-bot-grid"/);
+  assert.match(renderSource, /class="agent-card admin-workspace-bot-card/);
+  assert.match(renderSource, /class="agent-card-head"/);
+  assert.match(renderSource, /class="agent-avatar" src="\/console\/assets\/bot-avatar\.png"/);
+  assert.match(renderSource, /class="agent-summary"/);
+  assert.match(renderSource, /class="agent-meta"/);
+  assert.match(renderSource, /绑定 Agent：/);
+  assert.match(renderSource, /class="row-actions admin-workspace-bot-actions"/);
+  assert.doesNotMatch(renderSource, /<small>\$\{escapeHtml\(bot\.botId\)/);
+});
+
 test("admin workspace cards show only the name with a left icon and enabled switch", () => {
   const renderStart = app.indexOf("function renderWorkspaceList()");
   const renderEnd = app.indexOf("async function selectWorkspace", renderStart);
@@ -136,8 +152,17 @@ test("admin console reuses platform styles with focused operational layout", () 
   assert.match(css, /\.admin-page\s*\{[\s\S]*?width:\s*min\(1440px,\s*calc\(100% - 16px\)\)/);
   assert.match(css, /\.admin-tabs\s*\{[\s\S]*?padding:\s*5px/);
   assert.match(css, /\.admin-tabs button\s*\{[\s\S]*?height:\s*36px/);
+  assert.match(css, /\.admin-tabs::after\s*\{[\s\S]*?border-width:\s*0 0 3px/);
   assert.match(css, /\.admin-topbar \.brand-copy h1\s*\{[\s\S]*?linear-gradient/);
   assert.match(css, /\.admin-workspace-select\s*\{[\s\S]*?justify-content:\s*flex-start/);
+});
+
+test("admin form labels share one width that keeps the longest label on one line", () => {
+  assert.match(
+    css,
+    /\.admin-form label:not\(\.toggle-line\)\s*\{[\s\S]*?grid-template-columns:\s*190px minmax\(0,\s*1fr\)/
+  );
+  assert.match(css, /\.admin-form label > span\s*\{[\s\S]*?white-space:\s*nowrap/);
 });
 
 test("admin fields and buttons consistently render semantic icons", () => {
