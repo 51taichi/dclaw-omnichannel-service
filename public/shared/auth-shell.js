@@ -19,6 +19,7 @@
     let state = "idle";
     let busy = false;
     let countdownTimer = 0;
+    let mascotRenderToken = 0;
 
     root.innerHTML = `
       <main class="auth-shell is-idle">
@@ -79,10 +80,24 @@
 
     function renderState(nextState, message = "") {
       state = nextState;
-      shell.classList.remove("is-idle", "is-failure", "is-success");
-      shell.classList.add(`is-${state}`);
-      mascot.src = IMAGE_BY_STATE[state];
       messageEl.textContent = message;
+      const nextMascotSrc = IMAGE_BY_STATE[state];
+      const renderToken = ++mascotRenderToken;
+      const nextMascot = new Image();
+      let applied = false;
+
+      function applyMascotState() {
+        if (applied || renderToken !== mascotRenderToken) return;
+        applied = true;
+        mascot.src = nextMascotSrc;
+        shell.classList.remove("is-idle", "is-failure", "is-success");
+        shell.classList.add(`is-${state}`);
+      }
+
+      nextMascot.addEventListener("load", applyMascotState, { once: true });
+      nextMascot.addEventListener("error", applyMascotState, { once: true });
+      nextMascot.src = nextMascotSrc;
+      if (nextMascot.complete) applyMascotState();
     }
 
     function setBusy(isBusy) {
