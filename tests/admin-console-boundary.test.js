@@ -170,7 +170,12 @@ test("admin form labels share one width that keeps the longest label on one line
     css,
     /\.admin-form label:not\(\.toggle-line\)\s*\{[\s\S]*?grid-template-columns:\s*190px minmax\(0,\s*1fr\)/
   );
-  assert.match(css, /\.admin-form label > span\s*\{[\s\S]*?white-space:\s*nowrap/);
+  assert.match(
+    css,
+    /\.admin-form label:not\(\.toggle-line\) > span\s*\{[\s\S]*?white-space:\s*nowrap/
+  );
+  assert.doesNotMatch(css, /\.admin-form label > span\s*\{/);
+  assert.match(css, /\.toggle-line\s*\{[\s\S]*?align-items:\s*center/);
 });
 
 test("admin fields and buttons consistently render semantic icons", () => {

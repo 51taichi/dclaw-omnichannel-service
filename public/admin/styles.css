@@ -202,7 +202,7 @@ body {
   overflow: hidden;
 }
 
-.admin-form label > span {
+.admin-form label:not(.toggle-line) > span {
   align-self: stretch;
   display: flex;
   align-items: center;
@@ -259,7 +259,7 @@ body {
 }
 
 .toggle-line > svg,
-.admin-form label > span svg {
+.admin-form label:not(.toggle-line) > span svg {
   color: var(--accent);
 }
 
