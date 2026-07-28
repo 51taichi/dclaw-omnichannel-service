@@ -32,6 +32,10 @@ test("admin console uses singleton session authentication", () => {
 });
 
 test("admin workspace UI supports assignment transfer removal and direct opening", () => {
+  assert.match(
+    html,
+    /<span>下半句口令<\/span><input name="response" type="text"/
+  );
   assert.equal(app.includes("/api/admin/workspaces/unassigned-bots"), true);
   assert.equal(app.includes("selectedBotIds"), true);
   assert.equal(app.includes("/transfer"), true);

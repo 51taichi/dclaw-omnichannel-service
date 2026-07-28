@@ -141,6 +141,7 @@
       title: challenge.name,
       prompt: challenge.challengeText,
       fieldLabel: "接下半句",
+      inputType: "text",
       submitLabel: "对口令",
       async onSubmit(response, shell) {
         try {
