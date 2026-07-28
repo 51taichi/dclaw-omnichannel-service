@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>微信AI销售客服管理中台 - 管理员</title>
+    <title>微信AI销售客服管理后台</title>
     <link rel="stylesheet" href="/shared/auth-shell.css" />
     <link rel="stylesheet" href="/admin/styles.css" />
   </head>
@@ -36,9 +36,23 @@
     <div id="adminAuthRoot"></div>
 
     <div id="adminShell" hidden>
-      <header class="admin-topbar">
-        <img src="/console/assets/deepmega-dclaw-logo-cropped.png" alt="DeepMega DClaw" />
-        <strong>微信AI销售客服管理中台</strong>
+      <header class="topbar admin-topbar">
+        <div class="topbar-inner">
+          <div class="brand">
+            <img class="brand-logo" src="/console/assets/deepmega-dclaw-logo-cropped.png" alt="DeepMega DClaw" />
+            <div class="brand-copy">
+              <h1>微信AI销售客服管理后台</h1>
+            </div>
+          </div>
+          <div class="topbar-platforms" aria-label="支持平台">
+            <span class="platform-logo wechat" aria-label="微信" role="img">
+              <img src="/console/assets/wechat.png" alt="" />
+            </span>
+            <span class="platform-logo wecom" aria-label="企业微信" role="img">
+              <img src="/console/assets/compay_wechat.png" alt="" />
+            </span>
+          </div>
+        </div>
       </header>
       <main class="admin-page">
         <nav class="admin-tabs" aria-label="管理员功能">

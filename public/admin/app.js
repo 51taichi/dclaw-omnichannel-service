@@ -183,20 +183,57 @@ function renderWorkspaceList() {
     return;
   }
   els.workspaceList.innerHTML = state.workspaces.map((workspace) => `
-    <button type="button" data-workspace-id="${workspace.id}" class="${workspace.id === state.selectedWorkspaceId ? "active" : ""}">
-      ${adminIcon("grid")}
-      <span class="admin-item-main">
+    <article class="admin-workspace-card ${workspace.id === state.selectedWorkspaceId ? "active" : ""}">
+      <button type="button" class="admin-workspace-select" data-workspace-id="${workspace.id}">
+        ${adminIcon("grid")}
         <strong>${escapeHtml(workspace.name)}</strong>
-        <small>${escapeHtml(workspace.slug)} · ${workspace.enabled ? "启用" : "停用"} · ${workspace.botCount || 0} Bots</small>
-      </span>
-    </button>
+      </button>
+      <label class="admin-workspace-toggle switch-toggle" title="${workspace.enabled ? "关闭空间" : "启用空间"}">
+        <input
+          type="checkbox"
+          data-workspace-enabled="${workspace.id}"
+          aria-label="${escapeHtml(workspace.name)}启用状态"
+          ${workspace.enabled ? "checked" : ""}
+        />
+        <span class="switch-slider" aria-hidden="true"></span>
+      </label>
+    </article>
   `).join("");
   els.workspaceList.querySelectorAll("[data-workspace-id]").forEach((button) => {
     button.addEventListener("click", () => selectWorkspace(Number(button.dataset.workspaceId)));
   });
+  els.workspaceList.querySelectorAll("[data-workspace-enabled]").forEach((input) => {
+    input.addEventListener("change", () => {
+      const enabled = input.checked;
+      input.disabled = true;
+      toggleWorkspaceEnabled(Number(input.dataset.workspaceEnabled), enabled).catch((error) => {
+        input.checked = !enabled;
+        input.disabled = false;
+        toast(error.message);
+      });
+    });
+  });
   if (!state.selectedWorkspaceId) {
     selectWorkspace(state.workspaces[0].id);
   }
+}
+
+async function toggleWorkspaceEnabled(id, enabled) {
+  const data = await adminRequest(`/api/admin/workspaces/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ enabled })
+  });
+  const workspace = data.workspace;
+  state.workspaces = state.workspaces.map((item) => (
+    item.id === workspace.id ? { ...item, ...workspace } : item
+  ));
+  const detail = state.workspaceDetails.get(workspace.id);
+  if (detail) detail.workspace = { ...detail.workspace, ...workspace };
+  if (state.selectedWorkspaceId === workspace.id) {
+    els.workspaceForm.enabled.checked = workspace.enabled;
+  }
+  renderWorkspaceList();
+  toast(workspace.enabled ? "工作区已启用" : "工作区已关闭");
 }
 
 async function selectWorkspace(id) {

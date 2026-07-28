@@ -12,47 +12,47 @@ body {
   overflow: hidden;
 }
 
-.admin-topbar {
-  min-height: 104px;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  padding: 16px max(24px, calc((100vw - 1720px) / 2));
-  background: rgba(244, 250, 255, 0.95);
-  border-bottom: 1px solid var(--line);
-}
-
-.admin-topbar img {
-  width: 330px;
-  height: 72px;
-  object-fit: contain;
-}
-
-.admin-topbar strong {
-  font-size: 25px;
-  color: var(--danger);
+.admin-topbar .brand-copy h1 {
+  background: linear-gradient(90deg, #244ee8 0%, #15b6ca 40%, #ff6a21 76%, #ff2d20 100%);
+  background-clip: text;
+  color: transparent;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .admin-page {
-  width: min(1720px, calc(100% - 32px));
-  margin: 22px auto;
+  width: min(1440px, calc(100% - 16px));
+  min-height: calc(100dvh - 108px);
+  margin: 22px auto 0;
 }
 
 .admin-tabs {
+  position: relative;
   display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: fit-content;
   max-width: 100%;
   overflow-x: auto;
+  padding: 5px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: rgba(255, 247, 242, 0.96);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 10px 24px rgba(43, 57, 116, 0.08);
 }
 
 .admin-tabs button {
-  min-width: 120px;
-  height: 54px;
+  position: relative;
+  flex: 0 0 auto;
+  min-width: 108px;
+  height: 36px;
+  padding: 0 16px;
   border: 0;
+  border-radius: 6px;
   background: transparent;
   color: var(--danger);
+  box-shadow: none;
+  font-weight: 800;
 }
 
 .admin-tabs button.active {
@@ -61,7 +61,7 @@ body {
 }
 
 .admin-tabs button:last-child {
-  margin-left: 12px;
+  margin-left: 0;
 }
 
 .admin-page svg,
@@ -78,9 +78,9 @@ body {
 
 .admin-panel {
   display: none;
-  margin-top: 16px;
+  margin-top: 14px;
   padding: 20px;
-  min-height: 650px;
+  min-height: calc(100dvh - 176px);
   border: 1px solid var(--line);
   border-top: 4px solid var(--danger);
   border-radius: 8px;
@@ -121,7 +121,6 @@ body {
   padding-right: 12px;
 }
 
-.admin-list button,
 .admin-item {
   width: 100%;
   margin-bottom: 8px;
@@ -132,15 +131,56 @@ body {
   text-align: left;
 }
 
-.admin-list button {
-  display: flex;
+.admin-workspace-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  transition: border-color 160ms ease, background-color 160ms ease, box-shadow 160ms ease;
 }
 
-.admin-list button.active {
+.admin-workspace-card.active {
   border-color: var(--accent);
   background: #eef3ff;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.admin-workspace-select {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: none;
+  text-align: left;
+}
+
+.admin-workspace-select:hover {
+  background: rgba(68, 89, 238, 0.06);
+  transform: none;
+}
+
+.admin-workspace-select strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.admin-workspace-toggle {
+  display: grid;
+  place-items: center;
+  margin-right: 6px;
 }
 
 .admin-detail {
@@ -333,17 +373,8 @@ body {
 }
 
 @media (max-width: 860px) {
-  .admin-topbar {
-    min-height: 80px;
-  }
-
-  .admin-topbar img {
-    width: 230px;
-    height: 58px;
-  }
-
-  .admin-topbar strong {
-    display: none;
+  .admin-topbar .brand-copy h1 {
+    font-size: 20px;
   }
 
   .admin-workspace-layout {
@@ -364,5 +395,41 @@ body {
 
   .admin-form label:not(.toggle-line) {
     grid-template-columns: 120px minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 861px) {
+  .admin-tabs {
+    overflow: visible;
+    border-radius: 8px 8px 0 0;
+  }
+
+  .admin-tabs::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    right: -1px;
+    left: -1px;
+    height: 15px;
+    border-color: var(--danger);
+    border-style: solid;
+    border-width: 0 1px 3px;
+    pointer-events: none;
+  }
+
+  .admin-tabs button.active {
+    border-radius: 6px 6px 0 0;
+  }
+
+  .admin-tabs button.active::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    right: 0;
+    left: 0;
+    height: 20px;
+    border-right: 2px solid var(--danger);
+    border-left: 2px solid var(--danger);
+    pointer-events: none;
   }
 }

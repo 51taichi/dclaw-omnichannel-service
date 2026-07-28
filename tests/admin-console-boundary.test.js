@@ -8,6 +8,11 @@ const css = fs.readFileSync(new URL("../public/admin/styles.css", import.meta.ur
 
 test("admin console exposes global management tabs without user management", () => {
   assert.equal(html.includes("/console/assets/deepmega-dclaw-logo-cropped.png"), true);
+  assert.match(html, /<title>微信AI销售客服管理后台<\/title>/);
+  assert.match(html, /class="topbar admin-topbar"[\s\S]*class="topbar-inner"[\s\S]*class="brand"/);
+  assert.match(html, /<h1>微信AI销售客服管理后台<\/h1>/);
+  assert.equal(html.includes("/console/assets/wechat.png"), true);
+  assert.equal(html.includes("/console/assets/compay_wechat.png"), true);
   for (const label of ["工作区", "Bots", "Agents", "系统设置", "退出"]) {
     assert.equal(html.includes(label), true, `missing ${label}`);
   }
@@ -52,6 +57,22 @@ test("admin workspace UI supports assignment transfer removal and direct opening
   assert.equal(app.includes("window.location.href = `/console/"), false);
 });
 
+test("admin workspace cards show only the name with a left icon and enabled switch", () => {
+  const renderStart = app.indexOf("function renderWorkspaceList()");
+  const renderEnd = app.indexOf("async function selectWorkspace", renderStart);
+  const renderSource = app.slice(renderStart, renderEnd);
+
+  assert.match(renderSource, /class="admin-workspace-card/);
+  assert.match(renderSource, /class="admin-workspace-select"/);
+  assert.match(renderSource, /adminIcon\("grid"\)[\s\S]*?<strong>\$\{escapeHtml\(workspace\.name\)\}<\/strong>/);
+  assert.match(renderSource, /data-workspace-enabled="\$\{workspace\.id\}"/);
+  assert.match(renderSource, /class="switch-slider"/);
+  assert.equal(renderSource.includes("workspace.slug"), false);
+  assert.equal(renderSource.includes("workspace.botCount"), false);
+  assert.equal(app.includes("async function toggleWorkspaceEnabled"), true);
+  assert.match(app, /JSON\.stringify\(\{ enabled \}\)/);
+});
+
 test("admin console owns Agent and Bot global maintenance", () => {
   assert.equal(app.includes("/api/agents"), true);
   assert.equal(app.includes("/api/bots"), true);
@@ -65,6 +86,11 @@ test("admin console reuses platform styles with focused operational layout", () 
   assert.equal(css.includes(".admin-workspace-layout"), true);
   assert.equal(css.includes(".admin-assignment-modal"), true);
   assert.equal(css.includes("border-radius: 8px"), true);
+  assert.match(css, /\.admin-page\s*\{[\s\S]*?width:\s*min\(1440px,\s*calc\(100% - 16px\)\)/);
+  assert.match(css, /\.admin-tabs\s*\{[\s\S]*?padding:\s*5px/);
+  assert.match(css, /\.admin-tabs button\s*\{[\s\S]*?height:\s*36px/);
+  assert.match(css, /\.admin-topbar \.brand-copy h1\s*\{[\s\S]*?linear-gradient/);
+  assert.match(css, /\.admin-workspace-select\s*\{[\s\S]*?justify-content:\s*flex-start/);
 });
 
 test("admin fields and buttons consistently render semantic icons", () => {
