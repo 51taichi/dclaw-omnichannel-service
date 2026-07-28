@@ -4,9 +4,9 @@
 
 Add a Bot-scoped **群管理** console tab for discovering and configuring group
 conversations. Group and private-chat business state remain isolated. They share
-only the existing reply capabilities: DClaw Agent invocation, enterprise
-knowledge, attachments, reply style rules, response validation, and WorkTool
-delivery.
+the existing reply capabilities and the complete tag feature. Tag definitions
+and behavior are shared, while tag results, conversations, roles, backgrounds,
+and private task state remain scoped to their own channel.
 
 The feature supports groups created through the console and groups into which
 the Bot was invited by someone else. Group creation is optional and is never a
@@ -24,6 +24,7 @@ Group management owns:
 - manually maintained role and per-person reply overrides;
 - group-to-tag-group bindings;
 - group tag alerts that navigate to evidence in the existing conversation tab.
+- group tag activation delivery using the shared tag configuration.
 
 Group management does not own:
 
@@ -319,6 +320,7 @@ The Tags tab remains the single definition surface for:
 - recognition conditions;
 - mutually exclusive or non-exclusive behavior;
 - voice-alert enablement;
+- tag activation messages, intervals, repetition, and Agent polishing;
 - all other existing tag semantics.
 
 Each group selects which tag groups apply. The binding unit is the tag group,
@@ -362,6 +364,24 @@ Alert behavior also follows the tag definition:
   it or replaces another tag with it;
 - a repeated decision for an already active tag creates no alert;
 - callback duplication or retry creates no duplicate tag operation or alert.
+
+### Tag activation
+
+Tag activation is part of the shared tag feature, not part of the private task
+state machine. When a group receives a tag whose configuration includes
+activation messages:
+
+- schedule activation using the tag's existing interval, repetition, and Agent
+  polishing rules;
+- send due activation content to the current group;
+- retain the same stale-tag, replacement, removal, cancellation, retry, and
+  idempotency behavior used by the tag feature;
+- use the managed group's current WorkTool address at send time so a successful
+  group rename does not strand a pending activation;
+- never create or advance a private flow node or flow-node activation task.
+
+Binding a tag group means the group receives the complete tag behavior. Group
+management must not silently disable a capability configured on the tag.
 
 ## Alert Navigation
 
@@ -421,7 +441,8 @@ Tests and implementation must guarantee:
 - group backgrounds never enter private requests;
 - group roles do not alter private contacts;
 - group tags do not alter private tags;
-- group messages never advance private tasks or schedule private activations;
+- group messages never advance private tasks or schedule private flow-node
+  activations;
 - private handoff does not suppress group replies;
 - group resets or merges cannot affect same-named private conversations;
 - every console route enforces existing Bot/workspace authorization.
@@ -451,8 +472,10 @@ Tests and implementation must guarantee:
 18. A repeated active tag creates no duplicate alert.
 19. Clicking a group alert opens the group in **会话** and highlights evidence.
 20. Duplicate callbacks do not duplicate replies, tags, or alerts.
-21. Private task, activation, handoff, and tag state remain unchanged.
-22. The system performs no background group-list polling.
+21. A group tag with activation configured schedules and sends activation
+    content to that group using the tag's normal rules.
+22. Private task, flow-node activation, handoff, and tag state remain unchanged.
+23. The system performs no background group-list polling.
 
 ## Explicit Non-Goals
 
@@ -460,7 +483,7 @@ Tests and implementation must guarantee:
 - Presence, joined, invited, or left member states.
 - Automatic fuzzy identity merging.
 - Per-message silent tag analysis independent of reply triggering.
-- Group task state machines or group activation reminders.
+- Group task state machines or group flow-node activation reminders.
 - Group chat history inside **群管理**.
 - Kicking participants or dissolving groups.
 - Background group-list polling.
