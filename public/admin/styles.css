@@ -231,6 +231,20 @@ body {
   color: var(--ink);
 }
 
+.admin-switch-field {
+  justify-content: flex-start;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: #fff;
+  font-weight: 700;
+}
+
+.admin-switch-field .switch-slider {
+  margin-left: auto;
+}
+
 .toggle-line > svg,
 .admin-form label > span svg {
   color: var(--accent);

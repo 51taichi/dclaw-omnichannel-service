@@ -73,6 +73,23 @@ test("admin workspace cards show only the name with a left icon and enabled swit
   assert.match(app, /JSON\.stringify\(\{ enabled \}\)/);
 });
 
+test("admin enabled fields consistently use switch controls", () => {
+  const enabledFields = [
+    ...html.matchAll(
+      /<label class="toggle-line admin-switch-field switch-toggle">([\s\S]*?)<\/label>/g
+    )
+  ].map((match) => match[1]);
+
+  assert.equal(enabledFields.length, 3);
+  for (const field of enabledFields) {
+    assert.match(field, /<svg\b/);
+    assert.match(field, /type="checkbox"/);
+    assert.match(field, /class="switch-slider"/);
+  }
+  assert.match(css, /\.admin-switch-field\s*\{[\s\S]*?justify-content:\s*flex-start/);
+  assert.match(css, /\.admin-switch-field \.switch-slider\s*\{[\s\S]*?margin-left:\s*auto/);
+});
+
 test("admin console owns Agent and Bot global maintenance", () => {
   assert.equal(app.includes("/api/agents"), true);
   assert.equal(app.includes("/api/bots"), true);
