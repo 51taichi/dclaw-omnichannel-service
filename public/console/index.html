@@ -213,7 +213,7 @@
       <div class="workspace">
         <div class="workspace-head">
           <div class="workspace-tabs" role="tablist" aria-label="控制台模块">
-            <button class="active" data-workspace-tab="config" type="button" role="tab" aria-selected="true">
+            <button data-workspace-tab="config" type="button" role="tab" aria-selected="false">
               <svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>
               配置
             </button>
@@ -258,7 +258,16 @@
           </span>
         </section>
 
-      <div id="configTab" class="tab-panel active" data-tab-panel="config">
+        <section id="workspaceEmptyState" class="workspace-empty-state" aria-live="polite">
+          <div class="chat-loading-card workspace-empty-card">
+            <img src="./assets/sorry.png" alt="" />
+            <span>
+              <strong>请您先解锁任意一Bot</strong>
+            </span>
+          </div>
+        </section>
+
+      <div id="configTab" class="tab-panel" data-tab-panel="config" hidden>
       <section id="botBindingPanel" class="panel binding-panel bot-context-panel collapsible-panel">
         <div class="section-head binding-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>Bot 绑定</h2>

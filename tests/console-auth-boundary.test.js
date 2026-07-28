@@ -78,6 +78,27 @@ test("workspace tabs adapt to visible tab count without a fixed container width"
   assert.match(css, /\.workspace-tabs button\s*\{[\s\S]*flex:\s*0 0 auto[\s\S]*min-width:\s*108px[\s\S]*padding:\s*0 16px/);
 });
 
+test("workspace shows a mascot prompt with no active tab until a Bot is unlocked", () => {
+  assert.match(
+    html,
+    /id="workspaceEmptyState"[\s\S]*src="\.\/assets\/sorry\.png"[\s\S]*请您先解锁任意一Bot/
+  );
+  assert.doesNotMatch(
+    html,
+    /class="active"\s+data-workspace-tab="config"[^>]*aria-selected="true"/
+  );
+  assert.match(
+    app,
+    /function syncWorkspaceSelectionState\(hasBotContext\)[\s\S]*els\.workspaceEmptyState\.hidden = hasBotContext/
+  );
+  assert.match(
+    app,
+    /if \(!hasBotContext\)\s*\{[\s\S]*button\.classList\.remove\("active"\)[\s\S]*button\.setAttribute\("aria-selected", "false"\)[\s\S]*panel\.hidden = true/
+  );
+  assert.match(css, /\.workspace-empty-state\s*\{[\s\S]*place-items:\s*center/);
+  assert.match(css, /\.workspace-empty-card\s*\{[\s\S]*grid-template-columns:\s*72px max-content/);
+});
+
 test("workspace tab strip follows the selected Bot accent and connects to its content panel", () => {
   assert.match(css, /\.workspace-head\s*\{[\s\S]*position:\s*relative[\s\S]*z-index:\s*2/);
   assert.match(css, /\.workspace-tabs button\s*\{[\s\S]*position:\s*relative/);
@@ -201,11 +222,15 @@ test("locked bot quick actions use lock icons", () => {
   assert.equal(app.includes('icon(unlocked ? "edit" : "link")'), false);
 });
 
-test("lock and reset return to unselected config context", () => {
+test("lock and reset return to an unselected workspace", () => {
   assert.equal(app.includes("function resetBotContext()"), true);
   assert.equal(app.includes("clearBotSession(botId);"), true);
   assert.equal(app.includes("resetBotContext();"), true);
-  assert.equal(app.includes('switchWorkspaceTab("config", { force: true });'), true);
+  const resetStart = app.indexOf("function resetBotContext()");
+  const resetEnd = app.indexOf("function renderAgentOptions", resetStart);
+  const resetBody = app.slice(resetStart, resetEnd);
+  assert.equal(resetBody.includes('switchWorkspaceTab("config", { force: true });'), false);
+  assert.match(resetBody, /setBindingState\(null\)/);
   assert.equal(app.includes("const hideConfig = shouldHideConfigTab();"), true);
 });
 

@@ -51,6 +51,7 @@ const els = {
   workspaceTabs: document.querySelectorAll("[data-workspace-tab]"),
   tabPanels: document.querySelectorAll("[data-tab-panel]"),
   workspaceLockPanel: document.querySelector("#workspaceLockPanel"),
+  workspaceEmptyState: document.querySelector("#workspaceEmptyState"),
   botForm: document.querySelector("#botForm"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
   replyWaitPanel: document.querySelector("#replyWaitPanel"),
@@ -468,22 +469,39 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
   }
 }
 
+function syncWorkspaceSelectionState(hasBotContext) {
+  if (els.workspaceEmptyState) {
+    els.workspaceEmptyState.hidden = hasBotContext;
+  }
+  if (!hasBotContext) {
+    els.workspaceTabs.forEach((button) => {
+      button.classList.remove("active");
+      button.setAttribute("aria-selected", "false");
+    });
+    els.tabPanels.forEach((panel) => {
+      panel.hidden = true;
+      panel.classList.remove("active");
+    });
+  }
+}
+
 function updateWorkspaceTabAccess(hasBotContext) {
   const workspaceLocked = isWorkspaceLocked();
   els.workspaceTabs.forEach((button) => {
     const locked =
       workspaceLocked ||
-      (button.dataset.workspaceTab !== "config" && !hasBotContext) ||
+      !hasBotContext ||
       (button.dataset.workspaceTab === "config" && hasBotContext && state.currentRole !== "admin");
     button.disabled = locked;
     button.setAttribute("aria-disabled", String(locked));
   });
+  syncWorkspaceSelectionState(hasBotContext);
   if (
     !workspaceLocked &&
-    !hasBotContext &&
-    !document.querySelector('[data-workspace-tab="config"]')?.classList.contains("active")
+    hasBotContext &&
+    !document.querySelector(".workspace-tabs button.active")
   ) {
-    switchWorkspaceTab("config", { force: true });
+    switchWorkspaceTab(state.currentRole === "admin" ? "config" : "sessions", { force: true });
   }
 }
 
@@ -821,7 +839,6 @@ function resetBotContext() {
   beginBotContext();
   setBindingState(null);
   clearBotScopedContent();
-  switchWorkspaceTab("config", { force: true });
 }
 
 function renderAgentOptions(selectedAgentId = els.botForm.agentId?.value || "") {
