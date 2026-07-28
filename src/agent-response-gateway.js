@@ -39,15 +39,16 @@ export function validateAgentResponseText(rawText, {
     return invalidResult(raw, text, normalizations, errors);
   }
 
+  const normalizedReply = normalizeAgentReplyText(parsed.reply);
   return {
     valid: true,
     rawText: raw,
     normalizedText: text,
-    normalizations,
+    normalizations: [...normalizations, ...normalizedReply.normalizations],
     errors: [],
     agentReply: {
       valid: true,
-      reply: stripRuntimeArtifacts(parsed.reply),
+      reply: stripRuntimeArtifacts(normalizedReply.text),
       attachments: normalizeAgentAttachments(parsed.attachments || parsed.resources || parsed.files),
       sources: normalizeAgentSources(parsed.sources || parsed.references || parsed.evidence),
       flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
@@ -183,6 +184,17 @@ function normalizeResponseText(raw) {
   return {
     text: match[1].trim(),
     normalizations: [{ type: "outer_json_fence_removed" }]
+  };
+}
+
+function normalizeAgentReplyText(value) {
+  const text = String(value || "");
+  const decoded = text.replace(/\\r\\n|\\n|\\r/g, "\n");
+  return {
+    text: decoded,
+    normalizations: decoded === text
+      ? []
+      : [{ type: "reply_escaped_line_breaks_decoded" }]
   };
 }
 

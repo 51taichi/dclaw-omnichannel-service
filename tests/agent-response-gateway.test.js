@@ -105,6 +105,31 @@ test("gateway reports when the validation retry succeeds", async () => {
   }]);
 });
 
+test("gateway decodes escaped reply line breaks without retrying the Agent", async () => {
+  const attempts = [];
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：你好" },
+    invoke: async ({ attemptNumber }) => {
+      attempts.push(attemptNumber);
+      return {
+        reply: JSON.stringify({
+          reply: "第一段\\n\\n第二段",
+          attachments: [],
+          sources: []
+        }),
+        response: { attemptNumber }
+      };
+    }
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.agentReply.reply, "第一段\n\n第二段");
+  assert.deepEqual(result.validation.normalizations, [{
+    type: "reply_escaped_line_breaks_decoded"
+  }]);
+  assert.deepEqual(attempts, [1]);
+});
+
 test("validation reports JSON syntax line and column", () => {
   const result = validateAgentResponseText('{\n  "reply": "你好",\n  "attachments": []\n  "sources": []\n}');
 
