@@ -18,6 +18,18 @@ test("shared auth shell exposes stable three-state login behavior", () => {
   assert.equal(source.includes('state = "success"'), true);
 });
 
+test("auth shell waits for a mascot asset before applying its state styling", () => {
+  const source = fs.readFileSync(scriptUrl, "utf8");
+
+  assert.match(source, /let mascotRenderToken = 0/);
+  assert.match(source, /const nextMascot = new Image\(\)/);
+  assert.match(source, /nextMascot\.addEventListener\("load", applyMascotState/);
+  assert.match(
+    source,
+    /function applyMascotState\(\)\s*\{[\s\S]*mascot\.src = nextMascotSrc[\s\S]*shell\.classList\.add\(`is-\$\{state\}`\)/
+  );
+});
+
 test("shared auth shell sizes brand and mascots without layout jumps", () => {
   const css = fs.readFileSync(styleUrl, "utf8");
 
