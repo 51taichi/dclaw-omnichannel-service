@@ -64,6 +64,10 @@ function escapeHtml(value) {
     .replaceAll('"', "&quot;");
 }
 
+function adminIcon(name) {
+  return `<svg aria-hidden="true"><use href="#admin-icon-${name}"></use></svg>`;
+}
+
 function toast(message) {
   els.toast.textContent = message;
   els.toast.hidden = false;
@@ -116,8 +120,10 @@ function showAdminLogin(message = "") {
     prompt: message,
     accountLabel: "admin",
     fieldLabel: "管理员密码",
+    fieldIconId: "admin-icon-key",
     inputType: "password",
     submitLabel: "进入管理后台",
+    submitIconId: "admin-icon-login",
     async onSubmit(password, shell) {
       try {
         const data = await adminRequest("/api/admin/login", {
@@ -178,8 +184,11 @@ function renderWorkspaceList() {
   }
   els.workspaceList.innerHTML = state.workspaces.map((workspace) => `
     <button type="button" data-workspace-id="${workspace.id}" class="${workspace.id === state.selectedWorkspaceId ? "active" : ""}">
-      <strong>${escapeHtml(workspace.name)}</strong>
-      <small>${escapeHtml(workspace.slug)} · ${workspace.enabled ? "启用" : "停用"} · ${workspace.botCount || 0} Bots</small>
+      ${adminIcon("grid")}
+      <span class="admin-item-main">
+        <strong>${escapeHtml(workspace.name)}</strong>
+        <small>${escapeHtml(workspace.slug)} · ${workspace.enabled ? "启用" : "停用"} · ${workspace.botCount || 0} Bots</small>
+      </span>
     </button>
   `).join("");
   els.workspaceList.querySelectorAll("[data-workspace-id]").forEach((button) => {
@@ -235,9 +244,9 @@ function renderWorkspaceBots(bots) {
         <small>${escapeHtml(bot.botId)} · ${escapeHtml(bot.agentName || bot.agentId)}</small>
       </div>
       <div class="admin-actions">
-        <button class="secondary" data-open-bot="${escapeHtml(bot.botId)}">打开</button>
-        <button class="secondary" data-transfer-bot="${escapeHtml(bot.botId)}">转移</button>
-        <button class="danger" data-remove-bot="${escapeHtml(bot.botId)}">移除</button>
+        <button class="secondary" data-open-bot="${escapeHtml(bot.botId)}">${adminIcon("open")}打开</button>
+        <button class="secondary" data-transfer-bot="${escapeHtml(bot.botId)}">${adminIcon("transfer")}转移</button>
+        <button class="danger" data-remove-bot="${escapeHtml(bot.botId)}">${adminIcon("unlink")}移除</button>
       </div>
     </article>
   `).join("");
@@ -328,6 +337,7 @@ function renderAssignmentBots() {
   );
   els.assignmentBotList.innerHTML = bots.length ? bots.map((bot) => `
     <label class="admin-item">
+      ${adminIcon("bot")}
       <span class="admin-item-main"><strong>${escapeHtml(bot.botName || bot.botId)}</strong><small>${escapeHtml(bot.botId)}</small></span>
       <input type="checkbox" value="${escapeHtml(bot.botId)}" ${state.selectedBotIds.has(bot.botId) ? "checked" : ""} />
     </label>
@@ -390,8 +400,8 @@ function renderBotList() {
         <span>${escapeHtml(bot.agentName || bot.agentId)}</span>
         <span>${workspace ? escapeHtml(workspace.name) : "未分配"}</span>
         <span class="admin-actions">
-          <button data-edit-bot="${escapeHtml(bot.botId)}">编辑</button>
-          <button data-enter-bot="${escapeHtml(bot.botId)}" ${workspace ? "" : "disabled"}>进入配置</button>
+          <button data-edit-bot="${escapeHtml(bot.botId)}">${adminIcon("edit")}编辑</button>
+          <button data-enter-bot="${escapeHtml(bot.botId)}" ${workspace ? "" : "disabled"}>${adminIcon("settings")}进入配置</button>
         </span>
       </div>
     `;
@@ -439,8 +449,8 @@ function renderAgentList() {
         <small>${escapeHtml(agent.agentId)} · Public ID ${escapeHtml(agent.dclawPublicId)}</small>
       </div>
       <div class="admin-actions">
-        <button data-edit-agent="${escapeHtml(agent.agentId)}">编辑</button>
-        <button class="danger" data-delete-agent="${escapeHtml(agent.agentId)}">删除</button>
+        <button data-edit-agent="${escapeHtml(agent.agentId)}">${adminIcon("edit")}编辑</button>
+        <button class="danger" data-delete-agent="${escapeHtml(agent.agentId)}">${adminIcon("trash")}删除</button>
       </div>
     </article>
   `).join("");

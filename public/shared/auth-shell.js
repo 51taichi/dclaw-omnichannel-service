@@ -10,9 +10,12 @@
     title,
     prompt,
     accountLabel = "",
+    accountFieldLabel = "账号",
     fieldLabel,
+    fieldIconId = "",
     inputType = "text",
     submitLabel,
+    submitIconId = "",
     onSubmit
   }) {
     if (!root) throw new Error("auth shell root is required");
@@ -68,13 +71,26 @@
     const submitButton = root.querySelector(".auth-shell-submit");
     const mascot = root.querySelector(".auth-shell-mascot");
 
+    function appendControlIcon(element, iconId) {
+      if (!iconId) return;
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      const use = document.createElementNS("http://www.w3.org/2000/svg", "use");
+      svg.setAttribute("aria-hidden", "true");
+      use.setAttribute("href", `#${iconId}`);
+      svg.append(use);
+      element.prepend(svg);
+    }
+
     titleEl.textContent = title;
     promptEl.textContent = prompt;
     fieldLabelEl.textContent = fieldLabel;
+    appendControlIcon(fieldLabelEl, fieldIconId);
     input.type = inputType;
     submitButton.textContent = submitLabel;
+    appendControlIcon(submitButton, submitIconId);
     if (accountLabel) {
       accountEl.hidden = false;
+      accountEl.querySelector("span").textContent = accountFieldLabel;
       accountValue.textContent = accountLabel;
     }
 

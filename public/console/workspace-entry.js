@@ -139,7 +139,9 @@
     controller = AuthShell.mount({
       root: authRoot,
       title: challenge.name,
-      prompt: challenge.challengeText,
+      prompt: "",
+      accountFieldLabel: "上半句",
+      accountLabel: challenge.challengeText,
       fieldLabel: "接下半句",
       inputType: "text",
       submitLabel: "对口令",

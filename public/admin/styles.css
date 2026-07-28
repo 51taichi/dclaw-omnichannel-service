@@ -64,14 +64,16 @@ body {
   margin-left: 12px;
 }
 
-.admin-tabs svg,
-.admin-actions svg,
-.admin-panel button svg {
+.admin-page svg,
+.admin-modal svg {
   width: 18px;
   height: 18px;
+  flex: 0 0 18px;
   fill: none;
   stroke: currentColor;
   stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .admin-panel {
@@ -130,6 +132,12 @@ body {
   text-align: left;
 }
 
+.admin-list button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .admin-list button.active {
   border-color: var(--accent);
   background: #eef3ff;
@@ -158,6 +166,7 @@ body {
   align-self: stretch;
   display: flex;
   align-items: center;
+  gap: 8px;
   padding: 0 12px;
   background: #eef3ff;
   font-weight: 700;
@@ -179,6 +188,12 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  color: var(--ink);
+}
+
+.toggle-line > svg,
+.admin-form label > span svg {
+  color: var(--accent);
 }
 
 .admin-form .admin-actions {
@@ -275,11 +290,33 @@ body {
   margin-top: 0;
 }
 
-#assignmentSearch {
-  width: 100%;
+.admin-search-field {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
   margin-bottom: 12px;
   border: 1px solid var(--line);
   border-radius: 7px;
+  overflow: hidden;
+}
+
+.admin-search-field > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: #eef3ff;
+  font-weight: 700;
+}
+
+.admin-search-field svg,
+.admin-item > svg {
+  color: var(--accent);
+}
+
+#assignmentSearch {
+  width: 100%;
+  margin: 0;
 }
 
 .admin-toast {

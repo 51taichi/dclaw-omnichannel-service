@@ -16,6 +16,12 @@ test("shared auth shell exposes stable three-state login behavior", () => {
   assert.equal(source.includes('state = "idle"'), true);
   assert.equal(source.includes('state = "failure"'), true);
   assert.equal(source.includes('state = "success"'), true);
+  assert.match(source, /accountFieldLabel = "账号"/);
+  assert.match(source, /accountEl\.querySelector\("span"\)\.textContent = accountFieldLabel/);
+  assert.match(source, /fieldIconId = ""/);
+  assert.match(source, /submitIconId = ""/);
+  assert.match(source, /appendControlIcon\(fieldLabelEl, fieldIconId\)/);
+  assert.match(source, /appendControlIcon\(submitButton, submitIconId\)/);
 });
 
 test("auth shell waits for a mascot asset before applying its state styling", () => {

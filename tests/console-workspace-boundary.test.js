@@ -30,6 +30,7 @@ test("workspace entry requires an exact console slug and stores scoped sessions"
   assert.equal(entry.includes('"x-workspace-session-token"'), true);
   assert.equal(entry.includes("seconds: 3"), true);
   assert.equal(entry.includes("AuthShell.mount"), true);
+  assert.match(entry, /prompt:\s*"",\s*accountFieldLabel:\s*"上半句",\s*accountLabel:\s*challenge\.challengeText,/);
   assert.match(entry, /fieldLabel:\s*"接下半句",\s*inputType:\s*"text"/);
   assert.equal(entry.includes("当前入口不可用"), true);
 });

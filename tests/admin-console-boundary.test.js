@@ -36,7 +36,7 @@ test("admin console uses singleton session authentication", () => {
 test("admin workspace UI supports assignment transfer removal and direct opening", () => {
   assert.match(
     html,
-    /<span>下半句口令<\/span><input name="response" type="text"/
+    /<span><svg[\s\S]*?下半句口令<\/span><input name="response" type="text"/
   );
   assert.equal(app.includes("/api/admin/workspaces/unassigned-bots"), true);
   assert.equal(app.includes("selectedBotIds"), true);
@@ -64,4 +64,40 @@ test("admin console reuses platform styles with focused operational layout", () 
   assert.equal(css.includes(".admin-workspace-layout"), true);
   assert.equal(css.includes(".admin-assignment-modal"), true);
   assert.equal(css.includes("border-radius: 8px"), true);
+});
+
+test("admin fields and buttons consistently render semantic icons", () => {
+  const buttonBodies = [...html.matchAll(/<button\b[^>]*>([\s\S]*?)<\/button>/g)]
+    .map((match) => match[1]);
+  const labelBodies = [...html.matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)]
+    .map((match) => match[1]);
+
+  assert.ok(buttonBodies.length > 0);
+  assert.ok(labelBodies.length > 0);
+  for (const body of buttonBodies) assert.match(body, /<svg\b/);
+  for (const body of labelBodies) assert.match(body, /<svg\b/);
+
+  for (const icon of [
+    "name",
+    "link",
+    "quote",
+    "power",
+    "id",
+    "key",
+    "search",
+    "edit",
+    "transfer",
+    "unlink",
+    "check",
+    "close",
+    "login"
+  ]) {
+    assert.equal(html.includes(`id="admin-icon-${icon}"`), true, `missing ${icon} icon`);
+  }
+
+  assert.match(html, /class="admin-search-field"[\s\S]*?<svg[\s\S]*?id="assignmentSearch"/);
+  assert.match(app, /function adminIcon\(name\)/);
+  for (const icon of ["grid", "open", "transfer", "unlink", "edit", "settings", "trash"]) {
+    assert.equal(app.includes(`adminIcon("${icon}")`), true, `dynamic controls missing ${icon} icon`);
+  }
 });
