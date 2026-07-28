@@ -27,6 +27,7 @@ test("shared auth shell sizes brand and mascots without layout jumps", () => {
   assert.match(css, /\.auth-shell\.is-failure \.auth-shell-mascot-slot\s*\{[^}]*width:\s*min\(38%,\s*250px\)/);
   assert.match(css, /\.auth-shell\.is-failure \.auth-shell-mascot\s*\{[^}]*transform:\s*scale\(1\.55\)/);
   assert.match(css, /@media \(max-width:\s*640px\)[\s\S]*width:\s*clamp\(112px,\s*34vw,\s*140px\)/);
+  assert.match(css, /\.auth-shell-prompt:empty\s*\{[^}]*display:\s*none/);
 });
 
 test("auth submit keeps its primary gradient and readable text on hover", () => {

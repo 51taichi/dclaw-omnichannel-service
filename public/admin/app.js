@@ -113,7 +113,7 @@ function showAdminLogin(message = "") {
   const controller = AuthShell.mount({
     root: els.authRoot,
     title: "管理员登录",
-    prompt: message || "登录后维护工作区、Bots、Agents 和系统设置。",
+    prompt: message,
     accountLabel: "admin",
     fieldLabel: "管理员密码",
     inputType: "password",

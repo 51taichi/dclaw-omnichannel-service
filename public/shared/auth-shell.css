@@ -43,6 +43,10 @@
   padding-top: 30px;
 }
 
+.auth-shell-heading {
+  margin-bottom: 22px;
+}
+
 .auth-shell-heading h1 {
   margin: 0;
   font-size: 28px;
@@ -52,9 +56,13 @@
 
 .auth-shell-prompt {
   min-height: 48px;
-  margin: 12px 0 22px;
+  margin: 12px 0 0;
   color: #656a79;
   line-height: 1.6;
+}
+
+.auth-shell-prompt:empty {
+  display: none;
 }
 
 .auth-shell-account,

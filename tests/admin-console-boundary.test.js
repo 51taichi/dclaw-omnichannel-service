@@ -28,6 +28,8 @@ test("admin console uses singleton session authentication", () => {
     assert.equal(app.includes(path), true, `missing ${path}`);
   }
   assert.equal(app.includes('accountLabel: "admin"'), true);
+  assert.equal(app.includes("登录后维护工作区、Bots、Agents 和系统设置。"), false);
+  assert.match(app, /prompt:\s*message,/);
   assert.match(app, /showSuccess\(\{[\s\S]*seconds:\s*3/);
 });
 
