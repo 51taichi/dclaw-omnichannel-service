@@ -250,6 +250,14 @@ body {
   margin-left: auto;
 }
 
+.admin-form-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
 .toggle-line > svg,
 .admin-form label > span svg {
   color: var(--accent);

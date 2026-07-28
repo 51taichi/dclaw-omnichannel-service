@@ -107,6 +107,11 @@ test("admin enabled fields consistently use switch controls", () => {
   assert.match(css, /\.admin-switch-field\s*\{[\s\S]*?width:\s*min\(220px,\s*100%\)/);
   assert.match(css, /\.admin-switch-field \.switch-slider\s*\{[\s\S]*?margin-left:\s*auto/);
   assert.match(css, /\.admin-form \.admin-actions\s*\{[\s\S]*?grid-column:\s*2/);
+  assert.equal((html.match(/class="admin-form-control-row"/g) || []).length, 2);
+  assert.match(
+    css,
+    /\.admin-form-control-row\s*\{[\s\S]*?align-items:\s*center[\s\S]*?justify-content:\s*space-between/
+  );
 });
 
 test("admin Bot table hides internal Bot IDs from the visible name column", () => {
