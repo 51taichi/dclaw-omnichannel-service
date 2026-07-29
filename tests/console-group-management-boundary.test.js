@@ -113,7 +113,15 @@ test("group list uses avatar copy and a Beijing creation-date tag without reply 
   assert.doesNotMatch(renderGroupList, /groups-list-item-meta|仅 @ 回复|始终回复|从不回复/);
   assert.match(
     css,
-    /\.groups-list-item-main\s*\{[^}]*grid-template-columns:\s*44px\s+minmax\(0,\s*1fr\)\s+auto/s
+    /\.groups-list-item\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)[^}]*justify-content:\s*stretch[^}]*width:\s*100%/s
+  );
+  assert.match(
+    css,
+    /\.groups-list-item-main\s*\{[^}]*grid-template-columns:\s*44px\s+minmax\(0,\s*1fr\)\s+112px[^}]*width:\s*100%/s
+  );
+  assert.match(
+    css,
+    /\.groups-list-date-tag\s*\{[^}]*justify-content:\s*center[^}]*min-width:\s*112px/s
   );
 });
 

@@ -5461,12 +5461,15 @@ td .muted {
   border-radius: 12px;
   color: inherit;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   height: auto;
+  justify-content: stretch;
   min-height: 82px;
   min-width: 0;
   padding: 13px;
   text-align: left;
   transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+  width: 100%;
 }
 
 .groups-list-item:hover {
@@ -5483,8 +5486,9 @@ td .muted {
   align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: 44px minmax(0, 1fr) auto;
+  grid-template-columns: 44px minmax(0, 1fr) 112px;
   min-width: 0;
+  width: 100%;
 }
 
 .groups-list-item-icon,
@@ -5558,7 +5562,9 @@ td .muted {
   border-radius: 999px;
   color: var(--accent);
   font-weight: 800;
+  justify-content: center;
   justify-self: end;
+  min-width: 112px;
   padding: 6px 9px;
   white-space: nowrap;
 }
