@@ -97,14 +97,24 @@ test("open alert panel keeps a continuous hover path from the button", () => {
   );
 });
 
-test("opening an alert resets every conversation filter before selecting the customer", () => {
-  assert.match(app, /function resetFlowSessionFiltersForTagAlert\(\)/);
-  assert.match(app, /dataset\.flowSessionType === "all"/);
+test("opening an alert resets filters and selects the alert conversation type", () => {
+  assert.match(app, /function resetFlowSessionFiltersForTagAlert\(conversationKey\)/);
+  assert.match(app, /conversationKey\.includes\(":group-id:"\)/);
+  assert.match(app, /setFlowSessionTypeSelection\(flowSessionType\(\{ conversationKey \}\)\)/);
+  assert.match(app, /setFlowSessionTypeSelection\(flowSessionType\(\{ conversationKey \}\)\);\s*clearSelectedFlowConversation\(\)/);
   assert.match(app, /els\.flowSessionSearchInput\.value = ""/);
   assert.match(app, /els\.flowSessionNodeFilter\.value = "all"/);
   assert.match(app, /setFlowSessionTagFilterValues\(\[\],\s*\{\s*reload:\s*false\s*\}\)/);
   assert.match(app, /setFlowSessionDateTagFilterValue\(""\)/);
+  assert.match(app, /resetFlowSessionFiltersForTagAlert\(alert\.conversationKey\)/);
   assert.match(app, /await reloadFlowSessionsFromFirstPage\(\)/);
+});
+
+test("group detail keeps list channel metadata when the detail session is sparse", () => {
+  assert.match(
+    app,
+    /currentFlowSession = \{\s*\.\.\.\(session \|\| \{\}\),\s*\.\.\.\(data\.session \|\| \{\}\),\s*tags: currentTags\s*\}/
+  );
 });
 
 test("conversation evidence receives a stable anchor, explanation, and temporary highlight", () => {

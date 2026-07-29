@@ -253,3 +253,171 @@ test("a successful external member remark becomes the new unchanged baseline", (
   assert.deepEqual(synced.aliases, ["张三"]);
   assert.equal(synced.syncMarkName, false);
 });
+
+test("a managed group conversation receives the group creation date tag", () => {
+  const botId = "managed_bot_date_tag";
+  const agentId = "managed_agent_date_tag";
+  db.upsertBotBinding({ botId, botName: "日期群 Bot", agentId, enabled: true });
+  db.upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "00:00" }, groups: [] }
+  });
+  const group = db.createOrGetGroup({
+    botId,
+    currentName: "历史项目群",
+    source: "worktool_list",
+    discoveredAt: "2026-07-29T08:00:00.000Z",
+    createdAt: "2026-07-04T03:00:00.000Z"
+  });
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey: group.conversationKey,
+    message: {
+      roomType: 1,
+      receivedName: "张三",
+      groupName: group.currentName
+    }
+  });
+
+  const tags = db.ensureManagedGroupConversationDateTag({
+    botId,
+    agentId,
+    conversationKey: group.conversationKey,
+    groupCreatedAt: group.groupCreatedAt
+  });
+
+  assert.equal(tags.find((tag) => tag.tagType === "date")?.tagId, "20260704");
+});
+
+test("a timezone-free WorkTool group creation time is interpreted in Beijing", () => {
+  const botId = "managed_bot_beijing_date";
+  const agentId = "managed_agent_beijing_date";
+  db.upsertBotBinding({ botId, botName: "北京时间 Bot", agentId, enabled: true });
+  db.upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "00:00" }, groups: [] }
+  });
+  const group = db.createOrGetGroup({
+    botId,
+    currentName: "北京时间项目群",
+    source: "worktool_list",
+    discoveredAt: "2026-07-30T03:00:00.000Z",
+    createdAt: "2026-07-29 20:00:00"
+  });
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey: group.conversationKey,
+    message: {
+      roomType: 1,
+      receivedName: "王五",
+      groupName: group.currentName
+    }
+  });
+
+  const originalTimezone = process.env.TZ;
+  process.env.TZ = "UTC";
+  try {
+    const tags = db.ensureManagedGroupConversationDateTag({
+      botId,
+      agentId,
+      conversationKey: group.conversationKey,
+      groupCreatedAt: group.groupCreatedAt
+    });
+    assert.equal(tags.find((tag) => tag.tagType === "date")?.tagId, "20260729");
+  } finally {
+    if (originalTimezone === undefined) delete process.env.TZ;
+    else process.env.TZ = originalTimezone;
+  }
+});
+
+test("WorkTool refresh corrects a first-discovered group date and its date tag", () => {
+  const botId = "managed_bot_date_correction";
+  const agentId = "managed_agent_date_correction";
+  db.upsertBotBinding({ botId, botName: "日期纠正 Bot", agentId, enabled: true });
+  db.upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "00:00" }, groups: [] }
+  });
+  const discovered = db.createOrGetGroup({
+    botId,
+    currentName: "先回调后同步群",
+    source: "callback",
+    discoveredAt: "2026-07-29T08:00:00.000Z"
+  });
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey: discovered.conversationKey,
+    message: {
+      roomType: 1,
+      receivedName: "赵六",
+      groupName: discovered.currentName
+    }
+  });
+  db.ensureManagedGroupConversationDateTag({
+    botId,
+    agentId,
+    conversationKey: discovered.conversationKey,
+    groupCreatedAt: discovered.groupCreatedAt
+  });
+  assert.equal(
+    db.listConversationTags({ botId, agentId, conversationKey: discovered.conversationKey })
+      .find((tag) => tag.tagType === "date")?.tagId,
+    "20260729"
+  );
+
+  const refreshed = db.createOrGetGroup({
+    botId,
+    currentName: discovered.currentName,
+    source: "worktool_list",
+    createdAt: "2026-07-04 11:00:00"
+  });
+
+  assert.equal(refreshed.groupCreatedAt, "2026-07-04T03:00:00.000Z");
+  assert.equal(refreshed.dateSource, "worktool");
+  assert.equal(
+    db.listConversationTags({ botId, agentId, conversationKey: discovered.conversationKey })
+      .find((tag) => tag.tagType === "date")?.tagId,
+    "20260704"
+  );
+});
+
+test("existing managed group conversations backfill their creation date tags", () => {
+  const botId = "managed_bot_date_backfill";
+  const agentId = "managed_agent_date_backfill";
+  db.upsertBotBinding({ botId, botName: "存量日期群 Bot", agentId, enabled: true });
+  db.upsertAgentTagSchema({
+    agentId,
+    schema: { dateTag: { enabled: true, cutoffTime: "00:00" }, groups: [] }
+  });
+  const group = db.createOrGetGroup({
+    botId,
+    currentName: "存量项目群",
+    source: "worktool_list",
+    discoveredAt: "2026-07-29T08:00:00.000Z",
+    createdAt: "2026-06-18T03:00:00.000Z"
+  });
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey: group.conversationKey,
+    message: {
+      roomType: 1,
+      receivedName: "李四",
+      groupName: group.currentName
+    }
+  });
+
+  assert.equal(
+    db.listConversationTags({ botId, agentId, conversationKey: group.conversationKey }).length,
+    0
+  );
+  assert.equal(db.backfillManagedGroupConversationDateTags(), 1);
+  assert.equal(
+    db.listConversationTags({ botId, agentId, conversationKey: group.conversationKey })
+      .find((tag) => tag.tagType === "date")?.tagId,
+    "20260618"
+  );
+});

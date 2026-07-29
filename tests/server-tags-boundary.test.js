@@ -111,6 +111,16 @@ test("manual tag changes cancel activation work for tags made inactive", () => {
   assert.match(cancelBody, /reason: "tag_removed"/);
 });
 
+test("manual tag route rejects group conversations", () => {
+  const start = source.indexOf('"/api/flow-sessions/:conversationKey/tags/manual"');
+  const end = source.indexOf('"/api/flow-sessions/:conversationKey/handoff"', start);
+  const route = source.slice(start, end);
+  assert.match(route, /const conversation = getConversation\(conversationKey\)/);
+  assert.match(route, /\[1,\s*3\]\.includes\(Number\(conversation\?\.roomType\)\)/);
+  assert.match(route, /status = 400/);
+  assert.match(route, /group conversations do not support manual tags/);
+});
+
 test("friend-added event can create date tags", () => {
   assert.match(source, /applySystemDateTag/);
   assert.match(source, /friend_added\.date_tag\.applied/);

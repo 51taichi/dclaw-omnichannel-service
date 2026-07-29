@@ -64,6 +64,9 @@ test("flow session cards use compact icon metadata for task, assets, and handoff
   assert.equal(app.includes("flow-session-icons"), true);
   assert.equal(app.includes("当前任务：${status}"), true);
   assert.equal(app.includes("资产：${assetSummary}"), true);
+  assert.match(app, /const privateSessionTools = sessionType === "private"/);
+  assert.match(app, /const manualTagTrigger = sessionType === "private"/);
+  assert.match(app, /class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\], \{ includeDate: false \}\)/);
   assert.equal(app.includes('最近消息：${formatDisplayDateTime(lastMessageAt) || "暂无"}'), false);
   assert.doesNotMatch(app, /timeTooltip/);
   assert.doesNotMatch(app, /title="\$\{escapeHtml\(timeTooltip\)\}"/);
@@ -118,8 +121,8 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(html.includes('id="flowSessionDateFrom"'), false);
   assert.equal(html.includes('id="flowSessionDateTo"'), false);
   assert.equal(html.includes('id="flowSessionSearchInput"'), true);
-  assert.equal(html.includes('data-flow-session-type="all"'), true);
-  assert.equal(html.includes('data-flow-session-type="private"'), true);
+  assert.equal(html.includes('data-flow-session-type="all"'), false);
+  assert.match(html, /class="active" data-flow-session-type="private"[^>]*aria-selected="true"/);
   assert.equal(html.includes('data-flow-session-type="group"'), true);
   assert.equal(app.includes("flowSessionSearchInput"), true);
   assert.equal(app.includes("normalizedSessionSearch"), true);
@@ -131,6 +134,7 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(html.includes('id="flowSessionAssetFilter"'), false);
   assert.equal(app.includes("flowSessionAssetFilter"), false);
   assert.equal(html.includes('id="flowSessionNodeFilter"'), true);
+  assert.match(html, /id="flowSessionNodeFilterField" class="flow-session-node-filter"/);
   assert.equal(html.includes('id="flowSessionHandoffFilter"'), false);
   assert.equal(html.includes("接手状态"), false);
   assert.equal(app.includes("getVisibleFlowSessions"), true);
@@ -143,10 +147,19 @@ test("flow sessions can be filtered and human handoff sessions are pinned first"
   assert.equal(css.includes(".flow-session-avatar.is-group"), true);
   assert.match(sessionsPanel, /class="flow-session-sidebar"[\s\S]*class="segmented flow-session-type-tabs"[\s\S]*id="flowSessionList"/);
   assert.equal(css.includes(".flow-session-type-tabs"), true);
-  assert.match(css, /\.flow-session-type-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /\.flow-session-type-tabs\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(app, /function syncFlowSessionTypeUi\(\)/);
+  assert.match(app, /els\.flowSessionNodeFilterField\.hidden = isGroup/);
+  assert.match(app, /if \(currentFlowSessionTypeFilter\(\) === "private"[\s\S]*params\.set\("nodeId", nodeFilter\)/);
   assert.equal(css.includes(".flow-session-sidebar"), true);
   assert.doesNotMatch(css, /\.flow-session-filters\s*\{[^}]*border-bottom:/);
   assert.equal(css.includes(".handoff-status-banner"), false);
+});
+
+test("group conversation details suppress private assets while private details keep them", () => {
+  assert.match(app, /function renderConversationAssetsForSession\(session, assets\)/);
+  assert.match(app, /if \(flowSessionType\(session\) === "group"\)[\s\S]*renderConversationAssets\(\{ fields: \[\], totalCount: 0, collectedCount: 0 \}\)/);
+  assert.match(app, /renderConversationAssetsForSession\([\s\S]*currentFlowSession,[\s\S]*data\.assets \|\| session\?\.assets/);
 });
 
 test("human handoff session cards have a clear pulsing highlight", () => {
@@ -475,6 +488,25 @@ test("console has manual reply composer with AI takeover prompt and emoji tools"
   assert.match(css, /\.ai-takeover-card span\s*\{[\s\S]*white-space:\s*nowrap/);
   assert.match(css, /\.ai-takeover-card small\s*\{[\s\S]*font-size:\s*clamp/);
   assert.equal(html.includes("handoffStatusBanner"), false);
+});
+
+test("group conversations never render or inherit private handoff state", () => {
+  assert.match(
+    app,
+    /const hasSession = Boolean\([\s\S]*flowSessionType\(session\) === "private"[\s\S]*\)/
+  );
+  assert.match(
+    app,
+    /const aHuman = flowSessionType\(a\) === "private" && a\.handoffStatus === "human" \? 1 : 0/
+  );
+  assert.match(
+    app,
+    /const bHuman = flowSessionType\(b\) === "private" && b\.handoffStatus === "human" \? 1 : 0/
+  );
+  assert.match(
+    app,
+    /const isHandoff = sessionType === "private" && session\.handoffStatus === "human"/
+  );
 });
 
 test("chat bubbles can show agent reply sources without sending them to customers", () => {

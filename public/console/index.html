@@ -554,14 +554,14 @@
         <div class="section-head flow-session-head">
           <div class="flow-session-filters">
             <label class="flow-session-search">
-              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索客户</span>
+              <span id="flowSessionSearchLabel" class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索客户</span>
               <input id="flowSessionSearchInput" type="search" placeholder="搜索客户/群名" />
             </label>
             <label class="flow-session-date-filter">
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>添加日期</span>
               <input id="flowSessionDateTagFilter" type="date" />
             </label>
-            <label>
+            <label id="flowSessionNodeFilterField" class="flow-session-node-filter">
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>任务状态</span>
               <select id="flowSessionNodeFilter">
                 <option value="all">全部</option>
@@ -586,11 +586,7 @@
         <div class="collapsible-content flow-workbench">
           <div class="flow-session-sidebar">
             <div class="segmented flow-session-type-tabs" role="tablist" aria-label="会话类型">
-              <button class="active" data-flow-session-type="all" type="button" aria-selected="true">
-                <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
-                全部
-              </button>
-              <button data-flow-session-type="private" type="button" aria-selected="false">
+              <button class="active" data-flow-session-type="private" type="button" aria-selected="true">
                 <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
                 私聊
               </button>

@@ -9,6 +9,7 @@ import {
   dedupeConversationMessages
 } from "./conversation-message-dedupe.js";
 import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags.js";
+import { normalizeWorktoolTimestamp } from "./worktool-history.js";
 
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
 fs.mkdirSync(dataDir, { recursive: true });
@@ -723,6 +724,14 @@ const SYSTEM_DATE_TAG_GROUP_ID = "__date__";
 const groupReplyPolicies = new Set(["always", "mention_only", "never"]);
 const groupRoleReplyPolicies = new Set(["inherit", ...groupReplyPolicies]);
 
+function normalizeManagedGroupCreatedAt(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const worktoolTimestamp = normalizeWorktoolTimestamp(raw);
+  const parsed = new Date(worktoolTimestamp || raw);
+  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
+}
+
 export function canonicalGroupConversationKey({ botId, groupId }) {
   return `${String(botId || "").trim()}:group-id:${String(groupId || "").trim()}`;
 }
@@ -916,7 +925,41 @@ export function createOrGetGroup({
   const name = String(currentName || "").trim();
   if (!botId || !name) throw new Error("botId and currentName are required");
   const resolved = resolveGroupByAddress({ botId, groupName: name, groupRemark: currentRemark });
-  if (resolved?.status === "resolved") return resolved.group;
+  const authoritativeCreatedAt = normalizeManagedGroupCreatedAt(createdAt);
+  if (resolved?.status === "resolved") {
+    if (!authoritativeCreatedAt) return resolved.group;
+    const normalizedDateSource = String(dateSource || "worktool");
+    if (
+      resolved.group.groupCreatedAt !== authoritativeCreatedAt
+      || resolved.group.dateSource !== normalizedDateSource
+    ) {
+      const timestamp = String(discoveredAt || now());
+      db.prepare(`
+        UPDATE managed_groups
+        SET group_created_at = ?,
+            date_source = ?,
+            updated_at = ?
+        WHERE bot_id = ? AND id = ?
+      `).run(
+        authoritativeCreatedAt,
+        normalizedDateSource,
+        timestamp,
+        botId,
+        resolved.group.id
+      );
+    }
+    const updatedGroup = getGroupById({ botId, groupId: resolved.group.id });
+    const binding = getBotBinding(botId);
+    if (binding?.agentId) {
+      ensureManagedGroupConversationDateTag({
+        botId,
+        agentId: binding.agentId,
+        conversationKey: updatedGroup.conversationKey,
+        groupCreatedAt: updatedGroup.groupCreatedAt
+      });
+    }
+    return updatedGroup;
+  }
   if (resolved?.status === "ambiguous") {
     const error = new Error("managed group address is ambiguous");
     error.code = "GROUP_ADDRESS_AMBIGUOUS";
@@ -925,9 +968,16 @@ export function createOrGetGroup({
   const timestamp = String(discoveredAt || now());
   const groupId = crypto.randomUUID();
   const conversationKey = canonicalGroupConversationKey({ botId, groupId });
-  const groupCreatedAt = String(createdAt || timestamp);
+  const groupCreatedAt = authoritativeCreatedAt
+    || normalizeManagedGroupCreatedAt(timestamp)
+    || timestamp;
   const normalizedDateSource = String(
-    dateSource || (createdAt ? "worktool" : source === "created" ? "system_created" : "first_discovered")
+    dateSource
+      || (authoritativeCreatedAt
+        ? "worktool"
+        : source === "created"
+          ? "system_created"
+          : "first_discovered")
   );
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -4887,7 +4937,8 @@ export function upsertSystemDateTag({
   agentId,
   conversationKey,
   dateTagId,
-  source = "friend_added"
+  source = "friend_added",
+  reason = "新增好友日期"
 }) {
   const existing = listConversationTags({ botId, agentId, conversationKey })
     .find((tag) => tag.tagType === "date");
@@ -4909,7 +4960,7 @@ export function upsertSystemDateTag({
     conversationKey,
     dateTagId,
     dateTagId,
-    "新增好友日期",
+    reason,
     source,
     timestamp,
     timestamp
@@ -4956,6 +5007,96 @@ export function ensureConversationDateTag({
     dateTagId: dateTagIdFor(firstSeenDate, schema.dateTag.cutoffTime),
     source
   });
+}
+
+export function ensureManagedGroupConversationDateTag({
+  botId,
+  agentId,
+  conversationKey,
+  groupCreatedAt
+}) {
+  const conversation = getConversation(conversationKey);
+  const group = getGroupByConversationKey({ botId, conversationKey });
+  if (
+    !conversation
+    || conversation.botId !== botId
+    || conversation.agentId !== agentId
+    || ![1, 3].includes(Number(conversation.roomType))
+    || !group
+    || !group.tagGroupIds.includes(SYSTEM_DATE_TAG_GROUP_ID)
+  ) {
+    return null;
+  }
+  const schema = normalizeTagSchema(getAgentTagSchema(agentId)?.config || {});
+  if (!schema.dateTag.enabled) return null;
+  const normalizedCreatedAt = normalizeManagedGroupCreatedAt(
+    groupCreatedAt || group.groupCreatedAt
+  );
+  if (!normalizedCreatedAt) return null;
+  const createdAt = new Date(normalizedCreatedAt);
+  const expectedDateTagId = dateTagIdFor(createdAt, schema.dateTag.cutoffTime);
+  const existing = listConversationTags({ botId, agentId, conversationKey })
+    .find((tag) => tag.tagType === "date");
+  if (existing) {
+    if (
+      existing.source === "managed_group_created"
+      && existing.tagId !== expectedDateTagId
+    ) {
+      const timestamp = now();
+      db.prepare(`
+        UPDATE conversation_tags
+        SET tag_id = ?,
+            tag_name = ?,
+            reason = '群建立日期',
+            updated_at = ?
+        WHERE id = ?
+      `).run(expectedDateTagId, expectedDateTagId, timestamp, existing.id);
+    }
+    return listConversationTags({ botId, agentId, conversationKey });
+  }
+  return upsertSystemDateTag({
+    botId,
+    agentId,
+    conversationKey,
+    dateTagId: expectedDateTagId,
+    source: "managed_group_created",
+    reason: "群建立日期"
+  });
+}
+
+export function backfillManagedGroupConversationDateTags() {
+  const rows = db.prepare(`
+    SELECT
+      mg.bot_id,
+      bab.agent_id,
+      mg.conversation_key,
+      mg.group_created_at
+    FROM managed_groups mg
+    JOIN conversations c
+      ON c.bot_id = mg.bot_id
+     AND c.conversation_key = mg.conversation_key
+    JOIN bot_agent_bindings bab
+      ON bab.bot_id = mg.bot_id
+    WHERE c.room_type IN (1, 3)
+  `).all();
+  let appliedCount = 0;
+  for (const row of rows) {
+    const hadDateTag = listConversationTags({
+      botId: row.bot_id,
+      agentId: row.agent_id,
+      conversationKey: row.conversation_key
+    }).some((tag) => tag.tagType === "date");
+    const tags = ensureManagedGroupConversationDateTag({
+      botId: row.bot_id,
+      agentId: row.agent_id,
+      conversationKey: row.conversation_key,
+      groupCreatedAt: row.group_created_at
+    });
+    if (!hadDateTag && tags?.some((tag) => tag.tagType === "date")) {
+      appliedCount += 1;
+    }
+  }
+  return appliedCount;
 }
 
 export function ensureLegacyHistoryDateTag({

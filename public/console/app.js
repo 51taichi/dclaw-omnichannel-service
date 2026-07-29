@@ -88,7 +88,10 @@ const els = {
   flowSessionList: document.querySelector("#flowSessionList"),
   flowSessionsPaginationEl: document.querySelector("#flowSessionsPagination"),
   flowSessionTypeButtons: document.querySelectorAll("[data-flow-session-type]"),
+  flowSessionFilters: document.querySelector(".flow-session-filters"),
+  flowSessionSearchLabel: document.querySelector("#flowSessionSearchLabel"),
   flowSessionSearchInput: document.querySelector("#flowSessionSearchInput"),
+  flowSessionNodeFilterField: document.querySelector("#flowSessionNodeFilterField"),
   flowSessionNodeFilter: document.querySelector("#flowSessionNodeFilter"),
   flowSessionTagFilter: document.querySelector("#flowSessionTagFilter"),
   flowSessionTagFilterButton: document.querySelector("#flowSessionTagFilterButton"),
@@ -577,6 +580,7 @@ function connectTagAlerts(botId) {
 
 function clearBotScopedContent() {
   disconnectTagAlerts();
+  setFlowSessionTypeSelection("private");
   state.selectedFlowConversationKey = "";
   state.flowSessionsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTargetsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
@@ -1079,12 +1083,9 @@ function playTagAlertSound() {
   audio.play().catch(() => {});
 }
 
-function resetFlowSessionFiltersForTagAlert() {
-  els.flowSessionTypeButtons.forEach((button) => {
-    const active = button.dataset.flowSessionType === "all";
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-selected", String(active));
-  });
+function resetFlowSessionFiltersForTagAlert(conversationKey) {
+  setFlowSessionTypeSelection(flowSessionType({ conversationKey }));
+  clearSelectedFlowConversation();
   els.flowSessionSearchInput.value = "";
   els.flowSessionNodeFilter.value = "all";
   setFlowSessionTagFilterValues([], { reload: false });
@@ -1097,7 +1098,7 @@ async function openTagAlert(alert) {
   const contextVersion = state.botContextVersion;
   if (!botId || !alert?.conversationKey) return;
   switchWorkspaceTab("sessions");
-  resetFlowSessionFiltersForTagAlert();
+  resetFlowSessionFiltersForTagAlert(alert.conversationKey);
   await reloadFlowSessionsFromFirstPage();
   if (!isCurrentBotContext(botId, contextVersion)) return;
   const opened = await openFlowSession(alert.conversationKey, {
@@ -2781,7 +2782,11 @@ async function applyManualConversationTag({ conversationKey, groupId, tagId, act
 }
 
 function renderFlowSessionManualTagMenu({ session, x, y }) {
-  if (!els.flowSessionTagMenu || !session?.conversationKey) return;
+  if (
+    !els.flowSessionTagMenu
+    || !session?.conversationKey
+    || flowSessionType(session) !== "private"
+  ) return;
   const groups = enabledManualTagGroups();
   const sessionName = flowSessionDisplayName(session);
   els.flowSessionTagMenu.innerHTML = groups.length
@@ -3830,7 +3835,9 @@ async function loadFlowSessions({ contextVersion = state.botContextVersion } = {
   const query = String(els.flowSessionSearchInput?.value || "").trim();
   if (query) params.set("query", query);
   const nodeFilter = String(els.flowSessionNodeFilter?.value || "").trim();
-  if (nodeFilter && nodeFilter !== "all") params.set("nodeId", nodeFilter);
+  if (currentFlowSessionTypeFilter() === "private" && nodeFilter && nodeFilter !== "all") {
+    params.set("nodeId", nodeFilter);
+  }
   for (const tagFilter of selectedFlowSessionTagFilterValues()) {
     params.append("tag", tagFilter);
   }
@@ -3861,8 +3868,8 @@ async function loadFlowSessions({ contextVersion = state.botContextVersion } = {
 
 function sortFlowSessions(sessions) {
   return [...sessions].sort((a, b) => {
-    const aHuman = a.handoffStatus === "human" ? 1 : 0;
-    const bHuman = b.handoffStatus === "human" ? 1 : 0;
+    const aHuman = flowSessionType(a) === "private" && a.handoffStatus === "human" ? 1 : 0;
+    const bHuman = flowSessionType(b) === "private" && b.handoffStatus === "human" ? 1 : 0;
     if (aHuman !== bHuman) return bHuman - aHuman;
     return Date.parse(b.lastMessageAt || b.updatedAt || b.createdAt || 0)
       - Date.parse(a.lastMessageAt || a.updatedAt || a.createdAt || 0);
@@ -3871,7 +3878,7 @@ function sortFlowSessions(sessions) {
 
 function flowSessionType(session) {
   const conversationKey = String(session?.conversationKey || "");
-  if (conversationKey.includes(":group:")) return "group";
+  if (conversationKey.includes(":group:") || conversationKey.includes(":group-id:")) return "group";
   if (conversationKey.includes(":private:")) return "private";
   const roomType = Number(session?.roomType || 0);
   if (roomType === 1 || roomType === 3) return "group";
@@ -3893,13 +3900,51 @@ function sessionUsesFlowFilters(session) {
 }
 
 function currentFlowSessionTypeFilter() {
-  return document.querySelector("[data-flow-session-type].active")?.dataset.flowSessionType || "all";
+  return document.querySelector("[data-flow-session-type].active")?.dataset.flowSessionType || "private";
+}
+
+function setFlowSessionTypeSelection(type) {
+  const nextType = type === "group" ? "group" : "private";
+  els.flowSessionTypeButtons.forEach((button) => {
+    const active = button.dataset.flowSessionType === nextType;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+  });
+  syncFlowSessionTypeUi();
+}
+
+function syncFlowSessionTypeUi() {
+  const isGroup = currentFlowSessionTypeFilter() === "group";
+  els.flowSessionFilters?.classList.toggle("is-group", isGroup);
+  if (els.flowSessionNodeFilterField) els.flowSessionNodeFilterField.hidden = isGroup;
+  if (els.flowSessionNodeFilter) {
+    els.flowSessionNodeFilter.disabled = isGroup;
+    if (isGroup) els.flowSessionNodeFilter.value = "all";
+  }
+  if (els.flowSessionSearchLabel) {
+    els.flowSessionSearchLabel.lastChild.textContent = isGroup ? "搜索群聊" : "搜索客户";
+  }
+  if (els.flowSessionSearchInput) {
+    els.flowSessionSearchInput.placeholder = isGroup ? "搜索群名" : "搜索客户";
+  }
+  if (isGroup) hideFlowSessionManualTagMenu();
+}
+
+function clearSelectedFlowConversation() {
+  state.selectedFlowConversationKey = "";
+  state.loadingFlowConversationKey = "";
+  currentFlowSession = null;
+  syncHandoffButton(null);
+  renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
+  if (els.chatTagList) els.chatTagList.innerHTML = "";
+  els.flowEventsOutput.textContent = "";
+  els.chatTitle.textContent = emptyFlowSessionTitle();
+  els.chatMessages.innerHTML = `<div class="empty-state">${escapeHtml(emptyFlowSessionTitle())}</div>`;
 }
 
 function emptyFlowSessionTitle() {
   const typeFilter = currentFlowSessionTypeFilter();
   if (typeFilter === "group") return "请选择一个群聊会话";
-  if (typeFilter === "all") return "请选择一个会话";
   return "请选择一个私聊会话";
 }
 
@@ -3911,7 +3956,7 @@ function getVisibleFlowSessions() {
   const dateTagFilterKey = dateTagFilterKeyFromInput(els.flowSessionDateTagFilter?.value || "");
 
   return sortFlowSessions(currentFlowSessions.filter((session) => {
-    if (typeFilter !== "all" && flowSessionType(session) !== typeFilter) return false;
+    if (flowSessionType(session) !== typeFilter) return false;
     const appliesFlowFilters = sessionUsesFlowFilters(session);
     if (normalizedSessionSearch) {
       const searchableText = [
@@ -4027,9 +4072,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
   const typeFilter = currentFlowSessionTypeFilter();
   const emptyCopy = typeFilter === "private"
     ? "没有符合筛选条件的私聊会话。"
-    : typeFilter === "group"
-      ? "没有符合筛选条件的群聊会话。"
-      : "没有符合筛选条件的会话。";
+    : "没有符合筛选条件的群聊会话。";
   els.flowSessionList.innerHTML = visibleSessions.length
     ? visibleSessions
         .map((session) => {
@@ -4045,7 +4088,25 @@ function renderFlowSessions({ animateFrom = null } = {}) {
             : "0/0";
           const taskTooltip = `当前任务：${status}`;
           const assetTooltip = `资产：${assetSummary}`;
-          const isHandoff = session.handoffStatus === "human";
+          const isHandoff = sessionType === "private" && session.handoffStatus === "human";
+          const manualTagTrigger = sessionType === "private"
+            ? `<span
+                class="flow-session-manual-tag-trigger"
+                data-flow-manual-tag-trigger="${escapeHtml(session.conversationKey)}"
+                role="button"
+                tabindex="0"
+                title="手工打标签"
+                aria-label="给${escapeHtml(name)}手工打标签"
+              >${icon("tag")}</span>`
+            : "";
+          const privateSessionTools = sessionType === "private"
+            ? `<span class="flow-session-tools">
+                <small class="flow-session-icons">
+                  <span class="session-icon" title="${escapeHtml(taskTooltip)}" aria-label="${escapeHtml(taskTooltip)}">${icon("edit")}</span>
+                  <span class="session-icon" title="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
+                </small>
+              </span>`
+            : "";
           const handoffSwitch = sessionType === "private"
             ? `<span class="flow-session-switch handoff-switch ${isHandoff ? "is-human" : ""}" data-flow-handoff-switch="${escapeHtml(session.conversationKey)}" role="switch" tabindex="0" aria-checked="${isHandoff ? "true" : "false"}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
                 <span class="handoff-switch-option is-ai" aria-hidden="true">${icon("robot")}</span>
@@ -4054,7 +4115,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
               </span>`
             : "";
           return `
-            <button class="flow-session-card ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""} ${isLegacyCustomer ? "is-legacy" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
+            <button class="flow-session-card ${sessionType === "group" ? "is-group" : "is-private"} ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""} ${isLegacyCustomer ? "is-legacy" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <span class="flow-session-avatar-shell ${isLegacyCustomer ? "is-legacy" : ""}" title="${isLegacyCustomer ? "老客户" : ""}">
                 <img class="flow-session-avatar ${sessionType === "group" ? "is-group" : ""}" src="${avatar}" alt="" aria-hidden="true" />
               </span>
@@ -4063,23 +4124,11 @@ function renderFlowSessions({ animateFrom = null } = {}) {
                   <strong class="flow-session-name" title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
                 </span>
                 ${renderConversationDateTag(session.tags || [])}
-                <span
-                  class="flow-session-manual-tag-trigger"
-                  data-flow-manual-tag-trigger="${escapeHtml(session.conversationKey)}"
-                  role="button"
-                  tabindex="0"
-                  title="手工打标签"
-                  aria-label="给${escapeHtml(name)}手工打标签"
-                >${icon("tag")}</span>
+                ${manualTagTrigger}
                 <span class="flow-session-tag-zone">
                   ${renderConversationTags(session.tags || [], { includeDate: false })}
                 </span>
-                <span class="flow-session-tools">
-                  <small class="flow-session-icons">
-                    <span class="session-icon" title="${escapeHtml(taskTooltip)}" aria-label="${escapeHtml(taskTooltip)}">${icon("edit")}</span>
-                    <span class="session-icon" title="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
-                  </small>
-                </span>
+                ${privateSessionTools}
               </span>
               ${handoffSwitch}
             </button>
@@ -4093,9 +4142,10 @@ function renderFlowSessions({ animateFrom = null } = {}) {
       openFlowSession(button.dataset.flowSession).catch(toastError)
     );
     button.addEventListener("contextmenu", (event) => {
+      const session = currentFlowSessions.find((item) => item.conversationKey === button.dataset.flowSession);
+      if (flowSessionType(session) !== "private") return;
       event.preventDefault();
       event.stopPropagation();
-      const session = currentFlowSessions.find((item) => item.conversationKey === button.dataset.flowSession);
       renderFlowSessionManualTagMenu({
         session,
         x: event.clientX,
@@ -4170,6 +4220,14 @@ function renderConversationAssets(assets = { fields: [], totalCount: 0, collecte
   `;
 }
 
+function renderConversationAssetsForSession(session, assets) {
+  if (flowSessionType(session) === "group") {
+    renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
+    return;
+  }
+  renderConversationAssets(assets || { fields: [], totalCount: 0, collectedCount: 0 });
+}
+
 function renderManualReplyEmojiBar() {
   if (!els.manualReplyEmojiBar || els.manualReplyEmojiBar.dataset.rendered === "true") return;
   els.manualReplyEmojiBar.innerHTML = manualReplyEmojis
@@ -4194,7 +4252,11 @@ function insertManualReplyEmoji(emoji) {
 
 function renderManualReplyComposer(session) {
   if (!els.manualReplyComposer) return;
-  const hasSession = Boolean(session && state.selectedFlowConversationKey);
+  const hasSession = Boolean(
+    session
+    && state.selectedFlowConversationKey
+    && flowSessionType(session) === "private"
+  );
   const isHuman = session?.handoffStatus === "human";
   const aiCard = els.manualReplyComposer.querySelector(".ai-takeover-card");
   const replyBox = els.manualReplyComposer.querySelector(".manual-reply-box");
@@ -4376,9 +4438,12 @@ async function openFlowSession(conversationKey, {
     if (!isCurrentBotContext(botId, contextVersion) || state.selectedFlowConversationKey !== conversationKey) {
       return false;
     }
-    currentFlowSession = data.session || session || null;
     const currentTags = data.tags || session?.tags || [];
-    currentFlowSession = { ...(currentFlowSession || {}), tags: currentTags };
+    currentFlowSession = {
+      ...(session || {}),
+      ...(data.session || {}),
+      tags: currentTags
+    };
     currentFlowSessions = currentFlowSessions.map((item) =>
       item.conversationKey === conversationKey ? { ...item, tags: currentTags } : item
     );
@@ -4387,7 +4452,10 @@ async function openFlowSession(conversationKey, {
     renderFlowSessionTagFilter();
     renderFlowSessionDateTagFilter();
     syncHandoffButton(currentFlowSession);
-    renderConversationAssets(data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 });
+    renderConversationAssetsForSession(
+      currentFlowSession,
+      data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 }
+    );
     renderChatMessages(data.messages || [], {
       anchorMessageId,
       alertTagName,
@@ -5387,14 +5455,9 @@ els.refreshFlowSessionsButton.addEventListener("click", () =>
 );
 els.flowSessionTypeButtons.forEach((button) => {
   button.addEventListener("click", () => {
-    els.flowSessionTypeButtons.forEach((item) => {
-      const active = item === button;
-      item.classList.toggle("active", active);
-      item.setAttribute("aria-selected", String(active));
-    });
-    if (!state.selectedFlowConversationKey) {
-      els.chatTitle.textContent = emptyFlowSessionTitle();
-    }
+    const previousType = currentFlowSessionTypeFilter();
+    setFlowSessionTypeSelection(button.dataset.flowSessionType);
+    if (previousType !== currentFlowSessionTypeFilter()) clearSelectedFlowConversation();
     reloadFlowSessionsFromFirstPage().catch(toastError);
   });
 });
@@ -5620,6 +5683,7 @@ document.addEventListener("keydown", (event) => {
 async function startConsole() {
   await window.WorkspaceContext.ready;
   ensureActionToolbox();
+  syncFlowSessionTypeUi();
   syncRoleVisibility();
   await loadBots();
   await openDirectBotFromUrl();

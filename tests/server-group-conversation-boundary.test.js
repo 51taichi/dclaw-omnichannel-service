@@ -18,3 +18,18 @@ test("server records unmentioned group messages before agent mention filtering",
     true
   );
 });
+
+test("server persists a managed group's creation date tag with its canonical conversation", () => {
+  assert.match(
+    processIncomingSource,
+    /persistInboundConversation\(\{[\s\S]*managedGroup: group/
+  );
+  assert.match(
+    serverSource,
+    /function persistInboundConversation\(\{[\s\S]*managedGroup[\s\S]*ensureManagedGroupConversationDateTag\(\{[\s\S]*groupCreatedAt: managedGroup\.groupCreatedAt/
+  );
+  assert.match(
+    serverSource,
+    /backfillManagedGroupConversationDateTags\(\)[\s\S]*app\.listen\(port, host/
+  );
+});

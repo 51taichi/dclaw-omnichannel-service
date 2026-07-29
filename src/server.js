@@ -84,7 +84,9 @@ import {
   getConversationKey,
   getConversationResetPending,
   getConversationAssets,
+  backfillManagedGroupConversationDateTags,
   ensureLegacyHistoryDateTag,
+  ensureManagedGroupConversationDateTag,
   getFlowMachineForBot,
   getFlowActivationProgress,
   getFlowSession,
@@ -794,7 +796,8 @@ function persistInboundConversation({
   conversationKey,
   message,
   resetPending = false,
-  skipFirstSeenDateTag = false
+  skipFirstSeenDateTag = false,
+  managedGroup = null
 }) {
   const conversation = upsertConversation({
     botId,
@@ -804,6 +807,14 @@ function persistInboundConversation({
     resetPending,
     skipFirstSeenDateTag
   });
+  if (managedGroup && binding?.agentId) {
+    ensureManagedGroupConversationDateTag({
+      botId,
+      agentId: binding.agentId,
+      conversationKey,
+      groupCreatedAt: managedGroup.groupCreatedAt
+    });
+  }
   const flowMachine = getFlowMachineForBot(botId);
   if (binding?.enabled) {
     if (isGroupMessage(message)) {
@@ -4091,7 +4102,8 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         conversationKey,
         message,
         resetPending: resetState.resetPending,
-        skipFirstSeenDateTag: legacyCandidate
+        skipFirstSeenDateTag: legacyCandidate,
+        managedGroup: group
       })
     : { conversation: null, messageRecord: null };
 
@@ -6241,6 +6253,16 @@ app.post(
     if (!binding || !binding.enabled) throw new Error("no enabled bot binding");
     const session = getFlowSessionForBot({ botId, conversationKey });
     if (!session) throw new Error("flow session not found");
+    const conversation = getConversation(conversationKey);
+    if (
+      [1, 3].includes(Number(conversation?.roomType))
+      || conversationKey.includes(":group:")
+      || conversationKey.includes(":group-id:")
+    ) {
+      const error = new Error("group conversations do not support manual tags");
+      error.status = 400;
+      throw error;
+    }
     const result = applyManualConversationTagChange({
       botId,
       binding,
@@ -6723,6 +6745,8 @@ app.use((error, req, res, next) => {
 
 const migratedDateTagRuleCount = initializeLegacyDateTagRuleEffectiveTimes();
 logInfo("customer_date_tag_rules.migrated", { agentCount: migratedDateTagRuleCount });
+const backfilledGroupDateTagCount = backfillManagedGroupConversationDateTags();
+logInfo("group_date_tags.backfilled", { conversationCount: backfilledGroupDateTagCount });
 
 app.listen(port, host, () => {
   logInfo("service.started", { host, port });

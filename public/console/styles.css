@@ -3221,10 +3221,18 @@ textarea[data-action-target-activation].is-action-target-focused {
 
 .flow-session-type-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   width: 100%;
   min-width: 0;
   box-shadow: none;
+}
+
+.flow-session-filters.is-group {
+  grid-template-columns: minmax(260px, 1fr) minmax(208px, 220px) minmax(208px, 220px);
+}
+
+.flow-session-node-filter[hidden] {
+  display: none;
 }
 
 .flow-session-type-tabs button {
@@ -3755,6 +3763,10 @@ html.has-bot-context .action-toolbox-toggle:hover {
   min-height: 28px;
   padding-right: 4px;
   overflow: hidden;
+}
+
+.flow-session-card.is-group .flow-session-tag-zone {
+  grid-column: 1 / -1;
 }
 
 .flow-session-manual-tag-trigger {
