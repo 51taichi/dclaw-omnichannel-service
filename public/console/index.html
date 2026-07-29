@@ -524,23 +524,26 @@
 
       <div id="groupsTab" class="tab-panel" data-tab-panel="groups" hidden>
         <section class="panel bot-context-panel groups-panel">
-          <div class="section-head">
-            <div>
-              <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>群管理</h2>
-              <p class="muted">这里只配置群，不展示群聊记录；历史消息请前往“会话”。</p>
-            </div>
-            <div class="section-actions">
-              <button id="refreshGroupsButton" class="secondary" type="button">刷新群列表</button>
-              <button id="createGroupButton" class="primary" type="button">创建外部群</button>
-            </div>
+          <div class="groups-toolbar section-actions">
+            <button id="refreshGroupsButton" class="secondary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
+              刷新群列表
+            </button>
+            <button id="createGroupButton" class="primary" type="button">
+              <svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>
+              创建外部群
+            </button>
           </div>
           <div class="groups-workbench">
             <aside class="groups-sidebar">
-              <input id="groupSearchInput" type="search" placeholder="搜索群名或群备注" />
+              <label class="groups-search-field">
+                <svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>
+                <input id="groupSearchInput" type="search" placeholder="搜索群名或群备注" />
+              </label>
               <div id="groupList" class="groups-list"></div>
             </aside>
             <div id="groupConfigPane" class="groups-config">
-              <div class="empty-state">请从左侧选择一个群</div>
+              <div class="empty-state"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>请从左侧选择一个群</div>
             </div>
           </div>
         </section>
@@ -938,32 +941,38 @@
     </div>
     <div id="createGroupDialog" class="modal-backdrop" hidden>
       <form id="createGroupForm" class="confirm-dialog groups-dialog" role="dialog" aria-modal="true">
-        <div class="confirm-copy">
-          <strong>创建外部群</strong>
-          <label><span class="field-label">群名称</span><input name="groupName" required /></label>
-          <label><span class="field-label">群公告</span><textarea name="announcement" rows="3"></textarea></label>
-          <label><span class="field-label">邀请联系人</span><input id="createGroupContactSearch" type="search" placeholder="搜索联系人" /></label>
-          <div id="createGroupContactList" class="groups-contact-list">正在加载联系人…</div>
-          <label class="switch-row"><input name="modifyRemark" type="checkbox" /> 同时设置群备注</label>
-          <label><span class="field-label">群备注</span><input name="currentRemark" /></label>
+        <div class="groups-dialog-header">
+          <span class="groups-dialog-icon"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg></span>
+          <span><strong>创建外部群</strong><small>选择联系人并设置新群的基础信息</small></span>
         </div>
-        <div class="confirm-actions">
-          <button id="createGroupCancelButton" class="secondary" type="button">取消</button>
-          <button class="primary" type="submit">创建</button>
+        <div class="confirm-copy groups-dialog-body">
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>群名称</span><input name="groupName" required /></label>
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>群公告</span><textarea name="announcement" rows="3"></textarea></label>
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>邀请联系人</span><input id="createGroupContactSearch" type="search" placeholder="搜索联系人" /></label>
+          <div id="createGroupContactList" class="groups-contact-list">正在加载联系人…</div>
+          <label class="switch-row groups-dialog-switch"><input name="modifyRemark" type="checkbox" /><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>同时设置群备注</label>
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群备注</span><input name="currentRemark" /></label>
+        </div>
+        <div class="confirm-actions groups-dialog-actions">
+          <button id="createGroupCancelButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>取消</button>
+          <button class="primary" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>创建</button>
         </div>
       </form>
     </div>
     <div id="modifyGroupDialog" class="modal-backdrop" hidden>
       <form id="modifyGroupForm" class="confirm-dialog groups-dialog" role="dialog" aria-modal="true">
-        <div class="confirm-copy">
-          <strong>修改群信息</strong>
-          <label><span class="field-label">群名称</span><input name="currentName" required /></label>
-          <label><span class="field-label">群公告</span><textarea name="announcement" rows="3"></textarea></label>
-          <label><span class="field-label">群备注（不修改可保持原值）</span><input name="currentRemark" /></label>
+        <div class="groups-dialog-header">
+          <span class="groups-dialog-icon"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg></span>
+          <span><strong>修改群信息</strong><small>只会提交实际发生变化的字段</small></span>
         </div>
-        <div class="confirm-actions">
-          <button id="modifyGroupCancelButton" class="secondary" type="button">取消</button>
-          <button class="primary" type="submit">保存</button>
+        <div class="confirm-copy groups-dialog-body">
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>群名称</span><input name="currentName" required /></label>
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>群公告</span><textarea name="announcement" rows="3"></textarea></label>
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群备注（不修改可保持原值）</span><input name="currentRemark" /></label>
+        </div>
+        <div class="confirm-actions groups-dialog-actions">
+          <button id="modifyGroupCancelButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>取消</button>
+          <button class="primary" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存</button>
         </div>
       </form>
     </div>

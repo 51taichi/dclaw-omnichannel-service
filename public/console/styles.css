@@ -5389,11 +5389,36 @@ td .muted {
   min-height: 560px;
 }
 
+.groups-toolbar {
+  justify-content: flex-end;
+  margin-bottom: 14px;
+}
+
 .groups-sidebar,
 .groups-config {
   border: 1px solid var(--line);
   border-radius: 16px;
   padding: 16px;
+}
+
+.groups-search-field {
+  align-items: center;
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  position: relative;
+}
+
+.groups-search-field > .icon {
+  color: var(--muted);
+  left: 12px;
+  pointer-events: none;
+  position: absolute;
+  z-index: 1;
+}
+
+.groups-search-field input {
+  padding-left: 38px;
+  width: 100%;
 }
 
 .groups-list,
@@ -5405,15 +5430,21 @@ td .muted {
 }
 
 .groups-list-item {
-  align-items: flex-start;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
   color: inherit;
   display: grid;
-  gap: 4px;
-  padding: 12px;
+  gap: 10px;
+  min-width: 0;
+  padding: 13px;
   text-align: left;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.groups-list-item:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
 }
 
 .groups-list-item.active {
@@ -5421,9 +5452,65 @@ td .muted {
   box-shadow: 0 0 0 2px rgba(42, 48, 216, 0.16);
 }
 
-.groups-list-item small,
-.groups-list-item span {
+.groups-list-item-main {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 34px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.groups-list-item-icon,
+.groups-tag-card-icon,
+.groups-dialog-icon {
+  align-items: center;
+  background: var(--accent-soft);
+  border-radius: 10px;
+  color: var(--accent);
+  display: inline-flex;
+  flex: 0 0 auto;
+  justify-content: center;
+}
+
+.groups-list-item-icon {
+  height: 34px;
+  width: 34px;
+}
+
+.groups-list-item-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.groups-list-item-copy strong,
+.groups-list-item-copy small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groups-list-item-copy small,
+.groups-list-item-meta {
+  align-items: center;
   color: var(--muted);
+  display: flex;
+  font-size: 12px;
+  gap: 5px;
+}
+
+.groups-list-item-copy .icon,
+.groups-list-item-meta .icon {
+  flex: 0 0 auto;
+  height: 14px;
+  width: 14px;
+}
+
+.groups-list-item-meta {
+  background: var(--panel-strong);
+  border-radius: 999px;
+  justify-self: start;
+  padding: 5px 9px;
 }
 
 .groups-config-form {
@@ -5440,11 +5527,94 @@ td .muted {
   padding: 14px;
 }
 
-.groups-tag-option,
+.groups-config-head h3,
+.groups-config-head p,
+.groups-role-head h3,
+.groups-tags-fieldset legend {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+}
+
+.groups-config-head p {
+  margin-top: 6px;
+}
+
+.groups-tags-fieldset legend {
+  font-weight: 850;
+  padding: 0 6px;
+}
+
+.groups-tag-card,
 .groups-contact-option {
   align-items: center;
   display: flex;
   gap: 8px;
+}
+
+.groups-contact-option {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-height: 44px;
+  padding: 8px 10px;
+}
+
+.groups-contact-icon {
+  align-items: center;
+  background: var(--panel-strong);
+  border-radius: 8px;
+  color: var(--accent);
+  display: inline-flex;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
+}
+
+.groups-tag-card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  min-height: 48px;
+  padding: 8px 11px;
+  transition: border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.groups-tag-card:hover {
+  border-color: var(--line-strong);
+}
+
+.groups-tag-card.is-selected,
+.groups-tag-card:has(input:checked) {
+  background: var(--accent-soft);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  box-shadow: inset 0 0 0 1px rgba(42, 48, 216, 0.08);
+}
+
+.groups-tag-card.is-system {
+  cursor: default;
+}
+
+.groups-tag-card-icon {
+  height: 28px;
+  width: 28px;
+}
+
+.groups-tag-card small {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+}
+
+.groups-tag-lock {
+  color: var(--muted);
+  height: 14px;
+  margin-left: 3px;
+  width: 14px;
+}
+
+.groups-save-config {
+  width: 100%;
 }
 
 .groups-role-head {
@@ -5454,11 +5624,90 @@ td .muted {
   margin-top: 28px;
 }
 
+.groups-roles-form {
+  min-width: 0;
+}
+
+.groups-role-columns,
 .groups-role-row {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(110px, 1fr)) minmax(150px, 1fr) minmax(130px, 1fr) auto auto;
+  grid-template-columns:
+    minmax(120px, 1fr)
+    minmax(110px, 0.9fr)
+    minmax(160px, 1.35fr)
+    minmax(165px, 1.1fr)
+    minmax(145px, 1fr)
+    88px
+    82px;
+}
+
+.groups-role-columns {
+  background: var(--panel-strong);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  margin-top: 14px;
+  padding: 9px 10px;
+}
+
+.groups-role-columns span {
+  align-items: center;
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+}
+
+.groups-role-columns .icon {
+  height: 14px;
+  width: 14px;
+}
+
+.groups-role-row {
+  border-bottom: 1px solid var(--line);
+  padding: 2px 10px 10px;
+}
+
+.groups-role-field {
+  display: block;
+  min-width: 0;
+}
+
+.groups-role-field input,
+.groups-role-field select {
+  min-width: 0;
+  width: 100%;
+}
+
+.groups-role-sync,
+.groups-role-delete {
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.groups-role-sync {
+  gap: 5px;
+}
+
+.groups-role-sync .icon {
+  color: var(--accent);
+  height: 14px;
+  width: 14px;
+}
+
+.groups-role-delete {
+  display: inline-flex;
+  gap: 5px;
+  width: 100%;
+}
+
+.groups-save-roles {
+  margin-top: 12px;
 }
 
 .groups-contact-list {
@@ -5466,9 +5715,72 @@ td .muted {
   overflow: auto;
 }
 
-.groups-dialog {
-  max-width: 680px;
-  width: min(680px, calc(100vw - 32px));
+.confirm-dialog.groups-dialog {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  max-height: min(820px, calc(100vh - 32px));
+  max-width: 720px;
+  overflow: hidden;
+  padding: 0;
+  width: min(720px, calc(100vw - 32px));
+}
+
+.groups-dialog-header {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 12px;
+  grid-column: 1;
+  padding: 18px 20px 14px;
+}
+
+.groups-dialog-icon {
+  height: 40px;
+  width: 40px;
+}
+
+.groups-dialog-header > span:last-child {
+  display: grid;
+  gap: 3px;
+}
+
+.groups-dialog-header strong {
+  color: var(--text);
+  font-size: 18px;
+}
+
+.groups-dialog-header small {
+  color: var(--muted);
+  font-weight: 700;
+}
+
+.groups-dialog-body {
+  display: grid;
+  gap: 14px;
+  grid-column: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 18px 20px;
+}
+
+.groups-dialog-body label {
+  display: grid;
+  gap: 7px;
+}
+
+.groups-dialog-body .groups-dialog-switch {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  margin: 0;
+}
+
+.groups-dialog-actions {
+  background: var(--panel-strong);
+  border-top: 1px solid var(--line);
+  grid-column: 1;
+  margin: 0;
+  padding: 13px 20px;
 }
 
 @media (max-width: 900px) {
@@ -5476,7 +5788,36 @@ td .muted {
     grid-template-columns: 1fr;
   }
 
+  .groups-role-columns {
+    display: none;
+  }
+
   .groups-role-row {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    gap: 12px;
     grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .groups-role-field::before,
+  .groups-role-sync::before {
+    color: var(--muted);
+    content: attr(data-role-label);
+    display: block;
+    font-size: 12px;
+    font-weight: 800;
+    margin-bottom: 5px;
+  }
+
+  .groups-role-sync {
+    display: grid;
+    grid-template-columns: auto auto 1fr;
+    justify-content: start;
+  }
+
+  .groups-role-delete {
+    width: auto;
   }
 }

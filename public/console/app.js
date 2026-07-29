@@ -5079,9 +5079,17 @@ function renderGroupList() {
   els.groupList.innerHTML = state.groups.length
     ? state.groups.map((group) => `
         <button class="groups-list-item ${group.id === state.selectedGroupId ? "active" : ""}" data-group-id="${escapeHtml(group.id)}" type="button">
-          <strong>${escapeHtml(group.currentName)}</strong>
-          <small>${escapeHtml(group.currentRemark || "未设置群备注")}</small>
-          <span>${group.replyPolicy === "always" ? "始终回复" : group.replyPolicy === "never" ? "从不回复" : "仅 @ 回复"}</span>
+          <span class="groups-list-item-main">
+            <span class="groups-list-item-icon"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg></span>
+            <span class="groups-list-item-copy">
+              <strong>${escapeHtml(group.currentName)}</strong>
+              <small><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>${escapeHtml(group.currentRemark || "未设置群备注")}</small>
+            </span>
+          </span>
+          <span class="groups-list-item-meta">
+            <svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>
+            ${group.replyPolicy === "always" ? "始终回复" : group.replyPolicy === "never" ? "从不回复" : "仅 @ 回复"}
+          </span>
         </button>
       `).join("")
     : `<div class="empty-state">暂无群。群回调到达后会自动出现，也可以点击“刷新群列表”。</div>`;
@@ -5103,18 +5111,18 @@ async function loadGroupDetail(groupId) {
 function groupRoleRow(role = {}) {
   return `
     <div class="groups-role-row" data-role-id="${escapeHtml(role.id || "")}">
-      <input data-role-field="currentName" value="${escapeHtml(role.currentName || "")}" placeholder="成员名称" />
-      <input data-role-field="identityType" value="${escapeHtml(role.identityType || "")}" placeholder="身份，如客户/同事" />
-      <input data-role-field="description" value="${escapeHtml(role.description || "")}" placeholder="职责与关系说明" />
-      <select data-role-field="replyPolicy">
-        <option value="inherit" ${role.replyPolicy === "inherit" || !role.replyPolicy ? "selected" : ""}>继承群设置</option>
-        <option value="always" ${role.replyPolicy === "always" ? "selected" : ""}>始终回复（重要客户）</option>
-        <option value="mention_only" ${role.replyPolicy === "mention_only" ? "selected" : ""}>仅 @ 回复</option>
-        <option value="never" ${role.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
-      </select>
-      <input data-role-field="desiredMarkName" value="${escapeHtml(role.desiredMarkName || "")}" placeholder="群成员备注" />
-      <label class="switch-row"><input data-role-field="syncMarkName" type="checkbox" ${role.syncMarkName ? "checked" : ""} />同步备注</label>
-      <button class="secondary danger" data-remove-group-role type="button">删除</button>
+      <label class="groups-role-field" data-role-label="成员名称"><input data-role-field="currentName" value="${escapeHtml(role.currentName || "")}" placeholder="成员名称" /></label>
+      <label class="groups-role-field" data-role-label="身份"><input data-role-field="identityType" value="${escapeHtml(role.identityType || "")}" placeholder="如客户、同事" /></label>
+      <label class="groups-role-field" data-role-label="职责与关系"><input data-role-field="description" value="${escapeHtml(role.description || "")}" placeholder="职责与关系说明" /></label>
+      <label class="groups-role-field" data-role-label="回复策略"><select data-role-field="replyPolicy">
+          <option value="inherit" ${role.replyPolicy === "inherit" || !role.replyPolicy ? "selected" : ""}>继承群设置</option>
+          <option value="always" ${role.replyPolicy === "always" ? "selected" : ""}>始终回复（重要客户）</option>
+          <option value="mention_only" ${role.replyPolicy === "mention_only" ? "selected" : ""}>仅 @ 回复</option>
+          <option value="never" ${role.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
+        </select></label>
+      <label class="groups-role-field" data-role-label="群成员备注"><input data-role-field="desiredMarkName" value="${escapeHtml(role.desiredMarkName || "")}" placeholder="不修改可留空" /></label>
+      <label class="switch-row groups-role-sync" data-role-label="同步备注"><input data-role-field="syncMarkName" type="checkbox" ${role.syncMarkName ? "checked" : ""} /><svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span>同步</span></label>
+      <button class="secondary danger groups-role-delete" data-remove-group-role type="button"><svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>删除</button>
     </div>`;
 }
 
@@ -5123,29 +5131,41 @@ function renderGroupConfig() {
   if (!detail || !els.groupConfigPane) return;
   const { group, roles = [], availableTagGroups = [] } = detail;
   els.groupConfigPane.innerHTML = `
-    <div class="section-head">
-      <div><h3>${escapeHtml(group.currentName)}</h3><p class="muted">${escapeHtml(group.announcement || "未设置群公告")}</p></div>
-      <button id="openModifyGroupButton" class="secondary" type="button">修改群信息</button>
+    <div class="section-head groups-config-head">
+      <div><h3><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>${escapeHtml(group.currentName)}</h3><p class="muted"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>${escapeHtml(group.announcement || "未设置群公告")}</p></div>
+      <button id="openModifyGroupButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>修改群信息</button>
     </div>
     <form id="groupConfigForm" class="groups-config-form">
-      <label><span class="field-label">群回复方式</span>
+      <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>群回复方式</span>
         <select name="replyPolicy">
           <option value="always" ${group.replyPolicy === "always" ? "selected" : ""}>始终回复（重要客户群）</option>
           <option value="mention_only" ${group.replyPolicy === "mention_only" ? "selected" : ""}>仅 @ 回复</option>
           <option value="never" ${group.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
         </select>
       </label>
-      <label><span class="field-label">群背景</span><textarea name="background" rows="5" placeholder="例如：客户购买时间、产品和服务背景">${escapeHtml(group.background || "")}</textarea></label>
-      <fieldset><legend>群标签组</legend>
-        <label class="groups-tag-option"><input type="checkbox" checked disabled />建立日期（系统默认）</label>
+      <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>群背景</span><textarea name="background" rows="5" placeholder="例如：客户购买时间、产品和服务背景">${escapeHtml(group.background || "")}</textarea></label>
+      <fieldset class="groups-tags-fieldset"><legend><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群标签组</legend>
+        <label class="groups-tag-card is-system is-selected"><input type="checkbox" checked disabled /><span class="groups-tag-card-icon"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg></span><span>建立日期<small>系统默认</small></span><svg class="icon groups-tag-lock" aria-label="不可移除"><use href="#icon-lock"></use></svg></label>
         ${availableTagGroups.map((tagGroup) => `
-          <label class="groups-tag-option"><input name="tagGroupIds" type="checkbox" value="${escapeHtml(tagGroup.id)}" ${group.tagGroupIds?.includes(tagGroup.id) ? "checked" : ""} />${escapeHtml(tagGroup.name)}</label>
+          <label class="groups-tag-card ${group.tagGroupIds?.includes(tagGroup.id) ? "is-selected" : ""}"><input name="tagGroupIds" type="checkbox" value="${escapeHtml(tagGroup.id)}" ${group.tagGroupIds?.includes(tagGroup.id) ? "checked" : ""} /><span class="groups-tag-card-icon"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg></span><span>${escapeHtml(tagGroup.name)}</span></label>
         `).join("")}
       </fieldset>
-      <button class="primary" type="submit">保存群配置</button>
+      <button class="primary groups-save-config" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存群配置</button>
     </form>
-    <div class="groups-role-head"><div><h3>群角色</h3><p class="muted">角色由你维护，用于识别发言人与回复策略，不代表实时成员状态。</p></div><button id="addGroupRoleButton" class="secondary" type="button">添加角色</button></div>
-    <form id="groupRolesForm"><div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div><button class="primary" type="submit">保存角色</button></form>
+    <div class="groups-role-head"><div><h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3><p class="muted">角色由你维护，用于识别发言人与回复策略，不代表实时成员状态。</p></div><button id="addGroupRoleButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>添加角色</button></div>
+    <form id="groupRolesForm" class="groups-roles-form">
+      <div class="groups-role-columns" aria-hidden="true">
+        <span><svg class="icon"><use href="#icon-user"></use></svg>成员名称</span>
+        <span><svg class="icon"><use href="#icon-tag"></use></svg>身份</span>
+        <span><svg class="icon"><use href="#icon-info"></use></svg>职责与关系</span>
+        <span><svg class="icon"><use href="#icon-send"></use></svg>回复策略</span>
+        <span><svg class="icon"><use href="#icon-edit"></use></svg>群成员备注</span>
+        <span><svg class="icon"><use href="#icon-refresh"></use></svg>同步</span>
+        <span><svg class="icon"><use href="#icon-reset"></use></svg>操作</span>
+      </div>
+      <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
+      <button class="primary groups-save-roles" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存角色</button>
+    </form>
   `;
   els.groupConfigPane.querySelector("#openModifyGroupButton").addEventListener("click", openModifyGroupDialog);
   els.groupConfigPane.querySelector("#groupConfigForm").addEventListener("submit", saveSelectedGroupConfig);
@@ -5223,7 +5243,7 @@ async function loadCreateGroupContacts() {
   state.createGroupContacts = data.targets || [];
   els.createGroupContactList.innerHTML = state.createGroupContacts.length
     ? state.createGroupContacts.map((target) => `
-        <label class="groups-contact-option"><input type="checkbox" value="${escapeHtml(target.targetName)}" ${state.createGroupContactIds.has(target.targetName) ? "checked" : ""} />${escapeHtml(target.displayName || target.targetName)}</label>
+        <label class="groups-contact-option"><input type="checkbox" value="${escapeHtml(target.targetName)}" ${state.createGroupContactIds.has(target.targetName) ? "checked" : ""} /><span class="groups-contact-icon"><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg></span><span>${escapeHtml(target.displayName || target.targetName)}</span></label>
       `).join("")
     : `<div class="empty-state">暂无联系人，请先在推送名单中同步联系人。</div>`;
   els.createGroupContactList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
