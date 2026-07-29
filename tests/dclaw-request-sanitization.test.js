@@ -319,6 +319,35 @@ test("group resource requests instruct the agent to query knowledge and output a
   assert.doesNotMatch(request.message, /当前私聊会话启用了客服流程状态机/);
 });
 
+test("group requests include bounded background and roles without a private flow", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:group-id:g1", conversationEpoch: "epoch-1" },
+    message: {
+      messageId: "group-context-1",
+      spoken: "系统还是报错",
+      rawSpoken: "系统还是报错",
+      roomType: 1,
+      textType: 1,
+      receivedName: "张三",
+      groupName: "A售后群",
+      atMe: "false"
+    },
+    flow: null,
+    groupContext: {
+      groupId: "g1",
+      background: "客户购买了A产品",
+      speaker: { name: "张三", identityType: "customer", description: "甲方负责人" },
+      roles: [{ name: "张三", identityType: "customer", description: "甲方负责人" }]
+    }
+  });
+
+  assert.match(request.message, /客户购买了A产品/);
+  assert.match(request.message, /甲方负责人/);
+  assert.equal(request.metadata.groupContext.groupId, "g1");
+  assert.doesNotMatch(request.message, /当前私聊会话启用了客服流程状态机/);
+});
+
 test("historical wording questions do not request local experience sources", () => {
   const request = buildDclawRequest({
     binding,

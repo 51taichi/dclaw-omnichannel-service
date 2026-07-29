@@ -49,6 +49,18 @@ test("server persists and logs deterministic validation retry outcomes", () => {
   assert.match(serverSource, /validation_retry_/);
 });
 
+test("server persists local Agent response repairs separately from retry failures", () => {
+  assert.match(serverSource, /function recordAgentResponseLocalRepair/);
+  assert.match(serverSource, /onLocalRepair/);
+  assert.match(serverSource, /retryOutcome:\s*"locally_repaired"/);
+  assert.match(serverSource, /repairActions:\s*repairs/);
+  assert.match(serverSource, /validation_locally_repaired/);
+  assert.match(
+    serverSource,
+    /function validateStrictAgentReply\(\{[\s\S]*onLocalRepair[\s\S]*result\.repairs/
+  );
+});
+
 test("invalid Agent reply placeholders cannot carry tag evaluations", () => {
   assert.match(
     serverSource,

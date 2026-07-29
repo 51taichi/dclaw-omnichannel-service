@@ -5381,3 +5381,102 @@ td .muted {
 .workspace-entry-logout {
   flex: 0 0 auto;
 }
+
+.groups-workbench {
+  display: grid;
+  grid-template-columns: minmax(240px, 30%) minmax(0, 70%);
+  gap: 18px;
+  min-height: 560px;
+}
+
+.groups-sidebar,
+.groups-config {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.groups-list,
+.groups-role-list,
+.groups-contact-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.groups-list-item {
+  align-items: flex-start;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: inherit;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+}
+
+.groups-list-item.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(42, 48, 216, 0.16);
+}
+
+.groups-list-item small,
+.groups-list-item span {
+  color: var(--muted);
+}
+
+.groups-config-form {
+  display: grid;
+  gap: 16px;
+}
+
+.groups-config-form fieldset {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px;
+}
+
+.groups-tag-option,
+.groups-contact-option {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.groups-role-head {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 28px;
+}
+
+.groups-role-row {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(110px, 1fr)) minmax(150px, 1fr) minmax(130px, 1fr) auto auto;
+}
+
+.groups-contact-list {
+  max-height: 280px;
+  overflow: auto;
+}
+
+.groups-dialog {
+  max-width: 680px;
+  width: min(680px, calc(100vw - 32px));
+}
+
+@media (max-width: 900px) {
+  .groups-workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .groups-role-row {
+    grid-template-columns: 1fr;
+  }
+}

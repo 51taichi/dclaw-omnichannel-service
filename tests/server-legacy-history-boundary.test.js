@@ -42,7 +42,8 @@ test("coalesced legacy requests reply first and schedule bounded history analysi
   );
   assert.match(body, /getHistoryAnalysisConfig\(botId\)/);
   assert.match(body, /buildStoredLegacyAnalysis\(\{/);
-  assert.match(body, /const tagContext = isPrivateMessage\(message\)/);
+  assert.match(body, /const managedGroup = isPrivateMessage\(message\)/);
+  assert.match(body, /const tagContext = buildTagContext\(\{/);
   assert.match(body, /legacyHistoryAnalysis:\s*null,/);
   assert.match(body, /tagContext,/);
   const sendIndex = body.indexOf("sendTextReplyParts");

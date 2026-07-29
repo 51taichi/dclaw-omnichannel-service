@@ -68,10 +68,11 @@ test("automatic friend greetings trigger friend-added handling without canceling
   assert.match(handler, /reason: "system_friend_greeting"/);
 });
 
-test("an unmentioned group continuation may only join an existing mentioned batch", () => {
+test("a mention-required group continuation may only join an existing eligible batch", () => {
   assert.match(source, /joinsMentionedGroupBatch/);
-  assert.match(source, /isGroupMessage\(message\) && inboundCoalescer\.has\(coalesceKey\)/);
-  assert.match(source, /!shouldInvokeAgent\(message, binding\) && !joinsMentionedGroupBatch/);
+  assert.match(source, /groupPolicy\.reason === "mention_required"/);
+  assert.match(source, /inboundCoalescer\.has\(coalesceKey\)/);
+  assert.match(source, /!groupPolicy\.invokeAgent && !joinsMentionedGroupBatch/);
 });
 
 test("flushed processing performs one Agent and business-decision cycle", () => {

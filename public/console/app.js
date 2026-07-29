@@ -25,6 +25,11 @@ const state = {
   flowSessionsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   proactiveTargetsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   proactiveTasksPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
+  groups: [],
+  selectedGroupId: "",
+  selectedGroupDetail: null,
+  createGroupContacts: [],
+  createGroupContactIds: new Set(),
   tagSchema: {
     dateTag: { enabled: false, cutoffTime: "00:00", effectiveAt: "" },
     groups: []
@@ -58,6 +63,19 @@ const els = {
   replyWaitForm: document.querySelector("#replyWaitForm"),
   historyAnalysisForm: document.querySelector("#historyAnalysisForm"),
   flowMachineForm: document.querySelector("#flowMachineForm"),
+  refreshGroupsButton: document.querySelector("#refreshGroupsButton"),
+  createGroupButton: document.querySelector("#createGroupButton"),
+  groupSearchInput: document.querySelector("#groupSearchInput"),
+  groupList: document.querySelector("#groupList"),
+  groupConfigPane: document.querySelector("#groupConfigPane"),
+  createGroupDialog: document.querySelector("#createGroupDialog"),
+  createGroupForm: document.querySelector("#createGroupForm"),
+  createGroupCancelButton: document.querySelector("#createGroupCancelButton"),
+  createGroupContactSearch: document.querySelector("#createGroupContactSearch"),
+  createGroupContactList: document.querySelector("#createGroupContactList"),
+  modifyGroupDialog: document.querySelector("#modifyGroupDialog"),
+  modifyGroupForm: document.querySelector("#modifyGroupForm"),
+  modifyGroupCancelButton: document.querySelector("#modifyGroupCancelButton"),
   addFlowNodeButton: document.querySelector("#addFlowNodeButton"),
   applyFlowJsonButton: document.querySelector("#applyFlowJsonButton"),
   importFlowFile: document.querySelector("#importFlowFile"),
@@ -463,6 +481,9 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
   if (tabName === "tags") {
     collapseAllTagCards();
     renderTagSchemaEditor();
+  }
+  if (tabName === "groups") {
+    loadGroups().catch(toastError);
   }
   if (scrollTo) {
     requestAnimationFrame(() => scrollTo.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -5036,6 +5057,191 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+async function loadGroups({ refresh = false } = {}) {
+  if (!state.selectedBotId) return;
+  const params = new URLSearchParams({
+    botId: state.selectedBotId,
+    search: String(els.groupSearchInput?.value || ""),
+    page: "1",
+    pageSize: "100"
+  });
+  if (refresh) params.set("refresh", "1");
+  const data = await request(`/api/groups?${params.toString()}`);
+  state.groups = data.items || [];
+  renderGroupList();
+  if (state.selectedGroupId && state.groups.some((group) => group.id === state.selectedGroupId)) {
+    await loadGroupDetail(state.selectedGroupId);
+  }
+}
+
+function renderGroupList() {
+  if (!els.groupList) return;
+  els.groupList.innerHTML = state.groups.length
+    ? state.groups.map((group) => `
+        <button class="groups-list-item ${group.id === state.selectedGroupId ? "active" : ""}" data-group-id="${escapeHtml(group.id)}" type="button">
+          <strong>${escapeHtml(group.currentName)}</strong>
+          <small>${escapeHtml(group.currentRemark || "未设置群备注")}</small>
+          <span>${group.replyPolicy === "always" ? "始终回复" : group.replyPolicy === "never" ? "从不回复" : "仅 @ 回复"}</span>
+        </button>
+      `).join("")
+    : `<div class="empty-state">暂无群。群回调到达后会自动出现，也可以点击“刷新群列表”。</div>`;
+  els.groupList.querySelectorAll("[data-group-id]").forEach((button) => {
+    button.addEventListener("click", () => loadGroupDetail(button.dataset.groupId).catch(toastError));
+  });
+}
+
+async function loadGroupDetail(groupId) {
+  const data = await request(
+    `/api/groups/${encodeURIComponent(groupId)}?botId=${encodeURIComponent(state.selectedBotId)}`
+  );
+  state.selectedGroupId = groupId;
+  state.selectedGroupDetail = data;
+  renderGroupList();
+  renderGroupConfig();
+}
+
+function groupRoleRow(role = {}) {
+  return `
+    <div class="groups-role-row" data-role-id="${escapeHtml(role.id || "")}">
+      <input data-role-field="currentName" value="${escapeHtml(role.currentName || "")}" placeholder="成员名称" />
+      <input data-role-field="identityType" value="${escapeHtml(role.identityType || "")}" placeholder="身份，如客户/同事" />
+      <input data-role-field="description" value="${escapeHtml(role.description || "")}" placeholder="职责与关系说明" />
+      <select data-role-field="replyPolicy">
+        <option value="inherit" ${role.replyPolicy === "inherit" || !role.replyPolicy ? "selected" : ""}>继承群设置</option>
+        <option value="always" ${role.replyPolicy === "always" ? "selected" : ""}>始终回复（重要客户）</option>
+        <option value="mention_only" ${role.replyPolicy === "mention_only" ? "selected" : ""}>仅 @ 回复</option>
+        <option value="never" ${role.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
+      </select>
+      <input data-role-field="desiredMarkName" value="${escapeHtml(role.desiredMarkName || "")}" placeholder="群成员备注" />
+      <label class="switch-row"><input data-role-field="syncMarkName" type="checkbox" ${role.syncMarkName ? "checked" : ""} />同步备注</label>
+      <button class="secondary danger" data-remove-group-role type="button">删除</button>
+    </div>`;
+}
+
+function renderGroupConfig() {
+  const detail = state.selectedGroupDetail;
+  if (!detail || !els.groupConfigPane) return;
+  const { group, roles = [], availableTagGroups = [] } = detail;
+  els.groupConfigPane.innerHTML = `
+    <div class="section-head">
+      <div><h3>${escapeHtml(group.currentName)}</h3><p class="muted">${escapeHtml(group.announcement || "未设置群公告")}</p></div>
+      <button id="openModifyGroupButton" class="secondary" type="button">修改群信息</button>
+    </div>
+    <form id="groupConfigForm" class="groups-config-form">
+      <label><span class="field-label">群回复方式</span>
+        <select name="replyPolicy">
+          <option value="always" ${group.replyPolicy === "always" ? "selected" : ""}>始终回复（重要客户群）</option>
+          <option value="mention_only" ${group.replyPolicy === "mention_only" ? "selected" : ""}>仅 @ 回复</option>
+          <option value="never" ${group.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
+        </select>
+      </label>
+      <label><span class="field-label">群背景</span><textarea name="background" rows="5" placeholder="例如：客户购买时间、产品和服务背景">${escapeHtml(group.background || "")}</textarea></label>
+      <fieldset><legend>群标签组</legend>
+        <label class="groups-tag-option"><input type="checkbox" checked disabled />建立日期（系统默认）</label>
+        ${availableTagGroups.map((tagGroup) => `
+          <label class="groups-tag-option"><input name="tagGroupIds" type="checkbox" value="${escapeHtml(tagGroup.id)}" ${group.tagGroupIds?.includes(tagGroup.id) ? "checked" : ""} />${escapeHtml(tagGroup.name)}</label>
+        `).join("")}
+      </fieldset>
+      <button class="primary" type="submit">保存群配置</button>
+    </form>
+    <div class="groups-role-head"><div><h3>群角色</h3><p class="muted">角色由你维护，用于识别发言人与回复策略，不代表实时成员状态。</p></div><button id="addGroupRoleButton" class="secondary" type="button">添加角色</button></div>
+    <form id="groupRolesForm"><div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div><button class="primary" type="submit">保存角色</button></form>
+  `;
+  els.groupConfigPane.querySelector("#openModifyGroupButton").addEventListener("click", openModifyGroupDialog);
+  els.groupConfigPane.querySelector("#groupConfigForm").addEventListener("submit", saveSelectedGroupConfig);
+  els.groupConfigPane.querySelector("#addGroupRoleButton").addEventListener("click", () => {
+    els.groupConfigPane.querySelector("#groupRoleList").insertAdjacentHTML("beforeend", groupRoleRow());
+    bindGroupRoleRemoveButtons();
+  });
+  els.groupConfigPane.querySelector("#groupRolesForm").addEventListener("submit", saveSelectedGroupRoles);
+  bindGroupRoleRemoveButtons();
+}
+
+function bindGroupRoleRemoveButtons() {
+  els.groupConfigPane.querySelectorAll("[data-remove-group-role]").forEach((button) => {
+    button.onclick = () => button.closest(".groups-role-row").remove();
+  });
+}
+
+async function saveSelectedGroupConfig(event) {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  const data = await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/config`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      botId: state.selectedBotId,
+      expectedVersion: state.selectedGroupDetail.group.version,
+      replyPolicy: form.get("replyPolicy"),
+      background: form.get("background"),
+      tagGroupIds: form.getAll("tagGroupIds")
+    })
+  });
+  state.selectedGroupDetail.group = data.group;
+  toast("群配置已保存", "success");
+  await loadGroups();
+}
+
+async function saveSelectedGroupRoles(event) {
+  event.preventDefault();
+  const roles = [...event.currentTarget.querySelectorAll(".groups-role-row")].map((row) => {
+    const value = (name) => row.querySelector(`[data-role-field="${name}"]`);
+    const existing = state.selectedGroupDetail.roles.find((role) => role.id === row.dataset.roleId);
+    return {
+      ...(row.dataset.roleId ? { id: row.dataset.roleId } : {}),
+      currentName: value("currentName").value,
+      identityType: value("identityType").value,
+      description: value("description").value,
+      replyPolicy: value("replyPolicy").value,
+      desiredMarkName: value("desiredMarkName").value,
+      originalMarkName: existing?.originalMarkName || existing?.currentName || "",
+      syncMarkName: value("syncMarkName").checked
+    };
+  });
+  const data = await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/roles`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      botId: state.selectedBotId,
+      expectedVersion: state.selectedGroupDetail.group.version,
+      roles
+    })
+  });
+  state.selectedGroupDetail = { ...state.selectedGroupDetail, group: data.group, roles: data.roles };
+  renderGroupConfig();
+  const failed = (data.externalResults || []).filter((result) => result.status === "failed").length;
+  toast(failed ? `角色已保存，${failed} 个备注同步失败` : "角色已保存", failed ? "info" : "success");
+}
+
+async function loadCreateGroupContacts() {
+  const params = new URLSearchParams({
+    botId: state.selectedBotId,
+    targetType: "private",
+    page: "1",
+    pageSize: "100",
+    q: String(els.createGroupContactSearch.value || "")
+  });
+  const data = await request(`/api/proactive/targets?${params.toString()}`);
+  state.createGroupContacts = data.targets || [];
+  els.createGroupContactList.innerHTML = state.createGroupContacts.length
+    ? state.createGroupContacts.map((target) => `
+        <label class="groups-contact-option"><input type="checkbox" value="${escapeHtml(target.targetName)}" ${state.createGroupContactIds.has(target.targetName) ? "checked" : ""} />${escapeHtml(target.displayName || target.targetName)}</label>
+      `).join("")
+    : `<div class="empty-state">暂无联系人，请先在推送名单中同步联系人。</div>`;
+  els.createGroupContactList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+    input.addEventListener("change", () => {
+      if (input.checked) state.createGroupContactIds.add(input.value);
+      else state.createGroupContactIds.delete(input.value);
+    });
+  });
+}
+
+function openModifyGroupDialog() {
+  const group = state.selectedGroupDetail.group;
+  els.modifyGroupForm.currentName.value = group.currentName;
+  els.modifyGroupForm.announcement.value = group.announcement || "";
+  els.modifyGroupForm.currentRemark.value = group.currentRemark || "";
+  els.modifyGroupDialog.hidden = false;
+}
+
 els.saveKeyButton?.addEventListener("click", () => {
   state.apiKey = els.apiKeyInput?.value.trim() || "";
   localStorage.setItem("worktool_console_api_key", state.apiKey);
@@ -5264,6 +5470,60 @@ document.querySelectorAll("[data-target-filter]").forEach((button) => {
 });
 els.workspaceTabs.forEach((button) => {
   button.addEventListener("click", () => switchWorkspaceTab(button.dataset.workspaceTab));
+});
+els.refreshGroupsButton?.addEventListener("click", () => loadGroups({ refresh: true }).catch(toastError));
+els.groupSearchInput?.addEventListener("input", () => loadGroups().catch(toastError));
+els.createGroupButton?.addEventListener("click", () => {
+  state.createGroupContactIds.clear();
+  els.createGroupForm.reset();
+  els.createGroupDialog.hidden = false;
+  loadCreateGroupContacts().catch(toastError);
+});
+els.createGroupCancelButton?.addEventListener("click", () => {
+  els.createGroupDialog.hidden = true;
+});
+els.createGroupContactSearch?.addEventListener("input", () => loadCreateGroupContacts().catch(toastError));
+els.createGroupForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  request("/api/groups/create", {
+    method: "POST",
+    body: JSON.stringify({
+      botId: state.selectedBotId,
+      groupName: form.get("groupName"),
+      announcement: form.get("announcement"),
+      selectList: [...state.createGroupContactIds],
+      modifyRemark: form.get("modifyRemark") === "on",
+      currentRemark: form.get("currentRemark")
+    })
+  }).then(async () => {
+    els.createGroupDialog.hidden = true;
+    toast("建群命令已提交", "success");
+    await loadGroups();
+  }).catch(toastError);
+});
+els.modifyGroupCancelButton?.addEventListener("click", () => {
+  els.modifyGroupDialog.hidden = true;
+});
+els.modifyGroupForm?.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const form = new FormData(event.currentTarget);
+  request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/external`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      botId: state.selectedBotId,
+      expectedVersion: state.selectedGroupDetail.group.version,
+      next: {
+        currentName: form.get("currentName"),
+        announcement: form.get("announcement"),
+        currentRemark: form.get("currentRemark")
+      }
+    })
+  }).then(async () => {
+    els.modifyGroupDialog.hidden = true;
+    toast("群信息已提交", "success");
+    await loadGroups();
+  }).catch(toastError);
 });
 els.refreshProactiveButton.addEventListener("click", () =>
   loadProactiveTasks().catch(toastError)

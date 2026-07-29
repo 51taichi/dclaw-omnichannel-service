@@ -20,10 +20,11 @@ function functionBody(name) {
   assert.fail(`${name} body is closed`);
 }
 
-test("every private Agent call builds tag context while group calls do not", () => {
+test("every Agent call builds channel-scoped tag context", () => {
   const body = functionBody("processCoalescedIncomingBatch");
-  assert.match(body, /const tagContext = isPrivateMessage\(message\)/);
-  assert.match(body, /buildTagContext\(\{ binding, conversationKey \}\)/);
+  assert.match(body, /const managedGroup = isPrivateMessage\(message\)/);
+  assert.match(body, /const tagContext = buildTagContext\(\{/);
+  assert.match(body, /group: managedGroup/);
   assert.match(body, /tagContext,/);
   assert.doesNotMatch(body, /const tagContext = legacyHistoryAnalysis\?\.text/);
 });

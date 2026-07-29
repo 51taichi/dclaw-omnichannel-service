@@ -11,6 +11,7 @@ const maxDclawFlowFieldChars = 160;
 const maxDclawFlowArrayItems = 3;
 const maxDclawTagEvidenceCandidates = 24;
 const maxDclawTagEvidenceTextChars = 600;
+const maxDclawGroupRoles = 100;
 
 function boundedDclawText(value, maxChars) {
   const text = String(value || "");
@@ -58,6 +59,31 @@ function compactTagEvidenceCandidates(value) {
     if (candidates.length >= maxDclawTagEvidenceCandidates) break;
   }
   return candidates;
+}
+
+function compactGroupContext(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const roles = (Array.isArray(value.roles) ? value.roles : [])
+    .slice(0, maxDclawGroupRoles)
+    .map((role) => ({
+      name: boundedDclawText(role?.name, 200),
+      identityType: boundedDclawText(role?.identityType, 80),
+      description: boundedDclawText(role?.description, 500)
+    }))
+    .filter((role) => role.name);
+  const speaker = value.speaker && typeof value.speaker === "object"
+    ? {
+        name: boundedDclawText(value.speaker.name, 200),
+        identityType: boundedDclawText(value.speaker.identityType, 80),
+        description: boundedDclawText(value.speaker.description, 500)
+      }
+    : null;
+  return {
+    groupId: boundedDclawText(value.groupId, 120),
+    background: boundedDclawText(value.background, 3000),
+    ...(speaker?.name ? { speaker } : {}),
+    roles
+  };
 }
 
 function privateUserIdFromConversationKey(conversationKey) {
@@ -143,6 +169,7 @@ export function buildDclawRequest({
   message,
   flow = null,
   tagContext = null,
+  groupContext = null,
   tagEvidenceCandidates = [],
   legacyHistoryAnalysis = null,
   conversationReset = false,
@@ -198,6 +225,7 @@ export function buildDclawRequest({
   const agentTagEvidenceCandidates = agentTagRules
     ? compactTagEvidenceCandidates(tagEvidenceCandidates)
     : [];
+  const agentGroupContext = isGroup ? compactGroupContext(groupContext) : null;
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
   const responseSchema = responseSchemaForRequest({
     hasFlow: Boolean(agentFlow),
@@ -218,7 +246,7 @@ export function buildDclawRequest({
 
   const instructions = [
     "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
-    "WorkTool 房间类型约定：roomType=2/4 表示私聊，必须默认回复；roomType=1/3 表示群聊，只有被 @ 时才回复。",
+    "WorkTool 房间类型约定：roomType=2/4 表示私聊；roomType=1/3 表示群聊。服务器已经按群和成员策略完成触发判断，收到本请求即表示需要生成回复。",
     "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
     "群聊和私聊只在是否触发回复上不同；一旦触发回复，客户意图识别、资源索取、企业智库、附件输出、事实边界和 human_reply_style 润色必须完全一致。",
     "不要因为是群聊就跳过资源索取、附件发送或企业智库，也不要改用另一套回答逻辑。",
@@ -271,6 +299,7 @@ export function buildDclawRequest({
   const payload = {
     worktoolMessage,
     flow: agentFlow,
+    ...(agentGroupContext ? { groupContext: agentGroupContext } : {}),
     ...(agentTagRules ? { tagRules: agentTagRules } : {}),
     ...(agentTagEvidenceCandidates.length
       ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
@@ -305,6 +334,7 @@ export function buildDclawRequest({
       userId: worktoolMessage.userId,
       worktool: worktoolMessage,
       flow: agentFlow,
+      ...(agentGroupContext ? { groupContext: agentGroupContext } : {}),
       ...(agentTagRules ? { tagRules: agentTagRules } : {}),
       ...(agentTagEvidenceCandidates.length
         ? { tagEvidenceCandidates: agentTagEvidenceCandidates }

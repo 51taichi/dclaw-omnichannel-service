@@ -82,6 +82,41 @@ test("validation failure records whether its retry succeeded", () => {
   assert.ok(row.retryFinishedAt);
 });
 
+test("locally repaired validation failures persist their repair actions", () => {
+  const invocationId = insertAgentInvocationStart({
+    botId: "bot-a",
+    agentId: "agent-a",
+    conversationKey: "bot-a:private:客户-local-repair",
+    incomingMessageId: "message-local-repair",
+    request: { message: "hello" }
+  });
+
+  insertAgentResponseValidationFailure({
+    invocationId,
+    botId: "bot-a",
+    agentId: "agent-a",
+    conversationKey: "bot-a:private:客户-local-repair",
+    incomingMessageId: "message-local-repair",
+    attemptNumber: 1,
+    stage: "local_repair",
+    errorType: "json_syntax",
+    errorMessage: "response contained prose outside JSON",
+    rawResponseText: '说明文字{"reply":"你好"}',
+    retryOutcome: "locally_repaired",
+    repairActions: [{ type: "single_embedded_json_extracted" }]
+  });
+
+  const [row] = listRecords("agent-response-validation-failures", {
+    botId: "bot-a",
+    limit: 10
+  });
+  assert.equal(row.retryOutcome, "locally_repaired");
+  assert.ok(row.retryFinishedAt);
+  assert.deepEqual(row.repairActions, [{
+    type: "single_embedded_json_extracted"
+  }]);
+});
+
 test("legacy history text is omitted from Agent invocation audit records", () => {
   insertAgentInvocationStart({
     botId: "bot-a",

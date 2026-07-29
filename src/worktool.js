@@ -206,6 +206,143 @@ export async function sendGroupInviteCommand({
   });
 }
 
+function normalizedUniqueNames(values) {
+  return [...new Set(
+    (Array.isArray(values) ? values : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+}
+
+export function buildCreateExternalGroupCommand({
+  groupName,
+  selectList = [],
+  groupAnnouncement = "",
+  groupRemark
+}) {
+  const normalizedGroupName = String(groupName || "").trim();
+  if (!normalizedGroupName) throw new Error("groupName must be a non-empty string");
+  const command = {
+    type: 206,
+    groupName: normalizedGroupName,
+    selectList: normalizedUniqueNames(selectList),
+    groupAnnouncement: String(groupAnnouncement || "")
+  };
+  if (groupRemark !== undefined) {
+    command.groupRemark = String(groupRemark || "").trim();
+  }
+  return command;
+}
+
+export async function createExternalGroup({
+  robotId,
+  socketType = 2,
+  ...input
+}) {
+  return requestWorkTool("/wework/sendRawMessage", {
+    robotId,
+    method: "POST",
+    body: JSON.stringify({
+      socketType,
+      list: [buildCreateExternalGroupCommand(input)]
+    })
+  });
+}
+
+export function buildModifyGroupCommand({
+  groupName,
+  newGroupName,
+  newGroupAnnouncement,
+  newGroupRemark
+}) {
+  const normalizedGroupName = String(groupName || "").trim();
+  if (!normalizedGroupName) throw new Error("groupName must be a non-empty string");
+  const command = {
+    type: 207,
+    groupName: normalizedGroupName
+  };
+  if (newGroupName !== undefined) command.newGroupName = String(newGroupName || "").trim();
+  if (newGroupAnnouncement !== undefined) {
+    command.newGroupAnnouncement = String(newGroupAnnouncement || "");
+  }
+  if (newGroupRemark !== undefined) command.newGroupRemark = String(newGroupRemark || "").trim();
+  if (Object.keys(command).length === 2) {
+    throw new Error("at least one changed field is required");
+  }
+  return {
+    ...command,
+    selectList: [],
+    removeList: [],
+    showMessageHistory: false
+  };
+}
+
+export async function modifyGroup({ robotId, socketType = 2, ...input }) {
+  return requestWorkTool("/wework/sendRawMessage", {
+    robotId,
+    method: "POST",
+    body: JSON.stringify({
+      socketType,
+      list: [buildModifyGroupCommand(input)]
+    })
+  });
+}
+
+export function buildMemberRemarkCommands({ groupName, changes = [] }) {
+  const normalizedGroupName = String(groupName || "").trim();
+  if (!normalizedGroupName) throw new Error("groupName must be a non-empty string");
+  return (Array.isArray(changes) ? changes : []).map((change) => {
+    const name = String(change?.currentName || "").trim();
+    const markName = String(change?.markName || "").trim();
+    if (!name || !markName) throw new Error("member currentName and markName are required");
+    return {
+      type: 225,
+      groupName: normalizedGroupName,
+      friend: { name, markName }
+    };
+  });
+}
+
+export async function modifyGroupMemberRemarks({
+  robotId,
+  groupName,
+  changes,
+  socketType = 2
+}) {
+  const commands = buildMemberRemarkCommands({ groupName, changes });
+  if (!commands.length) throw new Error("at least one member remark change is required");
+  return requestWorkTool("/wework/sendRawMessage", {
+    robotId,
+    method: "POST",
+    body: JSON.stringify({ socketType, list: commands })
+  });
+}
+
+export async function listWorkToolGroups({
+  robotId,
+  groupName = "",
+  page = 1,
+  size = 100
+}) {
+  const query = new URLSearchParams({
+    groupName: String(groupName || ""),
+    page: String(Math.max(1, Number(page) || 1)),
+    size: String(Math.max(1, Math.min(100, Number(size) || 100)))
+  });
+  const response = await requestWorkTool(`/robot/wework/group/list?${query}`, { robotId });
+  const data = response?.data || {};
+  return {
+    items: Array.isArray(data.list) ? data.list : [],
+    pagination: {
+      page: Number(data.pageNum || page),
+      pageSize: Number(data.pageSize || size),
+      total: Number(data.total || 0),
+      totalPages: Number(data.totalPage || 0)
+    },
+    response
+  };
+}
+
 export async function sendRawCommand({ robotId, command, socketType = 2 }) {
   if (!command || typeof command !== "object") {
     throw new Error("command must be an object");

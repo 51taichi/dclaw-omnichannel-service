@@ -1,4 +1,5 @@
 import { normalizeTagDecision } from "./tags.js";
+import { isDeepStrictEqual } from "node:util";
 import {
   normalizeTagEvaluation,
   validateTagAuditContract
@@ -13,8 +14,9 @@ export function validateAgentResponseText(rawText, {
 } = {}) {
   const raw = String(rawText || "");
   const { text, normalizations } = normalizeResponseText(raw);
+  const repairs = [];
   if (!text) {
-    return invalidResult(raw, text, normalizations, [{
+    return invalidResult(raw, text, normalizations, repairs, [{
       type: "json_syntax",
       path: "",
       message: "Agent response is empty"
@@ -22,29 +24,44 @@ export function validateAgentResponseText(rawText, {
   }
 
   let parsed;
+  let normalizedText = text;
+  let originalErrors = [];
   try {
     parsed = JSON.parse(text);
   } catch (error) {
-    return invalidResult(raw, text, normalizations, [jsonSyntaxError(text, error)]);
+    originalErrors = [jsonSyntaxError(text, error)];
+    const repairedDocument = repairJsonDocument(text);
+    if (!repairedDocument) {
+      return invalidResult(raw, text, normalizations, repairs, originalErrors);
+    }
+    parsed = repairedDocument.parsed;
+    normalizedText = repairedDocument.text;
+    repairs.push(repairedDocument.repair);
   }
 
-  const errors = validateResponseObject(parsed, {
+  const validationOptions = {
     requireFlowDecision,
     allowTagDecision,
     flow,
     tagContext,
     tagEvidenceCandidates
-  });
+  };
+  const beforeRepairErrors = validateResponseObject(parsed, validationOptions);
+  originalErrors = [...originalErrors, ...beforeRepairErrors];
+  repairs.push(...repairResponseObject(parsed, validationOptions));
+  const errors = validateResponseObject(parsed, validationOptions);
   if (errors.length) {
-    return invalidResult(raw, text, normalizations, errors);
+    return invalidResult(raw, normalizedText, normalizations, repairs, errors, originalErrors);
   }
 
   const normalizedReply = normalizeAgentReplyText(parsed.reply);
   return {
     valid: true,
     rawText: raw,
-    normalizedText: text,
+    normalizedText,
     normalizations: [...normalizations, ...normalizedReply.normalizations],
+    repairs,
+    originalErrors,
     errors: [],
     agentReply: {
       valid: true,
@@ -86,7 +103,8 @@ export async function validateAndRetryAgentResponse({
   validationOptions = {},
   onRetryRequested,
   onValidationFailure,
-  onRetryOutcome
+  onRetryOutcome,
+  onLocalRepair
 }) {
   const attempts = [];
   let currentRequest = request;
@@ -109,9 +127,19 @@ export async function validateAndRetryAgentResponse({
     attempts.push({ request: currentRequest, invocation, validation });
 
     if (validation.valid) {
+      if (validation.repairs.length) {
+        onLocalRepair?.({
+          attemptNumber,
+          stage: attemptNumber === 1 ? "initial" : "validation_retry",
+          errors: validation.originalErrors,
+          rawReply: validation.rawText,
+          rawReplyLength: String(validation.rawText || "").length,
+          repairs: validation.repairs
+        });
+      }
       if (attemptNumber > 1) {
         onRetryOutcome?.({
-          outcome: "succeeded",
+          outcome: validation.repairs.length ? "locally_repaired" : "succeeded",
           attemptNumber,
           error: null
         });
@@ -132,7 +160,8 @@ export async function validateAndRetryAgentResponse({
       errors: validation.errors,
       rawReply: validation.rawText,
       rawReplyLength: String(validation.rawText || "").length,
-      normalizations: validation.normalizations
+      normalizations: validation.normalizations,
+      repairs: validation.repairs
     });
 
     if (attemptNumber === 1) {
@@ -185,6 +214,274 @@ function normalizeResponseText(raw) {
     text: match[1].trim(),
     normalizations: [{ type: "outer_json_fence_removed" }]
   };
+}
+
+function repairJsonDocument(text) {
+  const extracted = extractCompleteJsonObjects(text);
+  if (extracted.incomplete) return null;
+  const candidates = [];
+  for (const candidate of extracted.candidates) {
+    try {
+      candidates.push({ text: candidate, parsed: JSON.parse(candidate) });
+    } catch {
+      return null;
+    }
+  }
+  if (candidates.length === 1) {
+    return {
+      ...candidates[0],
+      repair: { type: "single_embedded_json_extracted" }
+    };
+  }
+  if (
+    candidates.length > 1
+    && candidates.every((candidate) => isDeepStrictEqual(candidate.parsed, candidates[0].parsed))
+  ) {
+    return {
+      ...candidates[0],
+      repair: {
+        type: "duplicate_json_objects_collapsed",
+        count: candidates.length
+      }
+    };
+  }
+  return null;
+}
+
+function extractCompleteJsonObjects(text) {
+  const candidates = [];
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (start < 0) {
+      if (character === "{") {
+        start = index;
+        depth = 1;
+        inString = false;
+        escaped = false;
+      }
+      continue;
+    }
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === "\\") escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === "{") {
+      depth += 1;
+    } else if (character === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        candidates.push(text.slice(start, index + 1));
+        start = -1;
+      }
+    }
+  }
+  return {
+    candidates,
+    incomplete: start >= 0
+  };
+}
+
+function repairResponseObject(parsed, {
+  allowTagDecision,
+  tagContext,
+  tagEvidenceCandidates
+}) {
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return [];
+  const repairs = [];
+
+  if (!allowTagDecision && (parsed.tagDecision !== undefined || parsed.tags !== undefined)) {
+    delete parsed.tagDecision;
+    delete parsed.tags;
+    repairs.push({ type: "disallowed_tag_decision_removed" });
+  }
+
+  const tagAuditEnabled = Boolean(
+    allowTagDecision
+    && tagContext
+    && Array.isArray(tagContext.groups)
+    && tagContext.groups.length
+    && Array.isArray(parsed.tagEvaluation)
+  );
+  if (!tagAuditEnabled) return repairs;
+
+  const evidenceCandidates = (Array.isArray(tagEvidenceCandidates) ? tagEvidenceCandidates : [])
+    .map((candidate) => ({
+      id: String(candidate?.id || "").trim(),
+      text: String(candidate?.text || "").trim()
+    }))
+    .filter((candidate) => candidate.id);
+  const evidenceById = new Map(evidenceCandidates.map((candidate) => [candidate.id, candidate.text]));
+  const evidenceByText = new Map();
+  for (const candidate of evidenceCandidates) {
+    const matches = evidenceByText.get(candidate.text) || [];
+    matches.push(candidate);
+    evidenceByText.set(candidate.text, matches);
+  }
+
+  parsed.tagEvaluation.forEach((item, index) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return;
+    const evidenceMessageId = String(
+      item.evidenceMessageId || item.evidence_message_id || ""
+    ).trim();
+    const evidenceText = String(item.evidenceText || item.evidence_text || "").trim();
+
+    if (item.matched === false && (evidenceMessageId || evidenceText)) {
+      item.evidenceMessageId = "";
+      item.evidenceText = "";
+      delete item.evidence_message_id;
+      delete item.evidence_text;
+      repairs.push({
+        type: "unmatched_tag_evidence_cleared",
+        index
+      });
+      return;
+    }
+    if (item.matched !== true) return;
+
+    if (evidenceById.has(evidenceMessageId)) {
+      const canonicalText = evidenceById.get(evidenceMessageId);
+      if (evidenceText !== canonicalText) {
+        const conflictingTextMatches = evidenceByText.get(evidenceText) || [];
+        if (
+          evidenceText
+          && conflictingTextMatches.some((candidate) => candidate.id !== evidenceMessageId)
+        ) {
+          return;
+        }
+        item.evidenceMessageId = evidenceMessageId;
+        item.evidenceText = canonicalText;
+        delete item.evidence_message_id;
+        delete item.evidence_text;
+        repairs.push({
+          type: "tag_evidence_text_canonicalized",
+          index,
+          evidenceMessageId
+        });
+      }
+      return;
+    }
+
+    const textMatches = evidenceByText.get(evidenceText) || [];
+    if (textMatches.length === 1) {
+      item.evidenceMessageId = textMatches[0].id;
+      item.evidenceText = textMatches[0].text;
+      delete item.evidence_message_id;
+      delete item.evidence_text;
+      repairs.push({
+        type: "tag_evidence_message_id_repaired",
+        index,
+        evidenceMessageId: textMatches[0].id
+      });
+    }
+  });
+
+  repairs.push(...deriveMissingTagDecisionAdds(parsed, tagContext));
+  return repairs;
+}
+
+function deriveMissingTagDecisionAdds(parsed, tagContext) {
+  const evaluations = normalizeTagEvaluation(parsed.tagEvaluation);
+  const configuredGroups = (Array.isArray(tagContext?.groups) ? tagContext.groups : [])
+    .map((group) => ({
+      id: String(group?.id || "").trim(),
+      exclusive: Boolean(group?.exclusive),
+      oneWay: Boolean(group?.oneWay),
+      tags: (Array.isArray(group?.tags) ? group.tags : [])
+        .map((tag, index) => ({
+          id: String(tag?.id || "").trim(),
+          index
+        }))
+        .filter((tag) => tag.id)
+    }))
+    .filter((group) => group.id);
+  const configuredKeys = configuredGroups.flatMap((group) =>
+    group.tags.map((tag) => `${group.id}:${tag.id}`)
+  );
+  const evaluationByKey = new Map();
+  for (const evaluation of evaluations) {
+    const evaluationKey = `${evaluation.groupId}:${evaluation.tagId}`;
+    if (
+      !configuredKeys.includes(evaluationKey)
+      || evaluationByKey.has(evaluationKey)
+      || typeof evaluation.matched !== "boolean"
+      || !evaluation.reason
+    ) {
+      return [];
+    }
+    evaluationByKey.set(evaluationKey, evaluation);
+  }
+  if (
+    evaluationByKey.size !== configuredKeys.length
+    || configuredKeys.some((configuredKey) => !evaluationByKey.has(configuredKey))
+  ) {
+    return [];
+  }
+
+  const decision = parsed.tagDecision;
+  if (!decision || typeof decision !== "object" || Array.isArray(decision)) return [];
+  if (
+    (decision.add !== undefined && !Array.isArray(decision.add))
+    || (decision.remove !== undefined && !Array.isArray(decision.remove))
+  ) {
+    return [];
+  }
+  if (!Array.isArray(decision.add)) decision.add = [];
+  if (!Array.isArray(decision.remove)) decision.remove = [];
+
+  const current = new Set(
+    (Array.isArray(tagContext?.currentTags) ? tagContext.currentTags : [])
+      .map((tag) => `${String(tag?.groupId || "").trim()}:${String(tag?.tagId || "").trim()}`)
+  );
+  const existingAdds = new Set(
+    normalizeTagDecision(decision).add.map((tag) => `${tag.groupId}:${tag.tagId}`)
+  );
+  const repairs = [];
+
+  for (const group of configuredGroups) {
+    const matched = group.tags.filter((tag) =>
+      evaluationByKey.get(`${group.id}:${tag.id}`)?.matched === true
+    );
+    if (!matched.length) continue;
+
+    const required = group.exclusive
+      ? [matched.reduce((winner, tag) => tag.index > winner.index ? tag : winner)]
+      : matched;
+    for (const tag of required) {
+      const tagKey = `${group.id}:${tag.id}`;
+      const currentTag = group.tags.find((candidate) => current.has(`${group.id}:${candidate.id}`));
+      const blockedByOneWay = group.exclusive
+        && group.oneWay
+        && currentTag
+        && currentTag.index >= tag.index;
+      if (current.has(tagKey) || blockedByOneWay || existingAdds.has(tagKey)) continue;
+
+      const evaluation = evaluationByKey.get(tagKey);
+      const action = {
+        groupId: group.id,
+        tagId: tag.id,
+        reason: evaluation.reason
+      };
+      if (evaluation.evidenceMessageId) action.evidenceMessageId = evaluation.evidenceMessageId;
+      if (evaluation.evidenceText) action.evidenceText = evaluation.evidenceText;
+      decision.add.push(action);
+      existingAdds.add(tagKey);
+      repairs.push({
+        type: "missing_tag_decision_add_derived",
+        groupId: group.id,
+        tagId: tag.id
+      });
+    }
+  }
+  return repairs;
 }
 
 function normalizeAgentReplyText(value) {
@@ -417,12 +714,21 @@ function formatValidationErrorForPrompt(error) {
   return `[${error.type || "validation"}]${path}${location}: ${error.message || "invalid response"}`;
 }
 
-function invalidResult(rawText, normalizedText, normalizations, errors) {
+function invalidResult(
+  rawText,
+  normalizedText,
+  normalizations,
+  repairs,
+  errors,
+  originalErrors = errors
+) {
   return {
     valid: false,
     rawText,
     normalizedText,
     normalizations,
+    repairs,
+    originalErrors,
     errors,
     agentReply: {
       valid: false,

@@ -12,6 +12,22 @@ test("server keeps tag activation scheduling for accepted local and Agent tag ch
   assert.match(server, /applyAgentTagDecision/);
 });
 
+test("group tag activations are scheduled and resolve the current group name at send time", () => {
+  const scheduler = server.slice(
+    server.indexOf("function scheduleTagActivationsForAcceptedChanges"),
+    server.indexOf("function buildTagContext")
+  );
+  assert.doesNotMatch(scheduler, /isPrivateConversationKey\(conversationKey\)/);
+
+  const sendHandler = server.slice(
+    server.indexOf("async function processTagActivationTask"),
+    server.indexOf("async function processTagActivationBatch")
+  );
+  assert.match(sendHandler, /getGroupByConversationKey/);
+  assert.match(sendHandler, /currentName/);
+  assert.match(sendHandler, /privateTargetNameFromConversationKey/);
+});
+
 test("tag activation worker has independent non-overlapping loop", () => {
   assert.match(server, /tagActivationWorkerBusy/);
   assert.match(server, /processTagActivationBatch/);

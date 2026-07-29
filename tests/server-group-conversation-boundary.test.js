@@ -14,7 +14,7 @@ test("server records invoked group chats as lightweight conversation history", (
 test("server records unmentioned group messages before agent mention filtering", () => {
   assert.equal(
     processIncomingSource.indexOf("persistInboundConversation({") <
-      processIncomingSource.indexOf("group_message_without_mention"),
+      processIncomingSource.indexOf("group_mention_required"),
     true
   );
 });

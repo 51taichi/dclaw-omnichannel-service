@@ -71,6 +71,7 @@ import {
   clearConversationForReset,
   claimNextConversationResetTask,
   completeConversationResetTask,
+  createOrGetGroup,
   createLegacyFlowSession,
   createProactiveTask,
   deleteAgent,
@@ -88,6 +89,8 @@ import {
   getFlowActivationProgress,
   getFlowSession,
   getFlowSessionForBot,
+  getGroupByConversationKey,
+  getGroupById,
   hasCachedWorktoolMessageId,
   ensureConversationDateTag,
   initializeLegacyDateTagRuleEffectiveTimes,
@@ -116,6 +119,8 @@ import {
   listConversationMessages,
   listConversationMessagesAround,
   listConversationTags,
+  listGroupRoles,
+  listGroupsPage,
   listUnreadTagAlerts,
   listCachedApiMessages,
   listFlowMachines,
@@ -133,6 +138,7 @@ import {
   listUnassignedBotBindings,
   listWorkspaceBots,
   listWorkspaces,
+  mergeGroupAlias,
   finalizeFlowActivationTaskDelivery,
   listRecords,
   markFlowActionExecutionFailed,
@@ -142,6 +148,7 @@ import {
   markTagActivationTaskSent,
   markConversationResetHandledForEpoch,
   markLegacyHistoryContextSent,
+  markGroupRoleRemarkSynced,
   markTagAlertRead,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
@@ -155,12 +162,15 @@ import {
   resolveConversationMessageEvidence,
   scheduleFlowActivationTask,
   scheduleTagActivationTask,
+  saveGroupConfig,
+  saveGroupRoles,
   setSetting,
   setBotAccessKey,
   touchFlowSession,
   updateFlowSessionHandoff,
   updateFlowSessionNode,
   updateLegacyHistorySync,
+  updateGroupExternalSnapshot,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
   upsertAgent,
@@ -172,6 +182,13 @@ import {
   upsertWorktoolApiMessageCache
 } from "./db.js";
 import {
+  buildGroupAgentContext,
+  buildGroupTagContext,
+  planGroupExternalPatch,
+  planMemberRemarkChanges,
+  resolveGroupReplyDecision
+} from "./groups.js";
+import {
   assignBotsToWorkspace,
   getWorkspaceById,
   transferBotToWorkspace,
@@ -181,8 +198,12 @@ import {
   buildRawMediaCommand,
   bindCommandCallback,
   bindMessageCallback,
+  createExternalGroup,
   getCallbackConfig,
   getRobotInfo,
+  listWorkToolGroups,
+  modifyGroup,
+  modifyGroupMemberRemarks,
   sendGroupInviteCommand,
   sendRawCommand,
   sendMediaMessage,
@@ -703,6 +724,40 @@ function shouldInvokeAgent(message, binding) {
   return isMentioned(message, binding);
 }
 
+function resolveInboundConversation({ botId, message }) {
+  if (!isGroupMessage(message)) {
+    return {
+      conversationKey: getConversationKey(botId, message),
+      group: null
+    };
+  }
+  const group = createOrGetGroup({
+    botId,
+    currentName: message.groupName || message.groupRemark || "unknown",
+    currentRemark: message.groupRemark || "",
+    source: "callback"
+  });
+  return {
+    conversationKey: group.conversationKey,
+    group
+  };
+}
+
+function resolveInboundGroupPolicy({ botId, group, message }) {
+  if (!group) {
+    return { invokeAgent: true, reason: "private", effectivePolicy: "always" };
+  }
+  const speakerName = String(message?.receivedName || "").trim();
+  const role = listGroupRoles({ botId, groupId: group.id }).find(
+    (item) => item.currentName === speakerName || item.aliases.includes(speakerName)
+  );
+  return resolveGroupReplyDecision({
+    groupPolicy: group.replyPolicy,
+    rolePolicy: role?.replyPolicy || "inherit",
+    atMe: isMentioned(message, getBotBinding(botId))
+  });
+}
+
 function normalizeMessageForAgent(message, binding) {
   if (!isGroupMessage(message) || !isMentioned(message, binding)) {
     return message;
@@ -857,7 +912,7 @@ function cancelTagTasksForAcceptedChanges({ botId, binding, conversationKey, acc
 }
 
 function scheduleTagActivationsForAcceptedChanges({ botId, binding, conversationKey, accepted = [] }) {
-  if (!binding?.agentId || !isPrivateConversationKey(conversationKey)) return [];
+  if (!binding?.agentId) return [];
   const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
   const scheduled = [];
   for (const change of accepted) {
@@ -883,7 +938,7 @@ function scheduleTagActivationsForAcceptedChanges({ botId, binding, conversation
   return scheduled;
 }
 
-function buildTagContext({ binding, conversationKey }) {
+function buildTagContext({ binding, conversationKey, group = null }) {
   if (!binding?.agentId) return null;
   const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
   if (!schema.groups.length) return null;
@@ -892,6 +947,13 @@ function buildTagContext({ binding, conversationKey }) {
     agentId: binding.agentId,
     conversationKey
   }).filter((tag) => tag.tagType !== "date");
+  if (group) {
+    return buildGroupTagContext({
+      schema,
+      boundTagGroupIds: group.tagGroupIds,
+      currentTags
+    });
+  }
   return compactTagRulesForAgent({ schema, currentTags });
 }
 
@@ -1679,7 +1741,15 @@ function persistAgentTagAudit({
   return records;
 }
 
-function validateStrictAgentReply({ invocation, request, attemptNumber, stage, retryRequested, onValidationFailure }) {
+function validateStrictAgentReply({
+  invocation,
+  request,
+  attemptNumber,
+  stage,
+  retryRequested,
+  onValidationFailure,
+  onLocalRepair
+}) {
   const result = validateAgentResponseText(invocation?.reply || "", agentResponseValidationOptions(request));
   if (!result.valid) {
     onValidationFailure?.({
@@ -1690,6 +1760,15 @@ function validateStrictAgentReply({ invocation, request, attemptNumber, stage, r
       rawReply: result.rawText,
       rawReplyLength: String(result.rawText || "").length,
       normalizations: result.normalizations
+    });
+  } else if (result.repairs.length) {
+    onLocalRepair?.({
+      attemptNumber,
+      stage,
+      errors: result.originalErrors,
+      rawReply: result.rawText,
+      rawReplyLength: String(result.rawText || "").length,
+      repairs: result.repairs
     });
   }
   return result;
@@ -1705,7 +1784,9 @@ function recordAgentResponseValidationFailures({
   stage,
   retryRequested,
   errors,
-  rawReply
+  rawReply,
+  retryOutcome,
+  repairActions = []
 }) {
   for (const error of errors || []) {
     insertAgentResponseValidationFailure({
@@ -1722,9 +1803,48 @@ function recordAgentResponseValidationFailures({
       line: error.line,
       column: error.column,
       rawResponseText: rawReply,
-      retryRequested
+      retryRequested,
+      retryOutcome,
+      repairActions
     });
   }
+}
+
+function recordAgentResponseLocalRepair({
+  invocationId,
+  botId,
+  agentId,
+  conversationKey,
+  incomingMessageId,
+  eventPrefix,
+  attemptNumber,
+  errors,
+  rawReply,
+  repairs
+}) {
+  recordAgentResponseValidationFailures({
+    invocationId,
+    botId,
+    agentId,
+    conversationKey,
+    incomingMessageId,
+    attemptNumber,
+    stage: "local_repair",
+    retryRequested: false,
+    retryOutcome: "locally_repaired",
+    errors,
+    rawReply,
+    repairActions: repairs
+  });
+  logInfo(`${eventPrefix}.validation_locally_repaired`, {
+    botId,
+    agentId,
+    conversationKey,
+    incomingMessageId,
+    invocationId,
+    attemptNumber,
+    repairs
+  });
 }
 
 function recordAgentValidationRetryOutcome({
@@ -1789,7 +1909,8 @@ async function invokeStrictAgentReply({
   onAttachmentSourceRetry,
   onInvalidAttachmentSource,
   onValidationFailure,
-  onValidationRetryOutcome
+  onValidationRetryOutcome,
+  onLocalRepair
 }) {
   const validationGateway = await validateAndRetryAgentResponse({
     request,
@@ -1806,7 +1927,8 @@ async function invokeStrictAgentReply({
       onFormatRetry?.({ rawReplyLength });
     },
     onValidationFailure,
-    onRetryOutcome: onValidationRetryOutcome
+    onRetryOutcome: onValidationRetryOutcome,
+    onLocalRepair
   });
   const firstAttempt = validationGateway.attempts[0];
   const first = firstAttempt.invocation;
@@ -1891,7 +2013,8 @@ async function invokeStrictAgentReply({
     attemptNumber: formatAttempts + 1,
     stage: "attachment_source_retry",
     retryRequested: true,
-    onValidationFailure
+    onValidationFailure,
+    onLocalRepair
   });
   if (!validation.valid) {
     return {
@@ -2108,6 +2231,33 @@ async function runLegacyHistoryAnalysis({
           retryRequested,
           errors,
           rawReply
+        });
+      },
+      onLocalRepair: ({ attemptNumber, errors, rawReply, repairs }) => {
+        recordAgentResponseLocalRepair({
+          invocationId,
+          botId,
+          agentId: binding.agentId,
+          conversationKey,
+          incomingMessageId: message.messageId,
+          eventPrefix: "legacy_history.background",
+          attemptNumber,
+          errors,
+          rawReply,
+          repairs
+        });
+      },
+      onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
+        recordAgentValidationRetryOutcome({
+          invocationId,
+          botId,
+          agentId: binding.agentId,
+          conversationKey,
+          incomingMessageId: message.messageId,
+          eventPrefix: "legacy_history.background",
+          outcome,
+          attemptNumber,
+          error
         });
       }
     });
@@ -3145,6 +3295,20 @@ async function sendActivationPolishedMessage({ task, binding, delivery }) {
           }))
         });
       },
+      onLocalRepair: ({ attemptNumber, errors, rawReply, repairs }) => {
+        recordAgentResponseLocalRepair({
+          invocationId,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          incomingMessageId: `activation:${task.id}`,
+          eventPrefix: "activation.agent",
+          attemptNumber,
+          errors,
+          rawReply,
+          repairs
+        });
+      },
       onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
         recordAgentValidationRetryOutcome({
           invocationId,
@@ -3488,6 +3652,20 @@ async function buildPolishedTagActivationContent({ binding, task }) {
           }))
         });
       },
+      onLocalRepair: ({ attemptNumber, errors, rawReply, repairs }) => {
+        recordAgentResponseLocalRepair({
+          invocationId,
+          botId: task.botId,
+          agentId: binding.agentId,
+          conversationKey: task.conversationKey,
+          incomingMessageId: `tag_activation:${task.id}`,
+          eventPrefix: "tag.activation.agent",
+          attemptNumber,
+          errors,
+          rawReply,
+          repairs
+        });
+      },
       onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
         recordAgentValidationRetryOutcome({
           invocationId,
@@ -3588,7 +3766,12 @@ async function processTagActivationTask(task) {
   }
 
   try {
-    const target = privateTargetNameFromConversationKey(task.conversationKey);
+    const managedGroup = getGroupByConversationKey({
+      botId: task.botId,
+      conversationKey: task.conversationKey
+    });
+    const target = managedGroup?.currentRemark || managedGroup?.currentName
+      || privateTargetNameFromConversationKey(task.conversationKey);
     if (!target) throw new Error("missing tag activation target");
     const configuredContent = String(task.messageContent || "").trim();
     if (!configuredContent) throw new Error("empty tag activation message");
@@ -3831,7 +4014,7 @@ if (tagActivationWorkerConfig.enabled) {
 }
 
 function ingestIncomingMessage({ botId, message }) {
-  const conversationKey = getConversationKey(botId, message);
+  const { conversationKey, group } = resolveInboundConversation({ botId, message });
   const messageKey = buildMessageKey({ botId, conversationKey, message });
   // Keep every WorkTool callback for audit and recovery, including callbacks
   // that are later recognized as duplicates for business processing.
@@ -3842,14 +4025,14 @@ function ingestIncomingMessage({ botId, message }) {
     conversationKey,
     messageId: message.messageId
   });
-  return { conversationKey, messageKey, accepted };
+  return { conversationKey, messageKey, accepted, group };
 }
 
 async function processIncomingMessage({ botId, message, intake = null }) {
   const startedAt = Date.now();
   const binding = getBotBinding(botId);
   const received = intake || ingestIncomingMessage({ botId, message });
-  const { conversationKey, messageKey } = received;
+  const { conversationKey, messageKey, group = null } = received;
   const baseLog = messageLogFields({ botId, conversationKey, message });
   const logContext = { ...baseLog, messageKey };
   const hadConversation = Boolean(getConversation(conversationKey));
@@ -3913,13 +4096,23 @@ async function processIncomingMessage({ botId, message, intake = null }) {
   }
 
   const coalesceKey = inboundCoalesceKey(botId, conversationKey);
-  const joinsMentionedGroupBatch = isGroupMessage(message) && inboundCoalescer.has(coalesceKey);
-  if (!shouldInvokeAgent(message, binding) && !joinsMentionedGroupBatch) {
+  const groupPolicy = isGroupMessage(message)
+    ? resolveInboundGroupPolicy({ botId, group, message })
+    : { invokeAgent: shouldInvokeAgent(message, binding), reason: "private" };
+  const joinsMentionedGroupBatch = (
+    isGroupMessage(message)
+    && groupPolicy.reason === "mention_required"
+    && inboundCoalescer.has(coalesceKey)
+  );
+  if (!groupPolicy.invokeAgent && !joinsMentionedGroupBatch) {
+    const status = groupPolicy.reason === "policy_never"
+      ? "group_policy_never"
+      : "group_mention_required";
     logInfo("incoming.skipped", {
       ...logContext,
-      reason: "group_message_without_mention"
+      reason: status
     });
-    finishMessageProcessing({ messageKey, status: "skipped" });
+    finishMessageProcessing({ messageKey, status });
     return;
   }
 
@@ -4023,6 +4216,20 @@ async function processIncomingMessage({ botId, message, intake = null }) {
               retryRequested,
               errors,
               rawReply
+            });
+          },
+          onLocalRepair: ({ attemptNumber, errors, rawReply, repairs }) => {
+            recordAgentResponseLocalRepair({
+              invocationId,
+              botId,
+              agentId: binding.agentId,
+              conversationKey,
+              incomingMessageId: message.messageId,
+              eventPrefix: "agent.handoff_sync.reply",
+              attemptNumber,
+              errors,
+              rawReply,
+              repairs
             });
           },
           onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
@@ -4210,9 +4417,24 @@ async function processCoalescedIncomingBatch(batch) {
       earliestCustomerAt: legacyHistoryAnalysis?.earliestCustomerAt || ""
     });
   }
-  const tagContext = isPrivateMessage(message)
-    ? buildTagContext({ binding, conversationKey })
+  const managedGroup = isPrivateMessage(message)
+    ? null
+    : getGroupByConversationKey({ botId, conversationKey });
+  const groupRoles = managedGroup
+    ? listGroupRoles({ botId, groupId: managedGroup.id })
+    : [];
+  const groupContext = managedGroup
+    ? buildGroupAgentContext({
+        group: managedGroup,
+        roles: groupRoles,
+        speakerName: message.receivedName
+      })
     : null;
+  const tagContext = buildTagContext({
+    binding,
+    conversationKey,
+    group: managedGroup
+  });
   const tagEvidenceCandidates = buildTagEvidenceCandidates({
     items: batch.items
   });
@@ -4223,6 +4445,7 @@ async function processCoalescedIncomingBatch(batch) {
     message: agentMessage,
     flow,
     tagContext,
+    groupContext,
     tagEvidenceCandidates,
     legacyHistoryAnalysis: null,
     conversationReset,
@@ -4314,6 +4537,20 @@ async function processCoalescedIncomingBatch(batch) {
             line: error.line || null,
             column: error.column || null
           }))
+        });
+      },
+      onLocalRepair: ({ attemptNumber, errors, rawReply, repairs }) => {
+        recordAgentResponseLocalRepair({
+          invocationId,
+          botId,
+          agentId: binding.agentId,
+          conversationKey,
+          incomingMessageId: message.messageId,
+          eventPrefix: "agent.reply",
+          attemptNumber,
+          errors,
+          rawReply,
+          repairs
         });
       },
       onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
@@ -4948,6 +5185,219 @@ app.post("/worktool/command-callback", (req, res) => {
   });
   res.json({ code: 0, message: "参数接收成功" });
 });
+
+app.post(
+  "/api/groups/create",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    assertBotAccess(req, botId);
+    const groupName = String(body.groupName || "").trim();
+    const selectList = Array.isArray(body.selectList) ? body.selectList : [];
+    const result = await createExternalGroup({
+      robotId: botId,
+      groupName,
+      selectList,
+      groupAnnouncement: body.announcement || "",
+      ...(body.modifyRemark === false ? {} : { groupRemark: body.currentRemark || "" })
+    });
+    const group = createOrGetGroup({
+      botId,
+      currentName: groupName,
+      currentRemark: body.modifyRemark === false ? "" : body.currentRemark || "",
+      source: "created"
+    });
+    res.status(201).json({
+      ok: true,
+      group,
+      command: { accepted: Number(result?.code || 0) === 0, response: result }
+    });
+  })
+);
+
+app.get(
+  "/api/groups",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
+    const refresh = String(req.query.refresh || "") === "1";
+    if (refresh) {
+      const remote = await listWorkToolGroups({
+        robotId: botId,
+        groupName: req.query.search || "",
+        page: Number(req.query.page || 1),
+        size: Number(req.query.pageSize || 100)
+      });
+      for (const item of remote.items) {
+        const currentName = String(item.groupName || item.name || "").trim();
+        if (!currentName) continue;
+        createOrGetGroup({
+          botId,
+          currentName,
+          currentRemark: item.groupRemark || item.remark || "",
+          source: "worktool_list",
+          createdAt: item.createTime || item.createdAt || ""
+        });
+      }
+    }
+    const result = listGroupsPage({
+      botId,
+      search: req.query.search || "",
+      page: Number(req.query.page || 1),
+      pageSize: Number(req.query.pageSize || 50)
+    });
+    res.json({ ok: true, ...result, refreshed: refresh });
+  })
+);
+
+app.get(
+  "/api/groups/:groupId",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
+    const group = getGroupById({ botId, groupId: req.params.groupId });
+    if (!group) {
+      res.status(404).json({ ok: false, message: "managed group not found" });
+      return;
+    }
+    const binding = getBotBinding(botId);
+    const schema = normalizeTagSchema(
+      binding?.agentId ? getAgentTagSchema(binding.agentId)?.config || {} : {}
+    );
+    res.json({
+      ok: true,
+      group,
+      roles: listGroupRoles({ botId, groupId: group.id }),
+      tagGroupIds: group.tagGroupIds,
+      availableTagGroups: schema.groups
+    });
+  })
+);
+
+app.patch(
+  "/api/groups/:groupId/config",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    assertBotAccess(req, botId);
+    const binding = getBotBinding(botId);
+    const schema = normalizeTagSchema(
+      binding?.agentId ? getAgentTagSchema(binding.agentId)?.config || {} : {}
+    );
+    const allowedGroupIds = new Set(schema.groups.map((group) => group.id));
+    const requested = Array.isArray(body.tagGroupIds) ? body.tagGroupIds : [];
+    if (requested.some((id) => id !== "__date__" && !allowedGroupIds.has(id))) {
+      const error = new Error("invalid tag group binding");
+      error.status = 422;
+      throw error;
+    }
+    const group = saveGroupConfig({
+      botId,
+      groupId: req.params.groupId,
+      expectedVersion: body.expectedVersion,
+      replyPolicy: body.replyPolicy,
+      background: body.background || "",
+      tagGroupIds: requested
+    });
+    res.json({ ok: true, group });
+  })
+);
+
+app.patch(
+  "/api/groups/:groupId/external",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    assertBotAccess(req, botId);
+    const original = getGroupById({ botId, groupId: req.params.groupId });
+    if (!original) {
+      res.status(404).json({ ok: false, message: "managed group not found" });
+      return;
+    }
+    const next = body.next || {};
+    const externalPatch = planGroupExternalPatch({ original, next });
+    let command = { skipped: true, reason: "unchanged" };
+    if (externalPatch.changed) {
+      const response = await modifyGroup({
+        robotId: botId,
+        groupName: original.currentRemark || original.currentName,
+        ...externalPatch.commandFields
+      });
+      command = { skipped: false, accepted: Number(response?.code || 0) === 0, response };
+    }
+    const group = externalPatch.changed
+      ? updateGroupExternalSnapshot({
+          botId,
+          groupId: original.id,
+          expectedVersion: body.expectedVersion,
+          currentName: next.currentName,
+          currentRemark: next.currentRemark,
+          announcement: next.announcement
+        })
+      : original;
+    res.json({ ok: true, group, command });
+  })
+);
+
+app.patch(
+  "/api/groups/:groupId/roles",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    assertBotAccess(req, botId);
+    const saved = saveGroupRoles({
+      botId,
+      groupId: req.params.groupId,
+      expectedVersion: body.expectedVersion,
+      roles: body.roles
+    });
+    const changes = planMemberRemarkChanges(saved.roles);
+    const externalResults = [];
+    for (const change of changes) {
+      try {
+        await modifyGroupMemberRemarks({
+          robotId: botId,
+          groupName: saved.group.currentRemark || saved.group.currentName,
+          changes: [change]
+        });
+        markGroupRoleRemarkSynced({
+          botId,
+          groupId: saved.group.id,
+          roleId: change.roleId,
+          markName: change.markName
+        });
+        externalResults.push({ roleId: change.roleId, status: "success", message: "" });
+      } catch (error) {
+        externalResults.push({
+          roleId: change.roleId,
+          status: "failed",
+          message: error.message
+        });
+      }
+    }
+    res.json({
+      ok: true,
+      group: saved.group,
+      roles: listGroupRoles({ botId, groupId: saved.group.id }),
+      externalResults
+    });
+  })
+);
+
+app.post(
+  "/api/groups/:groupId/merge",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    assertBotAccess(req, botId);
+    const group = mergeGroupAlias({
+      botId,
+      sourceGroupId: String(body.sourceGroupId || "").trim(),
+      targetGroupId: req.params.groupId
+    });
+    res.json({ ok: true, group });
+  })
+);
 
 app.post(
   "/api/send",
@@ -6248,6 +6698,8 @@ app.get(
 );
 
 app.use((error, req, res, next) => {
+  if (error.code === "GROUP_VERSION_CONFLICT") error.status = 409;
+  if (error.code === "GROUP_ADDRESS_AMBIGUOUS") error.status = 422;
   logError("http.request.failed", {
     method: req.method,
     path: req.path,

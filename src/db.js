@@ -132,6 +132,7 @@ db.exec(`
     retry_outcome TEXT NOT NULL DEFAULT 'unknown',
     retry_error_message TEXT NOT NULL DEFAULT '',
     retry_finished_at TEXT,
+    repair_actions_json TEXT NOT NULL DEFAULT '[]',
     created_at TEXT NOT NULL
   );
 
@@ -528,6 +529,79 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_conversation_reset_tasks_due
   ON conversation_reset_tasks (status, due_at, id);
+
+  CREATE TABLE IF NOT EXISTS managed_groups (
+    id TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL UNIQUE,
+    current_name TEXT NOT NULL,
+    current_remark TEXT NOT NULL DEFAULT '',
+    announcement TEXT NOT NULL DEFAULT '',
+    reply_policy TEXT NOT NULL DEFAULT 'mention_only'
+      CHECK (reply_policy IN ('always', 'mention_only', 'never')),
+    background TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL,
+    lifecycle_status TEXT NOT NULL DEFAULT 'confirmed'
+      CHECK (lifecycle_status IN ('creating', 'confirmed', 'failed', 'conflict')),
+    group_created_at TEXT,
+    date_source TEXT NOT NULL DEFAULT 'first_discovered',
+    config_version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_managed_groups_bot_name
+  ON managed_groups (bot_id, current_name);
+
+  CREATE TABLE IF NOT EXISTS managed_group_aliases (
+    group_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    alias_type TEXT NOT NULL CHECK (alias_type IN ('name', 'remark')),
+    alias_value TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (group_id, alias_type, alias_value)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_managed_group_alias_lookup
+  ON managed_group_aliases (bot_id, alias_value);
+
+  CREATE TABLE IF NOT EXISTS managed_group_roles (
+    id TEXT PRIMARY KEY,
+    group_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    current_name TEXT NOT NULL,
+    identity_type TEXT NOT NULL DEFAULT '',
+    description TEXT NOT NULL DEFAULT '',
+    reply_policy TEXT NOT NULL DEFAULT 'inherit'
+      CHECK (reply_policy IN ('inherit', 'always', 'mention_only', 'never')),
+    desired_mark_name TEXT NOT NULL DEFAULT '',
+    original_mark_name TEXT NOT NULL DEFAULT '',
+    sync_mark_name INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (group_id, current_name)
+  );
+
+  CREATE TABLE IF NOT EXISTS managed_group_role_aliases (
+    role_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    alias_value TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (role_id, alias_value)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_managed_group_role_alias_lookup
+  ON managed_group_role_aliases (group_id, alias_value);
+
+  CREATE TABLE IF NOT EXISTS managed_group_tag_groups (
+    group_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    tag_group_id TEXT NOT NULL,
+    is_system INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (group_id, tag_group_id)
+  );
 `);
 
 function ensureColumn(table, column, definition) {
@@ -595,6 +669,11 @@ ensureColumn(
   "TEXT NOT NULL DEFAULT ''"
 );
 ensureColumn("agent_response_validation_failures", "retry_finished_at", "TEXT");
+ensureColumn(
+  "agent_response_validation_failures",
+  "repair_actions_json",
+  "TEXT NOT NULL DEFAULT '[]'"
+);
 ensureColumn("flow_sessions", "activation_generation", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("flow_sessions", "activation_state_json", "TEXT");
 ensureColumn("flow_sessions", "last_friend_added_at", "TEXT");
@@ -638,6 +717,636 @@ function paginationResult({ total, page, pageSize }) {
     hasPrev: normalizedPage > 1,
     hasNext: normalizedPage < totalPages
   };
+}
+
+const SYSTEM_DATE_TAG_GROUP_ID = "__date__";
+const groupReplyPolicies = new Set(["always", "mention_only", "never"]);
+const groupRoleReplyPolicies = new Set(["inherit", ...groupReplyPolicies]);
+
+export function canonicalGroupConversationKey({ botId, groupId }) {
+  return `${String(botId || "").trim()}:group-id:${String(groupId || "").trim()}`;
+}
+
+function listManagedGroupTagGroupIds(groupId) {
+  return db.prepare(`
+    SELECT tag_group_id
+    FROM managed_group_tag_groups
+    WHERE group_id = ?
+    ORDER BY is_system DESC, tag_group_id ASC
+  `).all(groupId).map((row) => row.tag_group_id);
+}
+
+function rowToManagedGroup(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    conversationKey: row.conversation_key,
+    currentName: row.current_name,
+    currentRemark: row.current_remark || "",
+    announcement: row.announcement || "",
+    replyPolicy: row.reply_policy,
+    background: row.background || "",
+    source: row.source,
+    lifecycleStatus: row.lifecycle_status,
+    groupCreatedAt: row.group_created_at || "",
+    dateSource: row.date_source,
+    version: Number(row.config_version || 1),
+    tagGroupIds: listManagedGroupTagGroupIds(row.id),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function addManagedGroupAlias({ groupId, botId, aliasType, aliasValue, createdAt = now() }) {
+  const value = String(aliasValue || "").trim();
+  if (!value) return;
+  db.prepare(`
+    INSERT OR IGNORE INTO managed_group_aliases (
+      group_id, bot_id, alias_type, alias_value, created_at
+    )
+    VALUES (?, ?, ?, ?, ?)
+  `).run(groupId, botId, aliasType, value, createdAt);
+}
+
+function migrateLegacyGroupConversationKey({ botId, groupName, conversationKey }) {
+  const legacyKey = `${botId}:group:${String(groupName || "").trim()}`;
+  if (legacyKey === conversationKey) return false;
+  const legacy = db.prepare(`
+    SELECT conversation_key
+    FROM conversations
+    WHERE bot_id = ? AND conversation_key = ?
+  `).get(botId, legacyKey);
+  if (!legacy) return false;
+  const existingCanonical = db.prepare(`
+    SELECT conversation_key
+    FROM conversations
+    WHERE bot_id = ? AND conversation_key = ?
+  `).get(botId, conversationKey);
+  if (existingCanonical) return false;
+  const scopedTables = [
+    "incoming_messages",
+    "outgoing_messages",
+    "agent_invocations",
+    "agent_response_validation_failures",
+    "agent_tag_evaluations",
+    "message_processing",
+    "flow_sessions",
+    "conversation_messages",
+    "flow_state_events",
+    "flow_activation_tasks",
+    "flow_action_executions",
+    "conversation_tags",
+    "conversation_tag_events",
+    "tag_alert_events",
+    "tag_activation_tasks",
+    "conversation_reset_tasks"
+  ];
+  for (const table of scopedTables) {
+    db.prepare(`
+      UPDATE ${table}
+      SET conversation_key = ?
+      WHERE bot_id = ? AND conversation_key = ?
+    `).run(conversationKey, botId, legacyKey);
+  }
+  db.prepare(`
+    UPDATE conversations
+    SET conversation_key = ?
+    WHERE bot_id = ? AND conversation_key = ?
+  `).run(conversationKey, botId, legacyKey);
+  return true;
+}
+
+export function getGroupById({ botId, groupId }) {
+  return rowToManagedGroup(
+    db.prepare(`
+      SELECT *
+      FROM managed_groups
+      WHERE bot_id = ? AND id = ?
+    `).get(botId, groupId)
+  );
+}
+
+export function getGroupByConversationKey({ botId, conversationKey }) {
+  return rowToManagedGroup(
+    db.prepare(`
+      SELECT *
+      FROM managed_groups
+      WHERE bot_id = ? AND conversation_key = ?
+    `).get(botId, conversationKey)
+  );
+}
+
+export function listGroupsPage({ botId, search = "", page = 1, pageSize = 50 }) {
+  const normalizedPage = Math.max(1, Number(page) || 1);
+  const normalizedPageSize = Math.max(1, Math.min(100, Number(pageSize) || 50));
+  const term = String(search || "").trim();
+  const where = term
+    ? `bot_id = ? AND (
+        current_name LIKE ? ESCAPE '\\'
+        OR current_remark LIKE ? ESCAPE '\\'
+      )`
+    : "bot_id = ?";
+  const escaped = `%${term.replace(/[\\%_]/g, "\\$&")}%`;
+  const params = term ? [botId, escaped, escaped] : [botId];
+  const total = Number(
+    db.prepare(`SELECT COUNT(*) AS total FROM managed_groups WHERE ${where}`)
+      .get(...params)?.total || 0
+  );
+  const rows = db.prepare(`
+    SELECT *
+    FROM managed_groups
+    WHERE ${where}
+    ORDER BY updated_at DESC, current_name ASC, id ASC
+    LIMIT ? OFFSET ?
+  `).all(
+    ...params,
+    normalizedPageSize,
+    (normalizedPage - 1) * normalizedPageSize
+  );
+  return {
+    items: rows.map(rowToManagedGroup),
+    pagination: {
+      page: normalizedPage,
+      pageSize: normalizedPageSize,
+      total,
+      totalPages: Math.ceil(total / normalizedPageSize)
+    }
+  };
+}
+
+export function resolveGroupByAddress({ botId, groupName, groupRemark = "" }) {
+  const values = [...new Set(
+    [groupName, groupRemark].map((value) => String(value || "").trim()).filter(Boolean)
+  )];
+  if (!botId || !values.length) return null;
+  const placeholders = values.map(() => "?").join(", ");
+  const rows = db.prepare(`
+    SELECT DISTINCT mg.*
+    FROM managed_groups mg
+    LEFT JOIN managed_group_aliases mga ON mga.group_id = mg.id
+    WHERE mg.bot_id = ?
+      AND (
+        mg.current_name IN (${placeholders})
+        OR mg.current_remark IN (${placeholders})
+        OR mga.alias_value IN (${placeholders})
+      )
+    ORDER BY mg.updated_at DESC, mg.id ASC
+  `).all(botId, ...values, ...values, ...values);
+  if (!rows.length) return null;
+  if (rows.length > 1) {
+    return { status: "ambiguous", candidates: rows.map(rowToManagedGroup) };
+  }
+  const row = rows[0];
+  let matchedBy = "alias";
+  if (values.includes(row.current_name)) matchedBy = "name";
+  else if (values.includes(row.current_remark)) matchedBy = "remark";
+  return { status: "resolved", group: rowToManagedGroup(row), matchedBy };
+}
+
+export function createOrGetGroup({
+  botId,
+  currentName,
+  currentRemark = "",
+  source,
+  discoveredAt = now(),
+  createdAt = "",
+  dateSource = ""
+}) {
+  const name = String(currentName || "").trim();
+  if (!botId || !name) throw new Error("botId and currentName are required");
+  const resolved = resolveGroupByAddress({ botId, groupName: name, groupRemark: currentRemark });
+  if (resolved?.status === "resolved") return resolved.group;
+  if (resolved?.status === "ambiguous") {
+    const error = new Error("managed group address is ambiguous");
+    error.code = "GROUP_ADDRESS_AMBIGUOUS";
+    throw error;
+  }
+  const timestamp = String(discoveredAt || now());
+  const groupId = crypto.randomUUID();
+  const conversationKey = canonicalGroupConversationKey({ botId, groupId });
+  const groupCreatedAt = String(createdAt || timestamp);
+  const normalizedDateSource = String(
+    dateSource || (createdAt ? "worktool" : source === "created" ? "system_created" : "first_discovered")
+  );
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      INSERT INTO managed_groups (
+        id, bot_id, conversation_key, current_name, current_remark,
+        reply_policy, background, source, lifecycle_status,
+        group_created_at, date_source, config_version, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, 'mention_only', '', ?, ?, ?, ?, 1, ?, ?)
+    `).run(
+      groupId,
+      botId,
+      conversationKey,
+      name,
+      String(currentRemark || "").trim(),
+      String(source || "callback"),
+      source === "created" ? "creating" : "confirmed",
+      groupCreatedAt,
+      normalizedDateSource,
+      timestamp,
+      timestamp
+    );
+    addManagedGroupAlias({ groupId, botId, aliasType: "name", aliasValue: name, createdAt: timestamp });
+    addManagedGroupAlias({
+      groupId,
+      botId,
+      aliasType: "remark",
+      aliasValue: currentRemark,
+      createdAt: timestamp
+    });
+    db.prepare(`
+      INSERT INTO managed_group_tag_groups (
+        group_id, bot_id, tag_group_id, is_system, created_at
+      )
+      VALUES (?, ?, ?, 1, ?)
+    `).run(groupId, botId, SYSTEM_DATE_TAG_GROUP_ID, timestamp);
+    migrateLegacyGroupConversationKey({
+      botId,
+      groupName: name,
+      conversationKey
+    });
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return getGroupById({ botId, groupId });
+}
+
+function assertManagedGroupVersion({ botId, groupId, expectedVersion }) {
+  const group = getGroupById({ botId, groupId });
+  if (!group) throw new Error("managed group not found");
+  if (Number(group.version) !== Number(expectedVersion)) {
+    const error = new Error("group configuration version conflict");
+    error.code = "GROUP_VERSION_CONFLICT";
+    throw error;
+  }
+  return group;
+}
+
+export function updateGroupExternalSnapshot({
+  botId,
+  groupId,
+  expectedVersion,
+  currentName,
+  currentRemark,
+  announcement
+}) {
+  const group = assertManagedGroupVersion({ botId, groupId, expectedVersion });
+  const nextName = currentName === undefined ? group.currentName : String(currentName || "").trim();
+  const nextRemark = currentRemark === undefined
+    ? group.currentRemark
+    : String(currentRemark || "").trim();
+  const nextAnnouncement = announcement === undefined
+    ? group.announcement
+    : String(announcement || "");
+  if (!nextName) throw new Error("currentName is required");
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    addManagedGroupAlias({
+      groupId,
+      botId,
+      aliasType: "name",
+      aliasValue: group.currentName,
+      createdAt: timestamp
+    });
+    addManagedGroupAlias({
+      groupId,
+      botId,
+      aliasType: "name",
+      aliasValue: nextName,
+      createdAt: timestamp
+    });
+    addManagedGroupAlias({
+      groupId,
+      botId,
+      aliasType: "remark",
+      aliasValue: group.currentRemark,
+      createdAt: timestamp
+    });
+    addManagedGroupAlias({
+      groupId,
+      botId,
+      aliasType: "remark",
+      aliasValue: nextRemark,
+      createdAt: timestamp
+    });
+    db.prepare(`
+      UPDATE managed_groups
+      SET current_name = ?,
+          current_remark = ?,
+          announcement = ?,
+          config_version = config_version + 1,
+          updated_at = ?
+      WHERE bot_id = ? AND id = ? AND config_version = ?
+    `).run(
+      nextName,
+      nextRemark,
+      nextAnnouncement,
+      timestamp,
+      botId,
+      groupId,
+      Number(expectedVersion)
+    );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return getGroupById({ botId, groupId });
+}
+
+export function saveGroupConfig({
+  botId,
+  groupId,
+  expectedVersion,
+  replyPolicy,
+  background = "",
+  tagGroupIds = []
+}) {
+  assertManagedGroupVersion({ botId, groupId, expectedVersion });
+  if (!groupReplyPolicies.has(replyPolicy)) throw new Error("invalid group reply policy");
+  const normalizedTagGroupIds = [...new Set([
+    SYSTEM_DATE_TAG_GROUP_ID,
+    ...(Array.isArray(tagGroupIds) ? tagGroupIds : [])
+  ].map((value) => String(value || "").trim()).filter(Boolean))];
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      UPDATE managed_groups
+      SET reply_policy = ?,
+          background = ?,
+          config_version = config_version + 1,
+          updated_at = ?
+      WHERE bot_id = ? AND id = ? AND config_version = ?
+    `).run(
+      replyPolicy,
+      String(background || ""),
+      timestamp,
+      botId,
+      groupId,
+      Number(expectedVersion)
+    );
+    db.prepare(`
+      DELETE FROM managed_group_tag_groups
+      WHERE bot_id = ? AND group_id = ? AND is_system = 0
+    `).run(botId, groupId);
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO managed_group_tag_groups (
+        group_id, bot_id, tag_group_id, is_system, created_at
+      )
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const tagGroupId of normalizedTagGroupIds) {
+      insert.run(
+        groupId,
+        botId,
+        tagGroupId,
+        tagGroupId === SYSTEM_DATE_TAG_GROUP_ID ? 1 : 0,
+        timestamp
+      );
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return getGroupById({ botId, groupId });
+}
+
+function listManagedGroupRoleAliases(roleId) {
+  return db.prepare(`
+    SELECT alias_value
+    FROM managed_group_role_aliases
+    WHERE role_id = ?
+    ORDER BY created_at ASC, alias_value ASC
+  `).all(roleId).map((row) => row.alias_value);
+}
+
+function rowToManagedGroupRole(row) {
+  return row ? {
+    id: row.id,
+    groupId: row.group_id,
+    botId: row.bot_id,
+    currentName: row.current_name,
+    identityType: row.identity_type || "",
+    description: row.description || "",
+    replyPolicy: row.reply_policy,
+    desiredMarkName: row.desired_mark_name || "",
+    originalMarkName: row.original_mark_name || "",
+    syncMarkName: Boolean(row.sync_mark_name),
+    aliases: listManagedGroupRoleAliases(row.id),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  } : null;
+}
+
+export function listGroupRoles({ botId, groupId }) {
+  return db.prepare(`
+    SELECT *
+    FROM managed_group_roles
+    WHERE bot_id = ? AND group_id = ?
+    ORDER BY created_at ASC, id ASC
+  `).all(botId, groupId).map(rowToManagedGroupRole);
+}
+
+export function saveGroupRoles({ botId, groupId, expectedVersion, roles = [] }) {
+  assertManagedGroupVersion({ botId, groupId, expectedVersion });
+  const normalizedRoles = Array.isArray(roles) ? roles : [];
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const retainedIds = [];
+    for (const role of normalizedRoles) {
+      const currentName = String(role?.currentName || "").trim();
+      if (!currentName) throw new Error("role currentName is required");
+      const replyPolicy = String(role?.replyPolicy || "inherit");
+      if (!groupRoleReplyPolicies.has(replyPolicy)) throw new Error("invalid group role reply policy");
+      const existing = role.id
+        ? db.prepare(`
+            SELECT *
+            FROM managed_group_roles
+            WHERE id = ? AND bot_id = ? AND group_id = ?
+          `).get(role.id, botId, groupId)
+        : null;
+      const roleId = existing?.id || crypto.randomUUID();
+      if (existing && existing.current_name !== currentName) {
+        db.prepare(`
+          INSERT OR IGNORE INTO managed_group_role_aliases (
+            role_id, group_id, bot_id, alias_value, created_at
+          )
+          VALUES (?, ?, ?, ?, ?)
+        `).run(roleId, groupId, botId, existing.current_name, timestamp);
+      }
+      db.prepare(`
+        INSERT INTO managed_group_roles (
+          id, group_id, bot_id, current_name, identity_type, description,
+          reply_policy, desired_mark_name, original_mark_name, sync_mark_name,
+          created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          current_name = excluded.current_name,
+          identity_type = excluded.identity_type,
+          description = excluded.description,
+          reply_policy = excluded.reply_policy,
+          desired_mark_name = excluded.desired_mark_name,
+          original_mark_name = excluded.original_mark_name,
+          sync_mark_name = excluded.sync_mark_name,
+          updated_at = excluded.updated_at
+      `).run(
+        roleId,
+        groupId,
+        botId,
+        currentName,
+        String(role.identityType || ""),
+        String(role.description || ""),
+        replyPolicy,
+        String(role.desiredMarkName || ""),
+        String(role.originalMarkName || ""),
+        role.syncMarkName ? 1 : 0,
+        existing?.created_at || timestamp,
+        timestamp
+      );
+      retainedIds.push(roleId);
+    }
+    if (retainedIds.length) {
+      const placeholders = retainedIds.map(() => "?").join(", ");
+      db.prepare(`
+        DELETE FROM managed_group_roles
+        WHERE bot_id = ? AND group_id = ? AND id NOT IN (${placeholders})
+      `).run(botId, groupId, ...retainedIds);
+    } else {
+      db.prepare(`
+        DELETE FROM managed_group_roles
+        WHERE bot_id = ? AND group_id = ?
+      `).run(botId, groupId);
+    }
+    db.prepare(`
+      UPDATE managed_groups
+      SET config_version = config_version + 1, updated_at = ?
+      WHERE bot_id = ? AND id = ? AND config_version = ?
+    `).run(timestamp, botId, groupId, Number(expectedVersion));
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return {
+    group: getGroupById({ botId, groupId }),
+    roles: listGroupRoles({ botId, groupId })
+  };
+}
+
+export function markGroupRoleRemarkSynced({ botId, groupId, roleId, markName }) {
+  const normalized = String(markName || "").trim();
+  if (!normalized) throw new Error("markName is required");
+  const existing = db.prepare(`
+    SELECT *
+    FROM managed_group_roles
+    WHERE bot_id = ? AND group_id = ? AND id = ?
+  `).get(botId, groupId, roleId);
+  if (!existing) throw new Error("managed group role not found");
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (existing.current_name !== normalized) {
+      db.prepare(`
+        INSERT OR IGNORE INTO managed_group_role_aliases (
+          role_id, group_id, bot_id, alias_value, created_at
+        )
+        VALUES (?, ?, ?, ?, ?)
+      `).run(roleId, groupId, botId, existing.current_name, timestamp);
+    }
+    db.prepare(`
+      UPDATE managed_group_roles
+      SET current_name = ?,
+          original_mark_name = ?,
+          desired_mark_name = ?,
+          sync_mark_name = 0,
+          updated_at = ?
+      WHERE bot_id = ? AND group_id = ? AND id = ?
+    `).run(normalized, normalized, normalized, timestamp, botId, groupId, roleId);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return rowToManagedGroupRole(
+    db.prepare(`
+      SELECT *
+      FROM managed_group_roles
+      WHERE bot_id = ? AND group_id = ? AND id = ?
+    `).get(botId, groupId, roleId)
+  );
+}
+
+export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
+  if (!botId || !sourceGroupId || !targetGroupId || sourceGroupId === targetGroupId) {
+    throw new Error("distinct source and target groups are required");
+  }
+  const source = getGroupById({ botId, groupId: sourceGroupId });
+  const target = getGroupById({ botId, groupId: targetGroupId });
+  if (!source || !target) throw new Error("managed group not found");
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const aliases = db.prepare(`
+      SELECT alias_type, alias_value
+      FROM managed_group_aliases
+      WHERE bot_id = ? AND group_id = ?
+    `).all(botId, sourceGroupId);
+    aliases.push(
+      { alias_type: "name", alias_value: source.currentName },
+      { alias_type: "remark", alias_value: source.currentRemark }
+    );
+    for (const alias of aliases) {
+      addManagedGroupAlias({
+        groupId: targetGroupId,
+        botId,
+        aliasType: alias.alias_type,
+        aliasValue: alias.alias_value,
+        createdAt: timestamp
+      });
+    }
+    db.prepare(`
+      DELETE FROM managed_group_role_aliases
+      WHERE bot_id = ? AND group_id = ?
+    `).run(botId, sourceGroupId);
+    db.prepare(`
+      DELETE FROM managed_group_roles
+      WHERE bot_id = ? AND group_id = ?
+    `).run(botId, sourceGroupId);
+    db.prepare(`
+      DELETE FROM managed_group_tag_groups
+      WHERE bot_id = ? AND group_id = ?
+    `).run(botId, sourceGroupId);
+    db.prepare(`
+      DELETE FROM managed_group_aliases
+      WHERE bot_id = ? AND group_id = ?
+    `).run(botId, sourceGroupId);
+    db.prepare(`
+      DELETE FROM managed_groups
+      WHERE bot_id = ? AND id = ?
+    `).run(botId, sourceGroupId);
+    db.prepare(`
+      UPDATE managed_groups
+      SET config_version = config_version + 1, updated_at = ?
+      WHERE bot_id = ? AND id = ?
+    `).run(timestamp, botId, targetGroupId);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return getGroupById({ botId, groupId: targetGroupId });
 }
 
 export function buildMessageKey({ botId, conversationKey, message, nowMs = Date.now() }) {
@@ -1653,18 +2362,22 @@ export function insertAgentResponseValidationFailure({
   column = null,
   rawResponseText = "",
   retryRequested = false,
-  retryOutcome
+  retryOutcome,
+  repairActions = []
 }) {
   const normalizedRetryOutcome = retryOutcome || (
     stage === "initial" ? "pending" : "not_applicable"
   );
+  const createdAt = now();
+  const retryFinishedAt = normalizedRetryOutcome === "locally_repaired" ? createdAt : null;
   const result = db.prepare(`
     INSERT INTO agent_response_validation_failures (
       invocation_id, bot_id, agent_id, conversation_key, incoming_message_id,
       attempt_number, stage, error_type, error_path, error_message,
-      line, column, raw_response_text, retry_requested, retry_outcome, created_at
+      line, column, raw_response_text, retry_requested, retry_outcome,
+      repair_actions_json, retry_finished_at, created_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     invocationId ?? null,
     botId,
@@ -1681,7 +2394,9 @@ export function insertAgentResponseValidationFailure({
     String(rawResponseText || ""),
     retryRequested ? 1 : 0,
     normalizedRetryOutcome,
-    now()
+    json(Array.isArray(repairActions) ? repairActions : []),
+    retryFinishedAt,
+    createdAt
   );
   return result.lastInsertRowid;
 }
@@ -1697,6 +2412,7 @@ export function updateAgentResponseValidationRetryOutcome({
     "call_failed",
     "not_attempted",
     "pending",
+    "locally_repaired",
     "unknown"
   ].includes(outcome)
     ? outcome
@@ -2721,11 +3437,11 @@ function flowSessionPageWhere({
 
   const normalizedType = normalizeFlowSessionType(type);
   if (normalizedType === "private") {
-    filters.push("fs.conversation_key LIKE ?");
+    filters.push("(c.room_type IN (2, 4) OR (c.room_type IS NULL AND fs.conversation_key LIKE ?))");
     values.push("%:private:%");
   } else if (normalizedType === "group") {
-    filters.push("fs.conversation_key LIKE ?");
-    values.push("%:group:%");
+    filters.push("(c.room_type IN (1, 3) OR fs.conversation_key LIKE ? OR fs.conversation_key LIKE ?)");
+    values.push("%:group:%", "%:group-id:%");
   }
 
   const normalizedQuery = String(query || "").trim();
@@ -2742,7 +3458,9 @@ function flowSessionPageWhere({
   const normalizedNodeId = String(nodeId || "").trim();
   if (normalizedNodeId && normalizedNodeId !== "all") {
     filters.push(`(
-      fs.conversation_key LIKE '%:group:%'
+      c.room_type IN (1, 3)
+      OR fs.conversation_key LIKE '%:group:%'
+      OR fs.conversation_key LIKE '%:group-id:%'
       OR fs.current_node_id = ?
     )`);
     values.push(normalizedNodeId);
@@ -5664,7 +6382,8 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
         retryRequested: Boolean(row.retry_requested),
         retryOutcome: row.retry_outcome || "unknown",
         retryErrorMessage: row.retry_error_message || "",
-        retryFinishedAt: row.retry_finished_at || ""
+        retryFinishedAt: row.retry_finished_at || "",
+        repairActions: parseJson(row.repair_actions_json) || []
       })
     },
     "agent-tag-evaluations": {
