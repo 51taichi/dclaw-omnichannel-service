@@ -263,6 +263,212 @@ test("saving an agent flow machine invalidates activation work without changing 
   }
 });
 
+test("saving a flow machine migrates the current pending activation without restarting progress", () => {
+  const agentId = "agent_machine_save_resume";
+  const botId = "bot_machine_save_resume";
+  const conversationKey = `${botId}:private:保存后继续客户`;
+  const activation = {
+    enabled: true,
+    polishByAgent: false,
+    messages: [
+      { content: "旧第一条", intervalMinutes: 1, maxTimes: 1 },
+      { content: "旧第二条", intervalMinutes: 30, maxTimes: 1 }
+    ]
+  };
+  const machineConfig = {
+    name: "保存后继续状态机",
+    version: "1.0.0",
+    entryNodeId: "node_1",
+    nodes: [{
+      id: "node_1",
+      name: "节点一",
+      goal: "",
+      completionCriteria: "",
+      collectFields: [],
+      conversationTips: [],
+      activation,
+      nextNodeId: ""
+    }]
+  };
+  ensureBotAgent(botId, agentId);
+  const machine = db.upsertFlowMachine({ agentId, enabled: true, config: machineConfig });
+  const session = db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  const task = db.scheduleFlowActivationTask({
+    botId,
+    agentId,
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    activation,
+    anchorAt: "2026-07-28T09:24:08.000Z",
+    dueAt: "2026-07-28T09:25:08.000Z"
+  });
+
+  db.upsertFlowMachine({
+    agentId,
+    enabled: true,
+    config: {
+      ...machineConfig,
+      version: "1.0.1",
+      nodes: [{
+        ...machineConfig.nodes[0],
+        activation: {
+          ...activation,
+          messages: [
+            { content: "新第一条", intervalMinutes: 2, maxTimes: 1 },
+            { content: "新第二条", intervalMinutes: 45, maxTimes: 1 }
+          ]
+        }
+      }]
+    }
+  });
+
+  const current = db.getFlowSessionForBot({ botId, conversationKey });
+  const tasks = db.listFlowActivationTasks({ conversationKey });
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].id, task.id);
+  assert.equal(tasks[0].status, "pending");
+  assert.equal(tasks[0].generation, current.activationGeneration);
+  assert.equal(tasks[0].messageIndex, 0);
+  assert.equal(tasks[0].attemptNumber, 1);
+  assert.equal(tasks[0].messageContent, "新第一条");
+  assert.equal(tasks[0].intervalMinutes, 2);
+  assert.equal(tasks[0].anchorAt, "2026-07-28T09:24:08.000Z");
+  assert.equal(tasks[0].dueAt, "2026-07-28T09:26:08.000Z");
+});
+
+test("saving a flow machine preserves the next unfinished activation message", () => {
+  const agentId = "agent_machine_save_next_message";
+  const botId = "bot_machine_save_next_message";
+  const conversationKey = `${botId}:private:等待第二条客户`;
+  const activation = {
+    enabled: true,
+    polishByAgent: false,
+    messages: [
+      { content: "第一条", intervalMinutes: 1, maxTimes: 1 },
+      { content: "旧第二条", intervalMinutes: 30, maxTimes: 1 }
+    ]
+  };
+  const machineConfig = {
+    name: "保存后保持进度",
+    version: "1.0.0",
+    entryNodeId: "node_1",
+    nodes: [{
+      id: "node_1",
+      name: "节点一",
+      goal: "",
+      completionCriteria: "",
+      collectFields: [],
+      conversationTips: [],
+      activation,
+      nextNodeId: ""
+    }]
+  };
+  ensureBotAgent(botId, agentId);
+  const machine = db.upsertFlowMachine({ agentId, enabled: true, config: machineConfig });
+  const session = db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  db.advanceFlowActivationProgress({
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    messageIndex: 0,
+    attemptNumber: 1,
+    messages: activation.messages
+  });
+  db.scheduleFlowActivationTask({
+    botId,
+    agentId,
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    activation,
+    anchorAt: "2026-07-28T09:25:08.000Z",
+    dueAt: "2026-07-28T09:55:08.000Z",
+    messageIndex: 1
+  });
+
+  db.upsertFlowMachine({
+    agentId,
+    enabled: true,
+    config: {
+      ...machineConfig,
+      version: "1.0.1",
+      nodes: [{
+        ...machineConfig.nodes[0],
+        activation: {
+          ...activation,
+          messages: [
+            activation.messages[0],
+            { content: "新第二条", intervalMinutes: 45, maxTimes: 1 }
+          ]
+        }
+      }]
+    }
+  });
+
+  const tasks = db.listFlowActivationTasks({ conversationKey });
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].status, "pending");
+  assert.equal(tasks[0].messageIndex, 1);
+  assert.equal(tasks[0].attemptNumber, 1);
+  assert.equal(tasks[0].messageContent, "新第二条");
+  assert.equal(tasks[0].dueAt, "2026-07-28T10:10:08.000Z");
+  assert.deepEqual(
+    db.getFlowActivationProgress({ conversationKey, nodeId: "node_1" }),
+    { nodeId: "node_1", messageIndex: 1, sentCount: 0 }
+  );
+});
+
+test("saving a flow machine does not migrate pending activation for human handoff", () => {
+  const agentId = "agent_machine_save_handoff";
+  const botId = "bot_machine_save_handoff";
+  const conversationKey = `${botId}:private:人工接管客户`;
+  const activation = {
+    enabled: true,
+    polishByAgent: false,
+    messages: [{ content: "提醒", intervalMinutes: 1, maxTimes: 1 }]
+  };
+  const machineConfig = {
+    name: "人工接管状态机",
+    version: "1.0.0",
+    entryNodeId: "node_1",
+    nodes: [{
+      id: "node_1",
+      name: "节点一",
+      goal: "",
+      completionCriteria: "",
+      collectFields: [],
+      conversationTips: [],
+      activation,
+      nextNodeId: ""
+    }]
+  };
+  ensureBotAgent(botId, agentId);
+  const machine = db.upsertFlowMachine({ agentId, enabled: true, config: machineConfig });
+  const session = db.getOrCreateFlowSession({ botId, conversationKey, machine });
+  db.scheduleFlowActivationTask({
+    botId,
+    agentId,
+    conversationKey,
+    nodeId: "node_1",
+    generation: session.activationGeneration,
+    activation,
+    dueAt: "2026-07-28T09:25:08.000Z"
+  });
+  db.updateFlowSessionHandoff({ botId, conversationKey, handoffStatus: "human" });
+
+  db.upsertFlowMachine({
+    agentId,
+    enabled: true,
+    config: { ...machineConfig, version: "1.0.1" }
+  });
+
+  const tasks = db.listFlowActivationTasks({ conversationKey });
+  assert.equal(tasks.length, 1);
+  assert.equal(tasks[0].status, "canceled");
+  assert.equal(tasks[0].cancelReason, "flow_machine_saved");
+});
+
 test("saving an agent flow machine preserves completed activation progress", () => {
   const agentId = "agent_machine_save_progress";
   const botId = "bot_machine_save_progress";

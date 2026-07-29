@@ -308,7 +308,7 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
     height: 15px;
     border-style: solid;
     border-color: var(--workspace-tab-link);
-    border-width: 0 1px 3px;
+    border-width: 0 0 3px;
     background: transparent;
     pointer-events: none;
   }
@@ -2890,6 +2890,14 @@ textarea[data-action-target-activation].is-action-target-focused {
   border-color: transparent;
   background: var(--date-tag-accent);
   box-shadow: 0 8px 16px color-mix(in srgb, var(--date-tag-accent) 22%, transparent);
+}
+
+.date-tag-special-group .tag-group-enabled-toggle {
+  cursor: default;
+}
+
+.date-tag-special-group .switch-toggle input[type="checkbox"]:disabled + .switch-slider {
+  opacity: 1;
 }
 
 .date-tag-name-field .field-control {

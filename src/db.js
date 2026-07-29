@@ -1824,6 +1824,45 @@ export function setSetting(key, value) {
   return getSetting(key);
 }
 
+const legacyHistoryOutboundSenderMigrationKey =
+  "legacy_history_outbound_sender_name_v1";
+
+export function migrateLegacyHistoryOutboundSenderNames() {
+  if (getSetting(legacyHistoryOutboundSenderMigrationKey)) return 0;
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = db.prepare(`
+      UPDATE conversation_messages AS messages
+      SET sender_name = (
+        SELECT COALESCE(
+          NULLIF(TRIM(bindings.bot_name), ''),
+          NULLIF(TRIM(bindings.agent_name), ''),
+          '机器人'
+        )
+        FROM bot_agent_bindings AS bindings
+        WHERE bindings.bot_id = messages.bot_id
+      )
+      WHERE messages.direction = 'outbound'
+        AND messages.source IN ('worktool_customer_history', 'worktool_api_history')
+        AND EXISTS (
+          SELECT 1
+          FROM bot_agent_bindings AS bindings
+          WHERE bindings.bot_id = messages.bot_id
+        )
+    `).run();
+    setSetting(legacyHistoryOutboundSenderMigrationKey, {
+      migratedAt: timestamp,
+      updatedCount: Number(result.changes || 0)
+    });
+    db.exec("COMMIT");
+    return Number(result.changes || 0);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 function rowToGlobalAdminCredential(row) {
   if (!row) return null;
   return {
@@ -2938,7 +2977,12 @@ export function upsertFlowMachine({ agentId = "", botId = "", config, enabled = 
       timestamp,
       timestamp
     );
-    resetAgentFlowActivationState({ agentId: resolvedAgentId, timestamp });
+    resetAgentFlowActivationState({
+      agentId: resolvedAgentId,
+      machine: normalized,
+      enabled: enabled !== false,
+      timestamp
+    });
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -2947,8 +2991,43 @@ export function upsertFlowMachine({ agentId = "", botId = "", config, enabled = 
   return getFlowMachine(resolvedAgentId);
 }
 
-function resetAgentFlowActivationState({ agentId, timestamp = now() }) {
+function flowActivationDueAt({ anchorAt, intervalMinutes, attemptNumber, fallbackAt }) {
+  const anchorMs = Date.parse(anchorAt || "");
+  const fallbackMs = Date.parse(fallbackAt || "");
+  const baseMs = Number.isFinite(anchorMs)
+    ? anchorMs
+    : Number.isFinite(fallbackMs)
+      ? fallbackMs
+      : Date.now();
+  const multiplier = 2 ** Math.max(0, Number(attemptNumber || 1) - 1);
+  return new Date(baseMs + Number(intervalMinutes || 0) * multiplier * 60 * 1000).toISOString();
+}
+
+function resetAgentFlowActivationState({
+  agentId,
+  machine,
+  enabled = true,
+  timestamp = now()
+}) {
   const boundBots = "SELECT bot_id FROM bot_agent_bindings WHERE agent_id = ?";
+  const pendingTasks = db.prepare(`
+    SELECT
+      fat.*,
+      fs.current_node_id AS session_node_id,
+      fs.status AS session_status,
+      fs.handoff_status AS session_handoff_status,
+      fs.activation_generation AS session_activation_generation,
+      fs.activation_state_json AS session_activation_state_json
+    FROM flow_activation_tasks fat
+    LEFT JOIN flow_sessions fs
+      ON fs.bot_id = fat.bot_id
+     AND fs.conversation_key = fat.conversation_key
+    WHERE fat.bot_id IN (${boundBots})
+      AND fat.status = 'pending'
+    ORDER BY fat.conversation_key ASC, fat.due_at ASC, fat.id ASC
+  `).all(agentId);
+
+  // In-flight work keeps the old immutable snapshot and must not be restarted.
   db.prepare(`
     UPDATE flow_activation_tasks
     SET status = 'canceled',
@@ -2956,7 +3035,7 @@ function resetAgentFlowActivationState({ agentId, timestamp = now() }) {
         cancel_reason = 'flow_machine_saved',
         updated_at = ?
     WHERE bot_id IN (${boundBots})
-      AND status IN ('pending', 'processing')
+      AND status = 'processing'
   `).run(timestamp, timestamp, agentId);
   db.prepare(`
     UPDATE flow_sessions
@@ -2964,6 +3043,111 @@ function resetAgentFlowActivationState({ agentId, timestamp = now() }) {
         updated_at = ?
     WHERE bot_id IN (${boundBots})
   `).run(timestamp, agentId);
+
+  const nodesById = new Map((machine?.nodes || []).map((node) => [node.id, node]));
+  const migratedConversations = new Set();
+  const cancelPending = db.prepare(`
+    UPDATE flow_activation_tasks
+    SET status = 'canceled',
+        canceled_at = ?,
+        cancel_reason = 'flow_machine_saved',
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'pending'
+  `);
+  const migratePending = db.prepare(`
+    UPDATE flow_activation_tasks
+    SET generation = ?,
+        attempt_number = ?,
+        message_index = ?,
+        message_content = ?,
+        max_times = ?,
+        interval_minutes = ?,
+        polish_by_agent = ?,
+        messages_json = ?,
+        anchor_at = ?,
+        due_at = ?,
+        updated_at = ?
+    WHERE id = ?
+      AND status = 'pending'
+  `);
+
+  for (const row of pendingTasks) {
+    const node = nodesById.get(row.session_node_id);
+    const activation = normalizeActivationConfig(node?.activation || {});
+    const state = parseJson(row.session_activation_state_json);
+    const currentProgress = getActivationProgressFromState({
+      nodeId: row.session_node_id,
+      state
+    });
+    let messageIndex = currentProgress.messageIndex;
+    let sentCount = currentProgress.sentCount;
+    while (
+      activation.messages[messageIndex]
+      && sentCount >= activation.messages[messageIndex].maxTimes
+    ) {
+      messageIndex += 1;
+      sentCount = 0;
+    }
+    const message = activation.messages[messageIndex];
+    const eligible = (
+      enabled
+      && row.session_status === "active"
+      && row.session_handoff_status !== "human"
+      && String(row.conversation_key || "").includes(":private:")
+      && row.node_id === row.session_node_id
+      && Number(row.generation || 0) === Number(row.session_activation_generation || 0)
+      && activation.enabled
+      && message
+      && !migratedConversations.has(row.conversation_key)
+    );
+    if (!eligible) {
+      cancelPending.run(timestamp, timestamp, row.id);
+      continue;
+    }
+
+    const attemptNumber = sentCount + 1;
+    const progressAdvanced = (
+      messageIndex !== currentProgress.messageIndex
+      || sentCount !== currentProgress.sentCount
+    );
+    const anchorAt = progressAdvanced ? timestamp : row.anchor_at || timestamp;
+    const dueAt = flowActivationDueAt({
+      anchorAt,
+      intervalMinutes: message.intervalMinutes,
+      attemptNumber,
+      fallbackAt: timestamp
+    });
+    const nextGeneration = Number(row.session_activation_generation || 0) + 1;
+    migratePending.run(
+      nextGeneration,
+      attemptNumber,
+      messageIndex,
+      message.content || "",
+      message.maxTimes,
+      message.intervalMinutes,
+      activation.polishByAgent ? 1 : 0,
+      json(activation.messages),
+      anchorAt,
+      dueAt,
+      timestamp,
+      row.id
+    );
+    if (progressAdvanced) {
+      db.prepare(`
+        UPDATE flow_sessions
+        SET activation_state_json = ?, updated_at = ?
+        WHERE conversation_key = ?
+          AND current_node_id = ?
+      `).run(
+        json({ nodeId: row.session_node_id, messageIndex, sentCount }),
+        timestamp,
+        row.conversation_key,
+        row.session_node_id
+      );
+    }
+    migratedConversations.add(row.conversation_key);
+  }
 }
 
 export function getFlowMachine(agentId) {

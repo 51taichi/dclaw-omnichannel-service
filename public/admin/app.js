@@ -271,16 +271,22 @@ function workspaceNameForBot(botId) {
 
 function renderWorkspaceBots(bots) {
   if (!bots.length) {
-    els.workspaceBots.innerHTML = `<p class="muted">暂无已分配 Bot</p>`;
+    els.workspaceBots.innerHTML = `<div class="empty-state">暂无已分配 Bot</div>`;
     return;
   }
   els.workspaceBots.innerHTML = bots.map((bot) => `
-    <article class="admin-item">
-      <div class="admin-item-main">
-        <strong>${escapeHtml(bot.botName || bot.botId)}</strong>
-        <small>${escapeHtml(bot.botId)} · ${escapeHtml(bot.agentName || bot.agentId)}</small>
+    <article class="agent-card admin-workspace-bot-card ${bot.enabled === false ? "is-disabled" : "is-enabled"}">
+      <div class="agent-card-head">
+        <img class="agent-avatar" src="/console/assets/bot-avatar.png" alt="" aria-hidden="true" />
+        <span class="agent-summary">
+          <strong>${escapeHtml(bot.botName || bot.botId)}</strong>
+          <small>Bot</small>
+        </span>
       </div>
-      <div class="admin-actions">
+      <div class="agent-meta">
+        <span>绑定 Agent：${escapeHtml(bot.agentName || bot.agentId || "未绑定")}</span>
+      </div>
+      <div class="row-actions admin-workspace-bot-actions">
         <button class="secondary" data-open-bot="${escapeHtml(bot.botId)}">${adminIcon("open")}打开</button>
         <button class="secondary" data-transfer-bot="${escapeHtml(bot.botId)}">${adminIcon("transfer")}转移</button>
         <button class="danger" data-remove-bot="${escapeHtml(bot.botId)}">${adminIcon("unlink")}移除</button>

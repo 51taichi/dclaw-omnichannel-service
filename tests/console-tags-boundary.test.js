@@ -81,13 +81,14 @@ test("date tag special group follows the selected Bot accent color", () => {
 });
 
 test("date tag drafts normalize and export only editable rule fields", () => {
-  assert.match(js, /dateTag:\s*\{\s*enabled: false,\s*cutoffTime: "00:00",\s*effectiveAt: ""\s*\}/);
+  assert.match(js, /dateTag:\s*\{\s*enabled: true,\s*cutoffTime: "00:00",\s*effectiveAt: ""\s*\}/);
   assert.match(js, /function normalizeDateTagCutoffTimeDraft/);
+  assert.match(js, /function normalizeTagSchemaDraft[\s\S]*?dateTag:\s*\{\s*enabled: true,/);
   assert.match(js, /cutoffTime: normalizeDateTagCutoffTimeDraft\(source\.dateTag\?\.cutoffTime\)/);
   assert.match(js, /effectiveAt: normalizeDateTagEffectiveAtDraft\(source\.dateTag\?\.effectiveAt\)/);
   assert.match(
     functionBody("editableDateTagRule"),
-    /enabled: Boolean\(dateTagEnabledInput\(\)\?\.checked\)[\s\S]*cutoffTime: normalizeDateTagCutoffTimeDraft\(dateTagCutoffInput\(\)\?\.value\)/
+    /enabled: true[\s\S]*cutoffTime: normalizeDateTagCutoffTimeDraft\(dateTagCutoffInput\(\)\?\.value\)/
   );
   assert.doesNotMatch(functionBody("editableDateTagRule"), /effectiveAt/);
   assert.match(functionBody("exportTagSchema"), /dateTag: editableDateTagRule\(\)/);

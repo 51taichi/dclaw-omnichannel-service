@@ -154,6 +154,7 @@ import {
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
   mergeFlowSessionData,
+  migrateLegacyHistoryOutboundSenderNames,
   normalizeActivationConfig,
   prepareConversationResetForNewActivity,
   resetInterruptedProactiveTargets,
@@ -341,6 +342,10 @@ if (!adminAuthState.ready) {
   logWarn("admin_auth.not_ready", { reason: adminAuthState.reason });
 }
 resetInterruptedProactiveTargets();
+const migratedLegacyHistorySenderCount = migrateLegacyHistoryOutboundSenderNames();
+logInfo("legacy_history.outbound_senders_migrated", {
+  messageCount: migratedLegacyHistorySenderCount
+});
 
 const legacyCustomerHistory = createLegacyCustomerHistoryService({
   listCustomerHistory,
@@ -350,6 +355,10 @@ const legacyCustomerHistory = createLegacyCustomerHistoryService({
   listImportedConversationMessages,
   listCachedApiMessages,
   listLegacyFlowSessionTargets,
+  resolveBotSenderName(botId) {
+    const binding = getBotBinding(botId);
+    return binding?.botName || binding?.agentName || "机器人";
+  },
   onEvent(event, fields) {
     if (event === "failed") {
       logWarn("legacy_history.failed", fields);

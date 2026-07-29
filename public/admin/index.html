@@ -93,7 +93,7 @@
                 <h2>已分配 Bots</h2>
                 <button id="assignBotsButton" class="secondary"><svg><use href="#admin-icon-plus"></use></svg>分配 Bot</button>
               </div>
-              <div id="workspaceBots" class="admin-item-list"></div>
+              <div id="workspaceBots" class="agent-card-grid admin-workspace-bot-grid"></div>
             </div>
           </div>
         </section>
@@ -104,13 +104,15 @@
             <label><span><svg><use href="#admin-icon-id"></use></svg>Bot ID</span><input name="botId" required /></label>
             <label><span><svg><use href="#admin-icon-name"></use></svg>Bot 名称</span><input name="botName" /></label>
             <label><span><svg><use href="#admin-icon-user"></use></svg>Agent</span><select name="agentId" required></select></label>
-            <label class="toggle-line admin-switch-field switch-toggle">
-              <svg><use href="#admin-icon-power"></use></svg>
-              <span>启用 Bot</span>
-              <input name="enabled" type="checkbox" aria-label="启用 Bot" checked />
-              <span class="switch-slider" aria-hidden="true"></span>
-            </label>
-            <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>保存 Bot</button>
+            <div class="admin-form-control-row">
+              <label class="toggle-line admin-switch-field switch-toggle">
+                <svg><use href="#admin-icon-power"></use></svg>
+                <span>启用 Bot</span>
+                <input name="enabled" type="checkbox" aria-label="启用 Bot" checked />
+                <span class="switch-slider" aria-hidden="true"></span>
+              </label>
+              <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>保存 Bot</button>
+            </div>
           </form>
           <div class="admin-table">
             <div class="admin-table-row admin-table-head"><span>Bot</span><span>Agent</span><span id="workspaceColumn">工作区</span><span>操作</span></div>
@@ -126,13 +128,15 @@
             <label><span><svg><use href="#admin-icon-link"></use></svg>DClaw Base URL</span><input name="dclawBaseUrl" required /></label>
             <label><span><svg><use href="#admin-icon-id"></use></svg>OpenAPI Public ID</span><input name="dclawPublicId" required /></label>
             <label><span><svg><use href="#admin-icon-key"></use></svg>OpenAPI API Key</span><input name="agentApiKey" type="password" /></label>
-            <label class="toggle-line admin-switch-field switch-toggle">
-              <svg><use href="#admin-icon-power"></use></svg>
-              <span>启用 Agent</span>
-              <input name="enabled" type="checkbox" aria-label="启用 Agent" checked />
-              <span class="switch-slider" aria-hidden="true"></span>
-            </label>
-            <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>保存 Agent</button>
+            <div class="admin-form-control-row">
+              <label class="toggle-line admin-switch-field switch-toggle">
+                <svg><use href="#admin-icon-power"></use></svg>
+                <span>启用 Agent</span>
+                <input name="enabled" type="checkbox" aria-label="启用 Agent" checked />
+                <span class="switch-slider" aria-hidden="true"></span>
+              </label>
+              <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>保存 Agent</button>
+            </div>
           </form>
           <div id="agentList" class="agent-card-grid admin-agent-card-grid"></div>
         </section>
