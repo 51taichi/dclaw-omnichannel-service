@@ -52,7 +52,8 @@ test("group management reuses compact editors and supplied group identity", () =
     html.indexOf('data-workspace-tab="groups"'),
     html.indexOf('data-workspace-tab="flow"')
   );
-  assert.match(groupTab, /assets\/group\.png/);
+  assert.match(groupTab, /<svg class="icon"[^>]*><use href="#icon-tool"><\/use><\/svg>/);
+  assert.doesNotMatch(groupTab, /assets\/group\.png|workspace-tab-image/);
   assert.match(app, /groups-background-field[\s\S]*?expand-on-focus/);
   assert.doesNotMatch(app, /角色由你维护，用于识别发言人与回复策略/);
   assert.match(app, /group-asset-icon[\s\S]*?assets\/group\.png/);

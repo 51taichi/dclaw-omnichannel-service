@@ -257,13 +257,6 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
   font-weight: 800;
 }
 
-.workspace-tab-image {
-  border-radius: 5px;
-  height: 20px;
-  object-fit: contain;
-  width: 20px;
-}
-
 .workspace-tabs.is-config-hidden [data-workspace-tab="config"],
 .workspace-tabs button[hidden] {
   display: none !important;
