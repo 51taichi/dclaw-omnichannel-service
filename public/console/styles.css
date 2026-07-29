@@ -5651,6 +5651,12 @@ td .muted {
   margin-top: 28px;
 }
 
+.groups-role-actions {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
 .groups-roles-form {
   max-width: 100%;
   min-width: 0;
@@ -5740,10 +5746,6 @@ td .muted {
   gap: 5px;
   padding-inline: 6px;
   width: 100%;
-}
-
-.groups-save-roles {
-  margin-top: 12px;
 }
 
 .groups-contact-list {
@@ -5930,6 +5932,12 @@ td .muted {
 
   .groups-role-delete {
     width: auto;
+  }
+
+  .groups-role-head,
+  .groups-role-actions {
+    align-items: stretch;
+    flex-wrap: wrap;
   }
 }
 

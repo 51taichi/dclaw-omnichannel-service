@@ -67,6 +67,14 @@ test("group workbench and role rows stay bounded inside the available viewport",
   assert.match(css, /\.groups-role-row\s*\{[^}]*width:\s*100%/s);
 });
 
+test("role save action sits beside add role and still submits the role form", () => {
+  assert.match(
+    app,
+    /groups-role-actions[\s\S]*?id="addGroupRoleButton"[\s\S]*?form="groupRolesForm"[\s\S]*?保存角色/
+  );
+  assert.doesNotMatch(app, /groups-role-list[\s\S]*?<\/div>\s*<button[^>]*groups-save-roles/);
+});
+
 test("external group contacts reuse push-style selectable cards", () => {
   assert.match(app, /groups-contact-card \$\{selected \? "selected" : ""\}/);
   assert.match(app, /targetTypeAvatar\("private"\)/);

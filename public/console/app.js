@@ -5143,7 +5143,13 @@ function renderGroupConfig() {
       </fieldset>
       <button class="primary groups-save-config" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存群配置</button>
     </form>
-    <div class="groups-role-head"><h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3><button id="addGroupRoleButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>添加角色</button></div>
+    <div class="groups-role-head">
+      <h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3>
+      <div class="groups-role-actions">
+        <button id="addGroupRoleButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>添加角色</button>
+        <button class="primary groups-save-roles" form="groupRolesForm" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存角色</button>
+      </div>
+    </div>
     <form id="groupRolesForm" class="groups-roles-form">
       <div class="groups-role-columns" aria-hidden="true">
         <span><svg class="icon"><use href="#icon-user"></use></svg>成员名称</span>
@@ -5155,7 +5161,6 @@ function renderGroupConfig() {
         <span><svg class="icon"><use href="#icon-reset"></use></svg>操作</span>
       </div>
       <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
-      <button class="primary groups-save-roles" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存角色</button>
     </form>
   `;
   els.groupConfigPane.querySelector("#openModifyGroupButton").addEventListener("click", openModifyGroupDialog);
