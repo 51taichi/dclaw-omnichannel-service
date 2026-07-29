@@ -5753,7 +5753,10 @@ td .muted {
 }
 
 .groups-contact-list {
-  overflow: visible;
+  height: 242px;
+  min-height: 242px;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .groups-contact-grid {

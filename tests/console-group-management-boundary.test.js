@@ -179,3 +179,14 @@ test("external group contacts reuse push-style selectable cards", () => {
   assert.match(css, /\.groups-contact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
   assert.match(css, /\.groups-contact-pagination\s*\{[^}]*justify-content:\s*flex-end/s);
 });
+
+test("contact picker keeps a full-page viewport when the last page has fewer contacts", () => {
+  assert.match(
+    css,
+    /\.groups-contact-list\s*\{[^}]*height:\s*242px[^}]*min-height:\s*242px[^}]*overflow-y:\s*auto/s
+  );
+  assert.match(
+    css,
+    /\.groups-contact-grid\s*\{[^}]*gap:\s*8px[^}]*grid-auto-rows:\s*42px[^}]*grid-template-columns:\s*repeat\(4,/s
+  );
+});
