@@ -5132,7 +5132,7 @@ function renderGroupConfig() {
   const { group, roles = [], availableTagGroups = [] } = detail;
   els.groupConfigPane.innerHTML = `
     <div class="section-head groups-config-head">
-      <div><h3><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>${escapeHtml(group.currentName)}</h3><p class="muted"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>${escapeHtml(group.announcement || "未设置群公告")}</p></div>
+      <div><h3><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>${escapeHtml(group.currentName)}</h3></div>
       <button id="openModifyGroupButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>修改群信息</button>
     </div>
     <form id="groupConfigForm" class="groups-config-form">

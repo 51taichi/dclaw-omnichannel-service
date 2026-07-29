@@ -40,6 +40,7 @@ test("group configuration includes background, reply policy, roles, and tag-grou
   assert.match(app, /syncMarkName/);
   assert.match(app, /groups-list-item-main/);
   assert.match(app, /groups-list-item-meta/);
+  assert.doesNotMatch(app, /未设置群公告/);
   assert.match(app, /groups-tag-card/);
   assert.match(app, /groups-role-columns/);
   assert.match(app, /data-role-label=/);
