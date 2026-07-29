@@ -66,6 +66,17 @@ test("legacy history persists a valid tag audit before applying decisions", () =
   assert.ok(decisionIndex > auditIndex);
 });
 
+test("legacy history analysis uses background Agent queue priority", () => {
+  const start = source.indexOf("async function runLegacyHistoryAnalysis");
+  const end = source.indexOf("function scheduleLegacyHistoryAnalysis", start);
+  const body = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(
+    body,
+    /invokeStrictAgentReply\(\{[\s\S]*queuePriority:\s*"background",\s*queueKey:\s*conversationKey/
+  );
+});
+
 test("legacy asset rollout reopens old analysis exactly once", () => {
   assert.match(
     source,

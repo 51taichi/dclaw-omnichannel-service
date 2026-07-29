@@ -30,6 +30,7 @@ import {
   validateAgentResponseText,
   validateAndRetryAgentResponse
 } from "./agent-response-gateway.js";
+import { createAgentInvocationQueue } from "./agent-invocation-queue.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
   createBotSession,
@@ -1476,7 +1477,9 @@ const inboundCoalesceDefaults = {
 let proactiveWorkerBusy = false;
 let activationWorkerBusy = false;
 let tagActivationWorkerBusy = false;
-let agentQueue = Promise.resolve();
+const agentInvocationQueue = createAgentInvocationQueue({
+  concurrency: process.env.DCLAW_AGENT_CONCURRENCY || 3
+});
 
 function inboundCoalesceKey(botId, conversationKey) {
   return `${String(botId || "")}\u0000${String(conversationKey || "")}`;
@@ -1571,10 +1574,8 @@ const inboundCoalescer = createInboundMessageCoalescer({
   }
 });
 
-function enqueueAgentInvocation(task) {
-  const run = agentQueue.then(task, task);
-  agentQueue = run.catch(() => {});
-  return run;
+function enqueueAgentInvocation(task, options) {
+  return agentInvocationQueue.enqueue(task, options);
 }
 
 const conversationResetTimeoutMs = Math.max(
@@ -1645,7 +1646,10 @@ export async function syncConversationResetToAgent({
       memoryClearRequest,
       invoke: invokeResetRequest
     });
-    const result = await runReset();
+    const result = await enqueueAgentInvocation(
+      runReset,
+      { priority: "background", key: conversationKey }
+    );
     if (!result.ok) {
       const errors = [result.workspaceError, result.memoryError].filter(Boolean);
       const error = new Error(errors.map((item) => item.message).join("; "));
@@ -1960,6 +1964,8 @@ function recordAgentFailure({
 async function invokeStrictAgentReply({
   binding,
   request,
+  queuePriority = "realtime",
+  queueKey = "",
   onRetry,
   onFormatRetry,
   onAttachmentSourceRetry,
@@ -1971,13 +1977,14 @@ async function invokeStrictAgentReply({
   const validationGateway = await validateAndRetryAgentResponse({
     request,
     validationOptions: agentResponseValidationOptions(request),
-    invoke: ({ request: attemptRequest, attemptNumber }) => enqueueAgentInvocation(() =>
-      invokeDclawAgentWithRetry({
+    invoke: ({ request: attemptRequest, attemptNumber }) => enqueueAgentInvocation(
+      () => invokeDclawAgentWithRetry({
         binding,
         request: attemptRequest,
         timeoutMs: attemptNumber > 1 ? getDclawFormatRetryTimeoutMs() : undefined,
         onRetry
-      })
+      }),
+      { priority: queuePriority, key: queueKey }
     ),
     onRetryRequested: ({ rawReplyLength }) => {
       onFormatRetry?.({ rawReplyLength });
@@ -2048,13 +2055,14 @@ async function invokeStrictAgentReply({
   });
 
   const attachmentRetryRequest = buildDclawAttachmentSourceRetryRequest(request, sendabilityIssue);
-  const retried = await enqueueAgentInvocation(() =>
-    invokeDclawAgentWithRetry({
+  const retried = await enqueueAgentInvocation(
+    () => invokeDclawAgentWithRetry({
       binding,
       request: attachmentRetryRequest,
       timeoutMs: getDclawFormatRetryTimeoutMs(),
       onRetry
-    })
+    }),
+    { priority: queuePriority, key: queueKey }
   );
   attachmentSourceAttempts = 2;
   totalAttempts += Number(retried.attempts || 1);
@@ -2257,6 +2265,8 @@ async function runLegacyHistoryAnalysis({
     const strictInvocation = await invokeStrictAgentReply({
       binding,
       request,
+      queuePriority: "background",
+      queueKey: conversationKey,
       onRetry: (retry) => {
         logWarn("legacy_history.background.retry", {
           botId,
@@ -3131,8 +3141,8 @@ async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse 
   });
 
   try {
-    const invocation = await enqueueAgentInvocation(() =>
-      invokeDclawAgentWithRetry({
+    const invocation = await enqueueAgentInvocation(
+      () => invokeDclawAgentWithRetry({
         binding,
         request,
         onRetry: (retry) => {
@@ -3149,7 +3159,8 @@ async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse 
             error: retry.error.message
           });
         }
-      })
+      }),
+      { priority: "background", key: conversationKey }
     );
     finishAgentInvocation({
       id: invocationId,
@@ -3333,6 +3344,7 @@ async function sendActivationPolishedMessage({ task, binding, delivery }) {
     strictInvocation = await invokeStrictAgentReply({
       binding,
       request,
+      queueKey: task.conversationKey,
       onRetry: (retry) => {
         logWarn("activation.agent.retry", {
           activationTaskId: task.id,
@@ -3690,6 +3702,7 @@ async function buildPolishedTagActivationContent({ binding, task }) {
     strictInvocation = await invokeStrictAgentReply({
       binding,
       request,
+      queueKey: task.conversationKey,
       onRetry: (retry) => {
         logWarn("tag.activation.agent.retry", {
           tagActivationTaskId: task.id,
@@ -4333,6 +4346,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         const strictInvocation = await invokeStrictAgentReply({
           binding,
           request,
+          queueKey: conversationKey,
           onRetry,
           onValidationFailure: ({
             attemptNumber,
@@ -4390,8 +4404,9 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         invocation = strictInvocation.invocation;
         agentReply = strictInvocation.agentReply;
       } else {
-        invocation = await enqueueAgentInvocation(() =>
-          invokeDclawAgentWithRetry({ binding, request, onRetry })
+        invocation = await enqueueAgentInvocation(
+          () => invokeDclawAgentWithRetry({ binding, request, onRetry }),
+          { key: conversationKey }
         );
       }
       finishAgentInvocation({
@@ -4616,6 +4631,7 @@ async function processCoalescedIncomingBatch(batch) {
     const strictInvocation = await invokeStrictAgentReply({
       binding,
       request,
+      queueKey: conversationKey,
       onRetry: (retry) => {
         logWarn("agent.invoke.retry", {
           ...logContext,

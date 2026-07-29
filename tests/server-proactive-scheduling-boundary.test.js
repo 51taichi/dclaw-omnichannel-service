@@ -32,3 +32,11 @@ test("proactive target route forwards tag filters without changing pagination", 
 test("proactive worker supplies current time when claiming due targets", () => {
   assert.match(source, /claimNextProactiveTarget\(\{\s*nowIso:/);
 });
+
+test("proactive Agent synchronization uses background queue priority", () => {
+  assert.match(
+    source,
+    /syncProactiveTargetToAgent[\s\S]*enqueueAgentInvocation\([\s\S]*priority:\s*"background",\s*key:\s*conversationKey/
+  );
+  assert.match(source, /createAgentInvocationQueue/);
+});

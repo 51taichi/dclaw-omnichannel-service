@@ -15,7 +15,10 @@ test("conversation reset sync clears workspace history before customer session m
   assert.match(sync, /runConversationResetRequests/);
   assert.match(sync, /markConversationResetHandledForEpoch/);
   assert.match(sync, /agent\.conversation_reset\.failed/);
-  assert.doesNotMatch(sync, /enqueueAgentInvocation\(runReset\)/);
+  assert.match(
+    sync,
+    /enqueueAgentInvocation\(\s*runReset,\s*\{\s*priority:\s*"background",\s*key:\s*conversationKey\s*\}\s*\)/
+  );
 });
 
 test("agent replies are discarded when their conversation epoch became stale", () => {
