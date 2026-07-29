@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import test from "node:test";
 
@@ -41,7 +42,7 @@ test("group configuration includes background, reply policy, roles, and tag-grou
   assert.doesNotMatch(app, />同步<\/span>/);
   assert.doesNotMatch(app, /groups-role-sync/);
   assert.match(app, /groups-list-item-main/);
-  assert.match(app, /groups-list-item-meta/);
+  assert.doesNotMatch(app, /groups-list-item-meta/);
   assert.doesNotMatch(app, /未设置群公告/);
   assert.match(app, /groups-tag-card/);
   assert.match(app, /groups-role-columns/);
@@ -59,6 +60,35 @@ test("group management reuses compact editors and supplied group identity", () =
   assert.match(app, /groups-background-field[\s\S]*?expand-on-focus/);
   assert.doesNotMatch(app, /角色由你维护，用于识别发言人与回复策略/);
   assert.match(app, /group-asset-icon[\s\S]*?assets\/group\.png/);
+});
+
+test("group list uses avatar copy and a Beijing creation-date tag without reply badge", () => {
+  const groupDateHelper = app.slice(
+    app.indexOf("function groupDateTagLabel(group)"),
+    app.indexOf("function renderGroupList()")
+  );
+  const renderGroupList = app.slice(
+    app.indexOf("function renderGroupList()"),
+    app.indexOf("async function loadGroupDetail")
+  );
+  const probe = spawnSync(process.execPath, [
+    "--input-type=module",
+    "--eval",
+    `const BEIJING_TIME_ZONE = "Asia/Shanghai";\n${groupDateHelper}\nconsole.log(groupDateTagLabel({ groupCreatedAt: "2026-07-29 20:00:00" }));`
+  ], {
+    encoding: "utf8",
+    env: { ...process.env, TZ: "UTC" }
+  });
+  assert.equal(probe.status, 0, probe.stderr);
+  assert.equal(probe.stdout.trim(), "20260729");
+  assert.match(app, /function groupDateTagLabel\(group\)[\s\S]*?timeZone:\s*BEIJING_TIME_ZONE/);
+  assert.match(renderGroupList, /groups-list-date-tag/);
+  assert.match(renderGroupList, /groupDateTagLabel\(group\)/);
+  assert.doesNotMatch(renderGroupList, /groups-list-item-meta|仅 @ 回复|始终回复|从不回复/);
+  assert.match(
+    css,
+    /\.groups-list-item-main\s*\{[^}]*grid-template-columns:\s*44px\s+minmax\(0,\s*1fr\)\s+auto/s
+  );
 });
 
 test("group workbench and role rows stay bounded inside the available viewport", () => {

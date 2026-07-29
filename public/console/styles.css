@@ -5461,7 +5461,6 @@ td .muted {
   border-radius: 12px;
   color: inherit;
   display: grid;
-  gap: 10px;
   height: auto;
   min-height: 82px;
   min-width: 0;
@@ -5484,7 +5483,7 @@ td .muted {
   align-items: center;
   display: grid;
   gap: 10px;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 44px minmax(0, 1fr) auto;
   min-width: 0;
 }
 
@@ -5501,8 +5500,13 @@ td .muted {
 }
 
 .groups-list-item-icon {
-  height: 34px;
-  width: 34px;
+  height: 44px;
+  width: 44px;
+}
+
+.groups-list-item-icon .group-asset-icon {
+  max-height: 38px;
+  max-width: 38px;
 }
 
 .group-asset-icon {
@@ -5533,7 +5537,7 @@ td .muted {
 }
 
 .groups-list-item-copy small,
-.groups-list-item-meta {
+.groups-list-date-tag {
   align-items: center;
   color: var(--muted);
   display: flex;
@@ -5542,17 +5546,21 @@ td .muted {
 }
 
 .groups-list-item-copy .icon,
-.groups-list-item-meta .icon {
+.groups-list-date-tag .icon {
   flex: 0 0 auto;
   height: 14px;
   width: 14px;
 }
 
-.groups-list-item-meta {
-  background: var(--panel-strong);
+.groups-list-date-tag {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
   border-radius: 999px;
-  justify-self: start;
-  padding: 5px 9px;
+  color: var(--accent);
+  font-weight: 800;
+  justify-self: end;
+  padding: 6px 9px;
+  white-space: nowrap;
 }
 
 .groups-config-form {

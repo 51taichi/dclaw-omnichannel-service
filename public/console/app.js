@@ -5073,6 +5073,24 @@ async function loadGroups({ refresh = false } = {}) {
   }
 }
 
+function groupDateTagLabel(group) {
+  const value = String(group?.groupCreatedAt || group?.createdAt || "").trim();
+  const timezoneFree = value.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?)$/);
+  const normalizedValue = timezoneFree
+    ? `${timezoneFree[1]}T${timezoneFree[2]}+08:00`
+    : value;
+  const date = new Date(normalizedValue);
+  if (!value || Number.isNaN(date.getTime())) return "-";
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: BEIJING_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(date);
+  const dateParts = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${dateParts.year}${dateParts.month}${dateParts.day}`;
+}
+
 function renderGroupList() {
   if (!els.groupList) return;
   els.groupList.innerHTML = state.groups.length
@@ -5084,10 +5102,10 @@ function renderGroupList() {
               <strong>${escapeHtml(group.currentName)}</strong>
               <small><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>${escapeHtml(group.currentRemark || "未设置群备注")}</small>
             </span>
-          </span>
-          <span class="groups-list-item-meta">
-            <svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>
-            ${group.replyPolicy === "always" ? "始终回复" : group.replyPolicy === "never" ? "从不回复" : "仅 @ 回复"}
+            <span class="groups-list-date-tag" title="建立日期">
+              <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+              ${escapeHtml(groupDateTagLabel(group))}
+            </span>
           </span>
         </button>
       `).join("")
