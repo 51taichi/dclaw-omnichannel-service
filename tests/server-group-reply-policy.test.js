@@ -33,6 +33,6 @@ test("server carries an authorized role decision through coalescing and strict v
   assert.match(source, /replyDecision:\s*groupReplyDecision/);
   assert.match(
     source,
-    /requireReplyContent:\s*Boolean\(request\?\.metadata\?\.requireReplyContent\)/
+    /validationOptions:\s*buildAgentResponseValidationOptions\(request\)/
   );
 });

@@ -30,6 +30,7 @@ import {
   validateAgentResponseText,
   validateAndRetryAgentResponse
 } from "./agent-response-gateway.js";
+import { buildAgentResponseValidationOptions } from "./agent-response-validation-options.js";
 import { createAgentInvocationQueue } from "./agent-invocation-queue.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
@@ -1759,19 +1760,6 @@ function invalidValidationAgentReply(rawReply, validationErrors) {
   };
 }
 
-function agentResponseValidationOptions(request) {
-  const tagContext = request?.metadata?.tagRules || null;
-  return {
-    requireFlowDecision: Boolean(request?.metadata?.flow)
-      && request?.metadata?.eventType !== "handoff_transcript_message",
-    requireReplyContent: Boolean(request?.metadata?.requireReplyContent),
-    allowTagDecision: Boolean(tagContext),
-    flow: request?.metadata?.flow || null,
-    tagContext,
-    tagEvidenceCandidates: request?.metadata?.tagEvidenceCandidates || []
-  };
-}
-
 function persistAgentTagAudit({
   invocationId,
   botId,
@@ -1976,7 +1964,7 @@ async function invokeStrictAgentReply({
 }) {
   const validationGateway = await validateAndRetryAgentResponse({
     request,
-    validationOptions: agentResponseValidationOptions(request),
+    validationOptions: buildAgentResponseValidationOptions(request),
     invoke: ({ request: attemptRequest, attemptNumber }) => enqueueAgentInvocation(
       () => invokeDclawAgentWithRetry({
         binding,

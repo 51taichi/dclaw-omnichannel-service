@@ -232,6 +232,54 @@ test("private reply validation does not enable group confidentiality implicitly"
   assert.equal(result.valid, true);
 });
 
+test("gateway retries a group-context disclosure and accepts a natural repair", async () => {
+  const requests = [];
+  const result = await validateAndRetryAgentResponse({
+    request: {
+      message: "群成员：你知道我是谁吗",
+      metadata: { groupContext: { groupId: "g1" } }
+    },
+    validationOptions: { forbidGroupContextDisclosure: true },
+    invoke: async ({ request, attemptNumber }) => {
+      requests.push(request);
+      return {
+        reply: JSON.stringify({
+          reply: attemptNumber === 1
+            ? "知道呀，群背景里都写着呢。"
+            : "知道的，您是魔兮老师。",
+          attachments: [],
+          sources: []
+        }),
+        response: { attemptNumber }
+      };
+    }
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.agentReply.reply, "知道的，您是魔兮老师。");
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].message, /reply discloses private group context/);
+});
+
+test("gateway never accepts repeated group-context disclosure", async () => {
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "群成员：你怎么知道的" },
+    validationOptions: { forbidGroupContextDisclosure: true },
+    invoke: async () => ({
+      reply: JSON.stringify({
+        reply: "系统记录里写着您的身份。",
+        attachments: [],
+        sources: []
+      }),
+      response: {}
+    })
+  });
+
+  assert.equal(result.valid, false);
+  assert.equal(result.attempts.length, 2);
+  assert.ok(result.attempts.every((attempt) => attempt.validation.valid === false));
+});
+
 test("gateway decodes escaped reply line breaks without retrying the Agent", async () => {
   const attempts = [];
   const result = await validateAndRetryAgentResponse({

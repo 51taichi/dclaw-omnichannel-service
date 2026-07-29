@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import { buildAgentResponseValidationOptions } from "../src/agent-response-validation-options.js";
 
 const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 
@@ -46,11 +47,15 @@ test("validated Agent replies apply tag decisions before empty reply or WorkTool
 });
 
 test("strict validation receives the exact tag evidence candidates", () => {
-  const body = functionBody("agentResponseValidationOptions");
-  assert.match(
-    body,
-    /tagEvidenceCandidates:\s*request\?\.metadata\?\.tagEvidenceCandidates \|\| \[\]/
-  );
+  const tagEvidenceCandidates = [{
+    id: "message-1",
+    text: "客户原话"
+  }];
+  const options = buildAgentResponseValidationOptions({
+    metadata: { tagEvidenceCandidates }
+  });
+
+  assert.equal(options.tagEvidenceCandidates, tagEvidenceCandidates);
 });
 
 test("tag audit persistence records final validated evaluations", () => {
