@@ -59,6 +59,7 @@ function createHarness(overrides = {}) {
         }]
       : [],
     listLegacyFlowSessionTargets: () => [],
+    resolveBotSenderName: () => "张三老师",
     ...overrides
   });
   return { service, state, importedMessages };
@@ -111,7 +112,48 @@ test("imports customer history and cached API replies through all aliases", asyn
   ]);
   assert.equal(state.imported[0].messages[0].senderName, "魔兮-18570860666");
   assert.equal(state.imported[1].messages[0].sourceKey, "api-1:0:魔兮-18570860666");
+  assert.equal(state.imported[1].messages[0].senderName, "张三老师");
   assert.equal(state.syncUpdates.at(-1).importedCount, 1);
+});
+
+test("imports outbound customer history with the Bot sender name", async () => {
+  const { service, state } = createHarness({
+    listCustomerHistory: async () => ({
+      messages: [
+        {
+          sourceKey: "customer-inbound",
+          title: "张彬",
+          direction: "inbound",
+          content: "想了解课程",
+          createdAt: "2026-07-28T08:00:00.000Z",
+          rawPayload: { titleList: "张彬" }
+        },
+        {
+          sourceKey: "customer-outbound",
+          title: "张彬",
+          direction: "outbound",
+          content: "我帮您解答",
+          createdAt: "2026-07-28T08:01:00.000Z",
+          rawPayload: { titleList: "张彬" }
+        }
+      ],
+      titles: ["张彬"],
+      rawCount: 2
+    }),
+    listCachedApiMessages: () => []
+  });
+
+  await service.prepareLegacyCustomer({
+    botId: "bot_a",
+    conversationKey: "bot_a:private:张彬",
+    title: "张彬",
+    machine: { config: { nodes: [{ id: "final" }] } }
+  });
+
+  assert.deepEqual(
+    state.imported[0].messages.map((message) => message.senderName),
+    ["张彬", "张三老师"]
+  );
 });
 
 test("builds bounded analysis from imported customer messages only", async () => {

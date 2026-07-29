@@ -16,6 +16,7 @@ function insertRawConversationMessage({
   botId,
   conversationKey,
   direction = "inbound",
+  senderName = "",
   content,
   source = "local",
   sourceKey,
@@ -26,17 +27,83 @@ function insertRawConversationMessage({
       bot_id, conversation_key, direction, sender_name, content,
       raw_payload_json, source, source_key, created_at
     )
-    VALUES (?, ?, ?, '', ?, '{}', ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, '{}', ?, ?, ?)
   `).run(
     botId,
     conversationKey,
     direction,
+    senderName,
     content,
     source,
     sourceKey,
     createdAt
   ).lastInsertRowid);
 }
+
+test("migrates only imported outbound sender names to the bound Bot name once", () => {
+  const botId = "history_sender_migration_bot";
+  const conversationKey = `${botId}:private:张彬`;
+  db.upsertBotBinding({
+    botId,
+    botName: "张三老师",
+    agentId: "history_sender_migration_agent",
+    agentName: "鲸小助",
+    dclawBaseUrl: "https://dclaw.example.test",
+    dclawPublicId: "history_sender_migration_agent",
+    agentApiKey: "",
+    enabled: true
+  });
+  const importedCustomerId = insertRawConversationMessage({
+    botId,
+    conversationKey,
+    direction: "outbound",
+    senderName: "张彬",
+    content: "客户历史中的机器人回复",
+    source: "worktool_customer_history",
+    sourceKey: "customer-outbound",
+    createdAt: "2026-07-28T08:00:00.000Z"
+  });
+  const importedApiId = insertRawConversationMessage({
+    botId,
+    conversationKey,
+    direction: "outbound",
+    senderName: "张彬",
+    content: "API 历史中的机器人回复",
+    source: "worktool_api_history",
+    sourceKey: "api-outbound",
+    createdAt: "2026-07-28T08:01:00.000Z"
+  });
+  const inboundId = insertRawConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: "张彬",
+    content: "客户发言",
+    source: "worktool_customer_history",
+    sourceKey: "customer-inbound",
+    createdAt: "2026-07-28T08:02:00.000Z"
+  });
+  const localOutboundId = insertRawConversationMessage({
+    botId,
+    conversationKey,
+    direction: "outbound",
+    senderName: "原客服名称",
+    content: "本地机器人回复",
+    source: "local",
+    sourceKey: "local-outbound",
+    createdAt: "2026-07-28T08:03:00.000Z"
+  });
+
+  assert.equal(db.migrateLegacyHistoryOutboundSenderNames(), 2);
+  const senderName = (id) => rawDb.prepare(
+    "SELECT sender_name FROM conversation_messages WHERE id = ?"
+  ).get(id).sender_name;
+  assert.equal(senderName(importedCustomerId), "张三老师");
+  assert.equal(senderName(importedApiId), "张三老师");
+  assert.equal(senderName(inboundId), "张彬");
+  assert.equal(senderName(localOutboundId), "原客服名称");
+  assert.equal(db.migrateLegacyHistoryOutboundSenderNames(), 0);
+});
 
 test("creates a legacy flow session at the last valid node", () => {
   const session = db.createLegacyFlowSession({

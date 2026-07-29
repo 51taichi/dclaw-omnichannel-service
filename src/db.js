@@ -1115,6 +1115,45 @@ export function setSetting(key, value) {
   return getSetting(key);
 }
 
+const legacyHistoryOutboundSenderMigrationKey =
+  "legacy_history_outbound_sender_name_v1";
+
+export function migrateLegacyHistoryOutboundSenderNames() {
+  if (getSetting(legacyHistoryOutboundSenderMigrationKey)) return 0;
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = db.prepare(`
+      UPDATE conversation_messages AS messages
+      SET sender_name = (
+        SELECT COALESCE(
+          NULLIF(TRIM(bindings.bot_name), ''),
+          NULLIF(TRIM(bindings.agent_name), ''),
+          '机器人'
+        )
+        FROM bot_agent_bindings AS bindings
+        WHERE bindings.bot_id = messages.bot_id
+      )
+      WHERE messages.direction = 'outbound'
+        AND messages.source IN ('worktool_customer_history', 'worktool_api_history')
+        AND EXISTS (
+          SELECT 1
+          FROM bot_agent_bindings AS bindings
+          WHERE bindings.bot_id = messages.bot_id
+        )
+    `).run();
+    setSetting(legacyHistoryOutboundSenderMigrationKey, {
+      migratedAt: timestamp,
+      updatedCount: Number(result.changes || 0)
+    });
+    db.exec("COMMIT");
+    return Number(result.changes || 0);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 function rowToGlobalAdminCredential(row) {
   if (!row) return null;
   return {

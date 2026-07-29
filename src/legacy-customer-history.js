@@ -18,14 +18,16 @@ function importedCustomerTitle(message) {
   ).trim();
 }
 
-function normalizeCustomerMessages(messages, fallbackTitle) {
+function normalizeCustomerMessages(messages, fallbackTitle, botSenderName) {
   return (messages || []).map((message) => ({
     ...message,
-    senderName: message.senderName || message.title || fallbackTitle
+    senderName: message.direction === "outbound"
+      ? botSenderName
+      : message.senderName || message.title || fallbackTitle
   }));
 }
 
-function normalizeCachedApiMessages(messages) {
+function normalizeCachedApiMessages(messages, botSenderName) {
   return (messages || []).map((message) => ({
     ...message,
     sourceKey: [
@@ -34,7 +36,7 @@ function normalizeCachedApiMessages(messages) {
       message.targetName || ""
     ].join(":"),
     direction: "outbound",
-    senderName: message.targetName || ""
+    senderName: botSenderName
   }));
 }
 
@@ -46,6 +48,7 @@ export function createLegacyCustomerHistoryService({
   listImportedConversationMessages,
   listCachedApiMessages,
   listLegacyFlowSessionTargets,
+  resolveBotSenderName = () => "机器人",
   yieldToEventLoop = () => new Promise((resolve) => setImmediate(resolve)),
   backfillBatchSize = 25,
   onEvent = () => {}
@@ -60,7 +63,12 @@ export function createLegacyCustomerHistoryService({
     try {
       const history = await listCustomerHistory({ robotId: botId, title });
       const aliases = uniqueNames([title, ...(history.titles || [])]);
-      const customerMessages = normalizeCustomerMessages(history.messages, title);
+      const botSenderName = String(resolveBotSenderName(botId) || "").trim() || "机器人";
+      const customerMessages = normalizeCustomerMessages(
+        history.messages,
+        title,
+        botSenderName
+      );
       insertImportedConversationMessages({
         botId,
         conversationKey,
@@ -69,7 +77,8 @@ export function createLegacyCustomerHistoryService({
       });
 
       const cachedApiMessages = normalizeCachedApiMessages(
-        listCachedApiMessages({ botId, targetNames: aliases })
+        listCachedApiMessages({ botId, targetNames: aliases }),
+        botSenderName
       );
       if (cachedApiMessages.length) {
         insertImportedConversationMessages({
@@ -134,6 +143,7 @@ export function createLegacyCustomerHistoryService({
 
   async function backfillCachedHistoryForBot({ botId }) {
     const targets = listLegacyFlowSessionTargets({ botId });
+    const botSenderName = String(resolveBotSenderName(botId) || "").trim() || "机器人";
     let importedCount = 0;
     const normalizedBatchSize = Math.max(1, Number(backfillBatchSize) || 25);
     for (let index = 0; index < targets.length; index += 1) {
@@ -149,7 +159,8 @@ export function createLegacyCustomerHistoryService({
           .map(importedCustomerTitle)
       ]);
       const cached = normalizeCachedApiMessages(
-        listCachedApiMessages({ botId, targetNames: aliases })
+        listCachedApiMessages({ botId, targetNames: aliases }),
+        botSenderName
       );
       if (cached.length) {
         importedCount += insertImportedConversationMessages({
