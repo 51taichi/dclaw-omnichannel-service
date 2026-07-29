@@ -106,15 +106,16 @@ test("target pagination total sits after the next page button", () => {
   assert.match(css, /\.pagination-size\s*\{[^}]*display:\s*inline-flex;[^}]*grid-template-columns:\s*none;[^}]*align-items:\s*center;[^}]*margin:\s*0;[^}]*padding-left:\s*15px;/);
   assert.match(css, /\.pagination-size select\s*\{[^}]*width:\s*60px;[^}]*min-width:\s*60px;[^}]*height:\s*32px;[^}]*padding:\s*0 24px 0 0px;[^}]*font-size:\s*13px;/);
   assert.doesNotMatch(css, /\.pagination-summary\s*\{[^}]*margin-right:\s*auto/);
-  assert.match(css, /\.proactive-form-body > \.target-pagination\s*\{[^}]*justify-content:\s*flex-end/);
+  assert.match(css, /\.target-selection-row \.target-pagination\s*\{[^}]*justify-content:\s*flex-end/);
 });
 
 test("target pagination buttons keep shared dimensions in the standalone pagination row", () => {
   assert.match(css, /\.target-pagination \.pagination-button\s*\{[^}]*width:\s*34px;[^}]*min-width:\s*34px;[^}]*height:\s*34px;[^}]*min-height:\s*34px;[^}]*padding:\s*0;[^}]*gap:\s*0;/);
 });
 
-test("proactive target pagination sits above the message fields", () => {
-  assert.match(html, /<div class="bulk-actions">[\s\S]*id="targetTagSelectButton"[\s\S]*<\/div>\s*<\/div>\s*<div id="targetList"[\s\S]*<\/div>\s*<div id="targetPagination" class="pagination-bar target-pagination"/);
+test("proactive target selection and pagination share a stable row above the message fields", () => {
+  assert.match(html, /<div class="bulk-actions">[\s\S]*id="targetTagSelectButton"[\s\S]*<\/div>\s*<\/div>\s*<div id="targetList"[\s\S]*<\/div>\s*<div class="target-selection-row">[\s\S]*id="selectedTargetsSummary"[\s\S]*id="targetPagination" class="pagination-bar target-pagination"/);
   assert.match(css, /\.bulk-actions\s*\{[^}]*align-items:\s*center/);
-  assert.match(css, /\.proactive-form-body > \.target-pagination\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*margin-left:\s*auto/);
+  assert.match(css, /\.target-selection-row\s*\{[^}]*grid-column:\s*1\s*\/\s*-1;[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/);
+  assert.match(css, /\.target-selection-row \.target-pagination\s*\{[^}]*margin-left:\s*auto/);
 });

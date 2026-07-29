@@ -52,7 +52,7 @@ test("proactive labels use icons without duplicating the schedule switch icon", 
   assert.match(scheduleControl, /<span class="switch-label">定时推送<\/span>/);
   assert.match(proactivePanel, /class="proactive-title-field"[\s\S]*href="#icon-edit"/);
   assert.match(proactivePanel, /id="proactiveScheduledAtField"[\s\S]*href="#icon-clock"/);
-  assert.match(css, /\.proactive-form-body > \.target-pagination\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1;[\s\S]*margin-left:\s*auto/);
+  assert.match(css, /\.target-selection-row \.target-pagination\s*\{[\s\S]*margin-left:\s*auto/);
   assert.match(css, /\.proactive-schedule-control\s*\{[^}]*align-items:\s*center;[^}]*align-self:\s*center;/);
 });
 
@@ -72,7 +72,7 @@ test("existing proactive target bulk controls remain in the same panel", () => {
   assert.match(proactivePanel, /id="targetPagination"/);
   const bulkActions = proactivePanel.slice(proactivePanel.indexOf('<div class="bulk-actions">'));
   assert.match(bulkActions, /id="targetDateTagSelect"[\s\S]*id="targetTagSelectButton"/);
-  assert.match(proactivePanel, /<\/div>\s*<div id="targetPagination" class="pagination-bar target-pagination"[\s\S]*<div id="proactiveMessageFields"/);
+  assert.match(proactivePanel, /class="target-selection-row"[\s\S]*id="selectedTargetsSummary"[\s\S]*id="targetPagination" class="pagination-bar target-pagination"[\s\S]*<div id="proactiveMessageFields"/);
   assert.doesNotMatch(bulkActions, /id="proactiveScheduleEnabled"|id="proactiveScheduledAt"/);
 });
 
@@ -100,6 +100,8 @@ test("proactive app loads tags and selects matching targets across every page", 
   assert.match(app, /dedupeProactiveTargetTags/);
   assert.match(app, /targetDateTagSelect/);
   assert.match(app, /targetTagSelectMenu/);
+  assert.match(app, /intersectTargetMaps/);
+  assert.match(app, /reconcileProactiveTargetSelections/);
 });
 
 test("proactive app submits one-time scheduledAt and can cancel a task", () => {

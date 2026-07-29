@@ -1,7 +1,9 @@
 const PROACTIVE_MAX_ATTACHMENTS = 5;
+const SELECTED_TARGET_PREVIEW_LIMIT = 3;
 const BEIJING_TIME_ZONE = "Asia/Shanghai";
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 const DEFAULT_REPLY_WAIT_FALLBACK_REPLY = "刚刚这边有点忙，我稍后回复你哈";
+const { intersectTargetMaps } = window.ProactiveTargetSelection;
 
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
@@ -151,6 +153,12 @@ const els = {
   targetTagSelectMenu: document.querySelector("#targetTagSelectMenu"),
   targetDateTagSelect: document.querySelector("#targetDateTagSelect"),
   targetList: document.querySelector("#targetList"),
+  selectedTargetsSummary: document.querySelector("#selectedTargetsSummary"),
+  selectedTargetsSummaryButton: document.querySelector("#selectedTargetsSummaryButton"),
+  selectedTargetsCount: document.querySelector("#selectedTargetsCount"),
+  selectedTargetsPreview: document.querySelector("#selectedTargetsPreview"),
+  selectedTargetsMoreButton: document.querySelector("#selectedTargetsMoreButton"),
+  selectedTargetsPopover: document.querySelector("#selectedTargetsPopover"),
   targetPaginationEl: document.querySelector("#targetPagination"),
   resetFormButton: document.querySelector("#resetFormButton"),
   botsTable: document.querySelector("#botsTable"),
@@ -1216,7 +1224,57 @@ function clearSelectedTargets() {
   toast("已清空全部已选目标");
 }
 
+function closeSelectedTargetsPopover() {
+  if (!els.selectedTargetsPopover || !els.selectedTargetsSummaryButton) return;
+  els.selectedTargetsPopover.hidden = true;
+  els.selectedTargetsSummaryButton.setAttribute("aria-expanded", "false");
+}
+
+function toggleSelectedTargetsPopover() {
+  if (!els.selectedTargetsPopover || !els.selectedTargetsSummaryButton) return;
+  if (!getSelectedTargets().length) {
+    closeSelectedTargetsPopover();
+    return;
+  }
+  const willOpen = els.selectedTargetsPopover.hidden;
+  els.selectedTargetsPopover.hidden = !willOpen;
+  els.selectedTargetsSummaryButton.setAttribute("aria-expanded", String(willOpen));
+}
+
 function renderSelectedTargets() {
+  const targets = getSelectedTargets();
+  const previewTargets = targets.slice(0, SELECTED_TARGET_PREVIEW_LIMIT);
+  const remainingCount = Math.max(0, targets.length - previewTargets.length);
+
+  els.selectedTargetsCount.textContent = `已选 ${targets.length}`;
+  els.selectedTargetsSummaryButton.disabled = targets.length === 0;
+  els.selectedTargetsPreview.innerHTML = previewTargets
+    .map((target) => `
+      <span class="selected-target-chip" title="${escapeHtml(target.displayName || target.targetName)}">
+        <img src="${escapeHtml(targetTypeAvatar(target.targetType))}" alt="" aria-hidden="true" />
+        <span>${escapeHtml(target.displayName || target.targetName)}</span>
+      </span>
+    `)
+    .join("");
+  els.selectedTargetsMoreButton.hidden = remainingCount === 0;
+  els.selectedTargetsMoreButton.textContent = `+${remainingCount}`;
+  els.selectedTargetsPopover.innerHTML = targets.length
+    ? `
+      <div class="selected-targets-popover-head">
+        <strong>全部已选目标</strong>
+        <span>${targets.length} 个</span>
+      </div>
+      <div class="selected-targets-popover-list">
+        ${targets.map((target) => `
+          <div class="selected-target-popover-item">
+            <img src="${escapeHtml(targetTypeAvatar(target.targetType))}" alt="" aria-hidden="true" />
+            <span>${escapeHtml(target.displayName || target.targetName)}</span>
+          </div>
+        `).join("")}
+      </div>
+    `
+    : "";
+  if (!targets.length) closeSelectedTargetsPopover();
   updateBulkActionButtons();
 }
 
@@ -1353,22 +1411,22 @@ async function fetchAllAddressBookTargetsByTag(tag, { contextVersion = state.bot
   return targets;
 }
 
-function targetKeptByOtherProactiveTag(targetKey, excludedTagKey) {
-  for (const [tagKey, targetKeys] of state.proactiveTagSelections.entries()) {
-    if (tagKey !== excludedTagKey && targetKeys.has(targetKey)) return true;
-  }
-  return false;
-}
-
-function removeProactiveTagSelection(tagKey) {
-  const targetKeys = state.proactiveTagSelections.get(tagKey);
-  if (!targetKeys) return;
-  state.proactiveTagSelections.delete(tagKey);
-  for (const key of targetKeys) {
-    if (!state.proactiveManualTargetKeys.has(key) && !targetKeptByOtherProactiveTag(key, tagKey)) {
+function reconcileProactiveTargetSelections() {
+  const automaticTargets = intersectTargetMaps([...state.proactiveTagSelections.values()]);
+  for (const key of [...selectedTargets.keys()]) {
+    if (!state.proactiveManualTargetKeys.has(key)) {
       selectedTargets.delete(key);
     }
   }
+  for (const [key, target] of automaticTargets.entries()) {
+    selectedTargets.set(key, target);
+  }
+}
+
+function removeProactiveTagSelection(tagKey) {
+  if (!state.proactiveTagSelections.has(tagKey)) return;
+  state.proactiveTagSelections.delete(tagKey);
+  reconcileProactiveTargetSelections();
 }
 
 async function toggleProactiveTagSelection(tagKey) {
@@ -1390,13 +1448,13 @@ async function toggleProactiveTagSelection(tagKey) {
   try {
     const targets = await fetchAllAddressBookTargetsByTag(tag, { contextVersion });
     if (!isCurrentBotContext(botId, contextVersion)) return;
-    const targetKeys = new Set();
+    const targetMap = new Map();
     for (const target of targets) {
       const key = targetKey(target);
-      targetKeys.add(key);
-      if (!selectedTargets.has(key)) selectedTargets.set(key, target);
+      targetMap.set(key, target);
     }
-    state.proactiveTagSelections.set(tagKey, targetKeys);
+    state.proactiveTagSelections.set(tagKey, targetMap);
+    reconcileProactiveTargetSelections();
     renderProactiveTargetTags();
     renderSelectedTargets();
     renderTargetList();
@@ -1435,13 +1493,13 @@ async function syncProactiveDateTagSelection() {
   try {
     const targets = await fetchAllAddressBookTargetsByTag(tag, { contextVersion });
     if (!isCurrentBotContext(botId, contextVersion)) return;
-    const targetKeys = new Set();
+    const targetMap = new Map();
     for (const target of targets) {
       const key = targetKey(target);
-      targetKeys.add(key);
-      if (!selectedTargets.has(key)) selectedTargets.set(key, target);
+      targetMap.set(key, target);
     }
-    state.proactiveTagSelections.set(dateKey, targetKeys);
+    state.proactiveTagSelections.set(dateKey, targetMap);
+    reconcileProactiveTargetSelections();
     renderProactiveTargetTags();
     renderSelectedTargets();
     renderTargetList();
@@ -5486,6 +5544,9 @@ els.flowSessionTagFilterMenu?.addEventListener("change", (event) => {
   setFlowSessionTagFilterValues(values);
 });
 document.addEventListener("click", (event) => {
+  if (!event.target.closest(".selected-targets-summary")) {
+    closeSelectedTargetsPopover();
+  }
   if (event.target.closest(".flow-session-tag-menu")) return;
   if (event.target.closest(".tag-multi-select")) return;
   hideFlowSessionManualTagMenu();
@@ -5509,6 +5570,7 @@ function closeTagMultiSelectMenusOnExternalScroll(event) {
 window.addEventListener("scroll", closeTagMultiSelectMenusOnExternalScroll, true);
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    closeSelectedTargetsPopover();
     hideFlowSessionManualTagMenu();
     closeTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
     closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
@@ -5579,6 +5641,11 @@ els.targetDateTagSelect?.addEventListener("input", () =>
 els.targetDateTagSelect?.addEventListener("change", () =>
   syncProactiveDateTagSelection().catch(toastError)
 );
+els.selectedTargetsSummaryButton?.addEventListener("click", toggleSelectedTargetsPopover);
+els.selectedTargetsMoreButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleSelectedTargetsPopover();
+});
 els.loadTargetsButton.addEventListener("click", () =>
   reloadProactiveTargetsFromFirstPage().catch(toastError)
 );

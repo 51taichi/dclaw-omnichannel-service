@@ -52,10 +52,11 @@ contains it.
 
 - [ ] **Step 4: Reconcile automatic selections in the console**
 
-Import the helper into `app.js`. Store each filter's fetched targets as a map,
-replace union-preservation helpers with one reconciliation function, and call
-it after adding, removing, or replacing a date/tag filter. Preserve targets in
-`proactiveManualTargetKeys` as explicit additions.
+Load the browser-compatible helper before `app.js` and read it from
+`window.ProactiveTargetSelection`. Store each filter's fetched targets as a
+map, replace union-preservation helpers with one reconciliation function, and
+call it after adding, removing, or replacing a date/tag filter. Preserve
+targets in `proactiveManualTargetKeys` as explicit additions.
 
 - [ ] **Step 5: Run the focused test and relevant console tests**
 

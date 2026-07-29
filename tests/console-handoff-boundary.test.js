@@ -295,14 +295,29 @@ test("proactive target cards use private and group avatar images", () => {
   assert.match(css, /\.target-avatar\s*\{[\s\S]*object-fit:\s*cover/);
 });
 
-test("proactive targets do not render redundant selected chips", () => {
+test("proactive targets render a fixed selected-target summary with overflow", () => {
   const proactivePanel = sectionHtml("proactivePanel");
 
-  assert.doesNotMatch(proactivePanel, /id="selectedTargets"/);
-  assert.doesNotMatch(app, /target-chip/);
-  assert.doesNotMatch(css, /\.selected-targets/);
-  assert.doesNotMatch(css, /\.target-chip/);
-  assert.match(app, /function renderSelectedTargets\(\)\s*\{\s*updateBulkActionButtons\(\);\s*\}/);
+  assert.match(proactivePanel, /class="target-selection-row"/);
+  assert.match(proactivePanel, /id="selectedTargetsSummary"/);
+  assert.match(proactivePanel, /id="selectedTargetsCount"[\s\S]*已选 0/);
+  assert.match(proactivePanel, /id="selectedTargetsPreview"/);
+  assert.match(proactivePanel, /id="selectedTargetsMoreButton"/);
+  assert.match(proactivePanel, /id="selectedTargetsPopover"/);
+  assert.match(app, /const SELECTED_TARGET_PREVIEW_LIMIT = 3/);
+  assert.match(app, /function renderSelectedTargets\(\)[\s\S]*selectedTargetsCount\.textContent = `已选 \$\{targets\.length\}`/);
+  assert.match(app, /selectedTargetsMoreButton\.textContent = `\+\$\{remainingCount\}`/);
+  assert.match(css, /\.target-selection-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto;[^}]*height:\s*40px/);
+  assert.match(css, /\.selected-targets-summary\s*\{[^}]*height:\s*40px;[^}]*min-width:\s*0;[^}]*overflow:\s*visible/);
+  assert.match(css, /\.selected-targets-preview\s*\{[^}]*overflow:\s*hidden;[^}]*white-space:\s*nowrap/);
+  assert.match(css, /\.selected-targets-popover\s*\{[^}]*position:\s*absolute;[^}]*max-height:\s*260px;[^}]*overflow-y:\s*auto/);
+});
+
+test("narrow proactive target summary hides previews and overflow count before pagination shifts", () => {
+  assert.match(
+    css,
+    /@media \(max-width:\s*760px\)[\s\S]*\.selected-targets-preview\s*\{[^}]*display:\s*none;[\s\S]*\.selected-targets-more\s*\{[^}]*display:\s*none;/
+  );
 });
 
 test("proactive target cards use checkbox indicators instead of choose text", () => {
