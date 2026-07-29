@@ -100,7 +100,8 @@ Expected: PASS and exit code 0.
 Add assertions for viewport-bounded workbench and overflow rules:
 
 ```js
-assert.match(css, /\.groups-workbench\s*\{[^}]*height:\s*clamp\(/s);
+assert.match(css, /#groupsTab\s*\{[^}]*height:\s*100%/s);
+assert.match(css, /\.groups-panel\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/s);
 assert.match(css, /\.groups-sidebar[\s\S]*?overflow-y:\s*auto/s);
 assert.match(css, /\.groups-config[\s\S]*?overflow-y:\s*auto/s);
 assert.match(css, /\.groups-role-row\s*\{[^}]*width:\s*100%/s);
@@ -118,12 +119,24 @@ Expected: FAIL because the group workbench currently uses only `min-height`.
 
 - [ ] **Step 3: Implement bounded scrolling and safe role columns**
 
-Use a viewport-aware desktop height:
+Reuse the workspace's viewport-aware height like the task Tab:
 
 ```css
-.groups-workbench {
-  height: clamp(560px, calc(100vh - 300px), 820px);
+#groupsTab {
+  height: 100%;
   min-height: 0;
+}
+
+.groups-panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden;
+}
+
+.groups-workbench {
+  min-height: 0;
+  overflow: hidden;
 }
 
 .groups-sidebar,

@@ -46,3 +46,29 @@ test("group configuration includes background, reply policy, roles, and tag-grou
   assert.match(app, /data-role-label=/);
   assert.ok((app.match(/<svg class="icon"/g) || []).length >= 10);
 });
+
+test("group management reuses compact editors and supplied group identity", () => {
+  const groupTab = html.slice(
+    html.indexOf('data-workspace-tab="groups"'),
+    html.indexOf('data-workspace-tab="flow"')
+  );
+  assert.match(groupTab, /assets\/group\.png/);
+  assert.match(app, /groups-background-field[\s\S]*?expand-on-focus/);
+  assert.doesNotMatch(app, /角色由你维护，用于识别发言人与回复策略/);
+  assert.match(app, /group-asset-icon[\s\S]*?assets\/group\.png/);
+});
+
+test("group workbench and role rows stay bounded inside the available viewport", () => {
+  assert.match(css, /#groupsTab\s*\{[^}]*height:\s*100%/s);
+  assert.match(css, /\.groups-panel\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/s);
+  assert.match(css, /\.groups-sidebar[\s\S]*?overflow-y:\s*auto/s);
+  assert.match(css, /\.groups-config[\s\S]*?overflow-y:\s*auto/s);
+  assert.match(css, /\.groups-role-row\s*\{[^}]*width:\s*100%/s);
+});
+
+test("external group contacts reuse push-style selectable cards", () => {
+  assert.match(app, /groups-contact-card \$\{selected \? "selected" : ""\}/);
+  assert.match(app, /targetTypeAvatar\("private"\)/);
+  assert.match(app, /groups-contact-checkbox/);
+  assert.match(css, /\.groups-contact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(/s);
+});

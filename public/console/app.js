@@ -5080,7 +5080,7 @@ function renderGroupList() {
     ? state.groups.map((group) => `
         <button class="groups-list-item ${group.id === state.selectedGroupId ? "active" : ""}" data-group-id="${escapeHtml(group.id)}" type="button">
           <span class="groups-list-item-main">
-            <span class="groups-list-item-icon"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg></span>
+            <span class="groups-list-item-icon"><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" /></span>
             <span class="groups-list-item-copy">
               <strong>${escapeHtml(group.currentName)}</strong>
               <small><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>${escapeHtml(group.currentRemark || "未设置群备注")}</small>
@@ -5132,7 +5132,7 @@ function renderGroupConfig() {
   const { group, roles = [], availableTagGroups = [] } = detail;
   els.groupConfigPane.innerHTML = `
     <div class="section-head groups-config-head">
-      <div><h3><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>${escapeHtml(group.currentName)}</h3></div>
+      <div><h3><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" />${escapeHtml(group.currentName)}</h3></div>
       <button id="openModifyGroupButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>修改群信息</button>
     </div>
     <form id="groupConfigForm" class="groups-config-form">
@@ -5143,7 +5143,7 @@ function renderGroupConfig() {
           <option value="never" ${group.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
         </select>
       </label>
-      <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>群背景</span><textarea name="background" rows="5" placeholder="例如：客户购买时间、产品和服务背景">${escapeHtml(group.background || "")}</textarea></label>
+      <label class="groups-background-field"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>群背景</span><textarea class="expand-on-focus" name="background" rows="1" placeholder="例如：客户购买时间、产品和服务背景">${escapeHtml(group.background || "")}</textarea></label>
       <fieldset class="groups-tags-fieldset"><legend><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群标签组</legend>
         <label class="groups-tag-card is-system is-selected"><input type="checkbox" checked disabled /><span class="groups-tag-card-icon"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg></span><span>建立日期<small>系统默认</small></span><svg class="icon groups-tag-lock" aria-label="不可移除"><use href="#icon-lock"></use></svg></label>
         ${availableTagGroups.map((tagGroup) => `
@@ -5152,7 +5152,7 @@ function renderGroupConfig() {
       </fieldset>
       <button class="primary groups-save-config" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存群配置</button>
     </form>
-    <div class="groups-role-head"><div><h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3><p class="muted">角色由你维护，用于识别发言人与回复策略，不代表实时成员状态。</p></div><button id="addGroupRoleButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>添加角色</button></div>
+    <div class="groups-role-head"><h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3><button id="addGroupRoleButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>添加角色</button></div>
     <form id="groupRolesForm" class="groups-roles-form">
       <div class="groups-role-columns" aria-hidden="true">
         <span><svg class="icon"><use href="#icon-user"></use></svg>成员名称</span>
@@ -5241,15 +5241,29 @@ async function loadCreateGroupContacts() {
   });
   const data = await request(`/api/proactive/targets?${params.toString()}`);
   state.createGroupContacts = data.targets || [];
+  renderCreateGroupContacts();
+}
+
+function renderCreateGroupContacts() {
   els.createGroupContactList.innerHTML = state.createGroupContacts.length
-    ? state.createGroupContacts.map((target) => `
-        <label class="groups-contact-option"><input type="checkbox" value="${escapeHtml(target.targetName)}" ${state.createGroupContactIds.has(target.targetName) ? "checked" : ""} /><span class="groups-contact-icon"><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg></span><span>${escapeHtml(target.displayName || target.targetName)}</span></label>
-      `).join("")
+    ? `<div class="groups-contact-grid">${state.createGroupContacts.map((target) => {
+        const selected = state.createGroupContactIds.has(target.targetName);
+        return `
+          <button class="groups-contact-card ${selected ? "selected" : ""}" data-create-group-contact="${escapeHtml(target.targetName)}" type="button">
+            <img class="target-avatar private" src="${escapeHtml(targetTypeAvatar("private"))}" alt="" aria-hidden="true" />
+            <span class="groups-contact-name">${escapeHtml(target.displayName || target.targetName)}</span>
+            <span class="groups-contact-checkbox ${selected ? "checked" : ""}" aria-hidden="true">
+              <svg class="icon"><use href="#icon-check"></use></svg>
+            </span>
+          </button>`;
+      }).join("")}</div>`
     : `<div class="empty-state">暂无联系人，请先在推送名单中同步联系人。</div>`;
-  els.createGroupContactList.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-    input.addEventListener("change", () => {
-      if (input.checked) state.createGroupContactIds.add(input.value);
-      else state.createGroupContactIds.delete(input.value);
+  els.createGroupContactList.querySelectorAll("[data-create-group-contact]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const targetName = button.dataset.createGroupContact;
+      if (state.createGroupContactIds.has(targetName)) state.createGroupContactIds.delete(targetName);
+      else state.createGroupContactIds.add(targetName);
+      renderCreateGroupContacts();
     });
   });
 }
