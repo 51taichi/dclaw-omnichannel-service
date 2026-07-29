@@ -10,6 +10,13 @@ fields, status metadata, and actions.
 
 ## Scope
 
+### Group management header
+
+- Remove the `群管理` heading and the explanatory sentence about viewing
+  history in the conversation tab.
+- Keep the refresh and create actions in a compact right-aligned toolbar
+  without leaving an empty title column.
+
 ### Group list
 
 - Keep the 30% sidebar.
