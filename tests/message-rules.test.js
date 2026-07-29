@@ -29,7 +29,7 @@ test("allows text callbacks with customer content", () => {
   );
 });
 
-test("ignores WorkTool friend-added callbacks because they are not the canonical trigger", () => {
+test("does not treat WorkTool friend-added callbacks as ordinary Agent messages", () => {
   assert.equal(
     shouldProcessInboundForAgent({
       textType: 22,
