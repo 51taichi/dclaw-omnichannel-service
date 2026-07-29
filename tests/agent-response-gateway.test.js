@@ -49,6 +49,49 @@ const validAuditedReply = {
   }
 };
 
+const completeTagContext = {
+  groups: [
+    {
+      id: "group_1",
+      name: "客户积极性",
+      exclusive: false,
+      oneWay: false,
+      tags: [{
+        id: "tag_1",
+        name: "愿交流",
+        condition: "只要客户愿意交流，即满足"
+      }]
+    },
+    {
+      id: "group_2",
+      name: "手工标签，重点关注",
+      exclusive: false,
+      oneWay: false,
+      tags: [{
+        id: "tag_1",
+        name: "人工标签",
+        condition: "必须手工打标签"
+      }]
+    }
+  ],
+  currentTags: []
+};
+
+const completeNegativeTagAudit = [
+  {
+    groupId: "group_1",
+    tagId: "tag_1",
+    matched: false,
+    reason: "客户当前消息未表达交流意愿"
+  },
+  {
+    groupId: "group_2",
+    tagId: "tag_1",
+    matched: false,
+    reason: "该标签要求人工操作，本次不满足"
+  }
+];
+
 test("gateway retries a deliberately broken successful JSON response and validates the repair", async () => {
   const validResponse = JSON.stringify({
     reply: "您好，我来帮您了解一下。",
@@ -585,4 +628,60 @@ test("retry request includes concise validation errors", () => {
   assert.match(retry.message, /reply/);
   assert.equal(retry.metadata.validationRetry, true);
   assert.deepEqual(retry.metadata.validationErrors, summarizeValidationErrors(errors));
+});
+
+test("validation retry carries the prior response and complete tag checklist", async () => {
+  const incompleteAuditReply = `${JSON.stringify({
+    reply: "改善精力需要结合具体情况。",
+    attachments: [],
+    sources: [],
+    tagEvaluation: [completeNegativeTagAudit[0]],
+    tagDecision: { add: [], remove: [] }
+  })}已处理客户消息"解决方法"，更新了会话记录。`;
+  const completeReply = JSON.stringify({
+    reply: "改善精力需要结合具体情况。",
+    attachments: [],
+    sources: [],
+    tagEvaluation: completeNegativeTagAudit,
+    tagDecision: { add: [], remove: [] }
+  });
+  const requests = [];
+
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：解决方法", metadata: { source: "test" } },
+    invoke: async ({ request, attemptNumber }) => {
+      requests.push(request);
+      return {
+        reply: attemptNumber === 1 ? incompleteAuditReply : completeReply,
+        response: { attemptNumber }
+      };
+    },
+    validationOptions: {
+      allowTagDecision: true,
+      tagContext: completeTagContext
+    }
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].message, /上一版原始响应/);
+  assert.match(requests[1].message, new RegExp(incompleteAuditReply.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(requests[1].message, /group_1:tag_1/);
+  assert.match(requests[1].message, /group_2:tag_1/);
+  assert.match(requests[1].message, /必须手工打标签/);
+  assert.match(requests[1].message, /每个标签恰好评估一次/);
+});
+
+test("validation retry bounds the prior response copy", () => {
+  const retry = buildAgentResponseValidationRetryRequest(
+    { message: "原始请求" },
+    [{ type: "schema", path: "tagEvaluation", message: "missing tag" }],
+    {
+      rawResponse: "x".repeat(20_000),
+      tagContext: completeTagContext
+    }
+  );
+
+  assert.ok(retry.message.length < 10_000);
+  assert.match(retry.message, /已截断/);
 });

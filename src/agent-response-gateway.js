@@ -5,6 +5,9 @@ import {
   validateTagAuditContract
 } from "./tag-audit.js";
 
+const maxValidationRetryPriorResponseChars = 4000;
+const maxValidationRetryTagConditionChars = 240;
+
 export function validateAgentResponseText(rawText, {
   requireFlowDecision = false,
   allowTagDecision = false,
@@ -76,7 +79,15 @@ export function validateAgentResponseText(rawText, {
   };
 }
 
-export function buildAgentResponseValidationRetryRequest(request, errors = []) {
+export function buildAgentResponseValidationRetryRequest(request, errors = [], {
+  rawResponse = "",
+  tagContext = null
+} = {}) {
+  const priorResponse = boundedPromptText(
+    rawResponse,
+    maxValidationRetryPriorResponseChars
+  );
+  const tagChecklist = buildTagEvaluationChecklist(tagContext);
   return {
     ...request,
     message: [
@@ -87,6 +98,20 @@ export function buildAgentResponseValidationRetryRequest(request, errors = []) {
       ...summarizeValidationErrors(errors).map((error, index) =>
         `${index + 1}. ${formatValidationErrorForPrompt(error)}`
       ),
+      ...(priorResponse
+        ? [
+            "",
+            "上一版原始响应如下。请以它为修正基础，保留其中正确的客户回复、状态决策和标签判断：",
+            priorResponse
+          ]
+        : []),
+      ...(tagChecklist.length
+        ? [
+            "",
+            "必须评估的完整标签清单如下。tagEvaluation 必须对每个标签恰好评估一次，不能遗漏：",
+            ...tagChecklist
+          ]
+        : []),
       "只输出一个合法 JSON 对象，不要输出 Markdown、分析、推理、规则、处理步骤、前后说明或 JSON 对象外的任何文字。"
     ].join("\n"),
     metadata: {
@@ -166,7 +191,10 @@ export async function validateAndRetryAgentResponse({
 
     if (attemptNumber === 1) {
       onRetryRequested?.({ rawReplyLength: String(invocation?.reply || "").length });
-      currentRequest = buildAgentResponseValidationRetryRequest(request, validation.errors);
+      currentRequest = buildAgentResponseValidationRetryRequest(request, validation.errors, {
+        rawResponse: validation.rawText,
+        tagContext: validationOptions.tagContext
+      });
     } else {
       onRetryOutcome?.({
         outcome: "failed",
@@ -288,6 +316,35 @@ function extractCompleteJsonObjects(text) {
     candidates,
     incomplete: start >= 0
   };
+}
+
+function buildTagEvaluationChecklist(tagContext) {
+  const lines = [];
+  for (const group of Array.isArray(tagContext?.groups) ? tagContext.groups : []) {
+    const groupId = String(group?.id || "").trim();
+    if (!groupId) continue;
+    for (const tag of Array.isArray(group?.tags) ? group.tags : []) {
+      const tagId = String(tag?.id || "").trim();
+      if (!tagId) continue;
+      const groupName = String(group?.name || groupId).trim();
+      const tagName = String(tag?.name || tagId).trim();
+      const condition = boundedPromptText(
+        tag?.condition,
+        maxValidationRetryTagConditionChars
+      );
+      lines.push(
+        `- ${groupId}:${tagId} | ${groupName} / ${tagName}`
+        + (condition ? ` | 达标条件：${condition}` : "")
+      );
+    }
+  }
+  return lines;
+}
+
+function boundedPromptText(value, maxChars) {
+  const text = String(value || "").trim();
+  if (!text || text.length <= maxChars) return text;
+  return `${text.slice(0, Math.max(0, maxChars - 6))}…[已截断]`;
 }
 
 function repairResponseObject(parsed, {

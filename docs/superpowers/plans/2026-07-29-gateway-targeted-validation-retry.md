@@ -106,4 +106,3 @@ Commit the focused change and push it to `origin/main`.
 - [ ] **Step 3: Merge updated `main` into the group release**
 
 Merge `origin/main` into `release/group-management-v1`, rerun the focused test, and push the release branch.
-
