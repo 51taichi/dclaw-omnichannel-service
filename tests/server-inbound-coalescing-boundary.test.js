@@ -14,7 +14,10 @@ test("server configures an inbound coalescer with approved defaults", () => {
 test("multiple inbound texts are presented to the Agent as one ordered customer turn", () => {
   assert.match(source, /function buildCoalescedAgentMessage\(messages\)/);
   assert.match(source, /客户连续发送了以下消息，请结合上下文统一回答/);
-  assert.match(source, /const agentMessage = normalizeMessageForAgent\(coalescedMessage, binding\)/);
+  assert.match(
+    source,
+    /const agentMessage = normalizeMessageForAgent\(\s*coalescedMessage,\s*binding,\s*groupReplyDecision\s*\)/
+  );
   assert.match(source, /coalescedMessages/);
   assert.match(source, /atMe: mentioned \? "true" : last\.atMe/);
 });

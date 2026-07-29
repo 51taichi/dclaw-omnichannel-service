@@ -148,6 +148,41 @@ test("gateway reports when the validation retry succeeds", async () => {
   }]);
 });
 
+test("authorized group requests retry an empty reply instead of accepting silence", async () => {
+  const failures = [];
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：你好" },
+    validationOptions: { requireReplyContent: true },
+    invoke: async ({ attemptNumber }) => ({
+      reply: JSON.stringify(attemptNumber === 1
+        ? { reply: "", attachments: [], sources: [] }
+        : { reply: "你好，我在的。", attachments: [], sources: [] }),
+      response: { attemptNumber }
+    }),
+    onValidationFailure: (failure) => failures.push(failure)
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.agentReply.reply, "你好，我在的。");
+  assert.equal(result.attempts.length, 2);
+  assert.equal(failures.length, 1);
+  assert.deepEqual(failures[0].errors, [{
+    type: "semantic",
+    path: "reply",
+    message: "authorized request requires reply text or an attachment"
+  }]);
+});
+
+test("authorized group requests may use an attachment-only reply", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "",
+    attachments: [{ type: "image", url: "https://example.com/a.png" }],
+    sources: []
+  }), { requireReplyContent: true });
+
+  assert.equal(result.valid, true);
+});
+
 test("gateway decodes escaped reply line breaks without retrying the Agent", async () => {
   const attempts = [];
   const result = await validateAndRetryAgentResponse({

@@ -22,3 +22,17 @@ test("server applies managed group and role reply policy after persisting inboun
   );
   assert.match(processSource, /group_policy_never|group_mention_required/);
 });
+
+test("server carries an authorized role decision through coalescing and strict validation", () => {
+  assert.match(source, /matchedRole:\s*role\s*\?/);
+  assert.match(source, /groupReplyDecision:\s*groupPolicy/);
+  assert.match(
+    source,
+    /const groupReplyDecision = batch\.items[\s\S]*?\.find\(\(decision\) => decision\?\.invokeAgent\)/
+  );
+  assert.match(source, /replyDecision:\s*groupReplyDecision/);
+  assert.match(
+    source,
+    /requireReplyContent:\s*Boolean\(request\?\.metadata\?\.requireReplyContent\)/
+  );
+});

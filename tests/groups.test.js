@@ -74,6 +74,43 @@ test("group agent context describes configured roles without membership claims",
   assert.equal("membershipStatus" in context.roles[0], false);
 });
 
+test("group agent context carries the server reply authorization and matched role", () => {
+  const context = buildGroupAgentContext({
+    group: { id: "g1", background: "A产品售后服务群" },
+    roles: [{
+      id: "role-1",
+      currentName: "魔兮",
+      identityType: "customer",
+      description: "客户代表",
+      replyPolicy: "always"
+    }],
+    speakerName: "魔兮",
+    replyDecision: {
+      invokeAgent: true,
+      reason: "policy_matched",
+      effectivePolicy: "always",
+      originalAtMe: false,
+      matchedRole: {
+        id: "role-1",
+        currentName: "魔兮",
+        replyPolicy: "always"
+      }
+    }
+  });
+
+  assert.deepEqual(context.replyDecision, {
+    authorized: true,
+    reason: "policy_matched",
+    effectivePolicy: "always",
+    originalAtMe: false,
+    matchedRole: {
+      id: "role-1",
+      name: "魔兮",
+      replyPolicy: "always"
+    }
+  });
+});
+
 test("differential planners omit unchanged external writes", () => {
   assert.deepEqual(planGroupExternalPatch({
     original: { currentName: "A群", announcement: "公告", currentRemark: "" },

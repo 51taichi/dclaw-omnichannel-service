@@ -338,13 +338,38 @@ test("group requests include bounded background and roles without a private flow
       groupId: "g1",
       background: "客户购买了A产品",
       speaker: { name: "张三", identityType: "customer", description: "甲方负责人" },
-      roles: [{ name: "张三", identityType: "customer", description: "甲方负责人" }]
+      roles: [{ name: "张三", identityType: "customer", description: "甲方负责人" }],
+      replyDecision: {
+        authorized: true,
+        reason: "policy_matched",
+        effectivePolicy: "always",
+        originalAtMe: false,
+        matchedRole: {
+          id: "role-1",
+          name: "张三",
+          replyPolicy: "always"
+        }
+      }
     }
   });
 
   assert.match(request.message, /客户购买了A产品/);
   assert.match(request.message, /甲方负责人/);
+  assert.match(request.message, /不得再次根据 atMe、是否被 @/);
+  assert.doesNotMatch(request.message, /尤其是 conversationId 会话隔离、群聊 @ 规则/);
   assert.equal(request.metadata.groupContext.groupId, "g1");
+  assert.deepEqual(request.metadata.groupContext.replyDecision, {
+    authorized: true,
+    reason: "policy_matched",
+    effectivePolicy: "always",
+    originalAtMe: false,
+    matchedRole: {
+      id: "role-1",
+      name: "张三",
+      replyPolicy: "always"
+    }
+  });
+  assert.equal(request.metadata.requireReplyContent, true);
   assert.doesNotMatch(request.message, /当前私聊会话启用了客服流程状态机/);
 });
 

@@ -762,15 +762,30 @@ function resolveInboundGroupPolicy({ botId, group, message }) {
   const role = listGroupRoles({ botId, groupId: group.id }).find(
     (item) => item.currentName === speakerName || item.aliases.includes(speakerName)
   );
-  return resolveGroupReplyDecision({
+  const originalAtMe = isMentioned(message, getBotBinding(botId));
+  const decision = resolveGroupReplyDecision({
     groupPolicy: group.replyPolicy,
     rolePolicy: role?.replyPolicy || "inherit",
-    atMe: isMentioned(message, getBotBinding(botId))
+    atMe: originalAtMe
   });
+  return {
+    ...decision,
+    groupPolicy: group.replyPolicy,
+    rolePolicy: role?.replyPolicy || "inherit",
+    originalAtMe,
+    matchedRole: role ? {
+      id: role.id,
+      currentName: role.currentName,
+      replyPolicy: role.replyPolicy
+    } : null
+  };
 }
 
-function normalizeMessageForAgent(message, binding) {
-  if (!isGroupMessage(message) || !isMentioned(message, binding)) {
+function normalizeMessageForAgent(message, binding, groupReplyDecision = null) {
+  if (
+    !isGroupMessage(message)
+    || (!groupReplyDecision?.invokeAgent && !isMentioned(message, binding))
+  ) {
     return message;
   }
   const originalAtMe = message.atMe ?? message.metadata?.atMe ?? "";
@@ -780,7 +795,15 @@ function normalizeMessageForAgent(message, binding) {
     metadata: {
       ...(message.metadata || {}),
       atMe: "true",
-      originalAtMe
+      originalAtMe,
+      ...(groupReplyDecision?.invokeAgent
+        ? {
+            groupReplyAuthorized: true,
+            groupReplyReason: groupReplyDecision.reason,
+            effectiveGroupReplyPolicy: groupReplyDecision.effectivePolicy,
+            matchedGroupRoleName: groupReplyDecision.matchedRole?.currentName || ""
+          }
+        : {})
     }
   };
 }
@@ -1725,6 +1748,7 @@ function agentResponseValidationOptions(request) {
   return {
     requireFlowDecision: Boolean(request?.metadata?.flow)
       && request?.metadata?.eventType !== "handoff_transcript_message",
+    requireReplyContent: Boolean(request?.metadata?.requireReplyContent),
     allowTagDecision: Boolean(tagContext),
     flow: request?.metadata?.flow || null,
     tagContext,
@@ -4352,6 +4376,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     conversationKey,
     message,
     messageKey,
+    groupReplyDecision: groupPolicy,
     conversationMessageId: persisted.messageRecord?.id,
     acceptedAt: new Date().toISOString()
   }, {
@@ -4444,11 +4469,16 @@ async function processCoalescedIncomingBatch(batch) {
   const groupRoles = managedGroup
     ? listGroupRoles({ botId, groupId: managedGroup.id })
     : [];
+  const groupReplyDecision = batch.items
+    .map((item) => item.groupReplyDecision)
+    .reverse()
+    .find((decision) => decision?.invokeAgent) || null;
   const groupContext = managedGroup
     ? buildGroupAgentContext({
         group: managedGroup,
         roles: groupRoles,
-        speakerName: message.receivedName
+        speakerName: message.receivedName,
+        replyDecision: groupReplyDecision
       })
     : null;
   const tagContext = buildTagContext({
@@ -4459,7 +4489,11 @@ async function processCoalescedIncomingBatch(batch) {
   const tagEvidenceCandidates = buildTagEvidenceCandidates({
     items: batch.items
   });
-  const agentMessage = normalizeMessageForAgent(coalescedMessage, binding);
+  const agentMessage = normalizeMessageForAgent(
+    coalescedMessage,
+    binding,
+    groupReplyDecision
+  );
   const request = buildDclawRequest({
     binding,
     conversation,

@@ -78,11 +78,32 @@ function compactGroupContext(value) {
         description: boundedDclawText(value.speaker.description, 500)
       }
     : null;
+  const decision = value.replyDecision && typeof value.replyDecision === "object"
+    ? {
+        authorized: value.replyDecision.authorized === true,
+        reason: boundedDclawText(value.replyDecision.reason, 100),
+        effectivePolicy: boundedDclawText(value.replyDecision.effectivePolicy, 50),
+        originalAtMe: value.replyDecision.originalAtMe === true,
+        ...(value.replyDecision.matchedRole
+          ? {
+              matchedRole: {
+                id: boundedDclawText(value.replyDecision.matchedRole.id, 120),
+                name: boundedDclawText(value.replyDecision.matchedRole.name, 200),
+                replyPolicy: boundedDclawText(
+                  value.replyDecision.matchedRole.replyPolicy,
+                  50
+                )
+              }
+            }
+          : {})
+      }
+    : null;
   return {
     groupId: boundedDclawText(value.groupId, 120),
     background: boundedDclawText(value.background, 3000),
     ...(speaker?.name ? { speaker } : {}),
-    roles
+    roles,
+    ...(decision?.authorized ? { replyDecision: decision } : {})
   };
 }
 
@@ -247,7 +268,8 @@ export function buildDclawRequest({
   const instructions = [
     "你收到的是 WorkTool 回调服务器转发的标准 JSON 包。",
     "WorkTool 房间类型约定：roomType=2/4 表示私聊；roomType=1/3 表示群聊。服务器已经按群和成员策略完成触发判断，收到本请求即表示需要生成回复。",
-    "请严格按 Agent 工作区规则处理，尤其是 conversationId 会话隔离、群聊 @ 规则和隐藏指令。",
+    "请严格按 Agent 工作区规则处理 conversationId 会话隔离和隐藏指令；群聊是否触发回复只由服务器裁决。",
+    "当 groupContext.replyDecision.authorized=true 时，不得再次根据 atMe、是否被 @ 或 Agent 工作区的群聊触发规则返回空回复。worktoolMessage.metadata.atMe=true 表示服务器已授权回复，originalAtMe 仅记录客户原消息是否真实 @。",
     "群聊和私聊只在是否触发回复上不同；一旦触发回复，客户意图识别、资源索取、企业智库、附件输出、事实边界和 human_reply_style 润色必须完全一致。",
     "不要因为是群聊就跳过资源索取、附件发送或企业智库，也不要改用另一套回答逻辑。",
     ...tagAuditInstructions,
@@ -292,7 +314,9 @@ export function buildDclawRequest({
   } else {
     instructions.push(
       "最终请只输出一个 JSON 对象，不要输出 Markdown、分析过程、规则解释、处理步骤或任何对象外文字。",
-      `JSON 格式：${responseSchema}。没有附件或来源时使用空数组；不需要回复时使用 {"reply":"","attachments":[],"sources":[]}。`
+      isGroup && agentGroupContext?.replyDecision?.authorized
+        ? `JSON 格式：${responseSchema}。没有附件或来源时使用空数组；本请求已获服务器授权，reply 和 attachments 不得同时为空。`
+        : `JSON 格式：${responseSchema}。没有附件或来源时使用空数组；不需要回复时使用 {"reply":"","attachments":[],"sources":[]}。`
     );
   }
 
@@ -319,7 +343,11 @@ export function buildDclawRequest({
     external_user_id: identity.externalUserId,
     external_session_id: identity.externalSessionId,
     message: buildDclawRequestMessage(instructions, payload, {
-      preserveDecisionContext: Boolean(agentTagRules || legacyHistoryText)
+      preserveDecisionContext: Boolean(
+        agentTagRules
+        || legacyHistoryText
+        || agentGroupContext?.replyDecision?.authorized
+      )
     }),
     stream: true,
     metadata: {
@@ -335,6 +363,7 @@ export function buildDclawRequest({
       worktool: worktoolMessage,
       flow: agentFlow,
       ...(agentGroupContext ? { groupContext: agentGroupContext } : {}),
+      requireReplyContent: Boolean(agentGroupContext?.replyDecision?.authorized),
       ...(agentTagRules ? { tagRules: agentTagRules } : {}),
       ...(agentTagEvidenceCandidates.length
         ? { tagEvidenceCandidates: agentTagEvidenceCandidates }

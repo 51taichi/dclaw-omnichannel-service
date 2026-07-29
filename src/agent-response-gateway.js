@@ -10,6 +10,7 @@ const maxValidationRetryTagConditionChars = 240;
 
 export function validateAgentResponseText(rawText, {
   requireFlowDecision = false,
+  requireReplyContent = false,
   allowTagDecision = false,
   flow = null,
   tagContext = null,
@@ -44,6 +45,7 @@ export function validateAgentResponseText(rawText, {
 
   const validationOptions = {
     requireFlowDecision,
+    requireReplyContent,
     allowTagDecision,
     flow,
     tagContext,
@@ -554,6 +556,7 @@ function normalizeAgentReplyText(value) {
 
 function validateResponseObject(parsed, {
   requireFlowDecision,
+  requireReplyContent,
   allowTagDecision,
   flow,
   tagContext,
@@ -586,6 +589,18 @@ function validateResponseObject(parsed, {
       type: "schema",
       path: "sources",
       message: "sources must be an array"
+    });
+  }
+  if (
+    requireReplyContent
+    && typeof parsed.reply === "string"
+    && !parsed.reply.trim()
+    && !(Array.isArray(parsed.attachments) && parsed.attachments.length)
+  ) {
+    errors.push({
+      type: "semantic",
+      path: "reply",
+      message: "authorized request requires reply text or an attachment"
     });
   }
   validateFlowDecision(parsed.flowDecision || parsed.stateUpdate, {

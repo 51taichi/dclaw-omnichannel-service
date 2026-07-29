@@ -65,6 +65,7 @@ export function buildGroupAgentContext({
   group,
   roles = [],
   speakerName,
+  replyDecision = null,
   maxChars = 12000
 }) {
   const normalizedRoles = (Array.isArray(roles) ? roles : []).map((role) => ({
@@ -81,7 +82,26 @@ export function buildGroupAgentContext({
     groupId: String(group?.id || ""),
     background: bounded(group?.background, maxChars),
     speaker,
-    roles: normalizedRoles
+    roles: normalizedRoles,
+    ...(replyDecision?.invokeAgent
+      ? {
+          replyDecision: {
+            authorized: true,
+            reason: bounded(replyDecision.reason, 100),
+            effectivePolicy: bounded(replyDecision.effectivePolicy, 50),
+            originalAtMe: Boolean(replyDecision.originalAtMe),
+            ...(replyDecision.matchedRole
+              ? {
+                  matchedRole: {
+                    id: bounded(replyDecision.matchedRole.id, 120),
+                    name: bounded(replyDecision.matchedRole.currentName, 200),
+                    replyPolicy: bounded(replyDecision.matchedRole.replyPolicy, 50)
+                  }
+                }
+              : {})
+          }
+        }
+      : {})
   };
   const serialized = JSON.stringify(context);
   if (serialized.length <= maxChars) return context;
