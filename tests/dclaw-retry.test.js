@@ -1,11 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getDclawRequestMessageMaxChars, invokeDclawAgentWithRetry } from "../src/dclaw.js";
+import {
+  getDclawAgentTimeoutMs,
+  getDclawRequestMessageMaxChars,
+  invokeDclawAgentWithRetry
+} from "../src/dclaw.js";
 
 const binding = {
   agentApiUrl: "https://dclaw.example.test/api/open/v1/targets/demo/messages",
   agentApiKey: "test-key"
 };
+
+test("defaults DClaw Agent calls to a 120 second timeout", () => {
+  const previousTimeout = process.env.DCLAW_AGENT_TIMEOUT_MS;
+  delete process.env.DCLAW_AGENT_TIMEOUT_MS;
+  try {
+    assert.equal(getDclawAgentTimeoutMs(), 120000);
+  } finally {
+    if (previousTimeout === undefined) delete process.env.DCLAW_AGENT_TIMEOUT_MS;
+    else process.env.DCLAW_AGENT_TIMEOUT_MS = previousTimeout;
+  }
+});
 
 test("sanitizes lone Unicode surrogates before sending DClaw requests", async () => {
   const originalFetch = globalThis.fetch;

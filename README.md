@@ -58,10 +58,10 @@ UPLOAD_ALLOWED_ORIGINS=https://你的外部应用域名
 `PUBLIC_BASE_URL` 必须是 WorkTool 可以访问到的 HTTPS 地址。正式环境建议用服务器域名；本地联调用 ngrok、frp、Cloudflare Tunnel 都可以。
 如果外部应用是在浏览器里直接调用上传接口，把它的页面 Origin 写入 `UPLOAD_ALLOWED_ORIGINS`；多个域名用英文逗号分隔。后端服务直连上传不需要配置跨域。
 
-DClaw 调用默认 25 秒超时，超时或 DClaw 网关返回 `502/503/504` 会快速重试 1 次。Agent 回复格式不合规时，服务端会先尝试从返回文本中提取唯一 JSON；提取失败才发起一次短超时格式修复。如果最终仍失败，私聊会发送一条兜底提示，避免客户侧完全无响应：
+DClaw 调用默认 120 秒超时，超时或 DClaw 网关返回 `502/503/504` 会快速重试 1 次。Agent 回复格式不合规时，服务端会先尝试从返回文本中提取唯一 JSON；提取失败才发起一次短超时格式修复。如果最终仍失败，私聊会发送一条兜底提示，避免客户侧完全无响应：
 
 ```bash
-DCLAW_AGENT_TIMEOUT_MS=25000
+DCLAW_AGENT_TIMEOUT_MS=120000
 DCLAW_AGENT_FORMAT_RETRY_TIMEOUT_MS=30000
 DCLAW_AGENT_MAX_ATTEMPTS=2
 AGENT_FAILURE_FALLBACK_REPLY=刚刚这边有点卡，我稍后回复你哈

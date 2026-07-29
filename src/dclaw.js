@@ -970,7 +970,7 @@ function responseSchemaForRequest({ hasFlow, hasTags = false }) {
     : `{"reply":"发给客户的文本","attachments":[],"sources":[]${tagPart}}`;
 }
 
-const defaultDclawTimeoutMs = 25000;
+const defaultDclawTimeoutMs = 120000;
 const defaultDclawMaxAttempts = 2;
 const defaultDclawFormatRetryTimeoutMs = 30000;
 
