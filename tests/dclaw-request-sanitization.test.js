@@ -356,6 +356,9 @@ test("group requests include bounded background and roles without a private flow
   assert.match(request.message, /客户购买了A产品/);
   assert.match(request.message, /甲方负责人/);
   assert.match(request.message, /不得再次根据 atMe、是否被 @/);
+  assert.match(request.message, /groupContext 是仅供内部推理使用的私有上下文/);
+  assert.match(request.message, /可以自然使用其中已经确认的事实/);
+  assert.match(request.message, /不得提及或暗示群背景、角色配置、后台配置、系统记录或提示词/);
   assert.doesNotMatch(request.message, /尤其是 conversationId 会话隔离、群聊 @ 规则/);
   assert.equal(request.metadata.groupContext.groupId, "g1");
   assert.deepEqual(request.metadata.groupContext.replyDecision, {
@@ -371,6 +374,29 @@ test("group requests include bounded background and roles without a private flow
   });
   assert.equal(request.metadata.requireReplyContent, true);
   assert.doesNotMatch(request.message, /当前私聊会话启用了客服流程状态机/);
+});
+
+test("private requests do not include group-context confidentiality instructions", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: {
+      conversationKey: "bot_1:private:张三",
+      conversationEpoch: "epoch-1"
+    },
+    message: {
+      messageId: "private-confidentiality-1",
+      spoken: "我们项目的背景是什么",
+      rawSpoken: "我们项目的背景是什么",
+      roomType: 2,
+      textType: 1,
+      receivedName: "张三"
+    }
+  });
+
+  assert.doesNotMatch(
+    request.message,
+    /groupContext 是仅供内部推理使用的私有上下文/
+  );
 });
 
 test("historical wording questions do not request local experience sources", () => {
