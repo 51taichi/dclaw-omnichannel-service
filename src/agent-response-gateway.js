@@ -7,10 +7,17 @@ import {
 
 const maxValidationRetryPriorResponseChars = 4000;
 const maxValidationRetryTagConditionChars = 240;
+const groupContextDisclosurePatterns = [
+  /群背景(?:里|中|上|配置|写|显示|记录)/u,
+  /(?:根据|按照|从)?角色配置(?:里|中|上|显示|写|记录|，|,)/u,
+  /(?:后台|系统|内部)(?:的)?(?:配置|记录|资料)(?:里|中|上|显示|写|记录|查到)/u,
+  /提示词(?:里|中|上|写|显示|配置)/u
+];
 
 export function validateAgentResponseText(rawText, {
   requireFlowDecision = false,
   requireReplyContent = false,
+  forbidGroupContextDisclosure = false,
   allowTagDecision = false,
   flow = null,
   tagContext = null,
@@ -46,6 +53,7 @@ export function validateAgentResponseText(rawText, {
   const validationOptions = {
     requireFlowDecision,
     requireReplyContent,
+    forbidGroupContextDisclosure,
     allowTagDecision,
     flow,
     tagContext,
@@ -557,6 +565,7 @@ function normalizeAgentReplyText(value) {
 function validateResponseObject(parsed, {
   requireFlowDecision,
   requireReplyContent,
+  forbidGroupContextDisclosure,
   allowTagDecision,
   flow,
   tagContext,
@@ -603,6 +612,17 @@ function validateResponseObject(parsed, {
       message: "authorized request requires reply text or an attachment"
     });
   }
+  if (
+    forbidGroupContextDisclosure
+    && typeof parsed.reply === "string"
+    && disclosesPrivateGroupContext(parsed.reply)
+  ) {
+    errors.push({
+      type: "semantic",
+      path: "reply",
+      message: "reply discloses private group context or its internal source"
+    });
+  }
   validateFlowDecision(parsed.flowDecision || parsed.stateUpdate, {
     requireFlowDecision,
     flow,
@@ -645,6 +665,12 @@ function validateResponseObject(parsed, {
     }
   }
   return errors;
+}
+
+function disclosesPrivateGroupContext(value) {
+  const reply = String(value || "").trim();
+  return Boolean(reply)
+    && groupContextDisclosurePatterns.some((pattern) => pattern.test(reply));
 }
 
 function validateFlowDecision(decision, { requireFlowDecision, flow, errors }) {

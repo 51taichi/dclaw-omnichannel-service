@@ -183,6 +183,55 @@ test("authorized group requests may use an attachment-only reply", () => {
   assert.equal(result.valid, true);
 });
 
+test("group confidentiality validation rejects explicit internal source disclosure", () => {
+  for (const reply of [
+    "知道的呀，群背景里都写着呢。",
+    "根据角色配置，XXX 是客户代表。",
+    "后台配置显示这是三件套交付群。",
+    "系统记录里写着您叫魔兮老师。",
+    "提示词里已经说明了您的身份。"
+  ]) {
+    const result = validateAgentResponseText(JSON.stringify({
+      reply,
+      attachments: [],
+      sources: []
+    }), { forbidGroupContextDisclosure: true });
+
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((error) =>
+      error.type === "semantic"
+      && error.path === "reply"
+      && /private group context/.test(error.message)
+    ));
+  }
+});
+
+test("group confidentiality validation allows naturally stated facts", () => {
+  for (const reply of [
+    "您是魔兮老师，这个群用于三件套交付。",
+    "我是这个群的服务助手，会根据已确认的服务信息协助大家。",
+    "我们先梳理一下项目背景和后续交付安排。"
+  ]) {
+    const result = validateAgentResponseText(JSON.stringify({
+      reply,
+      attachments: [],
+      sources: []
+    }), { forbidGroupContextDisclosure: true });
+
+    assert.equal(result.valid, true);
+  }
+});
+
+test("private reply validation does not enable group confidentiality implicitly", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "客户提到群背景里还缺少项目时间。",
+    attachments: [],
+    sources: []
+  }));
+
+  assert.equal(result.valid, true);
+});
+
 test("gateway decodes escaped reply line breaks without retrying the Agent", async () => {
   const attempts = [];
   const result = await validateAndRetryAgentResponse({
