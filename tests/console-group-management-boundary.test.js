@@ -33,6 +33,18 @@ test("external create and modify use dialogs and create selects private contacts
   assert.match(app, /\/api\/groups\/create/);
 });
 
+test("group dialogs keep pagination and footer actions inside fixed layout rows", () => {
+  assert.match(
+    css,
+    /\.confirm-dialog\.groups-dialog\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)\s+auto/s
+  );
+  assert.match(
+    css,
+    /\.groups-contact-pagination\s+\.pagination-size\s*\{[^}]*display:\s*inline-flex[^}]*grid-template-columns:\s*none[^}]*flex:\s*0\s+0\s+auto[^}]*white-space:\s*nowrap/s
+  );
+  assert.match(css, /\.groups-dialog-actions\s*\{[^}]*min-height:\s*66px/s);
+});
+
 test("group configuration includes background, reply policy, roles, and tag-group binding", () => {
   assert.match(app, /群背景/);
   assert.match(app, /始终回复（重要客户/);
@@ -48,6 +60,20 @@ test("group configuration includes background, reply policy, roles, and tag-grou
   assert.match(app, /groups-role-columns/);
   assert.match(app, /data-role-label=/);
   assert.ok((app.match(/<svg class="icon"/g) || []).length >= 10);
+});
+
+test("group announcements and background use fixed-slot expanding editors", () => {
+  const groupDialogs = html.slice(
+    html.indexOf('id="createGroupDialog"'),
+    html.indexOf('id="conversationResetLoadingDialog"')
+  );
+  assert.equal((groupDialogs.match(/class="expand-field-slot groups-announcement-slot"/g) || []).length, 2);
+  assert.equal((groupDialogs.match(/textarea class="expand-on-focus" name="announcement" rows="1"/g) || []).length, 2);
+  assert.match(
+    app,
+    /expand-field-slot groups-background-slot[\s\S]*?groups-background-field[\s\S]*?textarea class="expand-on-focus" name="background" rows="1"/
+  );
+  assert.match(css, /\.groups-announcement-slot,\s*\.groups-background-slot\s*\{[^}]*height:\s*40px/s);
 });
 
 test("group management reuses compact editors and supplied group identity", () => {

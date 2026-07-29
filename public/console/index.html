@@ -947,7 +947,9 @@
         </div>
         <div class="confirm-copy groups-dialog-body">
           <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>群名称</span><input name="groupName" required /></label>
-          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>群公告</span><textarea name="announcement" rows="3"></textarea></label>
+          <div class="expand-field-slot groups-announcement-slot">
+            <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>群公告</span><textarea class="expand-on-focus" name="announcement" rows="1"></textarea></label>
+          </div>
           <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>邀请联系人</span><input id="createGroupContactSearch" type="search" placeholder="搜索联系人" /></label>
           <div id="createGroupContactList" class="groups-contact-list">正在加载联系人…</div>
           <div id="createGroupContactPagination" class="pagination-bar groups-contact-pagination" aria-label="邀请联系人分页"></div>
@@ -968,7 +970,9 @@
         </div>
         <div class="confirm-copy groups-dialog-body">
           <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>群名称</span><input name="currentName" required /></label>
-          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>群公告</span><textarea name="announcement" rows="3"></textarea></label>
+          <div class="expand-field-slot groups-announcement-slot">
+            <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>群公告</span><textarea class="expand-on-focus" name="announcement" rows="1"></textarea></label>
+          </div>
           <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群备注</span><input name="currentRemark" /></label>
         </div>
         <div class="confirm-actions groups-dialog-actions">

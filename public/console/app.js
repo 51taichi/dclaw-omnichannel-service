@@ -5159,7 +5159,9 @@ function renderGroupConfig() {
           <option value="never" ${group.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
         </select>
       </label>
-      <label class="groups-background-field"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>群背景</span><textarea class="expand-on-focus" name="background" rows="1" placeholder="例如：客户购买时间、产品和服务背景">${escapeHtml(group.background || "")}</textarea></label>
+      <div class="expand-field-slot groups-background-slot">
+        <label class="groups-background-field"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>群背景</span><textarea class="expand-on-focus" name="background" rows="1" placeholder="例如：客户购买时间、产品和服务背景">${escapeHtml(group.background || "")}</textarea></label>
+      </div>
       <fieldset class="groups-tags-fieldset"><legend><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群标签组</legend>
         <label class="groups-tag-card is-system is-selected"><input type="checkbox" checked disabled /><span class="groups-tag-card-icon"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg></span><span>建立日期<small>系统默认</small></span><svg class="icon groups-tag-lock" aria-label="不可移除"><use href="#icon-lock"></use></svg></label>
         ${availableTagGroups.map((tagGroup) => `
