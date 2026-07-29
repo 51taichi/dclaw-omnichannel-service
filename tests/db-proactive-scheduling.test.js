@@ -86,6 +86,50 @@ test("proactive target tags are isolated by Bot and include normal and date tags
   assert.equal(tags.every((tag) => tag.botId === botId), true);
 });
 
+test("proactive target tags exclude stale normal tag ids outside the current schema", () => {
+  const botId = "tag_target_current_schema_bot";
+  const agentId = ensureBot(botId);
+  createPrivateTarget(botId, "当前客户");
+  createPrivateTarget(botId, "历史客户");
+  db.upsertAgentTagSchema({
+    agentId,
+    schema: {
+      groups: [{
+        id: "intent",
+        name: "意向等级",
+        tags: [{
+          id: "current_a",
+          name: "A类",
+          condition: "当前规则"
+        }]
+      }]
+    }
+  });
+  applyNormalTag(botId, agentId, "当前客户", "current_a", "A类");
+  applyNormalTag(botId, agentId, "历史客户", "legacy_a", "A类");
+
+  const tags = db.listProactiveTargetTags({ botId });
+
+  assert.deepEqual(
+    tags
+      .filter((tag) => tag.tagType === "normal")
+      .map((tag) => [tag.groupId, tag.tagId, tag.tagName]),
+    [["intent", "current_a", "A类"]]
+  );
+});
+
+test("proactive target tags stay empty after all normal tags are removed from the schema", () => {
+  const botId = "tag_target_empty_schema_bot";
+  const agentId = ensureBot(botId);
+  createPrivateTarget(botId, "历史客户");
+  db.upsertAgentTagSchema({ agentId, schema: { groups: [] } });
+  applyNormalTag(botId, agentId, "历史客户", "legacy_a", "A类");
+
+  const tags = db.listProactiveTargetTags({ botId });
+
+  assert.deepEqual(tags.filter((tag) => tag.tagType === "normal"), []);
+});
+
 test("proactive targets can be selected by multiple tags without duplicates", () => {
   const botId = "tag_filter_bot";
   const agentId = ensureBot(botId);

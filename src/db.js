@@ -6145,7 +6145,7 @@ export function listProactiveTargetTags({ botId = "" } = {}) {
     filters.push("pt.bot_id = ?");
     values.push(botId);
   }
-  return db.prepare(`
+  const rows = db.prepare(`
     SELECT DISTINCT
       pt.bot_id,
       ct.tag_type,
@@ -6164,14 +6164,38 @@ export function listProactiveTargetTags({ botId = "" } = {}) {
              ct.group_name ASC,
              ct.tag_name ASC,
              ct.tag_id ASC
-  `).all(...values).map((row) => ({
-    botId: row.bot_id,
-    tagType: row.tag_type,
-    groupId: row.group_id || "",
-    groupName: row.group_name || "",
-    tagId: row.tag_id,
-    tagName: row.tag_name || row.tag_id
-  }));
+  `).all(...values);
+  const binding = botId ? getBotBinding(botId) : null;
+  const schemaRecord = binding ? getAgentTagSchema(binding.agentId) : null;
+  const schema = schemaRecord ? normalizeTagSchema(schemaRecord.config || {}) : null;
+  const currentNormalTags = new Map();
+  for (const group of schema?.groups || []) {
+    for (const tag of group.tags || []) {
+      currentNormalTags.set(`${group.id}:${tag.id}`, {
+        groupName: group.name,
+        tagName: tag.name
+      });
+    }
+  }
+  const filterNormalTagsBySchema = Boolean(schemaRecord);
+
+  return rows
+    .filter((row) => (
+      row.tag_type === "date"
+      || !filterNormalTagsBySchema
+      || currentNormalTags.has(`${row.group_id || ""}:${row.tag_id}`)
+    ))
+    .map((row) => {
+      const currentTag = currentNormalTags.get(`${row.group_id || ""}:${row.tag_id}`);
+      return {
+        botId: row.bot_id,
+        tagType: row.tag_type,
+        groupId: row.group_id || "",
+        groupName: currentTag?.groupName || row.group_name || "",
+        tagId: row.tag_id,
+        tagName: currentTag?.tagName || row.tag_name || row.tag_id
+      };
+    });
 }
 
 export function listProactiveAddressBookTargets({ botId, targetType, query, limit = 200 }) {
