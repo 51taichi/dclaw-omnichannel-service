@@ -7,6 +7,14 @@ const html = fs.readFileSync(new URL("../public/console/index.html", import.meta
 const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 
+test("task tab appears before group management in the workspace navigation", () => {
+  const tabBar = html.slice(
+    html.indexOf('<div class="workspace-tabs"'),
+    html.indexOf('<div class="current-bot-actions"')
+  );
+  assert.ok(tabBar.indexOf('data-workspace-tab="flow"') < tabBar.indexOf('data-workspace-tab="groups"'));
+});
+
 test("group management is a separate tab with a 30/70 configuration layout and no chat history", () => {
   assert.match(html, /data-workspace-tab="groups"/);
   const panel = html.slice(html.indexOf('id="groupsTab"'), html.indexOf('id="sessionsTab"'));
@@ -77,9 +85,10 @@ test("group announcements and background use fixed-slot expanding editors", () =
 });
 
 test("group management reuses compact editors and supplied group identity", () => {
+  const groupTabStart = html.indexOf('data-workspace-tab="groups"');
   const groupTab = html.slice(
-    html.indexOf('data-workspace-tab="groups"'),
-    html.indexOf('data-workspace-tab="flow"')
+    groupTabStart,
+    html.indexOf("</button>", groupTabStart) + "</button>".length
   );
   assert.match(groupTab, /<svg class="icon"[^>]*><use href="#icon-tool"><\/use><\/svg>/);
   assert.doesNotMatch(groupTab, /assets\/group\.png|workspace-tab-image/);
