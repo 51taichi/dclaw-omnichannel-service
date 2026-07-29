@@ -23,10 +23,11 @@
 
 - `src/dclaw.js`: builds group-only confidentiality instructions and continues attaching bounded private group context.
 - `src/agent-response-gateway.js`: detects explicit internal group-context source disclosure when the caller opts in.
-- `src/server.js`: derives the opt-in validation flag from `request.metadata.groupContext`.
+- `src/agent-response-validation-options.js`: maps request metadata to gateway validation options as a testable pure function.
+- `src/server.js`: delegates validation-option construction to the focused mapper.
 - `tests/dclaw-request-sanitization.test.js`: verifies group-only prompt and metadata behavior.
 - `tests/agent-response-gateway.test.js`: verifies rejection, non-rejection, private isolation, retry, and terminal failure.
-- `tests/server-reply-contract.test.js`: verifies server-to-gateway option wiring.
+- `tests/agent-response-validation-options.test.js`: verifies group-only option wiring through executable behavior.
 
 ### Task 1: Add group-only confidentiality instructions
 
@@ -239,13 +240,15 @@ git commit -m "Reject private group context disclosure"
 ### Task 3: Wire group requests into validation retry and verify terminal safety
 
 **Files:**
+- Create: `src/agent-response-validation-options.js`
+- Modify: `src/server.js:25-35`
 - Modify: `src/server.js:1762-1775`
 - Test: `tests/agent-response-gateway.test.js`
-- Test: `tests/server-reply-contract.test.js`
+- Test: `tests/agent-response-validation-options.test.js`
 
 **Interfaces:**
 - Consumes: `request.metadata.groupContext`.
-- Produces: `forbidGroupContextDisclosure: Boolean(request?.metadata?.groupContext)` in `agentResponseValidationOptions(request)`.
+- Produces: `buildAgentResponseValidationOptions(request): object`, including `forbidGroupContextDisclosure: Boolean(request?.metadata?.groupContext)`.
 
 - [ ] **Step 1: Write failing retry and server-wiring tests**
 
@@ -302,13 +305,29 @@ test("gateway never accepts repeated group-context disclosure", async () => {
 });
 ```
 
-Add a server boundary assertion:
+Create `tests/agent-response-validation-options.test.js`:
 
 ```js
-assert.match(
-  serverSource,
-  /forbidGroupContextDisclosure:\s*Boolean\(request\?\.metadata\?\.groupContext\)/
-);
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildAgentResponseValidationOptions } from "../src/agent-response-validation-options.js";
+
+test("validation options enable group confidentiality only when group context exists", () => {
+  const groupOptions = buildAgentResponseValidationOptions({
+    metadata: {
+      groupContext: { groupId: "g1" },
+      requireReplyContent: true
+    }
+  });
+  const privateOptions = buildAgentResponseValidationOptions({
+    metadata: { requireReplyContent: true }
+  });
+
+  assert.equal(groupOptions.forbidGroupContextDisclosure, true);
+  assert.equal(privateOptions.forbidGroupContextDisclosure, false);
+  assert.equal(groupOptions.requireReplyContent, true);
+  assert.equal(privateOptions.requireReplyContent, true);
+});
 ```
 
 - [ ] **Step 2: Run the focused tests and verify RED**
@@ -316,26 +335,37 @@ assert.match(
 Run:
 
 ```bash
-node --test tests/agent-response-gateway.test.js tests/server-reply-contract.test.js
+node --test tests/agent-response-gateway.test.js \
+  tests/agent-response-validation-options.test.js
 ```
 
-Expected: the gateway behavior from Task 2 passes, while the server-wiring assertion fails.
+Expected: the gateway behavior from Task 2 passes, while the new validation-options test fails because the module does not exist.
 
-- [ ] **Step 3: Enable the option only for requests containing group context**
+- [ ] **Step 3: Create the option mapper and use it from the server**
 
-Extend `agentResponseValidationOptions(request)`:
+Create `src/agent-response-validation-options.js`:
 
 ```js
-return {
-  requireFlowDecision: Boolean(request?.metadata?.flow)
-    && request?.metadata?.eventType !== "handoff_transcript_message",
-  requireReplyContent: Boolean(request?.metadata?.requireReplyContent),
-  forbidGroupContextDisclosure: Boolean(request?.metadata?.groupContext),
-  allowTagDecision: Boolean(tagContext),
-  flow: request?.metadata?.flow || null,
-  tagContext,
-  tagEvidenceCandidates: request?.metadata?.tagEvidenceCandidates || []
-};
+export function buildAgentResponseValidationOptions(request) {
+  const tagContext = request?.metadata?.tagRules || null;
+  return {
+    requireFlowDecision: Boolean(request?.metadata?.flow)
+      && request?.metadata?.eventType !== "handoff_transcript_message",
+    requireReplyContent: Boolean(request?.metadata?.requireReplyContent),
+    forbidGroupContextDisclosure: Boolean(request?.metadata?.groupContext),
+    allowTagDecision: Boolean(tagContext),
+    flow: request?.metadata?.flow || null,
+    tagContext,
+    tagEvidenceCandidates: request?.metadata?.tagEvidenceCandidates || []
+  };
+}
+```
+
+Import `buildAgentResponseValidationOptions` in `src/server.js`, remove the old
+inline `agentResponseValidationOptions()` function, and replace its call:
+
+```js
+validationOptions: buildAgentResponseValidationOptions(request),
 ```
 
 - [ ] **Step 4: Run focused and full verification**
@@ -345,6 +375,7 @@ Run:
 ```bash
 node --test tests/dclaw-request-sanitization.test.js \
   tests/agent-response-gateway.test.js \
+  tests/agent-response-validation-options.test.js \
   tests/server-reply-contract.test.js \
   tests/groups.test.js \
   tests/server-group-reply-policy.test.js
@@ -357,7 +388,8 @@ Expected: all tests pass and `git diff --check` produces no output.
 - [ ] **Step 5: Commit the server wiring**
 
 ```bash
-git add src/server.js tests/agent-response-gateway.test.js tests/server-reply-contract.test.js
+git add src/agent-response-validation-options.js src/server.js \
+  tests/agent-response-gateway.test.js \
+  tests/agent-response-validation-options.test.js
 git commit -m "Enforce group context confidentiality before send"
 ```
-
