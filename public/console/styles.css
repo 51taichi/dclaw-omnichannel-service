@@ -5737,15 +5737,24 @@ td .muted {
 }
 
 .groups-contact-list {
-  max-height: 280px;
-  overflow: auto;
+  overflow: visible;
 }
 
 .groups-contact-grid {
   align-content: start;
   display: grid;
   gap: 8px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: 42px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.groups-contact-pagination {
+  justify-content: flex-end;
+  padding-top: 4px;
+}
+
+.groups-contact-pagination .pagination-size {
+  padding-left: 0;
 }
 
 .groups-contact-card {

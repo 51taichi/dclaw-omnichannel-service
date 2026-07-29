@@ -30,6 +30,7 @@ const state = {
   selectedGroupDetail: null,
   createGroupContacts: [],
   createGroupContactIds: new Set(),
+  createGroupContactsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
   tagSchema: {
     dateTag: { enabled: true, cutoffTime: "00:00", effectiveAt: "" },
     groups: []
@@ -73,6 +74,7 @@ const els = {
   createGroupCancelButton: document.querySelector("#createGroupCancelButton"),
   createGroupContactSearch: document.querySelector("#createGroupContactSearch"),
   createGroupContactList: document.querySelector("#createGroupContactList"),
+  createGroupContactPagination: document.querySelector("#createGroupContactPagination"),
   modifyGroupDialog: document.querySelector("#modifyGroupDialog"),
   modifyGroupForm: document.querySelector("#modifyGroupForm"),
   modifyGroupCancelButton: document.querySelector("#modifyGroupCancelButton"),
@@ -2609,14 +2611,20 @@ function normalizePagination(pagination = {}, fallback = { page: 1, pageSize: 20
   };
 }
 
-function renderPaginationBar({ container, pagination, onPage, onPageSize }) {
+function renderPaginationBar({
+  container,
+  pagination,
+  onPage,
+  onPageSize,
+  pageSizeOptions = PAGE_SIZE_OPTIONS
+}) {
   if (!container) return;
   const current = normalizePagination(pagination, pagination);
   container.innerHTML = `
     <label class="pagination-size">
       <span>每页</span>
       <select data-pagination-size>
-        ${PAGE_SIZE_OPTIONS.map((size) => `<option value="${size}" ${size === current.pageSize ? "selected" : ""}>${size}</option>`).join("")}
+        ${pageSizeOptions.map((size) => `<option value="${size}" ${size === current.pageSize ? "selected" : ""}>${size}</option>`).join("")}
       </select>
     </label>
     <button class="secondary pagination-button is-prev" data-pagination-page="${current.page - 1}" type="button" aria-label="上一页" title="上一页" ${current.hasPrev ? "" : "disabled"}>${icon("chevron")}</button>
@@ -5228,13 +5236,26 @@ async function loadCreateGroupContacts() {
   const params = new URLSearchParams({
     botId: state.selectedBotId,
     targetType: "private",
-    page: "1",
-    pageSize: "100",
+    page: String(state.createGroupContactsPagination.page),
+    pageSize: String(state.createGroupContactsPagination.pageSize),
     q: String(els.createGroupContactSearch.value || "")
   });
   const data = await request(`/api/proactive/targets?${params.toString()}`);
   state.createGroupContacts = data.targets || [];
+  state.createGroupContactsPagination = normalizePagination(
+    data.pagination,
+    state.createGroupContactsPagination
+  );
   renderCreateGroupContacts();
+  renderPaginationBar({
+    container: els.createGroupContactPagination,
+    pagination: state.createGroupContactsPagination,
+    pageSizeOptions: [20],
+    onPage: (page) => {
+      state.createGroupContactsPagination.page = page;
+      loadCreateGroupContacts().catch(toastError);
+    }
+  });
 }
 
 function renderCreateGroupContacts() {
@@ -5502,6 +5523,7 @@ els.refreshGroupsButton?.addEventListener("click", () => loadGroups({ refresh: t
 els.groupSearchInput?.addEventListener("input", () => loadGroups().catch(toastError));
 els.createGroupButton?.addEventListener("click", () => {
   state.createGroupContactIds.clear();
+  state.createGroupContactsPagination.page = 1;
   els.createGroupForm.reset();
   els.createGroupDialog.hidden = false;
   loadCreateGroupContacts().catch(toastError);
@@ -5509,7 +5531,10 @@ els.createGroupButton?.addEventListener("click", () => {
 els.createGroupCancelButton?.addEventListener("click", () => {
   els.createGroupDialog.hidden = true;
 });
-els.createGroupContactSearch?.addEventListener("input", () => loadCreateGroupContacts().catch(toastError));
+els.createGroupContactSearch?.addEventListener("input", () => {
+  state.createGroupContactsPagination.page = 1;
+  loadCreateGroupContacts().catch(toastError);
+});
 els.createGroupForm?.addEventListener("submit", (event) => {
   event.preventDefault();
   const form = new FormData(event.currentTarget);

@@ -78,8 +78,13 @@ test("role save action sits beside add role and still submits the role form", ()
 });
 
 test("external group contacts reuse push-style selectable cards", () => {
+  assert.match(html, /id="createGroupContactPagination" class="pagination-bar groups-contact-pagination"/);
   assert.match(app, /groups-contact-card \$\{selected \? "selected" : ""\}/);
   assert.match(app, /targetTypeAvatar\("private"\)/);
   assert.match(app, /groups-contact-checkbox/);
-  assert.match(css, /\.groups-contact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(/s);
+  assert.match(app, /createGroupContactsPagination:\s*\{\s*page:\s*1,\s*pageSize:\s*20/);
+  assert.match(app, /page:\s*String\(state\.createGroupContactsPagination\.page\)/);
+  assert.match(app, /renderPaginationBar\(\{[\s\S]*?container:\s*els\.createGroupContactPagination/);
+  assert.match(css, /\.groups-contact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
+  assert.match(css, /\.groups-contact-pagination\s*\{[^}]*justify-content:\s*flex-end/s);
 });

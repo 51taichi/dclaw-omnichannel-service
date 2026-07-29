@@ -194,7 +194,7 @@ Add assertions that the create-group renderer uses a card button, private avatar
 assert.match(app, /groups-contact-card \$\{selected \? "selected" : ""\}/);
 assert.match(app, /targetTypeAvatar\("private"\)/);
 assert.match(app, /groups-contact-checkbox/);
-assert.match(css, /\.groups-contact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(/s);
+assert.match(css, /\.groups-contact-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,/s);
 ```
 
 - [ ] **Step 2: Run the test and verify RED**
@@ -223,7 +223,7 @@ return `
   </button>`;
 ```
 
-Attach click handlers that toggle `state.createGroupContactIds` and rerender the filtered list. Style `.groups-contact-grid` as a responsive multi-column grid with the same dimensions, selected border, avatar, and checkbox treatment as `.target-list`/`.target-card`.
+Attach click handlers that toggle `state.createGroupContactIds` and rerender the filtered list. Style `.groups-contact-grid` as a four-column desktop grid with five rows per 20-person page, the same selected border, avatar, and checkbox treatment as `.target-list`/`.target-card`, and a right-aligned shared pagination bar below it.
 
 - [ ] **Step 4: Run all verification**
 
