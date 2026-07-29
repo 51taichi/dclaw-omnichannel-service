@@ -114,7 +114,6 @@ export function planGroupExternalPatch({ original = {}, next = {} }) {
 
 export function planMemberRemarkChanges(roles = []) {
   return (Array.isArray(roles) ? roles : []).flatMap((role) => {
-    if (!role?.syncMarkName) return [];
     const currentName = String(role.currentName || "").trim();
     const originalMarkName = String(role.originalMarkName || "").trim();
     const markName = String(role.desiredMarkName || "").trim();

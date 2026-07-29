@@ -86,14 +86,19 @@ test("differential planners omit unchanged external writes", () => {
       currentName: "张三",
       originalMarkName: "张三-甲方",
       desiredMarkName: "张三-甲方",
-      syncMarkName: true
+      syncMarkName: false
     },
     {
       id: "b",
       currentName: "李四",
       originalMarkName: "李四",
-      desiredMarkName: "李四-助理",
-      syncMarkName: true
+      desiredMarkName: "李四-助理"
+    },
+    {
+      id: "c",
+      currentName: "王五",
+      originalMarkName: "王五",
+      desiredMarkName: ""
     }
   ]), [{ roleId: "b", currentName: "李四", markName: "李四-助理" }]);
 });

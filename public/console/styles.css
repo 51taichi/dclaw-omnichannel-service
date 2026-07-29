@@ -5674,7 +5674,6 @@ td .muted {
     minmax(0, 1.25fr)
     minmax(140px, 1.1fr)
     minmax(0, 1fr)
-    72px
     72px;
   max-width: 100%;
   min-width: 0;
@@ -5722,22 +5721,11 @@ td .muted {
   width: 100%;
 }
 
-.groups-role-sync,
 .groups-role-delete {
   align-items: center;
   justify-content: center;
   min-width: 0;
   white-space: nowrap;
-}
-
-.groups-role-sync {
-  gap: 5px;
-}
-
-.groups-role-sync .icon {
-  color: var(--accent);
-  height: 14px;
-  width: 14px;
 }
 
 .groups-role-delete {
@@ -5914,20 +5902,13 @@ td .muted {
     padding: 14px;
   }
 
-  .groups-role-field::before,
-  .groups-role-sync::before {
+  .groups-role-field::before {
     color: var(--muted);
     content: attr(data-role-label);
     display: block;
     font-size: 12px;
     font-weight: 800;
     margin-bottom: 5px;
-  }
-
-  .groups-role-sync {
-    display: grid;
-    grid-template-columns: auto auto 1fr;
-    justify-content: start;
   }
 
   .groups-role-delete {

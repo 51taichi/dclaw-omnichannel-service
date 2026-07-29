@@ -5112,7 +5112,6 @@ function groupRoleRow(role = {}) {
           <option value="never" ${role.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
         </select></label>
       <label class="groups-role-field" data-role-label="群成员备注"><input data-role-field="desiredMarkName" value="${escapeHtml(role.desiredMarkName || "")}" placeholder="不修改可留空" /></label>
-      <label class="switch-row groups-role-sync" data-role-label="同步备注"><input data-role-field="syncMarkName" type="checkbox" ${role.syncMarkName ? "checked" : ""} /><svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg><span>同步</span></label>
       <button class="secondary danger groups-role-delete" data-remove-group-role type="button"><svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>删除</button>
     </div>`;
 }
@@ -5157,7 +5156,6 @@ function renderGroupConfig() {
         <span><svg class="icon"><use href="#icon-info"></use></svg>职责与关系</span>
         <span><svg class="icon"><use href="#icon-send"></use></svg>回复策略</span>
         <span><svg class="icon"><use href="#icon-edit"></use></svg>群成员备注</span>
-        <span><svg class="icon"><use href="#icon-refresh"></use></svg>同步</span>
         <span><svg class="icon"><use href="#icon-reset"></use></svg>操作</span>
       </div>
       <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
@@ -5209,8 +5207,7 @@ async function saveSelectedGroupRoles(event) {
       description: value("description").value,
       replyPolicy: value("replyPolicy").value,
       desiredMarkName: value("desiredMarkName").value,
-      originalMarkName: existing?.originalMarkName || existing?.currentName || "",
-      syncMarkName: value("syncMarkName").checked
+      originalMarkName: existing?.originalMarkName || existing?.currentName || ""
     };
   });
   const data = await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/roles`, {

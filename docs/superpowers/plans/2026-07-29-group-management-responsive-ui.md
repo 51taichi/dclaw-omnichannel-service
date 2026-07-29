@@ -13,7 +13,7 @@
 - Do not change group reply, tag, role recognition, or WorkTool API behavior.
 - Do not add polling or live member-state tracking.
 - Use `public/console/assets/group.png` for group-specific visual identity.
-- Keep desktop group roles in seven columns and use vertical cards on narrow screens.
+- Keep desktop group roles in six columns and use vertical cards on narrow screens.
 - Run test-first red/green cycles before production changes.
 
 ---
@@ -158,7 +158,7 @@ Ensure the role form and rows stay inside the right pane:
 }
 ```
 
-Adjust the seven-column grid so fixed action columns fit and flexible columns can shrink. In the existing `@media (max-width: 900px)` block, restore natural height and vertical cards:
+Adjust the six-column grid so the fixed action column fits and flexible columns can shrink. In the existing `@media (max-width: 900px)` block, restore natural height and vertical cards:
 
 ```css
 .groups-workbench { height: auto; }
