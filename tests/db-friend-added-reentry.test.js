@@ -70,6 +70,30 @@ test("different friend-added callbacks do not share a synthetic key in the same 
   assert.notEqual(first, second);
 });
 
+test("friend-added signal time persists without a flow session", () => {
+  const { botId, agentId, conversationKey } = setup();
+  db.upsertConversation({
+    botId,
+    agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "道友", groupName: "" }
+  });
+
+  const occurredAt = "2026-07-16T10:00:00.000Z";
+  db.markConversationFriendAddedSignal({ botId, conversationKey, occurredAt });
+
+  assert.equal(db.getFlowSessionForBot({ botId, conversationKey }), null);
+  assert.equal(db.getConversation(conversationKey).lastFriendAddedSignalAt, occurredAt);
+
+  db.resetConversationForFriendGreeting({
+    botId,
+    agentId,
+    conversationKey,
+    timestamp: "2026-07-16T10:00:01.000Z"
+  });
+  assert.equal(db.getConversation(conversationKey).lastFriendAddedSignalAt, occurredAt);
+});
+
 test("friend-added entry persists its first activation task with the re-entry state", () => {
   const { botId, agentId, conversationKey, machine } = setup();
   const entry = db.beginFriendAddedFlowEntry({

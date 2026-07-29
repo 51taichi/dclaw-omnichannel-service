@@ -618,6 +618,7 @@ ensureColumn("bot_agent_bindings", "access_key_hash", "TEXT");
 ensureColumn("bot_agent_bindings", "access_key_updated_at", "TEXT");
 ensureColumn("conversations", "reset_pending", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("conversations", "conversation_epoch", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("conversations", "last_friend_added_signal_at", "TEXT");
 ensureColumn("conversation_reset_tasks", "conversation_epoch", "TEXT NOT NULL DEFAULT ''");
 db.exec(`
   UPDATE conversations
@@ -2298,10 +2299,34 @@ export function getConversation(conversationKey) {
     roomType: row.room_type,
     receivedName: row.received_name,
     groupName: row.group_name,
+    lastFriendAddedSignalAt: row.last_friend_added_signal_at || "",
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+export function markConversationFriendAddedSignal({
+  botId,
+  conversationKey,
+  occurredAt = now()
+}) {
+  const normalizedBotId = String(botId || "").trim();
+  const normalizedConversationKey = String(conversationKey || "").trim();
+  if (!normalizedBotId || !normalizedConversationKey) {
+    throw new Error("botId and conversationKey are required");
+  }
+  const occurredAtMs = Date.parse(occurredAt);
+  const timestamp = Number.isFinite(occurredAtMs)
+    ? new Date(occurredAtMs).toISOString()
+    : now();
+  const result = db.prepare(`
+    UPDATE conversations
+    SET last_friend_added_signal_at = ?
+    WHERE conversation_key = ? AND bot_id = ?
+  `).run(timestamp, normalizedConversationKey, normalizedBotId);
+  if (!result.changes) throw new Error("conversation not found");
+  return getConversation(normalizedConversationKey);
 }
 
 export function insertIncomingMessage({ botId, conversationKey, payload }) {

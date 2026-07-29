@@ -4,7 +4,7 @@
 
 **Goal:** 让企微系统欢迎语和 WorkTool `textType=22,type=105` 事件都能可靠触发同一套新好友流程，并在 30 秒内吸收重复信号。
 
-**Architecture:** 新建纯函数模块 `src/friend-added-signals.js`，统一识别、规范化两类新增好友信号并判断持久时间窗口是否重复。`src/server.js` 只负责把规范化信号接入现有 `handleFriendAddedEvent`，继续复用已有会话重入、日期标签和入口激活事务。
+**Architecture:** 新建纯函数模块 `src/friend-added-signals.js`，统一识别、规范化两类新增好友信号并判断持久时间窗口是否重复。技术信号时间持久化在 `conversations.last_friend_added_signal_at`，不依赖任务状态机；`src/server.js` 只负责把规范化信号接入现有 `handleFriendAddedEvent`，继续复用已有会话重入、日期标签和入口激活事务。
 
 **Tech Stack:** Node.js ESM、Express、SQLite `DatabaseSync`、Node 内置测试运行器 `node:test`
 

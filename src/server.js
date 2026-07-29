@@ -148,6 +148,7 @@ import {
   markFlowActivationTaskFailed,
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
+  markConversationFriendAddedSignal,
   markConversationResetHandledForEpoch,
   markLegacyHistoryContextSent,
   markGroupRoleRemarkSynced,
@@ -215,9 +216,13 @@ import {
   unbindMessageCallback
 } from "./worktool.js";
 import {
-  isSystemFriendGreeting,
   shouldProcessInboundForAgent
 } from "./message-rules.js";
+import {
+  DEFAULT_FRIEND_ADDED_SIGNAL_DEDUPE_MS,
+  isFriendAddedSignalDuplicate,
+  resolveFriendAddedSignal
+} from "./friend-added-signals.js";
 import { normalizeUploadedFilename } from "./filenames.js";
 import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
 import { createTagAlertStreamHub } from "./tag-alert-stream.js";
@@ -1442,6 +1447,13 @@ const friendAddedReentryCooldownMs = Math.max(
   0,
   Number(process.env.FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES || 0) * 60 * 1000
 );
+const configuredFriendAddedSignalDedupeSeconds = Number(
+  process.env.FRIEND_ADDED_SIGNAL_DEDUPE_SECONDS || 30
+);
+const friendAddedSignalDedupeMs = Number.isFinite(configuredFriendAddedSignalDedupeSeconds)
+  && configuredFriendAddedSignalDedupeSeconds > 0
+  ? Math.max(1_000, configuredFriendAddedSignalDedupeSeconds * 1000)
+  : DEFAULT_FRIEND_ADDED_SIGNAL_DEDUPE_MS;
 
 const configuredReplyMaxParts = Number(process.env.WORKTOOL_REPLY_MAX_PARTS || 3);
 const configuredReplyPartDelayMs = Number(process.env.WORKTOOL_REPLY_PART_DELAY_MS || 1000);
@@ -2582,16 +2594,24 @@ function messageLogFields({ botId, conversationKey, message }) {
   };
 }
 
-async function handleFriendAddedEvent({ botId, binding, message, logContext, conversationKey }) {
+async function handleFriendAddedEvent({
+  botId,
+  binding,
+  message,
+  trigger,
+  logContext,
+  conversationKey
+}) {
   const friendName = String(message?.receivedName || message?.groupName || "").trim();
   logInfo("friend_added.received", {
     ...logContext,
     friendName,
-    trigger: "system_friend_greeting"
+    trigger
   });
   if (!friendName) {
     logInfo("friend_added.skipped", {
       ...logContext,
+      trigger,
       reason: "missing_friend_name"
     });
     return "skipped";
@@ -2600,6 +2620,7 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
     logInfo("friend_added.skipped", {
       ...logContext,
       friendName,
+      trigger,
       reason: "no_enabled_binding"
     });
     return "skipped";
@@ -2607,11 +2628,37 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
 
   const existingConversation = getConversation(conversationKey);
   const entryAnchorAt = new Date().toISOString();
+  if (isFriendAddedSignalDuplicate({
+    lastFriendAddedAt: existingConversation?.lastFriendAddedSignalAt,
+    occurredAt: entryAnchorAt,
+    dedupeMs: friendAddedSignalDedupeMs
+  })) {
+    logInfo("friend_added.skipped", {
+      ...logContext,
+      friendName,
+      conversationKey,
+      trigger,
+      reason: "friend_added_signal_duplicate",
+      elapsedMs: Date.parse(entryAnchorAt)
+        - Date.parse(existingConversation.lastFriendAddedSignalAt)
+    });
+    return "skipped";
+  }
+  let conversation = existingConversation;
+  if (!conversation) {
+    conversation = upsertConversation({
+      botId,
+      agentId: binding?.agentId || "",
+      conversationKey,
+      message
+    });
+  }
   if (existingConversation && existingFriendAddedInCooldown({ botId, conversationKey, occurredAt: entryAnchorAt })) {
     logInfo("friend_added.skipped", {
       ...logContext,
       friendName,
       conversationKey,
+      trigger,
       reason: "friend_added_cooldown"
     });
     return "skipped";
@@ -2636,10 +2683,20 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
     logInfo("friend_added.conversation_reset", {
       ...logContext,
       friendName,
-      conversationKey
+      conversationKey,
+      trigger
     });
   }
-  const conversation = recordSystemFriendGreeting({ botId, binding, conversationKey, message });
+  if (trigger === "system_greeting") {
+    conversation = recordSystemFriendGreeting({ botId, binding, conversationKey, message });
+  } else if (existingConversation) {
+    conversation = upsertConversation({
+      botId,
+      agentId: binding?.agentId || "",
+      conversationKey,
+      message
+    });
+  }
   const dateTags = applySystemDateTag({
     botId,
     binding,
@@ -2651,15 +2708,22 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
       ...logContext,
       conversationKey,
       agentId: binding.agentId,
+      trigger,
       tagCount: dateTags.length
     });
   }
   const machine = getFlowMachineForBot(botId);
   if (!machine?.enabled) {
+    markConversationFriendAddedSignal({
+      botId,
+      conversationKey,
+      occurredAt: entryAnchorAt
+    });
     logInfo("friend_added.skipped", {
       ...logContext,
       friendName,
       conversationKey,
+      trigger,
       reason: "no_enabled_flow_machine"
     });
     return "skipped";
@@ -2683,11 +2747,17 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
         }
       : null
   });
+  markConversationFriendAddedSignal({
+    botId,
+    conversationKey,
+    occurredAt: entryAnchorAt
+  });
   if (entryResult.status === "cooldown") {
     logInfo("friend_added.skipped", {
       ...logContext,
       friendName,
       conversationKey,
+      trigger,
       reason: "friend_added_cooldown"
     });
     return "skipped";
@@ -2697,6 +2767,7 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
       ...logContext,
       friendName,
       conversationKey,
+      trigger,
       reason: "friend_added_duplicate"
     });
     return "skipped";
@@ -2706,6 +2777,7 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
       ...logContext,
       friendName,
       conversationKey,
+      trigger,
       entryStatus: entryResult.status,
       reason: "entry_activation_not_configured"
     });
@@ -2717,6 +2789,7 @@ async function handleFriendAddedEvent({ botId, binding, message, logContext, con
     ...logContext,
     friendName,
     conversationKey,
+    trigger,
     entryStatus: entryResult.status,
     activationTaskId: task?.id || "",
     nodeId: task?.nodeId || entryResult.session.currentNodeId,
@@ -4058,7 +4131,12 @@ if (tagActivationWorkerConfig.enabled) {
 }
 
 function ingestIncomingMessage({ botId, message }) {
-  const { conversationKey, group } = resolveInboundConversation({ botId, message });
+  const friendAddedSignal = resolveFriendAddedSignal(message);
+  const routingMessage = friendAddedSignal?.message || message;
+  const { conversationKey, group } = resolveInboundConversation({
+    botId,
+    message: routingMessage
+  });
   const messageKey = buildMessageKey({ botId, conversationKey, message });
   // Keep every WorkTool callback for audit and recovery, including callbacks
   // that are later recognized as duplicates for business processing.
@@ -4069,14 +4147,19 @@ function ingestIncomingMessage({ botId, message }) {
     conversationKey,
     messageId: message.messageId
   });
-  return { conversationKey, messageKey, accepted, group };
+  return { conversationKey, messageKey, accepted, group, friendAddedSignal };
 }
 
 async function processIncomingMessage({ botId, message, intake = null }) {
   const startedAt = Date.now();
   const binding = getBotBinding(botId);
   const received = intake || ingestIncomingMessage({ botId, message });
-  const { conversationKey, messageKey, group = null } = received;
+  const {
+    conversationKey,
+    messageKey,
+    group = null,
+    friendAddedSignal = null
+  } = received;
   const baseLog = messageLogFields({ botId, conversationKey, message });
   const logContext = { ...baseLog, messageKey };
   const hadConversation = Boolean(getConversation(conversationKey));
@@ -4095,13 +4178,21 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     return;
   }
 
-  if (isSystemFriendGreeting(message)) {
-    await handleFriendAddedEvent({ botId, binding, message, logContext, conversationKey });
+  if (friendAddedSignal) {
+    await handleFriendAddedEvent({
+      botId,
+      binding,
+      message: friendAddedSignal.message,
+      trigger: friendAddedSignal.trigger,
+      logContext,
+      conversationKey
+    });
     logInfo("incoming.skipped", {
       ...logContext,
-      reason: "system_friend_greeting"
+      trigger: friendAddedSignal.trigger,
+      reason: "friend_added_signal"
     });
-    finishMessageProcessing({ messageKey, status: "system_friend_greeting" });
+    finishMessageProcessing({ messageKey, status: "friend_added" });
     return;
   }
 

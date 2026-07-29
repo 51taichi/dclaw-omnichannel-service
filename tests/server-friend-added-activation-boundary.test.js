@@ -3,13 +3,16 @@ import fs from "node:fs";
 import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+const envExample = fs.readFileSync(new URL("../.env.example", import.meta.url), "utf8");
+const readme = fs.readFileSync(new URL("../README.md", import.meta.url), "utf8");
 
-test("friend-added activation is triggered only by the system greeting before agent filtering", () => {
+test("both normalized friend signals enter the same handler before ordinary message filtering", () => {
   assert.equal(source.includes("handleFriendAddedEvent"), true);
-  assert.equal(source.includes("isFriendAddedEvent(message)"), false);
-  assert.equal(source.includes("isSystemFriendGreeting(message)"), true);
+  assert.equal(source.includes("resolveFriendAddedSignal(message)"), true);
+  assert.equal(source.includes("friendAddedSignal.message"), true);
+  assert.equal(source.includes("friendAddedSignal.trigger"), true);
   assert.equal(
-    source.indexOf("isSystemFriendGreeting(message)") < source.indexOf("shouldProcessInboundForAgent(message)"),
+    source.indexOf("resolveFriendAddedSignal(message)") < source.indexOf("shouldProcessInboundForAgent(message)"),
     true
   );
 });
@@ -52,6 +55,41 @@ test("friend-added activation uses durable re-entry and reports cooldown skips",
 
 test("friend-added re-entry cooldown defaults to immediate retriggering", () => {
   assert.match(source, /FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES \|\| 0/);
+});
+
+test("friend-added signal dedupe is independent from business reentry cooldown", () => {
+  assert.match(source, /FRIEND_ADDED_SIGNAL_DEDUPE_SECONDS \|\| 30/);
+  assert.equal(source.includes("isFriendAddedSignalDuplicate"), true);
+  assert.match(source, /reason: "friend_added_signal_duplicate"/);
+  assert.match(source, /reason: "friend_added_cooldown"/);
+});
+
+test("friend-added signal time persists after successful handling without a flow machine", () => {
+  const start = source.indexOf("async function handleFriendAddedEvent");
+  const end = source.indexOf("\nfunction commandCallbackLogFields", start);
+  const handler = source.slice(start, end);
+  const resetIndex = handler.indexOf("resetConversationForFriendGreeting");
+  const noMachineIndex = handler.indexOf("if (!machine?.enabled)");
+  const noMachineMarkIndex = handler.indexOf(
+    "markConversationFriendAddedSignal",
+    noMachineIndex
+  );
+  const flowEntryIndex = handler.indexOf("beginFriendAddedFlowEntry");
+  const flowEntryMarkIndex = handler.indexOf(
+    "markConversationFriendAddedSignal",
+    flowEntryIndex
+  );
+
+  assert.equal(handler.includes("existingConversation?.lastFriendAddedSignalAt"), true);
+  assert.equal(resetIndex < noMachineMarkIndex, true);
+  assert.equal(noMachineIndex < noMachineMarkIndex, true);
+  assert.equal(flowEntryIndex < flowEntryMarkIndex, true);
+});
+
+test("friend-added signal dedupe configuration is documented separately", () => {
+  assert.match(envExample, /^FRIEND_ADDED_SIGNAL_DEDUPE_SECONDS=30$/m);
+  assert.match(readme, /FRIEND_ADDED_SIGNAL_DEDUPE_SECONDS/);
+  assert.match(readme, /30 秒/);
 });
 
 test("friend-added re-entry happens even when the entry node has no activation script", () => {

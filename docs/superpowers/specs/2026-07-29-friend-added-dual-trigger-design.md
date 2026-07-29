@@ -51,7 +51,8 @@ WorkTool 的 `textType=22`、`type=105` 新增好友事件虽然会进入原始�
 
 - 同一 `botId + conversationKey` 在窗口内再次收到任一新增好友信号，视为同一次新增好友的重复信号。
 - 重复信号只保留原始消息审计，不重置会话、不增加会话周期、不创建新的入口激活任务。
-- 去重使用已有 `flow_sessions.last_friend_added_at` 持久时间，服务重启后仍有效。
+- 去重使用 `conversations.last_friend_added_signal_at` 持久时间，服务重启后仍有效。
+- 信号时间独立于任务状态机；即使 Bot 未启用任务状态机，重复信号也不会再次重置会话。
 - 去重窗口与 `FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES` 分离。
 
 `FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES` 继续负责业务层面的重新添加冷却；即使该值为 `0`，30 秒信号去重仍然生效。

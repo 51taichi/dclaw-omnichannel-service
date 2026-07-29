@@ -49,26 +49,26 @@ test("message callback persists before acknowledging WorkTool", () => {
   }
 });
 
-test("system friend greeting, unsupported, human handoff, and debug replies finish before buffering", () => {
+test("friend-added signals, unsupported, human handoff, and debug replies finish before buffering", () => {
   const handlerStart = source.indexOf("async function processIncomingMessage");
   const push = source.indexOf("inboundCoalescer.push", handlerStart);
-  assert.ok(source.indexOf("isSystemFriendGreeting(message)", handlerStart) < push);
-  assert.equal(source.includes("isFriendAddedEvent(message)"), false);
+  assert.ok(source.indexOf("friendAddedSignal", handlerStart) < push);
   assert.ok(source.indexOf("non_text_or_empty_message", handlerStart) < push);
   assert.ok(source.indexOf('status: "human_handoff"', handlerStart) < push);
   assert.ok(source.indexOf("handleDebugPing", handlerStart) < push);
 });
 
-test("automatic friend greetings trigger friend-added handling without canceling activation or invoking the Agent", () => {
+test("normalized friend signals trigger handling without canceling activation or invoking the Agent", () => {
   const handlerStart = source.indexOf("async function processIncomingMessage");
   const handlerEnd = source.indexOf("async function processCoalescedIncomingBatch", handlerStart);
   const handler = source.slice(handlerStart, handlerEnd);
-  const greeting = handler.indexOf("isSystemFriendGreeting(message)");
+  const signal = handler.indexOf("friendAddedSignal");
   const invalidation = handler.indexOf("invalidateFlowActivation");
   const push = handler.indexOf("inboundCoalescer.push");
-  assert.ok(greeting >= 0 && greeting < invalidation && greeting < push);
-  assert.match(handler, /handleFriendAddedEvent\(\{ botId, binding, message, logContext, conversationKey \}\)/);
-  assert.match(handler, /reason: "system_friend_greeting"/);
+  assert.ok(signal >= 0 && signal < invalidation && signal < push);
+  assert.match(handler, /handleFriendAddedEvent\(\{[\s\S]*message: friendAddedSignal\.message/);
+  assert.match(handler, /trigger: friendAddedSignal\.trigger/);
+  assert.match(handler, /status: "friend_added"/);
 });
 
 test("a mention-required group continuation may only join an existing eligible batch", () => {
