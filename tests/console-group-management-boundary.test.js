@@ -26,6 +26,24 @@ test("group management is a separate tab with a 30/70 configuration layout and n
   assert.match(css, /grid-template-columns:\s*minmax\(240px,\s*30%\)\s+minmax\(0,\s*70%\)/);
 });
 
+test("group sidebar uses the standard split-label search field", () => {
+  const sidebar = html.slice(
+    html.indexOf('<aside class="groups-sidebar">'),
+    html.indexOf('<div id="groupList"')
+  );
+
+  assert.match(
+    sidebar,
+    /class="groups-search-field"[\s\S]*class="field-label"[\s\S]*<use href="#icon-search"><\/use><\/svg>搜索群/
+  );
+  assert.match(sidebar, /id="groupSearchInput"[^>]*placeholder="搜索群名"/);
+  assert.match(
+    css,
+    /\.groups-search-field\s*\{[^}]*grid-template-columns:\s*max-content minmax\(0,\s*1fr\)/s
+  );
+  assert.doesNotMatch(css, /\.groups-search-field > \.icon/);
+});
+
 test("external create and modify use dialogs and create selects private contacts", () => {
   assert.match(html, /id="createGroupDialog"/);
   assert.match(html, /id="modifyGroupDialog"/);

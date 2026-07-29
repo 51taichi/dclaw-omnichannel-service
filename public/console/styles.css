@@ -5440,23 +5440,7 @@ td .muted {
 }
 
 .groups-search-field {
-  align-items: center;
-  display: grid;
-  grid-template-columns: 18px minmax(0, 1fr);
-  position: relative;
-}
-
-.groups-search-field > .icon {
-  color: var(--muted);
-  left: 12px;
-  pointer-events: none;
-  position: absolute;
-  z-index: 1;
-}
-
-.groups-search-field input {
-  padding-left: 38px;
-  width: 100%;
+  grid-template-columns: max-content minmax(0, 1fr);
 }
 
 .groups-list,
