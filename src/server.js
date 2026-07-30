@@ -38,6 +38,7 @@ import { createCockpitAggregator } from "./cockpit-aggregator.js";
 import { createCockpitReportGenerator } from "./cockpit-report-generator.js";
 import { createCockpitDeliveryService } from "./cockpit-delivery.js";
 import { createCockpitWorker } from "./cockpit-worker.js";
+import { createCockpitBootstrap } from "./cockpit-bootstrap.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
   createBotSession,
@@ -7160,8 +7161,9 @@ async function generateScheduledCockpitReports({ now }) {
   return { generated };
 }
 
+const cockpitWorkerEnabled = process.env.COCKPIT_WORKER_ENABLED !== "false";
 const cockpitWorker = createCockpitWorker({
-  enabled: process.env.COCKPIT_WORKER_ENABLED !== "false",
+  enabled: cockpitWorkerEnabled,
   handlers: {
     aggregate: async ({ now }) => {
       const results = [];
@@ -7182,7 +7184,19 @@ const cockpitWorker = createCockpitWorker({
   }
 });
 
+const cockpitBootstrap = createCockpitBootstrap({
+  listBots: listBotBindings,
+  getLatestSnapshot: getLatestCockpitSnapshot,
+  aggregateBot: (input) => cockpitAggregator.aggregateBot(input),
+  onError: ({ botId, error }) => logWarn("cockpit.bootstrap.failed", { botId, error })
+});
+
 app.listen(port, host, () => {
-  cockpitWorker.start();
+  if (cockpitWorkerEnabled) {
+    void cockpitBootstrap.run()
+      .then((result) => logInfo("cockpit.bootstrap.completed", result))
+      .catch((error) => logWarn("cockpit.bootstrap.failed", { error }))
+      .finally(() => cockpitWorker.start());
+  }
   logInfo("service.started", { host, port });
 });

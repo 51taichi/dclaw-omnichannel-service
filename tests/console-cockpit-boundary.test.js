@@ -43,7 +43,6 @@ test("cockpit renders fixed cards with icons and responsive hierarchy", () => {
   for (const id of [
     "cockpitPeriodSwitcher",
     "cockpitFreshness",
-    "cockpitAiSummary",
     "cockpitMetricGrid",
     "cockpitProblems",
     "cockpitActions",
@@ -57,6 +56,22 @@ test("cockpit renders fixed cards with icons and responsive hierarchy", () => {
   assert.match(cockpit, /\/api\/cockpit\/\$\{encodeURIComponent\(state\.botId\)\}\/overview/);
   assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.cockpit-dashboard/);
   assert.match(css, /\.cockpit-card:focus-within/);
+});
+
+test("cockpit keeps the first screen compact and explains report timing with a help tip", () => {
+  assert.doesNotMatch(cockpit, /id="cockpitAiSummary"/);
+  assert.match(cockpit, /id="cockpitFreshnessHelp"/);
+  assert.match(cockpit, /完整报告将在凌晨统计后生成/);
+  assert.match(css, /\.cockpit-metric-card\s*\{[\s\S]*grid-template-columns:/);
+  assert.match(css, /\.cockpit-content\s*\{[\s\S]*overflow-y:\s*auto/);
+  assert.match(css, /\.cockpit-shell\s*\{[\s\S]*max-height:\s*calc\(100dvh/);
+});
+
+test("charts come before problems and actions, with report history last", () => {
+  const chart = cockpit.indexOf('class="cockpit-chart-grid"');
+  const priority = cockpit.indexOf('class="cockpit-priority-grid"');
+  const history = cockpit.indexOf('id="cockpitReportHistory"');
+  assert.ok(chart > 0 && priority > chart && history > priority);
 });
 
 test("switching Bots clears the old cockpit before loading the new context", () => {

@@ -151,34 +151,26 @@
               <button type="button" data-cockpit-period="${type}" class="${state.periodType === type ? "active" : ""}">${label}</button>
             `).join("")}
           </div>
-          <small id="cockpitFreshness">完整统计：${escapeHtml(data.freshness?.completeAt || "尚未生成")}</small>
+          <small id="cockpitFreshness" class="cockpit-freshness">
+            完整统计：${escapeHtml(data.freshness?.completeAt || "尚未生成")}
+            <button
+              id="cockpitFreshnessHelp"
+              class="activation-help-icon cockpit-help-icon"
+              type="button"
+              aria-label="报告生成时间说明"
+              title="完整报告将在凌晨统计后生成"
+            >${icon("info")}</button>
+          </small>
         </header>
-
-        <section id="cockpitAiSummary" class="cockpit-card cockpit-summary" tabindex="0">
-          ${icon("cockpit")}
-          <div><span class="cockpit-eyebrow">AI 经营结论</span><strong>${escapeHtml(analysis.executiveSummary || "完整报告将在凌晨统计后生成")}</strong></div>
-        </section>
 
         <section id="cockpitMetricGrid" class="cockpit-metric-grid" aria-label="核心经营指标">
           ${metricDefinitions.map(([key, label, iconName]) => `
             <article class="cockpit-card cockpit-metric-card" tabindex="0">
-              ${icon(iconName)}
-              <span>${label}</span>
+              <span class="cockpit-metric-label">${icon(iconName)}<span>${label}</span></span>
               <strong>${metricValue(key, data.metrics || {}, data.today || {})}</strong>
             </article>
           `).join("")}
         </section>
-
-        <div class="cockpit-priority-grid">
-          <section id="cockpitProblems" class="cockpit-card cockpit-problem-card">
-            <h3>${icon("alert")}主要问题</h3>
-            ${problems.length ? `<ol>${problems.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>当前周期暂无 AI 问题分析。</p>"}
-          </section>
-          <section id="cockpitActions" class="cockpit-card cockpit-action-card">
-            <h3>${icon("check")}建议行动</h3>
-            ${actions.length ? `<ol>${actions.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>完整统计后生成具体行动建议。</p>"}
-          </section>
-        </div>
 
         <div class="cockpit-chart-grid">
           <section id="cockpitFunnels" class="cockpit-card">
@@ -190,6 +182,17 @@
             <h3>${icon("tag")}标签分布与变化</h3>
             <p class="cockpit-chart-caption">当前标签人数、占比及本周期净变化</p>
             ${tagChart(data.tagGroups || [])}
+          </section>
+        </div>
+
+        <div class="cockpit-priority-grid">
+          <section id="cockpitProblems" class="cockpit-card cockpit-problem-card">
+            <h3>${icon("alert")}主要问题</h3>
+            ${problems.length ? `<ol>${problems.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>当前周期暂无 AI 问题分析。</p>"}
+          </section>
+          <section id="cockpitActions" class="cockpit-card cockpit-action-card">
+            <h3>${icon("check")}建议行动</h3>
+            ${actions.length ? `<ol>${actions.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>完整统计后生成具体行动建议。</p>"}
           </section>
         </div>
 
