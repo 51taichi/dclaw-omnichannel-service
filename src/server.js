@@ -6208,17 +6208,21 @@ app.get(
     const periodType = ["daily", "weekly", "monthly"].includes(req.query.periodType)
       ? req.query.periodType
       : "daily";
-    const anchor = String(req.query.anchor || new Date().toISOString());
+    const hasExplicitAnchor = typeof req.query.anchor === "string" && req.query.anchor.trim();
+    const anchor = String(hasExplicitAnchor || new Date().toISOString());
     const period = periodBounds({ type: periodType, anchor, timezone: config.timezone });
-    const snapshot = getLatestCockpitSnapshot({
+    const exactSnapshot = getLatestCockpitSnapshot({
       botId,
       periodType,
       periodStart: period.start
-    }) || getLatestCockpitSnapshot({ botId, periodType });
+    });
+    const snapshot = hasExplicitAnchor
+      ? exactSnapshot
+      : exactSnapshot || getLatestCockpitSnapshot({ botId, periodType });
     const reports = listCockpitReports({ botId, page: 1, pageSize: 20 });
     const latestReport = reports.items.find((report) => (
       report.reportType === periodType
-      && (!snapshot || report.periodStart === snapshot.periodStart)
+      && report.periodStart === period.start
     )) || null;
     res.json({
       ok: true,
@@ -6228,7 +6232,7 @@ app.get(
         delayed: !snapshot
       },
       period,
-      today: getCockpitDailyCounters({
+      today: hasExplicitAnchor ? {} : getCockpitDailyCounters({
         botId,
         localDate: periodBounds({
           type: "daily",
@@ -6241,7 +6245,10 @@ app.get(
       nodeDistribution: snapshot?.charts?.nodeDistribution || [],
       tagGroups: snapshot?.charts?.tags || [],
       latestReport,
-      reportHistory: reports.items.filter((report) => report.reportType === periodType).slice(0, 8)
+      reportHistory: reports.items.filter((report) => (
+        report.reportType === periodType
+        && report.periodStart === period.start
+      )).slice(0, 8)
     });
   })
 );

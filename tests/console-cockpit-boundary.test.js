@@ -42,7 +42,6 @@ test("cockpit exposes an icon, Bot-themed shell, and dedicated client", () => {
 test("cockpit renders fixed cards with icons and responsive hierarchy", () => {
   for (const id of [
     "cockpitPeriodSwitcher",
-    "cockpitFreshness",
     "cockpitMetricGrid",
     "cockpitProblems",
     "cockpitActions",
@@ -58,10 +57,8 @@ test("cockpit renders fixed cards with icons and responsive hierarchy", () => {
   assert.match(css, /\.cockpit-card:focus-within/);
 });
 
-test("cockpit keeps the first screen compact and explains report timing with a help tip", () => {
+test("cockpit keeps the first screen compact", () => {
   assert.doesNotMatch(cockpit, /id="cockpitAiSummary"/);
-  assert.match(cockpit, /id="cockpitFreshnessHelp"/);
-  assert.match(cockpit, /完整报告将在凌晨统计后生成/);
   assert.match(css, /\.cockpit-metric-card\s*\{[\s\S]*grid-template-columns:/);
   assert.match(css, /\.cockpit-content\s*\{[\s\S]*overflow-y:\s*auto/);
   const shellStart = css.indexOf(".cockpit-shell {");
@@ -69,6 +66,20 @@ test("cockpit keeps the first screen compact and explains report timing with a h
   const shellRule = css.slice(shellStart, shellEnd);
   assert.match(shellRule, /height:\s*100%/);
   assert.doesNotMatch(shellRule, /max-height/);
+});
+
+test("cockpit selects an exact date week or month and keeps period controls right aligned", () => {
+  assert.match(cockpit, /type="date"/);
+  assert.match(cockpit, /type="week"/);
+  assert.match(cockpit, /type="month"/);
+  assert.match(cockpit, /anchor=\$\{encodeURIComponent\(state\.anchor\)\}/);
+  assert.match(cockpit, /defaultAnchorForPeriod/);
+  assert.match(css, /\.cockpit-period-controls/);
+  assert.match(css, /margin-left:\s*auto/);
+  assert.doesNotMatch(cockpit, /完整统计：/);
+  assert.doesNotMatch(cockpit, /cockpitFreshnessHelp/);
+  assert.match(cockpit, /所选周期尚未生成报告/);
+  assert.doesNotMatch(cockpit, /当前展示最近一次统计结果/);
 });
 
 test("charts come before problems and actions, with report history last", () => {

@@ -4,6 +4,8 @@
     role: "",
     accent: "",
     periodType: "daily",
+    periodValue: "",
+    anchor: "",
     request: null,
     notify: null,
     lastNoticeKey: "",
@@ -45,6 +47,8 @@
     state.botId = "";
     state.role = "";
     state.accent = "";
+    state.periodValue = "";
+    state.anchor = "";
     state.request = null;
     state.notify = null;
     state.lastNoticeKey = "";
@@ -60,6 +64,84 @@
     const value = metrics[key] ?? today[key] ?? 0;
     if (key === "invitationRate") return `${Math.round(Number(value || 0) * 100)}%`;
     return Number(value || 0).toLocaleString("zh-CN");
+  }
+
+  function pad(value) {
+    return String(value).padStart(2, "0");
+  }
+
+  function localDateValue(date) {
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  }
+
+  function isoWeekValue(date) {
+    const utc = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+    const weekday = utc.getUTCDay() || 7;
+    utc.setUTCDate(utc.getUTCDate() + 4 - weekday);
+    const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
+    return `${utc.getUTCFullYear()}-W${pad(week)}`;
+  }
+
+  function anchorFromPeriodValue(type, value) {
+    if (type === "weekly") {
+      const match = /^(\d{4})-W(\d{2})$/.exec(value);
+      if (!match) return "";
+      const januaryFourth = new Date(Date.UTC(Number(match[1]), 0, 4));
+      const monday = new Date(januaryFourth);
+      monday.setUTCDate(
+        januaryFourth.getUTCDate()
+        - (januaryFourth.getUTCDay() || 7)
+        + 1
+        + (Number(match[2]) - 1) * 7
+      );
+      return new Date(
+        monday.getUTCFullYear(),
+        monday.getUTCMonth(),
+        monday.getUTCDate(),
+        12
+      ).toISOString();
+    }
+    if (type === "monthly") {
+      const match = /^(\d{4})-(\d{2})$/.exec(value);
+      if (!match) return "";
+      return new Date(Number(match[1]), Number(match[2]) - 1, 15, 12).toISOString();
+    }
+    const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+    if (!match) return "";
+    return new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]), 12).toISOString();
+  }
+
+  function defaultAnchorForPeriod(type) {
+    const now = new Date();
+    let date;
+    let value;
+    if (type === "weekly") {
+      date = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+      const weekday = date.getDay() || 7;
+      date.setDate(date.getDate() - weekday - 6);
+      value = isoWeekValue(date);
+    } else if (type === "monthly") {
+      date = new Date(now.getFullYear(), now.getMonth() - 1, 15, 12);
+      value = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
+    } else {
+      date = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 12);
+      value = localDateValue(date);
+    }
+    return { value, anchor: date.toISOString() };
+  }
+
+  function periodInputMarkup() {
+    const defaults = defaultAnchorForPeriod(state.periodType);
+    const maximum = defaults.value;
+    const value = state.periodValue || maximum;
+    if (state.periodType === "weekly") {
+      return `<input id="cockpitPeriodInput" type="week" aria-label="选择周报周次" value="${escapeHtml(value)}" max="${maximum}">`;
+    }
+    if (state.periodType === "monthly") {
+      return `<input id="cockpitPeriodInput" type="month" aria-label="选择月报月份" value="${escapeHtml(value)}" max="${maximum}">`;
+    }
+    return `<input id="cockpitPeriodInput" type="date" aria-label="选择日报日期" value="${escapeHtml(value)}" max="${maximum}">`;
   }
 
   function distributionPercentages(nodes) {
@@ -165,21 +247,14 @@
             <span class="cockpit-eyebrow">AI 经营驾驶舱</span>
             <strong>${escapeHtml(data.period?.label || "最近统计周期")}</strong>
           </div>
-          <div id="cockpitPeriodSwitcher" class="segmented" role="tablist" aria-label="报告周期">
-            ${[["daily", "日报"], ["weekly", "周报"], ["monthly", "月报"]].map(([type, label]) => `
-              <button type="button" data-cockpit-period="${type}" class="${state.periodType === type ? "active" : ""}">${label}</button>
-            `).join("")}
+          <div class="cockpit-period-controls">
+            ${periodInputMarkup()}
+            <div id="cockpitPeriodSwitcher" class="segmented" role="tablist" aria-label="报告周期">
+              ${[["daily", "日报"], ["weekly", "周报"], ["monthly", "月报"]].map(([type, label]) => `
+                <button type="button" data-cockpit-period="${type}" class="${state.periodType === type ? "active" : ""}">${label}</button>
+              `).join("")}
+            </div>
           </div>
-          <small id="cockpitFreshness" class="cockpit-freshness">
-            完整统计：${escapeHtml(data.freshness?.completeAt || "尚未生成")}
-            <button
-              id="cockpitFreshnessHelp"
-              class="activation-help-icon cockpit-help-icon"
-              type="button"
-              aria-label="报告生成时间说明"
-              title="完整报告将在凌晨统计后生成"
-            >${icon("info")}</button>
-          </small>
         </header>
 
         <section id="cockpitMetricGrid" class="cockpit-metric-grid" aria-label="核心经营指标">
@@ -239,16 +314,26 @@
     current.content.querySelectorAll("[data-cockpit-period]").forEach((button) => {
       button.addEventListener("click", () => {
         state.periodType = button.dataset.cockpitPeriod;
+        const defaults = defaultAnchorForPeriod(state.periodType);
+        state.periodValue = defaults.value;
+        state.anchor = defaults.anchor;
         refresh();
       });
+    });
+    current.content.querySelector("#cockpitPeriodInput")?.addEventListener("change", (event) => {
+      const anchor = anchorFromPeriodValue(state.periodType, event.target.value);
+      if (!anchor) return;
+      state.periodValue = event.target.value;
+      state.anchor = anchor;
+      refresh();
     });
     current.loading.hidden = true;
     current.content.hidden = false;
     if (data.freshness?.delayed) {
-      const noticeKey = `${state.botId}:${state.periodType}:delayed`;
+      const noticeKey = `${state.botId}:${state.periodType}:${state.anchor}:missing`;
       if (state.lastNoticeKey !== noticeKey) {
         state.lastNoticeKey = noticeKey;
-        state.notify?.("驾驶舱数据更新延迟，当前展示最近一次统计结果", "info");
+        state.notify?.("所选周期尚未生成报告", "info");
       }
     }
   }
@@ -260,7 +345,7 @@
     current.loading.hidden = false;
     try {
       const data = await state.request(
-        `/api/cockpit/${encodeURIComponent(state.botId)}/overview?periodType=${encodeURIComponent(state.periodType)}`
+        `/api/cockpit/${encodeURIComponent(state.botId)}/overview?periodType=${encodeURIComponent(state.periodType)}&anchor=${encodeURIComponent(state.anchor)}`
       );
       if (version !== state.version) return;
       render(data);
@@ -287,6 +372,9 @@
     state.request = context.request || null;
     state.notify = context.notify || null;
     state.lastNoticeKey = "";
+    const defaults = defaultAnchorForPeriod(state.periodType);
+    state.periodValue = defaults.value;
+    state.anchor = defaults.anchor;
     refresh();
   }
 

@@ -32,3 +32,12 @@ test("cockpit overview is read-only and never aggregates or invokes AI", () => {
   assert.match(route, /assertBotAccess/);
   assert.doesNotMatch(route, /aggregate|rebuild|invokeDclaw|createCockpitReport/);
 });
+
+test("cockpit overview uses an exact snapshot when the client supplies an anchor", () => {
+  const start = source.indexOf('"/api/cockpit/:botId/overview"');
+  const end = source.indexOf("\n);", start) + 3;
+  const route = source.slice(start, end);
+  assert.match(route, /hasExplicitAnchor/);
+  assert.match(route, /hasExplicitAnchor\s*\?\s*exactSnapshot/);
+  assert.match(route, /report\.periodStart === period\.start/);
+});
