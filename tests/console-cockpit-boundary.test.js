@@ -64,7 +64,11 @@ test("cockpit keeps the first screen compact and explains report timing with a h
   assert.match(cockpit, /完整报告将在凌晨统计后生成/);
   assert.match(css, /\.cockpit-metric-card\s*\{[\s\S]*grid-template-columns:/);
   assert.match(css, /\.cockpit-content\s*\{[\s\S]*overflow-y:\s*auto/);
-  assert.match(css, /\.cockpit-shell\s*\{[\s\S]*max-height:\s*calc\(100dvh/);
+  const shellStart = css.indexOf(".cockpit-shell {");
+  const shellEnd = css.indexOf("\n}", shellStart);
+  const shellRule = css.slice(shellStart, shellEnd);
+  assert.match(shellRule, /height:\s*100%/);
+  assert.doesNotMatch(shellRule, /max-height/);
 });
 
 test("charts come before problems and actions, with report history last", () => {

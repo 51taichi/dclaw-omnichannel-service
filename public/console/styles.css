@@ -296,7 +296,7 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
 .cockpit-shell {
   --cockpit-accent: var(--bot-accent, var(--accent));
   display: grid;
-  max-height: calc(100dvh - 230px);
+  height: 100%;
   min-height: 320px;
   overflow: hidden;
   padding: 16px;
@@ -6571,7 +6571,7 @@ td .muted {
   }
 
   .cockpit-shell {
-    max-height: none;
+    height: auto;
     overflow: visible;
   }
 
