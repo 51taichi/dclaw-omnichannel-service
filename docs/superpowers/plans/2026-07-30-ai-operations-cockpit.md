@@ -21,6 +21,10 @@
 - Task and tag definitions use stable IDs and immutable configuration versions. Cross-version funnels render separately.
 - Generated reports and sent reports are immutable. Corrections create a new revision.
 - The responsive full report requires workspace-session and Bot authorization; WeCom summaries do not include full transcripts or sensitive customer detail.
+- Cockpit typography, spacing, radii, borders, shadows, buttons, forms, and feedback states reuse the current console design language.
+- Cockpit sections and metrics use cards with icons from the existing SVG sprite; do not use emoji or introduce a mismatched icon library.
+- Information order is conclusion, core metrics, problems, actions, charts, then details. Color is never the only carrier of risk, trend, or status.
+- Responsive design reorders content for mobile instead of scaling down the desktop grid. Clickable cards require hover, keyboard-focus, and pressed states.
 - Use only existing runtime dependencies unless a later task proves a dependency is necessary and records that decision.
 
 ---
@@ -105,7 +109,7 @@ Expected: FAIL because the cockpit tab, panel, script, and default behavior do n
 
 - [ ] **Step 3: Add the tab, empty panel, and integration hooks**
 
-Add the cockpit button before sessions and move config after logs. Add a `cockpitTab` panel containing loading, stale, empty, and content roots. In `app.js`, call:
+Add the cockpit button before sessions and move config after logs. Add a cockpit icon to the existing SVG sprite using the same stroke treatment as current icons. Add a `cockpitTab` panel containing loading, stale, empty, and content roots. In `app.js`, call:
 
 ```js
 window.cockpitConsole?.setBotContext({
@@ -120,7 +124,7 @@ Call `window.cockpitConsole?.clear()` from `clearBotScopedContent()`.
 
 - [ ] **Step 4: Add minimal balanced-theme shell styles**
 
-Use only `var(--bot-accent)`, `color-mix()`, and existing global tokens. Do not add chart styling yet.
+Use only `var(--bot-accent)`, `color-mix()`, and existing global tokens. Match current panel, border, radius, shadow, typography, button, and focus treatment. Do not add chart styling yet.
 
 - [ ] **Step 5: Run the focused and existing console tests**
 
@@ -552,7 +556,7 @@ git commit -m "feat: expose cockpit APIs"
 
 - [ ] **Step 1: Expand failing UI boundary tests**
 
-Assert IDs for period switcher, freshness labels, AI summary, metric grid, funnel panel, node distribution, dynamic tag root, problems/actions, report history, and drill-down dialog. Assert CSS contains `var(--bot-accent)` and a mobile breakpoint.
+Assert IDs for period switcher, freshness labels, AI summary, metric grid, funnel panel, node distribution, dynamic tag root, problems/actions, report history, and drill-down dialog. Assert every major card has an SVG icon and an accessible label. Assert CSS contains `var(--bot-accent)`, keyboard focus treatment, pressed state, and a mobile breakpoint.
 
 - [ ] **Step 2: Run the UI boundary tests**
 
@@ -576,7 +580,7 @@ Implement:
 7. problems, evidence links, actions, and priority customers;
 8. report history and drill-down.
 
-Use accessible HTML/CSS charts; do not add a chart dependency in the first version.
+Use accessible HTML/CSS charts; do not add a chart dependency in the first version. Pair semantic colors with icons, text labels, and numeric values so color is never the only signal.
 
 - [ ] **Step 5: Implement responsive behavior**
 
