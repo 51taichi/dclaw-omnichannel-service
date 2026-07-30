@@ -7112,6 +7112,68 @@ export function getCockpitDailyCounters({ botId, localDate }) {
   `).all(botId, localDate).map((row) => [row.metric_key, Number(row.metric_value || 0)]));
 }
 
+export function getCockpitBaselineCharts(botId) {
+  const machine = getFlowMachineForBot(botId);
+  const nodeRows = db.prepare(`
+    SELECT current_node_id AS node_id, COUNT(*) AS customer_count
+    FROM flow_sessions
+    WHERE bot_id = ? AND status = 'active'
+    GROUP BY current_node_id
+  `).all(botId);
+  const countsByNode = new Map(
+    nodeRows.map((row) => [row.node_id, Number(row.customer_count || 0)])
+  );
+  const configuredNodes = (machine?.config?.nodes || [])
+    .filter((node) => String(node?.id || "").trim());
+  const configuredIds = new Set(configuredNodes.map((node) => node.id));
+  const nodes = [
+    ...configuredNodes.map((node) => ({
+      nodeId: node.id,
+      nodeName: node.name || node.id,
+      reached: countsByNode.get(node.id) || 0
+    })),
+    ...nodeRows
+      .filter((row) => !configuredIds.has(row.node_id))
+      .map((row) => ({
+        nodeId: row.node_id,
+        nodeName: row.node_id,
+        reached: Number(row.customer_count || 0)
+      }))
+  ];
+  const totalSessions = nodeRows.reduce(
+    (sum, row) => sum + Number(row.customer_count || 0),
+    0
+  );
+  const tags = db.prepare(`
+    SELECT
+      COALESCE(group_id, '') AS group_id,
+      tag_id,
+      MAX(tag_name) AS tag_name,
+      COUNT(DISTINCT conversation_key) AS customer_count
+    FROM conversation_tags
+    WHERE bot_id = ? AND tag_type = 'normal'
+    GROUP BY COALESCE(group_id, ''), tag_id
+    ORDER BY customer_count DESC, tag_name ASC
+  `).all(botId).map((row) => ({
+    groupId: row.group_id,
+    tagId: row.tag_id,
+    tagName: row.tag_name || row.tag_id,
+    current: Number(row.customer_count || 0),
+    added: 0,
+    removed: 0,
+    net: 0,
+    basis: "current_state"
+  }));
+  return {
+    nodeDistribution: nodes.map((node) => ({
+      ...node,
+      share: totalSessions ? node.reached / totalSessions : 0,
+      basis: "current_state"
+    })),
+    tags
+  };
+}
+
 export function getCockpitConfig(botId) {
   const row = db.prepare("SELECT config_json FROM cockpit_configs WHERE bot_id = ?").get(botId);
   return normalizeCockpitConfig(parseJson(row?.config_json) || {});

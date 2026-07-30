@@ -6462,6 +6462,16 @@ td .muted {
   text-align: center;
 }
 
+.cockpit-chart-empty-state {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-size: 13px;
+  justify-content: center;
+  min-height: 250px;
+  text-align: center;
+}
+
 .cockpit-funnel-chart.is-empty .cockpit-chart-track,
 .cockpit-tag-chart.is-empty .cockpit-tag-ring {
   opacity: 0.65;

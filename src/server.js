@@ -95,6 +95,7 @@ import {
   getConversation,
   getCockpitConfig,
   getCockpitDailyCounters,
+  getCockpitBaselineCharts,
   getCockpitReport,
   getCockpitAggregationCursor,
   getCockpitAggregationState,
@@ -7097,6 +7098,7 @@ const cockpitAggregator = createCockpitAggregator({
   getCursor: getCockpitAggregationCursor,
   listEvents: listCockpitEvents,
   loadState: getCockpitAggregationState,
+  getBaselineCharts: getCockpitBaselineCharts,
   saveState: saveCockpitAggregationState,
   saveSnapshot: saveCockpitSnapshot,
   saveCursor: saveCockpitAggregationCursor

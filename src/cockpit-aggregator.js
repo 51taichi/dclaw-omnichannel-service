@@ -17,6 +17,7 @@ export function createCockpitAggregator({
   getCursor,
   listEvents,
   loadState,
+  getBaselineCharts = () => ({ nodeDistribution: [], tags: [] }),
   saveState,
   saveSnapshot,
   saveCursor
@@ -36,6 +37,7 @@ export function createCockpitAggregator({
     });
     const previousState = loadState(botId) || { events: [] };
     const events = mergeEvents(previousState.events || [], incoming);
+    const baselineCharts = getBaselineCharts(botId) || {};
     const sourceThroughEventId = incoming.at(-1)?.id || cursor.lastEventId;
     const anchor = new Date(new Date(throughAt).getTime() - 24 * 60 * 60 * 1000).toISOString();
     const snapshots = [];
@@ -46,6 +48,36 @@ export function createCockpitAggregator({
         timezone: config.timezone
       });
       const funnels = aggregateCohortFunnels({ events, period });
+      const eventNodeDistribution = funnels.flatMap((funnel) => (
+        funnel.nodes.map((node) => ({
+          flowVersionId: funnel.flowVersionId,
+          ...node,
+          basis: "cohort_reached"
+        }))
+      ));
+      const tagChanges = aggregateTagChanges({
+        events: events.filter((event) => (
+          !event.occurredAt || (
+            event.occurredAt >= period.start
+            && event.occurredAt < period.end
+          )
+        ))
+      });
+      const changesByTag = new Map(
+        tagChanges.map((tag) => [`${tag.groupId}\u0000${tag.tagId}`, tag])
+      );
+      const baselineTags = (baselineCharts.tags || []).map((tag) => {
+        const change = changesByTag.get(`${tag.groupId}\u0000${tag.tagId}`);
+        return change ? {
+          ...tag,
+          added: change.added,
+          removed: change.removed,
+          net: change.net
+        } : tag;
+      });
+      const baselineTagKeys = new Set(
+        baselineTags.map((tag) => `${tag.groupId}\u0000${tag.tagId}`)
+      );
       const metrics = aggregateOccurrenceMetrics({ events, period });
       const cohortKeys = new Set(
         events
@@ -84,18 +116,15 @@ export function createCockpitAggregator({
         metrics,
         charts: {
           funnels,
-          nodeDistribution: funnels.flatMap((funnel) => funnel.nodes.map((node) => ({
-            flowVersionId: funnel.flowVersionId,
-            ...node
-          }))),
-          tags: aggregateTagChanges({
-            events: events.filter((event) => (
-              !event.occurredAt || (
-                event.occurredAt >= period.start
-                && event.occurredAt < period.end
-              )
+          nodeDistribution: eventNodeDistribution.length
+            ? eventNodeDistribution
+            : baselineCharts.nodeDistribution || [],
+          tags: [
+            ...baselineTags,
+            ...tagChanges.filter((tag) => (
+              !baselineTagKeys.has(`${tag.groupId}\u0000${tag.tagId}`)
             ))
-          })
+          ]
         },
         definitions: {},
         generatedAt: throughAt

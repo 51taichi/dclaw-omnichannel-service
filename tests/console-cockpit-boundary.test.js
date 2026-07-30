@@ -110,6 +110,8 @@ test("cockpit uses real chart canvases with visible zero-data states", () => {
   assert.match(cockpit, /cockpit-chart-empty/);
   assert.match(css, /\.cockpit-funnel-chart/);
   assert.match(css, /\.cockpit-tag-donut/);
+  assert.doesNotMatch(cockpit, /\{ nodeId: "Node 1"/);
+  assert.doesNotMatch(cockpit, /\{ tagId: "标签数据"/);
 });
 
 test("cockpit status messages use the shared top toast instead of an inline warning", () => {

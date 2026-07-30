@@ -222,3 +222,62 @@ test("aggregation state is replaced atomically per Bot", () => {
   });
   assert.deepEqual(db.getCockpitAggregationState("bot-b"), { events: [] });
 });
+
+test("cockpit baseline charts use real flow nodes and current customer tags", () => {
+  const binding = seedBot("baseline-bot");
+  const machine = db.upsertFlowMachine({
+    agentId: binding.agentId,
+    config: {
+      name: "销售流程",
+      version: "1",
+      entryNodeId: "discover",
+      nodes: [
+        { id: "discover", name: "需求沟通" },
+        { id: "invite", name: "邀约到店" }
+      ]
+    }
+  });
+  db.getOrCreateFlowSession({
+    botId: binding.botId,
+    conversationKey: "baseline-bot:private:a",
+    machine: machine.config
+  });
+  db.getOrCreateFlowSession({
+    botId: binding.botId,
+    conversationKey: "baseline-bot:private:b",
+    machine: machine.config
+  });
+  db.updateFlowSessionNode({
+    botId: binding.botId,
+    conversationKey: "baseline-bot:private:b",
+    nextNodeId: "invite",
+    reason: "test"
+  });
+  db.applyConversationTagChanges({
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationKey: "baseline-bot:private:a",
+    nextTags: [{
+      groupId: "intent",
+      groupName: "意向",
+      tagId: "hot",
+      tagName: "高意向"
+    }]
+  });
+
+  const charts = db.getCockpitBaselineCharts(binding.botId);
+  assert.deepEqual(charts.nodeDistribution, [
+    { nodeId: "discover", nodeName: "需求沟通", reached: 1, share: 0.5, basis: "current_state" },
+    { nodeId: "invite", nodeName: "邀约到店", reached: 1, share: 0.5, basis: "current_state" }
+  ]);
+  assert.deepEqual(charts.tags, [{
+    groupId: "intent",
+    tagId: "hot",
+    tagName: "高意向",
+    current: 1,
+    added: 0,
+    removed: 0,
+    net: 0,
+    basis: "current_state"
+  }]);
+});

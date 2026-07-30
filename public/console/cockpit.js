@@ -67,37 +67,36 @@
       ? data.nodeDistribution
       : (data.funnels || []).flatMap((funnel) => funnel.nodes || []))
       .slice(0, 8);
-    const displayNodes = nodes.length ? nodes : [
-      { nodeId: "Node 1", reached: 0, share: 0 },
-      { nodeId: "Node 2", reached: 0, share: 0 },
-      { nodeId: "Node 3", reached: 0, share: 0 },
-      { nodeId: "Node N", reached: 0, share: 0 }
-    ];
+    if (!nodes.length) {
+      return '<div class="cockpit-chart-empty-state">暂无真实任务节点数据</div>';
+    }
     const rowHeight = 46;
-    const height = displayNodes.length * rowHeight + 42;
+    const height = nodes.length * rowHeight + 42;
     return `
-      <div class="cockpit-funnel-chart ${nodes.length ? "" : "is-empty"}">
+      <div class="cockpit-funnel-chart">
         <svg viewBox="0 0 640 ${height}" role="img" aria-label="任务节点到达人数及占比图">
           <line class="cockpit-chart-axis" x1="150" y1="18" x2="150" y2="${height - 22}"></line>
-          ${displayNodes.map((node, index) => {
+          ${nodes.map((node, index) => {
             const y = 28 + index * rowHeight;
             const share = Math.max(0, Math.min(1, Number(node.share || 0)));
-            const width = nodes.length ? Math.max(4, share * 390) : 0;
+            const width = share > 0 ? Math.max(4, share * 390) : 0;
             return `
-              <text class="cockpit-chart-label" x="140" y="${y + 16}" text-anchor="end">${escapeHtml(node.nodeId)}</text>
+              <text class="cockpit-chart-label" x="140" y="${y + 16}" text-anchor="end">${escapeHtml(node.nodeName || node.nodeId)}</text>
               <rect class="cockpit-chart-track" x="166" y="${y}" width="390" height="22" rx="7"></rect>
               <rect class="cockpit-chart-bar" x="166" y="${y}" width="${width}" height="22" rx="7"></rect>
               <text class="cockpit-chart-value" x="570" y="${y + 16}">${Number(node.reached || 0)} · ${Math.round(share * 100)}%</text>
             `;
           }).join("")}
         </svg>
-        ${nodes.length ? "" : '<span class="cockpit-chart-empty">暂无节点数据，凌晨统计后自动更新</span>'}
       </div>
     `;
   }
 
   function tagChart(tags = []) {
     const visible = tags.filter((tag) => Number(tag.current || 0) > 0).slice(0, 6);
+    if (!visible.length) {
+      return '<div class="cockpit-chart-empty-state">暂无真实客户标签数据</div>';
+    }
     const total = visible.reduce((sum, tag) => sum + Number(tag.current || 0), 0);
     let offset = 0;
     const segments = visible.map((tag, index) => {
@@ -107,7 +106,7 @@
       return segment;
     }).join("");
     return `
-      <div class="cockpit-tag-chart ${visible.length ? "" : "is-empty"}">
+      <div class="cockpit-tag-chart">
         <div class="cockpit-tag-donut">
           <svg viewBox="0 0 140 140" role="img" aria-label="客户标签占比分布图">
             <circle class="cockpit-tag-ring" cx="70" cy="70" r="52"></circle>
@@ -117,18 +116,15 @@
           </svg>
         </div>
         <div class="cockpit-tag-legend">
-          ${(visible.length ? visible : [
-            { tagId: "标签数据", current: 0, net: 0 }
-          ]).map((tag, index) => `
+          ${visible.map((tag, index) => `
             <div>
               <i class="segment-${index % 4}"></i>
-              <span>${escapeHtml(tag.tagId)}</span>
+              <span>${escapeHtml(tag.tagName || tag.tagId)}</span>
               <b>${Number(tag.current || 0)}</b>
               <small>${Number(tag.net || 0) >= 0 ? "+" : ""}${Number(tag.net || 0)}</small>
             </div>
           `).join("")}
         </div>
-        ${visible.length ? "" : '<span class="cockpit-chart-empty">暂无标签数据，图表将在统计后自动绘制</span>'}
       </div>
     `;
   }
@@ -175,7 +171,9 @@
         <div class="cockpit-chart-grid">
           <section id="cockpitFunnels" class="cockpit-card">
             <h3>${icon("briefcase")}任务节点转化</h3>
-            <p class="cockpit-chart-caption">各节点到达人数与新增客户占比</p>
+            <p class="cockpit-chart-caption">${data.nodeDistribution?.some((node) => node.basis === "current_state")
+              ? "当前停留人数与全部任务会话占比"
+              : "各节点到达人数与新增客户占比"}</p>
             ${funnelChart(data)}
           </section>
           <section id="cockpitTags" class="cockpit-card">

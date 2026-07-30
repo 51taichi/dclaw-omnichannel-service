@@ -16,7 +16,11 @@ export function createCockpitBootstrap({
             botId: bot.botId,
             periodType: "daily"
           });
-          if (snapshot) {
+          const hasChartData = Boolean(
+            snapshot?.charts?.nodeDistribution?.length
+            || snapshot?.charts?.tags?.length
+          );
+          if (snapshot && hasChartData) {
             skipped += 1;
             continue;
           }

@@ -91,3 +91,42 @@ test("snapshot includes reply risks, conversion rate, node distribution and tag 
   assert.equal(saved.charts.nodeDistribution[0].nodeId, "node1");
   assert.equal(saved.charts.tags[0].tagId, "hot");
 });
+
+test("aggregation uses the real persisted baseline when the period has no chart events", async () => {
+  let saved;
+  const aggregator = createCockpitAggregator({
+    getConfig: () => ({ timezone: "Asia/Shanghai", defaultNoReplyHours: 24 }),
+    getCursor: () => ({ lastEventId: 0 }),
+    listEvents: () => [],
+    loadState: () => ({ events: [] }),
+    getBaselineCharts: () => ({
+      nodeDistribution: [{
+        nodeId: "discover",
+        nodeName: "需求沟通",
+        reached: 3,
+        share: 0.75,
+        basis: "current_state"
+      }],
+      tags: [{
+        groupId: "intent",
+        tagId: "hot",
+        tagName: "高意向",
+        current: 2,
+        added: 0,
+        removed: 0,
+        net: 0,
+        basis: "current_state"
+      }]
+    }),
+    saveState: () => {},
+    saveSnapshot: (snapshot) => { saved = snapshot; return snapshot; },
+    saveCursor: () => {}
+  });
+  await aggregator.aggregateBot({
+    botId: "bot-a",
+    throughAt: "2026-07-31T01:00:00.000Z",
+    periodTypes: ["daily"]
+  });
+  assert.equal(saved.charts.nodeDistribution[0].nodeName, "需求沟通");
+  assert.equal(saved.charts.tags[0].tagName, "高意向");
+});
