@@ -535,7 +535,7 @@ function updateWorkspaceTabAccess(hasBotContext) {
     hasBotContext &&
     !document.querySelector(".workspace-tabs button.active")
   ) {
-    switchWorkspaceTab(state.currentRole === "admin" ? "config" : "sessions", { force: true });
+    switchWorkspaceTab("cockpit", { force: true });
   }
 }
 
@@ -560,6 +560,11 @@ function setBindingState(bot = null) {
   els.botContextPanels.forEach((panel) => {
     panel.classList.toggle("is-bound", Boolean(bot));
     panel.style.setProperty("--bot-accent", accent);
+  });
+  window.cockpitConsole?.setBotContext({
+    botId: state.selectedBotId,
+    role: state.currentRole,
+    accent
   });
   renderBots(currentBots);
 }
@@ -588,6 +593,7 @@ function connectTagAlerts(botId) {
 
 function clearBotScopedContent() {
   disconnectTagAlerts();
+  window.cockpitConsole?.clear();
   setFlowSessionTypeSelection("private");
   state.selectedFlowConversationKey = "";
   state.flowSessionsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
@@ -720,8 +726,8 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
     expandPanel(scrollTo);
     scrollTo.scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  if (!scrollTo && state.currentRole !== "admin") {
-    switchWorkspaceTab("sessions", { force: true });
+  if (!scrollTo) {
+    switchWorkspaceTab("cockpit", { force: true });
   }
 }
 
@@ -838,7 +844,7 @@ async function unlockPendingBot() {
   if (data.role === "admin" && data.bot) {
     Object.assign(bot, data.bot);
   }
-  await applyBotContext(bot, { scrollTo: data.role === "admin" ? null : document.querySelector("#flowSessionsPanel") });
+  await applyBotContext(bot);
 }
 
 async function lockCurrentBot() {

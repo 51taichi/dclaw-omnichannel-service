@@ -169,6 +169,14 @@
       <symbol id="icon-chevron" viewBox="0 0 24 24">
         <path d="m6 9 6 6 6-6" />
       </symbol>
+      <symbol id="icon-cockpit" viewBox="0 0 24 24">
+        <path d="M4 19a8 8 0 1 1 16 0" />
+        <path d="m12 15 4-4" />
+        <path d="M7 19h10" />
+        <path d="M6.5 11.5 8 13" />
+        <path d="M12 7v2" />
+        <path d="m17.5 4.5-1 1" />
+      </symbol>
     </svg>
     <header class="topbar">
       <div class="topbar-inner">
@@ -213,9 +221,9 @@
       <div class="workspace">
         <div class="workspace-head">
           <div class="workspace-tabs" role="tablist" aria-label="控制台模块">
-            <button data-workspace-tab="config" type="button" role="tab" aria-selected="false">
-              <svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>
-              配置
+            <button data-workspace-tab="cockpit" type="button" role="tab" aria-selected="false">
+              <svg class="icon" aria-hidden="true"><use href="#icon-cockpit"></use></svg>
+              驾驶舱
             </button>
             <button data-workspace-tab="sessions" type="button" role="tab" aria-selected="false">
               <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
@@ -240,6 +248,10 @@
             <button data-workspace-tab="logs" type="button" role="tab" aria-selected="false">
               <svg class="icon" aria-hidden="true"><use href="#icon-eye"></use></svg>
               日志
+            </button>
+            <button data-workspace-tab="config" type="button" role="tab" aria-selected="false">
+              <svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>
+              配置
             </button>
           </div>
           <div class="current-bot-actions">
@@ -270,6 +282,26 @@
             </span>
           </div>
         </section>
+
+      <div id="cockpitTab" class="tab-panel" data-tab-panel="cockpit" hidden>
+        <section class="panel bot-context-panel cockpit-shell" aria-labelledby="cockpitTitle">
+          <div id="cockpitLoadingState" class="cockpit-state" role="status" aria-live="polite">
+            <svg class="icon" aria-hidden="true"><use href="#icon-cockpit"></use></svg>
+            <span>
+              <strong id="cockpitTitle">AI 经营驾驶舱</strong>
+              <small>正在读取最近一次统计结果…</small>
+            </span>
+          </div>
+          <div id="cockpitStaleState" class="cockpit-state cockpit-state-warning" role="status" hidden>
+            <svg class="icon" aria-hidden="true"><use href="#icon-alert"></use></svg>
+            <span>
+              <strong>数据更新延迟</strong>
+              <small>暂时展示最近一次成功统计结果。</small>
+            </span>
+          </div>
+          <div id="cockpitContent" class="cockpit-content" hidden></div>
+        </section>
+      </div>
 
       <div id="configTab" class="tab-panel" data-tab-panel="config" hidden>
       <section id="botBindingPanel" class="panel binding-panel bot-context-panel collapsible-panel">
@@ -1008,6 +1040,7 @@
     <script src="./workspace-entry.js"></script>
     <script src="./tag-alert-client.js"></script>
     <script src="./proactive-target-selection.js"></script>
+    <script src="./cockpit.js"></script>
     <script src="./app.js"></script>
   </body>
 </html>

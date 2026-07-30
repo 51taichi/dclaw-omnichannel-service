@@ -293,6 +293,66 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
   color: color-mix(in srgb, var(--bot-accent) 72%, var(--muted));
 }
 
+.cockpit-shell {
+  --cockpit-accent: var(--bot-accent, var(--accent));
+  min-height: 320px;
+  padding: 16px;
+  border-color: color-mix(in srgb, var(--cockpit-accent) 34%, var(--line));
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--cockpit-accent) 7%, #ffffff),
+      #ffffff 44%
+    );
+  box-shadow: 0 16px 36px color-mix(in srgb, var(--cockpit-accent) 13%, transparent);
+}
+
+.cockpit-state {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: color-mix(in srgb, var(--cockpit-accent) 74%, var(--text));
+}
+
+.cockpit-state[hidden] {
+  display: none;
+}
+
+.cockpit-state > .icon {
+  width: 30px;
+  height: 30px;
+}
+
+.cockpit-state span {
+  display: grid;
+  gap: 4px;
+}
+
+.cockpit-state small {
+  color: var(--muted);
+}
+
+.cockpit-state-warning {
+  min-height: auto;
+  justify-content: flex-start;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--warning) 38%, var(--line));
+  border-radius: 8px;
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.cockpit-content {
+  display: grid;
+  gap: 12px;
+}
+
+.cockpit-content[hidden] {
+  display: none;
+}
+
 @media (min-width: 761px) {
   .workspace-tabs {
     overflow: visible;
