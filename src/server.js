@@ -34,6 +34,10 @@ import { buildAgentResponseValidationOptions } from "./agent-response-validation
 import { createAgentInvocationQueue } from "./agent-invocation-queue.js";
 import { createCockpitEventRecorder } from "./cockpit-events.js";
 import { periodBounds } from "./cockpit-domain.js";
+import { createCockpitAggregator } from "./cockpit-aggregator.js";
+import { createCockpitReportGenerator } from "./cockpit-report-generator.js";
+import { createCockpitDeliveryService } from "./cockpit-delivery.js";
+import { createCockpitWorker } from "./cockpit-worker.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
   createBotSession,
@@ -79,6 +83,8 @@ import {
   createLegacyFlowSession,
   createProactiveTask,
   createCockpitJob,
+  createCockpitDelivery,
+  createCockpitReport,
   deleteAgent,
   deleteBotData,
   finishAgentInvocation,
@@ -89,6 +95,8 @@ import {
   getCockpitConfig,
   getCockpitDailyCounters,
   getCockpitReport,
+  getCockpitAggregationCursor,
+  getCockpitAggregationState,
   getLatestCockpitSnapshot,
   getConversationKey,
   getConversationResetPending,
@@ -132,6 +140,7 @@ import {
   getAgentTagSchema,
   listConversationMessages,
   listCockpitReports,
+  listCockpitEvents,
   listConversationMessagesAround,
   listConversationTags,
   listGroupRoles,
@@ -197,6 +206,11 @@ import {
   upsertBotBinding,
   upsertConversation,
   upsertCockpitConfig,
+  saveCockpitAggregationCursor,
+  saveCockpitAggregationState,
+  saveCockpitSnapshot,
+  claimDueCockpitDeliveries,
+  finishCockpitDelivery,
   upsertWorktoolApiMessageCache
 } from "./db.js";
 import {
@@ -6240,6 +6254,23 @@ app.get(
   })
 );
 
+app.post(
+  "/api/cockpit/:botId/reports",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    const reportType = ["daily", "weekly", "monthly"].includes(req.body?.reportType)
+      ? req.body.reportType
+      : "daily";
+    const job = createCockpitJob({
+      botId: req.params.botId,
+      stage: "generate",
+      payload: { reportType, requestedBy: "console" },
+      dueAt: new Date().toISOString()
+    });
+    res.status(202).json({ ok: true, status: "queued", jobId: job.id });
+  })
+);
+
 app.get(
   "/api/cockpit/:botId/reports/:reportId",
   asyncHandler(async (req, res) => {
@@ -7055,6 +7086,98 @@ logInfo("customer_date_tag_rules.migrated", { agentCount: migratedDateTagRuleCou
 const backfilledGroupDateTagCount = backfillManagedGroupConversationDateTags();
 logInfo("group_date_tags.backfilled", { conversationCount: backfilledGroupDateTagCount });
 
+const cockpitAggregator = createCockpitAggregator({
+  getConfig: getCockpitConfig,
+  getCursor: getCockpitAggregationCursor,
+  listEvents: listCockpitEvents,
+  loadState: getCockpitAggregationState,
+  saveState: saveCockpitAggregationState,
+  saveSnapshot: saveCockpitSnapshot,
+  saveCursor: saveCockpitAggregationCursor
+});
+
+const cockpitReportGenerator = createCockpitReportGenerator({
+  invokeAnalysis: async ({ snapshot, request }) => {
+    const binding = getBotBinding(snapshot.botId);
+    if (!binding?.enabled) throw new Error("Bot is disabled");
+    return invokeDclawAgentWithRetry({ binding, request });
+  },
+  saveReport: async (input) => createCockpitReport(input)
+});
+
+const cockpitDeliveryService = createCockpitDeliveryService({
+  claimDeliveries: claimDueCockpitDeliveries,
+  getReport: getCockpitReport,
+  sendText: sendTextMessage,
+  finishDelivery: finishCockpitDelivery,
+  publicBaseUrl: process.env.PUBLIC_BASE_URL || ""
+});
+
+function enabledCockpitBots() {
+  return listBotBindings().filter((binding) => binding.enabled);
+}
+
+function scheduledReportTypes(date) {
+  const types = ["daily"];
+  if (date.getDay() === 1) types.push("weekly");
+  if (date.getDate() === 1) types.push("monthly");
+  return types;
+}
+
+async function generateScheduledCockpitReports({ now }) {
+  const generated = [];
+  for (const binding of enabledCockpitBots()) {
+    for (const reportType of scheduledReportTypes(new Date(now))) {
+      const snapshot = getLatestCockpitSnapshot({ botId: binding.botId, periodType: reportType });
+      if (!snapshot) continue;
+      const exists = listCockpitReports({ botId: binding.botId, page: 1, pageSize: 100 }).items
+        .some((report) => (
+          report.reportType === reportType
+          && report.periodStart === snapshot.periodStart
+          && report.periodEnd === snapshot.periodEnd
+        ));
+      if (exists) continue;
+      const report = await cockpitReportGenerator.generate({ snapshot });
+      const schedule = getCockpitConfig(binding.botId).schedules?.[reportType];
+      if (schedule?.enabled) {
+        for (const recipient of schedule.recipients || []) {
+          createCockpitDelivery({
+            reportId: report.id,
+            botId: binding.botId,
+            recipient,
+            dueAt: now
+          });
+        }
+      }
+      generated.push(report.id);
+    }
+  }
+  return { generated };
+}
+
+const cockpitWorker = createCockpitWorker({
+  enabled: process.env.COCKPIT_WORKER_ENABLED !== "false",
+  handlers: {
+    aggregate: async ({ now }) => {
+      const results = [];
+      for (const binding of enabledCockpitBots()) {
+        results.push(await cockpitAggregator.aggregateBot({ botId: binding.botId, throughAt: now }));
+      }
+      return { bots: results.length };
+    },
+    reconcile: async ({ now }) => {
+      const results = [];
+      for (const binding of enabledCockpitBots()) {
+        results.push(await cockpitAggregator.reconcileBot({ botId: binding.botId, throughAt: now }));
+      }
+      return { bots: results.length };
+    },
+    generate: generateScheduledCockpitReports,
+    deliver: ({ now }) => cockpitDeliveryService.sendDue({ now })
+  }
+});
+
 app.listen(port, host, () => {
+  cockpitWorker.start();
   logInfo("service.started", { host, port });
 });

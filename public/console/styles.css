@@ -6392,6 +6392,16 @@ td .muted {
   order: 10;
 }
 
+.cockpit-config-form textarea {
+  min-height: 82px;
+  resize: vertical;
+}
+
+.cockpit-schedule-actions {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 980px) {
   .cockpit-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

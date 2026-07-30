@@ -67,3 +67,20 @@ test("switching Bots clears the old cockpit before loading the new context", () 
   assert.ok(source.indexOf("clearBotScopedContent()") >= 0);
   assert.ok(source.indexOf("window.cockpitConsole?.setBotContext") > source.indexOf("clearBotScopedContent()"));
 });
+
+test("report recipients and schedules live in the final config tab", () => {
+  const configStart = html.indexOf('id="configTab"');
+  const cockpitConfigStart = html.indexOf('id="cockpitConfigForm"');
+  assert.ok(cockpitConfigStart > configStart);
+  for (const field of [
+    "dailyRecipients",
+    "weeklyRecipients",
+    "monthlyRecipients",
+    "dailyEnabled",
+    "weeklyEnabled",
+    "monthlyEnabled"
+  ]) {
+    assert.match(html, new RegExp(`name="${field}"`));
+  }
+  assert.match(app, /\/api\/cockpit\/\$\{encodeURIComponent\(state\.selectedBotId\)\}\/config/);
+});

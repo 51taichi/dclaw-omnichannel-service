@@ -16,6 +16,15 @@ test("cockpit exposes Bot-authorized snapshot and report reads", () => {
   }
 });
 
+test("cockpit supports queued manual report generation", () => {
+  const start = source.indexOf('app.post(\\n  "/api/cockpit/:botId/reports"'.replace("\\n", "\n"));
+  const end = source.indexOf("\n);", start) + 3;
+  const route = source.slice(start, end);
+  assert.match(route, /assertAdminForBot/);
+  assert.match(route, /stage:\s*"generate"/);
+  assert.match(route, /status:\s*"queued"/);
+});
+
 test("cockpit overview is read-only and never aggregates or invokes AI", () => {
   const start = source.indexOf('"/api/cockpit/:botId/overview"');
   const end = source.indexOf("\n);", start) + 3;
@@ -23,4 +32,3 @@ test("cockpit overview is read-only and never aggregates or invokes AI", () => {
   assert.match(route, /assertBotAccess/);
   assert.doesNotMatch(route, /aggregate|rebuild|invokeDclaw|createCockpitReport/);
 });
-

@@ -61,6 +61,8 @@ const els = {
   workspaceLockPanel: document.querySelector("#workspaceLockPanel"),
   workspaceEmptyState: document.querySelector("#workspaceEmptyState"),
   botForm: document.querySelector("#botForm"),
+  cockpitConfigForm: document.querySelector("#cockpitConfigForm"),
+  generateCockpitReportButton: document.querySelector("#generateCockpitReportButton"),
   debugReplyForm: document.querySelector("#debugReplyForm"),
   replyWaitPanel: document.querySelector("#replyWaitPanel"),
   replyWaitForm: document.querySelector("#replyWaitForm"),
@@ -444,6 +446,57 @@ function formData() {
   };
 }
 
+function cockpitRecipients(value) {
+  return String(value || "").split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean);
+}
+
+async function loadCockpitConfig({ contextVersion } = {}) {
+  if (!state.selectedBotId || !els.cockpitConfigForm || state.currentRole !== "admin") return;
+  const botId = state.selectedBotId;
+  const data = await request(`/api/cockpit/${encodeURIComponent(botId)}/config`, { botId });
+  if (contextVersion && !isCurrentBotContext(botId, contextVersion)) return;
+  const config = data.config || {};
+  els.cockpitConfigForm.timezone.value = config.timezone || "Asia/Shanghai";
+  els.cockpitConfigForm.defaultNoReplyHours.value = config.defaultNoReplyHours || 24;
+  for (const type of ["daily", "weekly", "monthly"]) {
+    els.cockpitConfigForm[`${type}Enabled`].checked = Boolean(config.schedules?.[type]?.enabled);
+    els.cockpitConfigForm[`${type}Recipients`].value =
+      (config.schedules?.[type]?.recipients || []).join("\n");
+  }
+}
+
+async function saveCockpitConfig(event) {
+  event.preventDefault();
+  const form = els.cockpitConfigForm;
+  const schedules = Object.fromEntries(["daily", "weekly", "monthly"].map((type) => [
+    type,
+    {
+      enabled: form[`${type}Enabled`].checked,
+      sendAt: "09:00",
+      recipients: cockpitRecipients(form[`${type}Recipients`].value)
+    }
+  ]));
+  await request(`/api/cockpit/${encodeURIComponent(state.selectedBotId)}/config`, {
+    method: "PUT",
+    botId: state.selectedBotId,
+    body: JSON.stringify({
+      timezone: form.timezone.value.trim(),
+      defaultNoReplyHours: Number(form.defaultNoReplyHours.value),
+      schedules
+    })
+  });
+  toast("驾驶舱报告配置已保存");
+}
+
+async function generateCockpitReport() {
+  await request(`/api/cockpit/${encodeURIComponent(state.selectedBotId)}/reports`, {
+    method: "POST",
+    botId: state.selectedBotId,
+    body: JSON.stringify({ reportType: "daily" })
+  });
+  toast("日报生成任务已加入凌晨队列");
+}
+
 const botAccentPalette = [
   "#2a30d8",
   "#18c5cf",
@@ -705,6 +758,8 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
       await loadReplyWait({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       await loadHistoryAnalysis({ contextVersion });
+      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
+      await loadCockpitConfig({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
     }
     const tasks = [
@@ -5469,6 +5524,12 @@ els.unlockAcceptButton.addEventListener("click", () =>
   acceptUnlockDialog().catch(toastError)
 );
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch(toastError));
+els.cockpitConfigForm?.addEventListener("submit", (event) =>
+  saveCockpitConfig(event).catch(toastError)
+);
+els.generateCockpitReportButton?.addEventListener("click", () =>
+  generateCockpitReport().catch(toastError)
+);
 els.accessKeyForm.addEventListener("submit", (event) =>
   saveAccessKey(event).catch(toastError)
 );
