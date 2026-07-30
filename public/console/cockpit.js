@@ -62,6 +62,21 @@
     return Number(value || 0).toLocaleString("zh-CN");
   }
 
+  function distributionPercentages(nodes) {
+    const total = nodes.reduce((sum, node) => sum + Number(node.reached || 0), 0);
+    if (!total) return nodes.map(() => 0);
+    const percentages = nodes.map((node) => (
+      Math.round((Number(node.reached || 0) / total) * 1000) / 10
+    ));
+    const lastPositive = nodes.findLastIndex((node) => Number(node.reached || 0) > 0);
+    const assigned = percentages.reduce(
+      (sum, value, index) => index === lastPositive ? sum : sum + value,
+      0
+    );
+    percentages[lastPositive] = Math.max(0, Math.round((100 - assigned) * 10) / 10);
+    return percentages;
+  }
+
   function funnelChart(data) {
     const nodes = (data.nodeDistribution?.length
       ? data.nodeDistribution
@@ -72,6 +87,7 @@
     }
     const rowHeight = 46;
     const height = nodes.length * rowHeight + 42;
+    const percentages = distributionPercentages(nodes);
     return `
       <div class="cockpit-funnel-chart">
         <svg viewBox="0 0 640 ${height}" role="img" aria-label="任务节点到达人数及占比图">
@@ -80,11 +96,14 @@
             const y = 28 + index * rowHeight;
             const share = Math.max(0, Math.min(1, Number(node.share || 0)));
             const width = share > 0 ? Math.max(4, share * 390) : 0;
+            const nodeName = node.nodeId === "__conversation__"
+              ? "其他（未进入任务）"
+              : (node.nodeName || node.nodeId);
             return `
-              <text class="cockpit-chart-label" x="140" y="${y + 16}" text-anchor="end">${escapeHtml(node.nodeName || node.nodeId)}</text>
+              <text class="cockpit-chart-label" x="140" y="${y + 16}" text-anchor="end">${escapeHtml(nodeName)}</text>
               <rect class="cockpit-chart-track" x="166" y="${y}" width="390" height="22" rx="7"></rect>
               <rect class="cockpit-chart-bar" x="166" y="${y}" width="${width}" height="22" rx="7"></rect>
-              <text class="cockpit-chart-value" x="570" y="${y + 16}">${Number(node.reached || 0)} · ${Math.round(share * 100)}%</text>
+              <text class="cockpit-chart-value" x="570" y="${y + 16}">${Number(node.reached || 0)} · ${percentages[index].toFixed(1)}%</text>
             `;
           }).join("")}
         </svg>
@@ -93,38 +112,42 @@
   }
 
   function tagChart(tags = []) {
-    const visible = tags.filter((tag) => Number(tag.current || 0) > 0).slice(0, 6);
+    const visible = tags.slice(0, 30);
     if (!visible.length) {
       return '<div class="cockpit-chart-empty-state">暂无真实客户标签数据</div>';
     }
-    const total = visible.reduce((sum, tag) => sum + Number(tag.current || 0), 0);
-    let offset = 0;
-    const segments = visible.map((tag, index) => {
-      const percent = total ? Number(tag.current || 0) / total * 100 : 0;
-      const segment = `<circle class="cockpit-tag-segment segment-${index % 4}" cx="70" cy="70" r="52" pathLength="100" stroke-dasharray="${percent} ${100 - percent}" stroke-dashoffset="${-offset}"></circle>`;
-      offset += percent;
-      return segment;
-    }).join("");
+    const groups = [];
+    for (const tag of visible) {
+      const groupId = tag.groupId || "__other__";
+      let group = groups.find((item) => item.id === groupId);
+      if (!group) {
+        group = { id: groupId, name: tag.groupName || "其他标签", tags: [] };
+        groups.push(group);
+      }
+      group.tags.push(tag);
+    }
+    const maximum = Math.max(1, ...visible.map((tag) => Number(tag.current || 0)));
     return `
-      <div class="cockpit-tag-chart">
-        <div class="cockpit-tag-donut">
-          <svg viewBox="0 0 140 140" role="img" aria-label="客户标签占比分布图">
-            <circle class="cockpit-tag-ring" cx="70" cy="70" r="52"></circle>
-            ${segments}
-            <text class="cockpit-tag-total" x="70" y="66" text-anchor="middle">${total}</text>
-            <text class="cockpit-tag-total-label" x="70" y="84" text-anchor="middle">已标记</text>
-          </svg>
-        </div>
-        <div class="cockpit-tag-legend">
-          ${visible.map((tag, index) => `
-            <div>
-              <i class="segment-${index % 4}"></i>
-              <span>${escapeHtml(tag.tagName || tag.tagId)}</span>
-              <b>${Number(tag.current || 0)}</b>
-              <small>${Number(tag.net || 0) >= 0 ? "+" : ""}${Number(tag.net || 0)}</small>
+      <div class="cockpit-tag-groups">
+        ${groups.map((group) => `
+          <section class="cockpit-tag-group">
+            <strong class="cockpit-tag-group-name">${escapeHtml(group.name)}</strong>
+            <div class="cockpit-tag-group-rows">
+              ${group.tags.map((tag) => {
+                const current = Number(tag.current || 0);
+                const net = Number(tag.net || 0);
+                return `
+                  <div class="cockpit-tag-row" title="${escapeHtml(group.name)} / ${escapeHtml(tag.tagName || tag.tagId)}">
+                    <span>${escapeHtml(tag.tagName || tag.tagId)}</span>
+                    <i class="cockpit-tag-bar"><b style="width:${current / maximum * 100}%"></b></i>
+                    <strong>${current}</strong>
+                    <small class="${net > 0 ? "positive" : net < 0 ? "negative" : ""}">${net >= 0 ? "+" : ""}${net}</small>
+                  </div>
+                `;
+              }).join("")}
             </div>
-          `).join("")}
-        </div>
+          </section>
+        `).join("")}
       </div>
     `;
   }
@@ -178,7 +201,7 @@
           </section>
           <section id="cockpitTags" class="cockpit-card">
             <h3>${icon("tag")}标签分布与变化</h3>
-            <p class="cockpit-chart-caption">当前标签人数、占比及本周期净变化</p>
+            <p class="cockpit-chart-caption">按标签配置顺序展示当前人数及本周期净变化</p>
             ${tagChart(data.tagGroups || [])}
           </section>
         </div>

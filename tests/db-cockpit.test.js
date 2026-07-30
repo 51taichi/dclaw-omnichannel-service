@@ -264,20 +264,40 @@ test("cockpit baseline charts use real flow nodes and current customer tags", ()
       tagName: "高意向"
     }]
   });
+  db.upsertAgentTagSchema({
+    agentId: binding.agentId,
+    schema: {
+      dateTag: { enabled: true },
+      groups: [
+        {
+          id: "stage",
+          name: "客户阶段",
+          tags: [{ id: "c", name: "C类" }]
+        },
+        {
+          id: "intent",
+          name: "客户意向",
+          tags: [
+            { id: "warm", name: "有意向" },
+            { id: "hot", name: "高意向" }
+          ]
+        }
+      ]
+    }
+  });
 
   const charts = db.getCockpitBaselineCharts(binding.botId);
   assert.deepEqual(charts.nodeDistribution, [
     { nodeId: "discover", nodeName: "需求沟通", reached: 1, share: 0.5, basis: "current_state" },
     { nodeId: "invite", nodeName: "邀约到店", reached: 1, share: 0.5, basis: "current_state" }
   ]);
-  assert.deepEqual(charts.tags, [{
-    groupId: "intent",
-    tagId: "hot",
-    tagName: "高意向",
-    current: 1,
-    added: 0,
-    removed: 0,
-    net: 0,
-    basis: "current_state"
-  }]);
+  assert.deepEqual(charts.tags.map((tag) => [
+    tag.groupName,
+    tag.tagName,
+    tag.current
+  ]), [
+    ["客户阶段", "C类", 0],
+    ["客户意向", "有意向", 0],
+    ["客户意向", "高意向", 1]
+  ]);
 });

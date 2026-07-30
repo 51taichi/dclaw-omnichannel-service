@@ -7114,6 +7114,10 @@ export function getCockpitDailyCounters({ botId, localDate }) {
 
 export function getCockpitBaselineCharts(botId) {
   const machine = getFlowMachineForBot(botId);
+  const binding = getBotBinding(botId);
+  const tagSchema = binding?.agentId
+    ? getAgentTagSchema(binding.agentId)?.config
+    : null;
   const nodeRows = db.prepare(`
     SELECT current_node_id AS node_id, COUNT(*) AS customer_count
     FROM flow_sessions
@@ -7136,7 +7140,9 @@ export function getCockpitBaselineCharts(botId) {
       .filter((row) => !configuredIds.has(row.node_id))
       .map((row) => ({
         nodeId: row.node_id,
-        nodeName: row.node_id,
+        nodeName: row.node_id === "__conversation__"
+          ? "其他（未进入任务）"
+          : row.node_id,
         reached: Number(row.customer_count || 0)
       }))
   ];
@@ -7144,26 +7150,54 @@ export function getCockpitBaselineCharts(botId) {
     (sum, row) => sum + Number(row.customer_count || 0),
     0
   );
-  const tags = db.prepare(`
+  const tagRows = db.prepare(`
     SELECT
       COALESCE(group_id, '') AS group_id,
+      MAX(group_name) AS group_name,
       tag_id,
       MAX(tag_name) AS tag_name,
       COUNT(DISTINCT conversation_key) AS customer_count
     FROM conversation_tags
     WHERE bot_id = ? AND tag_type = 'normal'
     GROUP BY COALESCE(group_id, ''), tag_id
-    ORDER BY customer_count DESC, tag_name ASC
-  `).all(botId).map((row) => ({
-    groupId: row.group_id,
-    tagId: row.tag_id,
-    tagName: row.tag_name || row.tag_id,
-    current: Number(row.customer_count || 0),
-    added: 0,
-    removed: 0,
-    net: 0,
-    basis: "current_state"
-  }));
+    ORDER BY group_name ASC, tag_name ASC, tag_id ASC
+  `).all(botId);
+  const tagRowKey = (groupId, tagId) => `${groupId || ""}\u0000${tagId || ""}`;
+  const tagRowsById = new Map(
+    tagRows.map((row) => [tagRowKey(row.group_id, row.tag_id), row])
+  );
+  const tags = [];
+  for (const group of tagSchema?.groups || []) {
+    for (const tag of group.tags || []) {
+      const row = tagRowsById.get(tagRowKey(group.id, tag.id));
+      tags.push({
+        groupId: group.id,
+        groupName: group.name || group.id,
+        tagId: tag.id,
+        tagName: tag.name || tag.id,
+        current: Number(row?.customer_count || 0),
+        added: 0,
+        removed: 0,
+        net: 0,
+        basis: "current_state"
+      });
+      tagRowsById.delete(tagRowKey(group.id, tag.id));
+    }
+  }
+  for (const row of tagRows) {
+    if (!tagRowsById.has(tagRowKey(row.group_id, row.tag_id))) continue;
+    tags.push({
+      groupId: row.group_id,
+      groupName: row.group_name || row.group_id || "其他标签",
+      tagId: row.tag_id,
+      tagName: row.tag_name || row.tag_id,
+      current: Number(row.customer_count || 0),
+      added: 0,
+      removed: 0,
+      net: 0,
+      basis: "current_state"
+    });
+  }
   return {
     nodeDistribution: nodes.map((node) => ({
       ...node,

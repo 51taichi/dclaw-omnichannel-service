@@ -105,13 +105,22 @@ test("report recipients and schedules live in the final config tab", () => {
 
 test("cockpit uses real chart canvases with visible zero-data states", () => {
   assert.match(cockpit, /cockpit-funnel-chart/);
-  assert.match(cockpit, /cockpit-tag-donut/);
+  assert.match(cockpit, /cockpit-tag-group/);
   assert.match(cockpit, /<svg[\s\S]*role="img"/);
   assert.match(cockpit, /cockpit-chart-empty/);
   assert.match(css, /\.cockpit-funnel-chart/);
-  assert.match(css, /\.cockpit-tag-donut/);
+  assert.match(css, /\.cockpit-tag-group/);
   assert.doesNotMatch(cockpit, /\{ nodeId: "Node 1"/);
   assert.doesNotMatch(cockpit, /\{ tagId: "标签数据"/);
+  assert.doesNotMatch(cockpit, /cockpit-tag-total/);
+});
+
+test("node distribution totals exactly one hundred percent and hides internal ids", () => {
+  assert.match(cockpit, /function distributionPercentages/);
+  assert.match(cockpit, /100 - assigned/);
+  assert.match(cockpit, /toFixed\(1\)/);
+  assert.match(cockpit, /__conversation__/);
+  assert.match(cockpit, /其他（未进入任务）/);
 });
 
 test("cockpit status messages use the shared top toast instead of an inline warning", () => {
