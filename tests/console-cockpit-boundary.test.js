@@ -5,6 +5,7 @@ import test from "node:test";
 const html = fs.readFileSync(new URL("../public/console/index.html", import.meta.url), "utf8");
 const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url), "utf8");
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
+const cockpit = fs.readFileSync(new URL("../public/console/cockpit.js", import.meta.url), "utf8");
 
 test("cockpit is the first workspace tab and config is last", () => {
   const names = [...html.matchAll(/data-workspace-tab="([^"]+)"/g)].map((match) => match[1]);
@@ -39,3 +40,30 @@ test("cockpit exposes an icon, Bot-themed shell, and dedicated client", () => {
   assert.match(css, /var\(--bot-accent/);
 });
 
+test("cockpit renders fixed cards with icons and responsive hierarchy", () => {
+  for (const id of [
+    "cockpitPeriodSwitcher",
+    "cockpitFreshness",
+    "cockpitAiSummary",
+    "cockpitMetricGrid",
+    "cockpitProblems",
+    "cockpitActions",
+    "cockpitFunnels",
+    "cockpitTags",
+    "cockpitReportHistory"
+  ]) {
+    assert.equal(cockpit.includes(id), true, id);
+  }
+  assert.match(cockpit, /cockpit-card-icon/);
+  assert.match(cockpit, /\/api\/cockpit\/\$\{encodeURIComponent\(state\.botId\)\}\/overview/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.cockpit-dashboard/);
+  assert.match(css, /\.cockpit-card:focus-within/);
+});
+
+test("switching Bots clears the old cockpit before loading the new context", () => {
+  const start = app.indexOf("async function applyBotContext");
+  const end = app.indexOf("\n}\n\nfunction", start);
+  const source = app.slice(start, end);
+  assert.ok(source.indexOf("clearBotScopedContent()") >= 0);
+  assert.ok(source.indexOf("window.cockpitConsole?.setBotContext") > source.indexOf("clearBotScopedContent()"));
+});

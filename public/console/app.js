@@ -561,11 +561,6 @@ function setBindingState(bot = null) {
     panel.classList.toggle("is-bound", Boolean(bot));
     panel.style.setProperty("--bot-accent", accent);
   });
-  window.cockpitConsole?.setBotContext({
-    botId: state.selectedBotId,
-    role: state.currentRole,
-    accent
-  });
   renderBots(currentBots);
 }
 
@@ -684,6 +679,16 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
   setBindingState(bot);
   if (tabName) switchWorkspaceTab(tabName);
   clearBotScopedContent();
+  const cockpitBotId = state.selectedBotId;
+  window.cockpitConsole?.setBotContext({
+    botId: cockpitBotId,
+    role: state.currentRole,
+    accent: getBotAccent(bot),
+    request: (path, options = {}) => request(path, {
+      ...options,
+      botId: cockpitBotId
+    })
+  });
   let activeBot = bot;
   if (bot?.botId) {
     if (state.currentRole === "admin") {
