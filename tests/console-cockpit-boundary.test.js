@@ -116,6 +116,16 @@ test("cockpit charts omit redundant explanatory captions", () => {
   assert.doesNotMatch(cockpit, /cockpit-chart-caption/);
 });
 
+test("cockpit chart panels share an adaptive bounded height above aligned actions", () => {
+  assert.match(cockpit, /function chartPanelHeight/);
+  assert.match(cockpit, /--cockpit-chart-height/);
+  assert.match(cockpit, /Math\.max\(nodeHeight,\s*tagHeight\)/);
+  assert.match(css, /\.cockpit-chart-grid\s*>\s*\.cockpit-card/);
+  assert.match(css, /height:\s*var\(--cockpit-chart-height\)/);
+  assert.match(css, /\.cockpit-priority-grid[\s\S]*align-items:\s*stretch/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*--cockpit-chart-height:\s*auto/);
+});
+
 test("switching Bots clears the old cockpit before loading the new context", () => {
   const start = app.indexOf("async function applyBotContext");
   const end = app.indexOf("\n}\n\nfunction", start);

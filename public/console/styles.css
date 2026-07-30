@@ -6457,9 +6457,15 @@ td .muted {
 
 .cockpit-priority-grid,
 .cockpit-chart-grid {
+  align-items: stretch;
   display: grid;
   gap: 16px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.cockpit-chart-grid > .cockpit-card {
+  display: flex;
+  flex-direction: column;
 }
 
 .cockpit-card h3 {
@@ -6487,14 +6493,16 @@ td .muted {
 
 .cockpit-funnel-chart,
 .cockpit-tag-groups {
+  height: var(--cockpit-chart-height);
   min-height: 250px;
+  overflow: auto;
   position: relative;
 }
 
 .cockpit-funnel-chart svg {
   display: block;
   height: auto;
-  max-height: 390px;
+  max-height: none;
   overflow: visible;
   width: 100%;
 }
@@ -6550,8 +6558,6 @@ td .muted {
 .cockpit-tag-groups {
   display: grid;
   gap: 16px;
-  max-height: 300px;
-  overflow: auto;
   padding: 4px 4px 8px;
 }
 
@@ -6678,6 +6684,10 @@ td .muted {
   .cockpit-priority-grid,
   .cockpit-chart-grid {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .cockpit-chart-grid {
+    --cockpit-chart-height: auto !important;
   }
 
   .cockpit-toolbar .segmented {
