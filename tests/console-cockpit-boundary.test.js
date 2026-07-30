@@ -80,7 +80,7 @@ test("effective conversations replace customer messages beside the outcome chart
 });
 
 test("desktop metric labels remain fully visible", () => {
-  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 4ch/);
+  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 58px/);
   assert.match(css, /\.cockpit-metric-label > span[\s\S]*flex:\s*0 0 auto/);
   const labelStart = css.indexOf(".cockpit-metric-label > span");
   const labelEnd = css.indexOf("\n}", labelStart);
@@ -115,14 +115,14 @@ test("large metric values use stable compact slots without changing the layout",
   assert.match(cockpit, /亿/);
   assert.match(cockpit, /title="\$\{fullNumber/);
   assert.match(css, /font-variant-numeric:\s*tabular-nums/);
-  assert.match(css, /\.cockpit-metric-card strong[\s\S]*inline-size:\s*4ch/);
-  assert.match(css, /\.cockpit-metric-card strong[\s\S]*min-inline-size:\s*4ch/);
+  assert.match(css, /\.cockpit-metric-card strong[\s\S]*inline-size:\s*100%/);
+  assert.match(css, /\.cockpit-metric-card strong[\s\S]*min-inline-size:\s*0/);
   assert.match(css, /\.cockpit-metric-card strong[\s\S]*white-space:\s*nowrap/);
   assert.match(css, /\.cockpit-tag-row[\s\S]*grid-template-columns:[^;]*40px 48px/);
 });
 
 test("all dashboard value columns reserve enough space for 999", () => {
-  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 4ch/);
+  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 58px/);
   assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(4em,\s*1fr\) 3ch 5ch/);
   assert.match(css, /\.cockpit-outcome-legend strong[\s\S]*min-width:\s*3ch/);
   assert.match(css, /\.cockpit-outcome-legend small[\s\S]*min-width:\s*5ch/);

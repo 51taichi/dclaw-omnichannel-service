@@ -6357,7 +6357,7 @@ td .muted {
   align-items: center;
   display: grid;
   gap: 6px;
-  grid-template-columns: minmax(5em, 1fr) 4ch;
+  grid-template-columns: minmax(5em, 1fr) 58px;
   min-height: 66px;
   padding: 14px 12px;
 }
@@ -6382,10 +6382,10 @@ td .muted {
   color: var(--text);
   font-size: clamp(22px, 2.2vw, 30px);
   font-variant-numeric: tabular-nums;
-  inline-size: 4ch;
+  inline-size: 100%;
   line-height: 1;
   max-width: 100%;
-  min-inline-size: 4ch;
+  min-inline-size: 0;
   overflow: hidden;
   text-align: right;
   text-overflow: ellipsis;
