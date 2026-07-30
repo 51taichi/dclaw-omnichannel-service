@@ -288,17 +288,6 @@
     `;
   }
 
-  function chartPanelHeight(data) {
-    const nodes = data.nodeDistribution?.length
-      ? data.nodeDistribution
-      : (data.funnels || []).flatMap((funnel) => funnel.nodes || []);
-    const tags = data.tagGroups || [];
-    const tagGroupCount = new Set(tags.map((tag) => tag.groupId || "__other__")).size;
-    const nodeHeight = nodes.length ? nodes.length * 46 + 42 : 250;
-    const tagHeight = tags.length ? tags.length * 35 + tagGroupCount * 28 + 16 : 250;
-    return Math.max(250, Math.min(480, Math.max(nodeHeight, tagHeight)));
-  }
-
   function render(data) {
     const current = elements();
     const report = data.latestReport?.document || {};
@@ -336,7 +325,7 @@
           }).join("")}
         </section>
 
-        <div class="cockpit-chart-grid" style="--cockpit-chart-height:${chartPanelHeight(data)}px">
+        <div class="cockpit-chart-grid">
           <section id="cockpitFunnels" class="cockpit-card">
             <h3>${icon("briefcase")}任务节点转化</h3>
             ${funnelChart(data)}

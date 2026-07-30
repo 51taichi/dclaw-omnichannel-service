@@ -135,14 +135,20 @@ test("cockpit charts omit redundant explanatory captions", () => {
   assert.doesNotMatch(cockpit, /cockpit-chart-caption/);
 });
 
-test("cockpit chart panels share an adaptive bounded height above aligned actions", () => {
-  assert.match(cockpit, /function chartPanelHeight/);
-  assert.match(cockpit, /--cockpit-chart-height/);
-  assert.match(cockpit, /Math\.max\(nodeHeight,\s*tagHeight\)/);
+test("cockpit chart panels use natural content height above aligned actions", () => {
+  assert.doesNotMatch(cockpit, /function chartPanelHeight/);
+  assert.doesNotMatch(cockpit, /--cockpit-chart-height/);
   assert.match(css, /\.cockpit-chart-grid\s*>\s*\.cockpit-card/);
-  assert.match(css, /height:\s*var\(--cockpit-chart-height\)/);
+  assert.match(css, /\.cockpit-chart-grid[\s\S]*align-items:\s*start/);
+  assert.match(css, /\.cockpit-funnel-chart,[\s\S]*\.cockpit-tag-groups[\s\S]*height:\s*auto/);
   assert.match(css, /\.cockpit-priority-grid[\s\S]*align-items:\s*stretch/);
-  assert.match(css, /@media \(max-width: 760px\)[\s\S]*--cockpit-chart-height:\s*auto/);
+});
+
+test("cockpit widens the outcome card and places tag group names vertically", () => {
+  assert.match(css, /grid-template-columns:\s*repeat\(2,\s*minmax\(190px,\s*1fr\)\)\s*minmax\(330px,\s*1\.35fr\)/);
+  assert.match(css, /\.cockpit-tag-group[\s\S]*grid-template-columns:\s*42px minmax\(0,\s*1fr\)/);
+  assert.match(css, /\.cockpit-tag-group-name[\s\S]*writing-mode:\s*vertical-rl/);
+  assert.match(css, /\.cockpit-tag-group-name[\s\S]*text-orientation:\s*upright/);
 });
 
 test("switching Bots clears the old cockpit before loading the new context", () => {
