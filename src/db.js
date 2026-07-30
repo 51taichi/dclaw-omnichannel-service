@@ -664,6 +664,13 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS cockpit_aggregation_states (
+    bot_id TEXT PRIMARY KEY,
+    state_json TEXT NOT NULL,
+    last_event_id INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS cockpit_snapshots (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bot_id TEXT NOT NULL,
@@ -1909,6 +1916,7 @@ export function deleteBotData(botId) {
     "cockpit_reports",
     "cockpit_snapshots",
     "cockpit_jobs",
+    "cockpit_aggregation_states",
     "cockpit_aggregation_cursors",
     "cockpit_definition_versions",
     "cockpit_configs",
@@ -7365,6 +7373,27 @@ export function saveCockpitAggregationCursor(input) {
     timestamp
   );
   return getCockpitAggregationCursor(input.botId);
+}
+
+export function getCockpitAggregationState(botId) {
+  const row = db.prepare(
+    "SELECT state_json FROM cockpit_aggregation_states WHERE bot_id = ?"
+  ).get(botId);
+  return parseJson(row?.state_json) || { events: [] };
+}
+
+export function saveCockpitAggregationState({ botId, state, lastEventId }) {
+  db.prepare(`
+    INSERT INTO cockpit_aggregation_states (
+      bot_id, state_json, last_event_id, updated_at
+    )
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(bot_id) DO UPDATE SET
+      state_json = excluded.state_json,
+      last_event_id = excluded.last_event_id,
+      updated_at = excluded.updated_at
+  `).run(botId, json(state || { events: [] }), Number(lastEventId || 0), now());
+  return getCockpitAggregationState(botId);
 }
 
 function rowToCockpitJob(row) {

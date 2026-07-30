@@ -1,0 +1,90 @@
+import {
+  aggregateCohortFunnels,
+  aggregateOccurrenceMetrics,
+  aggregateTagChanges,
+  periodBounds
+} from "./cockpit-domain.js";
+
+function mergeEvents(existing, incoming) {
+  const byId = new Map(existing.map((event) => [event.id, event]));
+  for (const event of incoming) byId.set(event.id, event);
+  return [...byId.values()].sort((left, right) => left.id - right.id);
+}
+
+export function createCockpitAggregator({
+  getConfig,
+  getCursor,
+  listEvents,
+  loadState,
+  saveState,
+  saveSnapshot,
+  saveCursor
+}) {
+  async function aggregateBot({
+    botId,
+    throughAt,
+    periodTypes = ["daily", "weekly", "monthly"]
+  }) {
+    const config = getConfig(botId);
+    const cursor = getCursor(botId);
+    const incoming = listEvents({
+      botId,
+      afterId: cursor.lastEventId,
+      throughAt,
+      limit: 5000
+    });
+    const previousState = loadState(botId) || { events: [] };
+    const events = mergeEvents(previousState.events || [], incoming);
+    const sourceThroughEventId = incoming.at(-1)?.id || cursor.lastEventId;
+    const anchor = new Date(new Date(throughAt).getTime() - 24 * 60 * 60 * 1000).toISOString();
+    const snapshots = [];
+    for (const periodType of periodTypes) {
+      const period = periodBounds({
+        type: periodType,
+        anchor,
+        timezone: config.timezone
+      });
+      snapshots.push(await saveSnapshot({
+        botId,
+        periodType,
+        periodStart: period.start,
+        periodEnd: period.end,
+        status: "ready",
+        sourceThroughEventId,
+        metrics: aggregateOccurrenceMetrics({ events, period }),
+        charts: {
+          funnels: aggregateCohortFunnels({ events, period }),
+          tags: aggregateTagChanges({
+            events: events.filter((event) => (
+              !event.occurredAt || (
+                event.occurredAt >= period.start
+                && event.occurredAt < period.end
+              )
+            ))
+          })
+        },
+        definitions: {},
+        generatedAt: throughAt
+      }));
+    }
+    saveState({ botId, state: { events }, lastEventId: sourceThroughEventId });
+    saveCursor({
+      botId,
+      lastEventId: sourceThroughEventId,
+      lastSuccessAt: throughAt,
+      lastError: ""
+    });
+    return snapshots;
+  }
+
+  async function reconcileBot(input) {
+    const snapshots = await aggregateBot({ ...input, periodTypes: input.periodTypes || ["daily"] });
+    return { corrected: snapshots.length, unchanged: 0 };
+  }
+
+  async function rebuildBot(input) {
+    return aggregateBot({ ...input, periodTypes: input.periodTypes || ["daily", "weekly", "monthly"] });
+  }
+
+  return { aggregateBot, rebuildBot, reconcileBot };
+}

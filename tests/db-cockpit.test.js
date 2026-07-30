@@ -209,3 +209,16 @@ test("definition saves revise display changes and version semantic changes", () 
     [2, 1, true]
   );
 });
+
+test("aggregation state is replaced atomically per Bot", () => {
+  assert.deepEqual(db.getCockpitAggregationState("bot-a"), { events: [] });
+  db.saveCockpitAggregationState({
+    botId: "bot-a",
+    state: { events: [{ id: 1, eventType: "friend_added" }] },
+    lastEventId: 1
+  });
+  assert.deepEqual(db.getCockpitAggregationState("bot-a"), {
+    events: [{ id: 1, eventType: "friend_added" }]
+  });
+  assert.deepEqual(db.getCockpitAggregationState("bot-b"), { events: [] });
+});
