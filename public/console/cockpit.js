@@ -14,9 +14,9 @@
 
   const metricDefinitions = [
     ["newCustomers", "新增客户", "users"],
-    ["customerMessages", "客户消息", "message"],
-    ["replyMessages", "回复消息", "send"],
     ["effectiveConversations", "有效沟通", "history"],
+    ["replyMessages", "回复消息", "send"],
+    ["customerMessages", "客户消息", "message"],
     ["neverReplied", "从未回复", "alert"],
     ["stoppedReplying", "中途未回复", "clock"],
     ["waiting", "等待中", "clock"],

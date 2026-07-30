@@ -6356,10 +6356,10 @@ td .muted {
 .cockpit-metric-card {
   align-items: center;
   display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  grid-template-columns: minmax(5em, 1fr) 4ch;
   min-height: 66px;
-  padding: 14px 16px;
+  padding: 14px 12px;
 }
 
 .cockpit-metric-label {
@@ -6374,9 +6374,7 @@ td .muted {
 }
 
 .cockpit-metric-label > span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
   white-space: nowrap;
 }
 

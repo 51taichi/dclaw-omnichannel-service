@@ -67,6 +67,26 @@ test("cockpit top metrics stay universal across sales and service Bots", () => {
   assert.match(cockpit, /<span>回复 /);
 });
 
+test("effective conversations replace customer messages beside the outcome chart", () => {
+  const definitionsStart = cockpit.indexOf("const metricDefinitions");
+  const definitionsEnd = cockpit.indexOf("\n  ];", definitionsStart);
+  const definitions = cockpit.slice(definitionsStart, definitionsEnd);
+  const newCustomers = definitions.indexOf('["newCustomers", "新增客户"');
+  const effective = definitions.indexOf('["effectiveConversations", "有效沟通"');
+  const replies = definitions.indexOf('["replyMessages", "回复消息"');
+  const customerMessages = definitions.indexOf('["customerMessages", "客户消息"');
+  assert.ok(newCustomers < effective && effective < replies && replies < customerMessages);
+  assert.match(cockpit, /\$\{index === 1 \? outcomeDonut/);
+});
+
+test("desktop metric labels remain fully visible", () => {
+  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 4ch/);
+  assert.match(css, /\.cockpit-metric-label > span[\s\S]*flex:\s*0 0 auto/);
+  const labelStart = css.indexOf(".cockpit-metric-label > span");
+  const labelEnd = css.indexOf("\n}", labelStart);
+  assert.doesNotMatch(css.slice(labelStart, labelEnd), /text-overflow:\s*ellipsis|overflow:\s*hidden/);
+});
+
 test("cockpit centers an exhaustive new-customer outcome donut in the metric grid", () => {
   assert.match(cockpit, /function outcomeDonut/);
   assert.match(cockpit, /cockpit-outcome-card/);
