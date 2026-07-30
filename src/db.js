@@ -7175,11 +7175,17 @@ export function saveCockpitSnapshot(input) {
 }
 
 export function getLatestCockpitSnapshot({ botId, periodType, periodStart }) {
-  return rowToCockpitSnapshot(db.prepare(`
-    SELECT * FROM cockpit_snapshots
-    WHERE bot_id = ? AND period_type = ? AND period_start = ? AND status = 'ready'
-    ORDER BY id DESC LIMIT 1
-  `).get(botId, periodType, periodStart));
+  return rowToCockpitSnapshot(periodStart
+    ? db.prepare(`
+        SELECT * FROM cockpit_snapshots
+        WHERE bot_id = ? AND period_type = ? AND period_start = ? AND status = 'ready'
+        ORDER BY id DESC LIMIT 1
+      `).get(botId, periodType, periodStart)
+    : db.prepare(`
+        SELECT * FROM cockpit_snapshots
+        WHERE bot_id = ? AND period_type = ? AND status = 'ready'
+        ORDER BY period_start DESC, id DESC LIMIT 1
+      `).get(botId, periodType));
 }
 
 function rowToCockpitReport(row) {
@@ -7261,6 +7267,12 @@ export function listCockpitReports({ botId, page = 1, pageSize = 20 }) {
     (pagination.page - 1) * pagination.pageSize
   ).map(rowToCockpitReport);
   return { items, ...pagination };
+}
+
+export function getCockpitReport({ botId, reportId }) {
+  return rowToCockpitReport(db.prepare(
+    "SELECT * FROM cockpit_reports WHERE bot_id = ? AND id = ?"
+  ).get(botId, reportId));
 }
 
 function rowToCockpitDefinitionVersion(row) {

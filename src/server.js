@@ -33,6 +33,7 @@ import {
 import { buildAgentResponseValidationOptions } from "./agent-response-validation-options.js";
 import { createAgentInvocationQueue } from "./agent-invocation-queue.js";
 import { createCockpitEventRecorder } from "./cockpit-events.js";
+import { periodBounds } from "./cockpit-domain.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
   createBotSession,
@@ -77,6 +78,7 @@ import {
   createOrGetGroup,
   createLegacyFlowSession,
   createProactiveTask,
+  createCockpitJob,
   deleteAgent,
   deleteBotData,
   finishAgentInvocation,
@@ -84,6 +86,10 @@ import {
   getAgent,
   getBotBinding,
   getConversation,
+  getCockpitConfig,
+  getCockpitDailyCounters,
+  getCockpitReport,
+  getLatestCockpitSnapshot,
   getConversationKey,
   getConversationResetPending,
   getConversationAssets,
@@ -125,6 +131,7 @@ import {
   applyConversationTagChanges,
   getAgentTagSchema,
   listConversationMessages,
+  listCockpitReports,
   listConversationMessagesAround,
   listConversationTags,
   listGroupRoles,
@@ -189,6 +196,7 @@ import {
   upsertProactiveAddressBookTarget,
   upsertBotBinding,
   upsertConversation,
+  upsertCockpitConfig,
   upsertWorktoolApiMessageCache
 } from "./db.js";
 import {
@@ -6172,6 +6180,115 @@ app.post(
       readAt: alert.readAt
     });
     res.json({ ok: true, alert });
+  })
+);
+
+app.get(
+  "/api/cockpit/:botId/overview",
+  asyncHandler(async (req, res) => {
+    const botId = req.params.botId;
+    assertBotAccess(req, botId);
+    const config = getCockpitConfig(botId);
+    const periodType = ["daily", "weekly", "monthly"].includes(req.query.periodType)
+      ? req.query.periodType
+      : "daily";
+    const anchor = String(req.query.anchor || new Date().toISOString());
+    const period = periodBounds({ type: periodType, anchor, timezone: config.timezone });
+    const snapshot = getLatestCockpitSnapshot({
+      botId,
+      periodType,
+      periodStart: period.start
+    }) || getLatestCockpitSnapshot({ botId, periodType });
+    const reports = listCockpitReports({ botId, page: 1, pageSize: 1 });
+    res.json({
+      ok: true,
+      freshness: {
+        completeAt: snapshot?.generatedAt || "",
+        todayAt: new Date().toISOString(),
+        delayed: !snapshot
+      },
+      period,
+      today: getCockpitDailyCounters({
+        botId,
+        localDate: periodBounds({
+          type: "daily",
+          anchor: new Date().toISOString(),
+          timezone: config.timezone
+        }).label
+      }),
+      metrics: snapshot?.metrics || {},
+      funnels: snapshot?.charts?.funnels || [],
+      nodeDistribution: snapshot?.charts?.nodeDistribution || [],
+      tagGroups: snapshot?.charts?.tags || [],
+      latestReport: reports.items[0] || null
+    });
+  })
+);
+
+app.get(
+  "/api/cockpit/:botId/reports",
+  asyncHandler(async (req, res) => {
+    assertBotAccess(req, req.params.botId);
+    res.json({
+      ok: true,
+      ...listCockpitReports({
+        botId: req.params.botId,
+        page: req.query.page,
+        pageSize: req.query.pageSize
+      })
+    });
+  })
+);
+
+app.get(
+  "/api/cockpit/:botId/reports/:reportId",
+  asyncHandler(async (req, res) => {
+    assertBotAccess(req, req.params.botId);
+    const report = getCockpitReport({
+      botId: req.params.botId,
+      reportId: Number(req.params.reportId)
+    });
+    if (!report) {
+      res.status(404).json({ ok: false, message: "cockpit report not found" });
+      return;
+    }
+    res.json({ ok: true, report });
+  })
+);
+
+app.get(
+  "/api/cockpit/:botId/config",
+  asyncHandler(async (req, res) => {
+    assertBotAccess(req, req.params.botId);
+    res.json({ ok: true, config: getCockpitConfig(req.params.botId) });
+  })
+);
+
+app.put(
+  "/api/cockpit/:botId/config",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    res.json({
+      ok: true,
+      config: upsertCockpitConfig({
+        botId: req.params.botId,
+        config: req.body || {}
+      })
+    });
+  })
+);
+
+app.post(
+  "/api/cockpit/:botId/rebuild",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    const job = createCockpitJob({
+      botId: req.params.botId,
+      stage: "rebuild",
+      payload: { requestedBy: "console" },
+      dueAt: new Date().toISOString()
+    });
+    res.status(202).json({ ok: true, status: "queued", jobId: job.id });
   })
 );
 
