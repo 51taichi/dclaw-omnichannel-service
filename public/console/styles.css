@@ -6389,7 +6389,6 @@ td .muted {
 
 .cockpit-outcome-donut svg {
   display: block;
-  transform: rotate(-90deg);
   width: 108px;
 }
 
@@ -6397,6 +6396,12 @@ td .muted {
 .cockpit-outcome-segment {
   fill: none;
   stroke-width: 13;
+}
+
+.cockpit-outcome-segment {
+  transform: rotate(-90deg);
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 .cockpit-outcome-ring {
@@ -6412,9 +6417,6 @@ td .muted {
   fill: var(--text);
   font-size: 20px;
   font-weight: 850;
-  transform: rotate(90deg);
-  transform-box: fill-box;
-  transform-origin: center;
 }
 
 .cockpit-outcome-total-label {
@@ -6432,7 +6434,7 @@ td .muted {
   align-items: center;
   display: grid;
   gap: 6px;
-  grid-template-columns: 8px minmax(0, 1fr) auto;
+  grid-template-columns: 8px minmax(0, 1fr) auto auto;
 }
 
 .cockpit-outcome-legend i {
@@ -6449,10 +6451,6 @@ td .muted {
 .cockpit-outcome-legend small {
   color: var(--muted);
   font-size: 10px;
-}
-
-.cockpit-outcome-legend small {
-  grid-column: 2 / -1;
 }
 
 .cockpit-priority-grid,
@@ -6585,6 +6583,7 @@ td .muted {
 
 .cockpit-tag-row > span {
   overflow: hidden;
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

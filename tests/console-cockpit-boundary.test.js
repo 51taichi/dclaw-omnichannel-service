@@ -78,6 +78,13 @@ test("cockpit centers an exhaustive new-customer outcome donut in the metric gri
   assert.match(css, /\.cockpit-outcome-segment/);
 });
 
+test("outcome labels stay inside the donut card and tag names align beside bars", () => {
+  assert.match(css, /\.cockpit-outcome-segment[\s\S]*transform:\s*rotate\(-90deg\)/);
+  assert.doesNotMatch(css, /\.cockpit-outcome-donut svg[\s\S]{0,120}transform:\s*rotate\(-90deg\)/);
+  assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(0,\s*1fr\) auto auto/);
+  assert.match(css, /\.cockpit-tag-row > span[\s\S]*text-align:\s*right/);
+});
+
 test("cockpit keeps the first screen compact", () => {
   assert.doesNotMatch(cockpit, /id="cockpitAiSummary"/);
   assert.match(css, /\.cockpit-metric-card\s*\{[\s\S]*grid-template-columns:/);
