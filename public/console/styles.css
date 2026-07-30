@@ -6434,7 +6434,6 @@ td .muted {
 }
 
 .cockpit-outcome-total,
-.cockpit-outcome-legend strong,
 .cockpit-outcome-legend small,
 .cockpit-chart-value,
 .cockpit-tag-row > strong,
@@ -6457,7 +6456,8 @@ td .muted {
   align-items: center;
   display: grid;
   gap: 6px;
-  grid-template-columns: 8px minmax(4em, 1fr) 3ch 5ch;
+  grid-template-columns: 8px minmax(4em, 1fr) 5ch;
+  position: relative;
 }
 
 .cockpit-outcome-legend i {
@@ -6476,15 +6476,35 @@ td .muted {
   font-size: 10px;
 }
 
-.cockpit-outcome-legend strong {
-  min-width: 3ch;
-  text-align: right;
-}
-
 .cockpit-outcome-legend small {
   min-width: 5ch;
   text-align: right;
   white-space: nowrap;
+}
+
+.cockpit-outcome-legend > div::after {
+  background: rgba(31, 35, 52, 0.94);
+  border-radius: 7px;
+  bottom: calc(100% + 6px);
+  color: #ffffff;
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 650;
+  opacity: 0;
+  padding: 6px 8px;
+  pointer-events: none;
+  position: absolute;
+  right: 0;
+  transform: translateY(3px);
+  transition: opacity 120ms ease, transform 120ms ease;
+  white-space: nowrap;
+  z-index: 4;
+}
+
+.cockpit-outcome-legend > div:hover::after,
+.cockpit-outcome-legend > div:focus-visible::after {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .cockpit-insight-grid {

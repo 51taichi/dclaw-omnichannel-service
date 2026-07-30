@@ -101,8 +101,19 @@ test("cockpit centers an exhaustive new-customer outcome donut in the metric gri
 test("outcome labels stay inside the donut card and tag names align beside bars", () => {
   assert.match(css, /\.cockpit-outcome-segment[\s\S]*transform:\s*rotate\(-90deg\)/);
   assert.doesNotMatch(css, /\.cockpit-outcome-donut svg[\s\S]{0,120}transform:\s*rotate\(-90deg\)/);
-  assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(4em,\s*1fr\) 3ch 5ch/);
+  assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(4em,\s*1fr\) 5ch/);
   assert.match(css, /\.cockpit-tag-row > span[\s\S]*text-align:\s*right/);
+});
+
+test("outcome legend shows only percentages and reveals counts in hover tips", () => {
+  const outcomeStart = cockpit.indexOf("function outcomeDonut");
+  const outcomeEnd = cockpit.indexOf("\n  function funnelChart", outcomeStart);
+  const outcomeSource = cockpit.slice(outcomeStart, outcomeEnd);
+  assert.doesNotMatch(outcomeSource, /<strong/);
+  assert.match(outcomeSource, /data-tooltip=/);
+  assert.match(outcomeSource, /人 · /);
+  assert.match(outcomeSource, /<title>\$\{tooltip\}/);
+  assert.match(css, /\.cockpit-outcome-legend > div:hover::after/);
 });
 
 test("large metric values use stable compact slots without changing the layout", () => {
@@ -123,8 +134,7 @@ test("large metric values use stable compact slots without changing the layout",
 
 test("all dashboard value columns reserve enough space for 999", () => {
   assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 58px/);
-  assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(4em,\s*1fr\) 3ch 5ch/);
-  assert.match(css, /\.cockpit-outcome-legend strong[\s\S]*min-width:\s*3ch/);
+  assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(4em,\s*1fr\) 5ch/);
   assert.match(css, /\.cockpit-outcome-legend small[\s\S]*min-width:\s*5ch/);
   assert.match(css, /\.cockpit-tag-row[\s\S]*grid-template-columns:[^;]*40px 48px/);
   assert.match(cockpit, /text-anchor="end"/);

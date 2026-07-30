@@ -191,7 +191,8 @@
             <circle class="cockpit-outcome-ring" cx="60" cy="60" r="44"></circle>
             ${outcomes.map((outcome, index) => {
               const percent = percentages[index];
-              const segment = `<circle class="cockpit-outcome-segment ${outcome.className}" cx="60" cy="60" r="44" pathLength="100" stroke-dasharray="${percent} ${100 - percent}" stroke-dashoffset="${-offset}"></circle>`;
+              const tooltip = `${outcome.label}：${outcome.reached.toLocaleString("zh-CN")} 人 · ${percent.toFixed(1)}%`;
+              const segment = `<circle class="cockpit-outcome-segment ${outcome.className}" cx="60" cy="60" r="44" pathLength="100" stroke-dasharray="${percent} ${100 - percent}" stroke-dashoffset="${-offset}"><title>${tooltip}</title></circle>`;
               offset += percent;
               return segment;
             }).join("")}
@@ -201,14 +202,16 @@
           </svg>
         </div>
         <div class="cockpit-outcome-legend">
-          ${outcomes.map((outcome, index) => `
-            <div>
+          ${outcomes.map((outcome, index) => {
+            const tooltip = `${outcome.label}：${outcome.reached.toLocaleString("zh-CN")} 人 · ${percentages[index].toFixed(1)}%`;
+            return `
+            <div data-tooltip="${escapeHtml(tooltip)}" tabindex="0">
               <i class="${outcome.className}"></i>
               <span>${outcome.label}</span>
-              <strong title="${outcome.reached.toLocaleString("zh-CN")}">${formatDashboardNumber(outcome.reached)}</strong>
               <small>${percentages[index].toFixed(1)}%</small>
             </div>
-          `).join("")}
+          `;
+          }).join("")}
         </div>
       </article>
     `;
