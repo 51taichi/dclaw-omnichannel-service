@@ -32,6 +32,7 @@ import {
 } from "./agent-response-gateway.js";
 import { buildAgentResponseValidationOptions } from "./agent-response-validation-options.js";
 import { createAgentInvocationQueue } from "./agent-invocation-queue.js";
+import { createCockpitEventRecorder } from "./cockpit-events.js";
 import { logError, logInfo, logWarn } from "./logger.js";
 import {
   createBotSession,
@@ -105,6 +106,7 @@ import {
   getProactiveTask,
   failConversationResetTask,
   incrementFlowActivationGeneration,
+  incrementCockpitDailyCounter,
   insertAgentInvocationStart,
   insertAgentResponseValidationFailure,
   insertAgentTagEvaluations,
@@ -113,6 +115,7 @@ import {
   insertImportedConversationMessages,
   insertCommandCallback,
   insertIncomingMessage,
+  appendCockpitEvent,
   insertOutgoingMessage,
   insertMockProactiveTargets,
   resetBotFlowStateForAgentRebind,
@@ -239,6 +242,12 @@ import {
   compactTagRulesForAgent,
   normalizeTagSchema
 } from "./tags.js";
+
+const cockpitEventRecorder = createCockpitEventRecorder({
+  appendEvent: appendCockpitEvent,
+  incrementCounter: incrementCockpitDailyCounter,
+  logWarn
+});
 
 const app = express();
 const tagAlertStreamHub = createTagAlertStreamHub();
@@ -4142,6 +4151,19 @@ function ingestIncomingMessage({ botId, message }) {
   // Keep every WorkTool callback for audit and recovery, including callbacks
   // that are later recognized as duplicates for business processing.
   insertIncomingMessage({ botId, conversationKey, payload: message });
+  cockpitEventRecorder.record({
+    botId,
+    conversationKey,
+    customerKey: routingMessage.receivedName || routingMessage.friendName || "",
+    eventType: friendAddedSignal ? "friend_added" : "customer_message",
+    sourceType: friendAddedSignal ? "friend_added" : "incoming_message",
+    sourceId: messageKey,
+    occurredAt: new Date().toISOString(),
+    payload: {
+      roomType: routingMessage.roomType,
+      textType: routingMessage.textType
+    }
+  });
   const accepted = beginMessageProcessing({
     messageKey,
     botId,
