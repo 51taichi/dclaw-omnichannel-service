@@ -98,6 +98,12 @@ test("charts come before problems and actions, with report history last", () => 
   assert.ok(chart > 0 && priority > chart && history > priority);
 });
 
+test("cockpit charts omit redundant explanatory captions", () => {
+  assert.doesNotMatch(cockpit, /当前停留人数与全部任务会话占比/);
+  assert.doesNotMatch(cockpit, /按标签配置顺序展示当前人数及本周期净变化/);
+  assert.doesNotMatch(cockpit, /cockpit-chart-caption/);
+});
+
 test("switching Bots clears the old cockpit before loading the new context", () => {
   const start = app.indexOf("async function applyBotContext");
   const end = app.indexOf("\n}\n\nfunction", start);

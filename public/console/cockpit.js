@@ -268,14 +268,10 @@
         <div class="cockpit-chart-grid">
           <section id="cockpitFunnels" class="cockpit-card">
             <h3>${icon("briefcase")}任务节点转化</h3>
-            <p class="cockpit-chart-caption">${data.nodeDistribution?.some((node) => node.basis === "current_state")
-              ? "当前停留人数与全部任务会话占比"
-              : "各节点到达人数与新增客户占比"}</p>
             ${funnelChart(data)}
           </section>
           <section id="cockpitTags" class="cockpit-card">
             <h3>${icon("tag")}标签分布与变化</h3>
-            <p class="cockpit-chart-caption">按标签配置顺序展示当前人数及本周期净变化</p>
             ${tagChart(data.tagGroups || [])}
           </section>
         </div>

@@ -6408,11 +6408,6 @@ td .muted {
   border-left: 4px solid #22a06b;
 }
 
-.cockpit-chart-caption {
-  font-size: 12px;
-  margin: -8px 0 10px;
-}
-
 .cockpit-funnel-chart,
 .cockpit-tag-groups {
   min-height: 250px;
