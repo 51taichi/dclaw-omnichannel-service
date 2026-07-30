@@ -4,3 +4,4 @@ data/
 config/bots.json
 .DS_Store
 .worktrees/
+.superpowers/
