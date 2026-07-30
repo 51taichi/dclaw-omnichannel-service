@@ -126,11 +126,16 @@ test("cockpit selects an exact date week or month and keeps period controls righ
   assert.doesNotMatch(cockpit, /当前展示最近一次统计结果/);
 });
 
-test("charts come before problems and actions, with report history last", () => {
-  const chart = cockpit.indexOf('class="cockpit-chart-grid"');
-  const priority = cockpit.indexOf('class="cockpit-priority-grid"');
+test("charts and recommendations use independent columns with report history last", () => {
+  const insight = cockpit.indexOf('class="cockpit-insight-grid"');
+  const task = cockpit.indexOf('id="cockpitFunnels"');
+  const problem = cockpit.indexOf('id="cockpitProblems"');
+  const tags = cockpit.indexOf('id="cockpitTags"');
+  const action = cockpit.indexOf('id="cockpitActions"');
   const history = cockpit.indexOf('id="cockpitReportHistory"');
-  assert.ok(chart > 0 && priority > chart && history > priority);
+  assert.ok(insight > 0 && task > insight && problem > task);
+  assert.ok(tags > problem && action > tags && history > action);
+  assert.doesNotMatch(cockpit, /cockpit-chart-grid|cockpit-priority-grid/);
 });
 
 test("cockpit charts omit redundant explanatory captions", () => {
@@ -142,17 +147,27 @@ test("cockpit charts omit redundant explanatory captions", () => {
 test("cockpit chart panels use natural content height above aligned actions", () => {
   assert.doesNotMatch(cockpit, /function chartPanelHeight/);
   assert.doesNotMatch(cockpit, /--cockpit-chart-height/);
-  assert.match(css, /\.cockpit-chart-grid\s*>\s*\.cockpit-card/);
-  assert.match(css, /\.cockpit-chart-grid[\s\S]*align-items:\s*start/);
+  assert.match(css, /\.cockpit-insight-grid[\s\S]*align-items:\s*start/);
+  assert.match(css, /\.cockpit-insight-column[\s\S]*align-content:\s*start/);
   assert.match(css, /\.cockpit-funnel-chart,[\s\S]*\.cockpit-tag-groups[\s\S]*height:\s*auto/);
-  assert.match(css, /\.cockpit-priority-grid[\s\S]*align-items:\s*stretch/);
 });
 
 test("cockpit widens the outcome card and places tag group names vertically", () => {
-  assert.match(css, /grid-template-columns:\s*repeat\(2,\s*minmax\(190px,\s*1fr\)\)\s*minmax\(330px,\s*1\.35fr\)/);
+  assert.match(css, /grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)\s*minmax\(280px,\s*1\.2fr\)/);
   assert.match(css, /\.cockpit-tag-group[\s\S]*grid-template-columns:\s*42px minmax\(0,\s*1fr\)/);
   assert.match(css, /\.cockpit-tag-group-name[\s\S]*writing-mode:\s*vertical-rl/);
   assert.match(css, /\.cockpit-tag-group-name[\s\S]*text-orientation:\s*upright/);
+});
+
+test("tag chart uses grouped comparison bands and local scales", () => {
+  assert.match(cockpit, /const groupMaximum/);
+  assert.match(cockpit, /current \/ groupMaximum/);
+  assert.match(cockpit, /cockpit-tag-change/);
+  assert.match(css, /\.cockpit-tag-group[\s\S]*background:/);
+  assert.match(css, /\.cockpit-tag-group-name[\s\S]*border-radius:/);
+  assert.match(css, /\.cockpit-tag-change\.positive/);
+  assert.match(css, /\.cockpit-tag-change\.negative/);
+  assert.match(css, /\.cockpit-metric-label[\s\S]*white-space:\s*nowrap/);
 });
 
 test("switching Bots clears the old cockpit before loading the new context", () => {

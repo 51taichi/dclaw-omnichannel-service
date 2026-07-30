@@ -263,28 +263,33 @@
       }
       group.tags.push(tag);
     }
-    const maximum = Math.max(1, ...visible.map((tag) => Number(tag.current || 0)));
     return `
       <div class="cockpit-tag-groups">
-        ${groups.map((group) => `
-          <section class="cockpit-tag-group">
-            <strong class="cockpit-tag-group-name">${escapeHtml(group.name)}</strong>
-            <div class="cockpit-tag-group-rows">
-              ${group.tags.map((tag) => {
+        ${groups.map((group) => {
+          const groupMaximum = Math.max(
+            1,
+            ...group.tags.map((tag) => Number(tag.current || 0))
+          );
+          return `
+            <section class="cockpit-tag-group">
+              <strong class="cockpit-tag-group-name">${escapeHtml(group.name)}</strong>
+              <div class="cockpit-tag-group-rows">
+                ${group.tags.map((tag) => {
                 const current = Number(tag.current || 0);
                 const net = Number(tag.net || 0);
                 return `
                   <div class="cockpit-tag-row" title="${escapeHtml(group.name)} / ${escapeHtml(tag.tagName || tag.tagId)}">
                     <span>${escapeHtml(tag.tagName || tag.tagId)}</span>
-                    <i class="cockpit-tag-bar"><b style="width:${current / maximum * 100}%"></b></i>
+                    <i class="cockpit-tag-bar"><b style="width:${current / groupMaximum * 100}%"></b></i>
                     <strong title="${current.toLocaleString("zh-CN")}">${formatDashboardNumber(current)}</strong>
-                    <small class="${net > 0 ? "positive" : net < 0 ? "negative" : ""}">${net >= 0 ? "+" : ""}${net}</small>
+                    <small class="cockpit-tag-change ${net > 0 ? "positive" : net < 0 ? "negative" : "neutral"}">${net >= 0 ? "+" : ""}${net}</small>
                   </div>
                 `;
-              }).join("")}
-            </div>
-          </section>
-        `).join("")}
+                }).join("")}
+              </div>
+            </section>
+          `;
+        }).join("")}
       </div>
     `;
   }
@@ -326,26 +331,27 @@
           }).join("")}
         </section>
 
-        <div class="cockpit-chart-grid">
-          <section id="cockpitFunnels" class="cockpit-card">
-            <h3>${icon("briefcase")}任务节点转化</h3>
-            ${funnelChart(data)}
-          </section>
-          <section id="cockpitTags" class="cockpit-card">
-            <h3>${icon("tag")}标签分布与变化</h3>
-            ${tagChart(data.tagGroups || [])}
-          </section>
-        </div>
-
-        <div class="cockpit-priority-grid">
-          <section id="cockpitProblems" class="cockpit-card cockpit-problem-card">
-            <h3>${icon("alert")}主要问题</h3>
-            ${problems.length ? `<ol>${problems.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>当前周期暂无 AI 问题分析。</p>"}
-          </section>
-          <section id="cockpitActions" class="cockpit-card cockpit-action-card">
-            <h3>${icon("check")}建议行动</h3>
-            ${actions.length ? `<ol>${actions.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>完整统计后生成具体行动建议。</p>"}
-          </section>
+        <div class="cockpit-insight-grid">
+          <div class="cockpit-insight-column">
+            <section id="cockpitFunnels" class="cockpit-card">
+              <h3>${icon("briefcase")}任务节点转化</h3>
+              ${funnelChart(data)}
+            </section>
+            <section id="cockpitProblems" class="cockpit-card cockpit-problem-card">
+              <h3>${icon("alert")}主要问题</h3>
+              ${problems.length ? `<ol>${problems.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>当前周期暂无 AI 问题分析。</p>"}
+            </section>
+          </div>
+          <div class="cockpit-insight-column">
+            <section id="cockpitTags" class="cockpit-card">
+              <h3>${icon("tag")}标签分布与变化</h3>
+              ${tagChart(data.tagGroups || [])}
+            </section>
+            <section id="cockpitActions" class="cockpit-card cockpit-action-card">
+              <h3>${icon("check")}建议行动</h3>
+              ${actions.length ? `<ol>${actions.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>完整统计后生成具体行动建议。</p>"}
+            </section>
+          </div>
         </div>
 
         <section id="cockpitReportHistory" class="cockpit-card cockpit-history">
