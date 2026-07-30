@@ -8,13 +8,14 @@ const report = {
   periodStart: "2026-07-29T00:00:00.000Z",
   summary: {
     executiveSummary: "邀约率需要关注。",
-    metrics: { newCustomers: 9, successfulInvitations: 2, neverReplied: 3 }
+    metrics: { newCustomers: 9, customerMessages: 18, replyMessages: 16, neverReplied: 3 }
   }
 };
 
 test("delivery summary is compact and contains no customer-level details", () => {
   const text = formatCockpitReportSummary(report, { reportUrl: "https://example.test/r/3" });
-  assert.match(text, /新增客户 9/);
+  assert.match(text, /新增客户 9｜客户消息 18｜回复消息 16｜从未回复 3/);
+  assert.doesNotMatch(text, /成功邀约/);
   assert.match(text, /完整报告/);
   assert.doesNotMatch(text, /手机号|customerKey|conversationKey/);
 });

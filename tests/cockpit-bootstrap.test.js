@@ -11,7 +11,11 @@ test("bootstrap aggregates only enabled Bots without a daily snapshot", async ()
       { botId: "disabled", enabled: false }
     ],
     getLatestSnapshot: ({ botId }) => botId === "ready"
-      ? { id: 1, charts: { nodeDistribution: [{ nodeId: "real" }], tags: [] } }
+      ? {
+          id: 1,
+          metrics: { customerMessages: 2, replyMessages: 2 },
+          charts: { nodeDistribution: [{ nodeId: "real" }], tags: [] }
+        }
       : null,
     aggregateBot: async (input) => aggregated.push(input)
   });
@@ -37,6 +41,24 @@ test("bootstrap refreshes an old snapshot whose charts are completely empty", as
   const result = await bootstrap.run({ throughAt: "2026-07-30T06:00:00.000Z" });
   assert.equal(aggregated.length, 1);
   assert.deepEqual(result, { initialized: 1, skipped: 0, failed: 0 });
+});
+
+test("bootstrap refreshes snapshots created before universal message metrics", async () => {
+  const calls = [];
+  const bootstrap = createCockpitBootstrap({
+    listBots: () => [{ botId: "legacy", enabled: true }],
+    getLatestSnapshot: () => ({
+      metrics: { newCustomers: 3, successfulInvitations: 1 },
+      charts: { nodeDistribution: [{ nodeId: "one" }], tags: [] }
+    }),
+    aggregateBot: async (input) => calls.push(input),
+    onError: () => {}
+  });
+
+  const result = await bootstrap.run({ throughAt: "2026-07-30T20:00:00.000Z" });
+
+  assert.equal(result.initialized, 1);
+  assert.equal(calls.length, 1);
 });
 
 test("bootstrap isolates one Bot failure and continues", async () => {

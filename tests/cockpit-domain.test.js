@@ -116,10 +116,13 @@ test("reply risk applies node override and distinguishes never from stopped", ()
   }), "stopped_replying");
 });
 
-test("occurrence metrics and cohort funnels use different customer populations", () => {
+test("occurrence metrics use universal message counts while funnels use cohorts", () => {
   const events = [
     { customerKey: "old", eventType: "friend_added", occurredAt: "2026-07-20T00:00:00.000Z" },
     { customerKey: "old", eventType: "successful_invitation", occurredAt: "2026-07-30T05:00:00.000Z" },
+    { customerKey: "old", eventType: "customer_message", occurredAt: "2026-07-30T05:01:00.000Z" },
+    { customerKey: "old", eventType: "customer_message", occurredAt: "2026-07-30T05:02:00.000Z" },
+    { customerKey: "old", eventType: "bot_message", occurredAt: "2026-07-30T05:03:00.000Z" },
     { customerKey: "new", eventType: "friend_added", occurredAt: "2026-07-30T01:00:00.000Z" },
     { customerKey: "new", eventType: "node_reached", nodeId: "node-1", flowVersionId: 1, occurredAt: "2026-07-30T02:00:00.000Z" },
     { customerKey: "new", eventType: "node_reached", nodeId: "node-1", flowVersionId: 1, occurredAt: "2026-07-30T03:00:00.000Z" }
@@ -129,7 +132,12 @@ test("occurrence metrics and cohort funnels use different customer populations",
     end: "2026-07-31T00:00:00.000Z"
   };
 
-  assert.equal(aggregateOccurrenceMetrics({ events, period }).successfulInvitations, 1);
+  assert.deepEqual(aggregateOccurrenceMetrics({ events, period }), {
+    newCustomers: 1,
+    customerMessages: 2,
+    replyMessages: 1,
+    effectiveConversations: 0
+  });
   assert.deepEqual(aggregateCohortFunnels({ events, period }), [{
     flowVersionId: 1,
     cohortSize: 1,
@@ -154,4 +162,3 @@ test("tag changes expose current added removed and net values", () => {
     net: 1
   }]);
 });
-

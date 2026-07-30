@@ -20,7 +20,10 @@ export function createCockpitBootstrap({
             snapshot?.charts?.nodeDistribution?.length
             || snapshot?.charts?.tags?.length
           );
-          if (snapshot && hasChartData) {
+          const hasUniversalMetrics = snapshot
+            && Object.hasOwn(snapshot.metrics || {}, "customerMessages")
+            && Object.hasOwn(snapshot.metrics || {}, "replyMessages");
+          if (snapshot && hasChartData && hasUniversalMetrics) {
             skipped += 1;
             continue;
           }

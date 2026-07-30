@@ -8,7 +8,7 @@ export function formatCockpitReportSummary(report, { reportUrl = "" } = {}) {
   const metrics = report?.summary?.metrics || {};
   const lines = [
     `【AI 经营${labels[report?.reportType] || "报告"}】`,
-    `新增客户 ${Number(metrics.newCustomers || 0)}｜成功邀约 ${Number(metrics.successfulInvitations || 0)}｜从未回复 ${Number(metrics.neverReplied || 0)}`,
+    `新增客户 ${Number(metrics.newCustomers || 0)}｜客户消息 ${Number(metrics.customerMessages || 0)}｜回复消息 ${Number(metrics.replyMessages || 0)}｜从未回复 ${Number(metrics.neverReplied || 0)}`,
     String(report?.summary?.executiveSummary || "本期统计已完成。").slice(0, 300)
   ];
   if (reportUrl) lines.push(`完整报告：${reportUrl}`);

@@ -14,8 +14,8 @@
 
   const metricDefinitions = [
     ["newCustomers", "新增客户", "users"],
-    ["successfulInvitations", "成功邀约", "check"],
-    ["invitationRate", "邀约转化率", "cockpit"],
+    ["customerMessages", "客户消息", "message"],
+    ["replyMessages", "回复消息", "send"],
     ["effectiveConversations", "有效沟通", "history"],
     ["neverReplied", "从未回复", "alert"],
     ["stoppedReplying", "中途未回复", "clock"],
@@ -62,7 +62,6 @@
 
   function metricValue(key, metrics, today) {
     const value = metrics[key] ?? today[key] ?? 0;
-    if (key === "invitationRate") return `${Math.round(Number(value || 0) * 100)}%`;
     return Number(value || 0).toLocaleString("zh-CN");
   }
 
@@ -303,7 +302,7 @@
               <p>${escapeHtml(item.document?.analysis?.executiveSummary || "统计报告")}</p>
               <div class="cockpit-report-metrics">
                 <span>新增 ${Number(item.document?.statistics?.newCustomers || 0)}</span>
-                <span>邀约 ${Number(item.document?.statistics?.successfulInvitations || 0)}</span>
+                <span>回复 ${Number(item.document?.statistics?.replyMessages || 0)}</span>
                 <span>未回复 ${Number(item.document?.statistics?.neverReplied || 0)}</span>
               </div>
             </details>

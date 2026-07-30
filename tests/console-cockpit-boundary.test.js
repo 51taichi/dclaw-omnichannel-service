@@ -57,6 +57,15 @@ test("cockpit renders fixed cards with icons and responsive hierarchy", () => {
   assert.match(css, /\.cockpit-card:focus-within/);
 });
 
+test("cockpit top metrics stay universal across sales and service Bots", () => {
+  assert.match(cockpit, /\["customerMessages", "客户消息"/);
+  assert.match(cockpit, /\["replyMessages", "回复消息"/);
+  assert.doesNotMatch(cockpit, /\["successfulInvitations", "成功邀约"/);
+  assert.doesNotMatch(cockpit, /\["invitationRate", "邀约转化率"/);
+  assert.doesNotMatch(cockpit, /<span>邀约 /);
+  assert.match(cockpit, /<span>回复 /);
+});
+
 test("cockpit keeps the first screen compact", () => {
   assert.doesNotMatch(cockpit, /id="cockpitAiSummary"/);
   assert.match(css, /\.cockpit-metric-card\s*\{[\s\S]*grid-template-columns:/);

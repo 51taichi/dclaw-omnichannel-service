@@ -63,7 +63,7 @@ test("aggregation failure leaves state and cursor unchanged", async () => {
   assert.deepEqual(calls, []);
 });
 
-test("snapshot includes reply risks, conversion rate, node distribution and tag charts", async () => {
+test("snapshot includes universal message metrics, reply risks, nodes and tags", async () => {
   let saved;
   const events = [
     { id: 1, customerKey: "a", eventType: "friend_added", occurredAt: "2026-07-30T01:00:00.000Z" },
@@ -86,8 +86,10 @@ test("snapshot includes reply risks, conversion rate, node distribution and tag 
     periodTypes: ["daily"]
   });
   assert.equal(saved.metrics.newCustomers, 1);
+  assert.equal(saved.metrics.replyMessages, 1);
+  assert.equal(saved.metrics.customerMessages, 0);
   assert.equal(saved.metrics.neverReplied, 1);
-  assert.equal(saved.metrics.invitationRate, 0);
+  assert.equal("invitationRate" in saved.metrics, false);
   assert.equal(saved.charts.nodeDistribution[0].nodeId, "node1");
   assert.equal(saved.charts.tags[0].tagId, "hot");
 });

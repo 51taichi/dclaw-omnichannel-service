@@ -96,9 +96,6 @@ export function createCockpitAggregator({
         });
         if (riskCounts[risk] !== undefined) riskCounts[risk] += 1;
       }
-      metrics.invitationRate = metrics.newCustomers
-        ? metrics.successfulInvitations / metrics.newCustomers
-        : 0;
       metrics.neverReplied = riskCounts.never_replied;
       metrics.stoppedReplying = riskCounts.stopped_replying;
       metrics.waiting = riskCounts.waiting;

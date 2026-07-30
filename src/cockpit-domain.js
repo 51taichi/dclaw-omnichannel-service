@@ -143,7 +143,8 @@ export function aggregateOccurrenceMetrics({ events, period }) {
   ).size;
   return {
     newCustomers: unique("friend_added"),
-    successfulInvitations: unique("successful_invitation"),
+    customerMessages: inPeriod.filter((event) => event.eventType === "customer_message").length,
+    replyMessages: inPeriod.filter((event) => event.eventType === "bot_message").length,
     effectiveConversations: unique("effective_conversation")
   };
 }
