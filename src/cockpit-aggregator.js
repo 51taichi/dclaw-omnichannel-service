@@ -2,6 +2,7 @@ import {
   aggregateCohortFunnels,
   aggregateOccurrenceMetrics,
   aggregateTagChanges,
+  classifyReplyRisk,
   periodBounds
 } from "./cockpit-domain.js";
 
@@ -44,6 +45,35 @@ export function createCockpitAggregator({
         anchor,
         timezone: config.timezone
       });
+      const funnels = aggregateCohortFunnels({ events, period });
+      const metrics = aggregateOccurrenceMetrics({ events, period });
+      const cohortKeys = new Set(
+        events
+          .filter((event) => event.eventType === "friend_added"
+            && event.occurredAt >= period.start
+            && event.occurredAt < period.end)
+          .map((event) => event.customerKey)
+      );
+      const riskCounts = { never_replied: 0, stopped_replying: 0, waiting: 0 };
+      for (const customerKey of cohortKeys) {
+        const risk = classifyReplyRisk({
+          events: events.filter((event) => event.customerKey === customerKey),
+          now: throughAt,
+          defaultNoReplyHours: config.defaultNoReplyHours,
+          nodeNoReplyHours: config.nodeNoReplyHours
+        });
+        if (riskCounts[risk] !== undefined) riskCounts[risk] += 1;
+      }
+      metrics.invitationRate = metrics.newCustomers
+        ? metrics.successfulInvitations / metrics.newCustomers
+        : 0;
+      metrics.neverReplied = riskCounts.never_replied;
+      metrics.stoppedReplying = riskCounts.stopped_replying;
+      metrics.waiting = riskCounts.waiting;
+      metrics.handoffs = new Set(events
+        .filter((event) => event.eventType === "handoff"
+          && event.occurredAt >= period.start && event.occurredAt < period.end)
+        .map((event) => event.customerKey)).size;
       snapshots.push(await saveSnapshot({
         botId,
         periodType,
@@ -51,9 +81,13 @@ export function createCockpitAggregator({
         periodEnd: period.end,
         status: "ready",
         sourceThroughEventId,
-        metrics: aggregateOccurrenceMetrics({ events, period }),
+        metrics,
         charts: {
-          funnels: aggregateCohortFunnels({ events, period }),
+          funnels,
+          nodeDistribution: funnels.flatMap((funnel) => funnel.nodes.map((node) => ({
+            flowVersionId: funnel.flowVersionId,
+            ...node
+          }))),
           tags: aggregateTagChanges({
             events: events.filter((event) => (
               !event.occurredAt || (

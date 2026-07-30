@@ -62,3 +62,32 @@ test("aggregation failure leaves state and cursor unchanged", async () => {
   );
   assert.deepEqual(calls, []);
 });
+
+test("snapshot includes reply risks, conversion rate, node distribution and tag charts", async () => {
+  let saved;
+  const events = [
+    { id: 1, customerKey: "a", eventType: "friend_added", occurredAt: "2026-07-30T01:00:00.000Z" },
+    { id: 2, customerKey: "a", eventType: "bot_message", nodeId: "node1", occurredAt: "2026-07-30T02:00:00.000Z" },
+    { id: 3, customerKey: "a", eventType: "node_reached", nodeId: "node1", flowVersionId: 1, occurredAt: "2026-07-30T02:00:00.000Z" },
+    { id: 4, customerKey: "a", eventType: "tag_added", groupId: "intent", tagId: "hot", occurredAt: "2026-07-30T03:00:00.000Z" }
+  ];
+  const aggregator = createCockpitAggregator({
+    getConfig: () => ({ timezone: "Asia/Shanghai", defaultNoReplyHours: 4, nodeNoReplyHours: {} }),
+    getCursor: () => ({ lastEventId: 0 }),
+    listEvents: () => events,
+    loadState: () => ({ events: [] }),
+    saveState: () => {},
+    saveSnapshot: (snapshot) => { saved = snapshot; return snapshot; },
+    saveCursor: () => {}
+  });
+  await aggregator.aggregateBot({
+    botId: "bot-a",
+    throughAt: "2026-07-31T01:00:00.000Z",
+    periodTypes: ["daily"]
+  });
+  assert.equal(saved.metrics.newCustomers, 1);
+  assert.equal(saved.metrics.neverReplied, 1);
+  assert.equal(saved.metrics.invitationRate, 0);
+  assert.equal(saved.charts.nodeDistribution[0].nodeId, "node1");
+  assert.equal(saved.charts.tags[0].tagId, "hot");
+});
