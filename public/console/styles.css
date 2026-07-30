@@ -6374,8 +6374,13 @@ td .muted {
 .cockpit-metric-card strong {
   color: var(--text);
   font-size: clamp(22px, 2.2vw, 30px);
+  font-variant-numeric: tabular-nums;
   line-height: 1;
+  max-width: 100%;
+  overflow: hidden;
   text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .cockpit-outcome-card {
@@ -6417,6 +6422,15 @@ td .muted {
   fill: var(--text);
   font-size: 20px;
   font-weight: 850;
+}
+
+.cockpit-outcome-total,
+.cockpit-outcome-legend strong,
+.cockpit-outcome-legend small,
+.cockpit-chart-value,
+.cockpit-tag-row > strong,
+.cockpit-tag-row > small {
+  font-variant-numeric: tabular-nums;
 }
 
 .cockpit-outcome-total-label {
@@ -6578,7 +6592,7 @@ td .muted {
   align-items: center;
   display: grid;
   gap: 8px;
-  grid-template-columns: minmax(72px, 0.8fr) minmax(90px, 1.6fr) 32px 36px;
+  grid-template-columns: minmax(72px, 0.8fr) minmax(90px, 1.6fr) 40px 48px;
 }
 
 .cockpit-tag-row > span {

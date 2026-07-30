@@ -62,7 +62,17 @@
 
   function metricValue(key, metrics, today) {
     const value = metrics[key] ?? today[key] ?? 0;
-    return Number(value || 0).toLocaleString("zh-CN");
+    return formatDashboardNumber(value);
+  }
+
+  function formatDashboardNumber(value) {
+    const number = Math.max(0, Number(value || 0));
+    const compact = (amount, unit) => (
+      `${amount.toFixed(amount >= 10 ? 0 : 1).replace(/\.0$/, "")}${unit}`
+    );
+    if (number >= 100000000) return compact(number / 100000000, "亿");
+    if (number >= 10000) return compact(number / 10000, "万");
+    return number.toLocaleString("zh-CN");
   }
 
   function pad(value) {
@@ -184,7 +194,8 @@
               offset += percent;
               return segment;
             }).join("")}
-            <text class="cockpit-outcome-total" x="60" y="58" text-anchor="middle">${total}</text>
+            <title>新增客户 ${total.toLocaleString("zh-CN")}</title>
+            <text class="cockpit-outcome-total" x="60" y="58" text-anchor="middle">${formatDashboardNumber(total)}</text>
             <text class="cockpit-outcome-total-label" x="60" y="74" text-anchor="middle">新增客户</text>
           </svg>
         </div>
@@ -193,7 +204,7 @@
             <div>
               <i class="${outcome.className}"></i>
               <span>${outcome.label}</span>
-              <strong>${outcome.reached}</strong>
+              <strong title="${outcome.reached.toLocaleString("zh-CN")}">${formatDashboardNumber(outcome.reached)}</strong>
               <small>${percentages[index].toFixed(1)}%</small>
             </div>
           `).join("")}
@@ -228,7 +239,7 @@
               <text class="cockpit-chart-label" x="140" y="${y + 16}" text-anchor="end">${escapeHtml(nodeName)}</text>
               <rect class="cockpit-chart-track" x="166" y="${y}" width="390" height="22" rx="7"></rect>
               <rect class="cockpit-chart-bar" x="166" y="${y}" width="${width}" height="22" rx="7"></rect>
-              <text class="cockpit-chart-value" x="570" y="${y + 16}">${Number(node.reached || 0)} · ${percentages[index].toFixed(1)}%</text>
+              <text class="cockpit-chart-value" x="570" y="${y + 16}">${formatDashboardNumber(node.reached)} · ${percentages[index].toFixed(1)}%</text>
             `;
           }).join("")}
         </svg>
@@ -265,7 +276,7 @@
                   <div class="cockpit-tag-row" title="${escapeHtml(group.name)} / ${escapeHtml(tag.tagName || tag.tagId)}">
                     <span>${escapeHtml(tag.tagName || tag.tagId)}</span>
                     <i class="cockpit-tag-bar"><b style="width:${current / maximum * 100}%"></b></i>
-                    <strong>${current}</strong>
+                    <strong title="${current.toLocaleString("zh-CN")}">${formatDashboardNumber(current)}</strong>
                     <small class="${net > 0 ? "positive" : net < 0 ? "negative" : ""}">${net >= 0 ? "+" : ""}${net}</small>
                   </div>
                 `;
@@ -312,13 +323,17 @@
         </header>
 
         <section id="cockpitMetricGrid" class="cockpit-metric-grid" aria-label="核心经营指标">
-          ${metricDefinitions.map(([key, label, iconName], index) => `
-            <article class="cockpit-card cockpit-metric-card" tabindex="0">
-              <span class="cockpit-metric-label">${icon(iconName)}<span>${label}</span></span>
-              <strong>${metricValue(key, data.metrics || {}, data.today || {})}</strong>
-            </article>
-            ${index === 1 ? outcomeDonut(data.metrics || {}) : ""}
-          `).join("")}
+          ${metricDefinitions.map(([key, label, iconName], index) => {
+            const rawValue = data.metrics?.[key] ?? data.today?.[key] ?? 0;
+            const fullNumber = Number(rawValue || 0).toLocaleString("zh-CN");
+            return `
+              <article class="cockpit-card cockpit-metric-card" tabindex="0">
+                <span class="cockpit-metric-label">${icon(iconName)}<span>${label}</span></span>
+                <strong title="${fullNumber}">${metricValue(key, data.metrics || {}, data.today || {})}</strong>
+              </article>
+              ${index === 1 ? outcomeDonut(data.metrics || {}) : ""}
+            `;
+          }).join("")}
         </section>
 
         <div class="cockpit-chart-grid" style="--cockpit-chart-height:${chartPanelHeight(data)}px">
