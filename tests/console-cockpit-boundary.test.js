@@ -101,7 +101,7 @@ test("cockpit centers an exhaustive new-customer outcome donut in the metric gri
 test("outcome labels stay inside the donut card and tag names align beside bars", () => {
   assert.match(css, /\.cockpit-outcome-segment[\s\S]*transform:\s*rotate\(-90deg\)/);
   assert.doesNotMatch(css, /\.cockpit-outcome-donut svg[\s\S]{0,120}transform:\s*rotate\(-90deg\)/);
-  assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(0,\s*1fr\) auto auto/);
+  assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(4em,\s*1fr\) 3ch 5ch/);
   assert.match(css, /\.cockpit-tag-row > span[\s\S]*text-align:\s*right/);
 });
 
@@ -119,6 +119,15 @@ test("large metric values use stable compact slots without changing the layout",
   assert.match(css, /\.cockpit-metric-card strong[\s\S]*min-inline-size:\s*4ch/);
   assert.match(css, /\.cockpit-metric-card strong[\s\S]*white-space:\s*nowrap/);
   assert.match(css, /\.cockpit-tag-row[\s\S]*grid-template-columns:[^;]*40px 48px/);
+});
+
+test("all dashboard value columns reserve enough space for 999", () => {
+  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 4ch/);
+  assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(4em,\s*1fr\) 3ch 5ch/);
+  assert.match(css, /\.cockpit-outcome-legend strong[\s\S]*min-width:\s*3ch/);
+  assert.match(css, /\.cockpit-outcome-legend small[\s\S]*min-width:\s*5ch/);
+  assert.match(css, /\.cockpit-tag-row[\s\S]*grid-template-columns:[^;]*40px 48px/);
+  assert.match(cockpit, /text-anchor="end"/);
 });
 
 test("cockpit keeps the first screen compact", () => {
