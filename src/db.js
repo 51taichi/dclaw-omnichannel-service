@@ -7480,6 +7480,17 @@ export function claimDueCockpitJobs({ stage, now: dueThrough, limit = 10 }) {
   }
 }
 
+export function finishCockpitJob({ id, status, errorMessage = "" }) {
+  const normalizedStatus = status === "completed" ? "completed" : "failed";
+  const timestamp = now();
+  db.prepare(`
+    UPDATE cockpit_jobs
+    SET status = ?, finished_at = ?, error_message = ?, updated_at = ?
+    WHERE id = ?
+  `).run(normalizedStatus, timestamp, errorMessage, timestamp, id);
+  return rowToCockpitJob(db.prepare("SELECT * FROM cockpit_jobs WHERE id = ?").get(id));
+}
+
 function rowToCockpitDelivery(row) {
   return row ? {
     id: row.id,
@@ -7548,4 +7559,30 @@ export function claimDueCockpitDeliveries({ now: dueThrough, limit = 10 }) {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+export function finishCockpitDelivery({
+  id,
+  status,
+  response = null,
+  errorMessage = ""
+}) {
+  const normalizedStatus = status === "sent" ? "sent" : "failed";
+  const timestamp = now();
+  db.prepare(`
+    UPDATE cockpit_deliveries
+    SET status = ?, sent_at = ?, error_message = ?,
+        worktool_response_json = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    normalizedStatus,
+    normalizedStatus === "sent" ? timestamp : null,
+    errorMessage,
+    response ? json(response) : null,
+    timestamp,
+    id
+  );
+  return rowToCockpitDelivery(
+    db.prepare("SELECT * FROM cockpit_deliveries WHERE id = ?").get(id)
+  );
 }
