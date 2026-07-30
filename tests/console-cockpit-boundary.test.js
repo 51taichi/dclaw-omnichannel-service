@@ -58,6 +58,7 @@ test("cockpit renders fixed cards with icons and responsive hierarchy", () => {
 });
 
 test("cockpit top metrics stay universal across sales and service Bots", () => {
+  assert.match(html, /<symbol id="icon-message"/);
   assert.match(cockpit, /\["customerMessages", "客户消息"/);
   assert.match(cockpit, /\["replyMessages", "回复消息"/);
   assert.doesNotMatch(cockpit, /\["successfulInvitations", "成功邀约"/);
