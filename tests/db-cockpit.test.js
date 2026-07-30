@@ -169,3 +169,43 @@ test("definition revisions cursors jobs and deliveries are claimable by scope", 
     limit: 10
   }).length, 1);
 });
+
+test("definition saves revise display changes and version semantic changes", () => {
+  const first = db.ensureCockpitDefinitionVersion({
+    botId: "version-bot",
+    definitionType: "flow",
+    config: {
+      nodes: [{ id: "node-1", name: "开始", goal: "建立联系" }]
+    },
+    effectiveAt: "2026-07-30T00:00:00.000Z"
+  });
+  const renamed = db.ensureCockpitDefinitionVersion({
+    botId: "version-bot",
+    definitionType: "flow",
+    config: {
+      nodes: [{ id: "node-1", name: "首次沟通", goal: "建立联系" }]
+    },
+    effectiveAt: "2026-07-30T01:00:00.000Z"
+  });
+  const changed = db.ensureCockpitDefinitionVersion({
+    botId: "version-bot",
+    definitionType: "flow",
+    config: {
+      nodes: [{ id: "node-1", name: "首次沟通", goal: "确认预算" }]
+    },
+    effectiveAt: "2026-07-30T02:00:00.000Z"
+  });
+
+  assert.deepEqual(
+    [first.versionNumber, first.revisionNumber, first.semanticChanged],
+    [1, 1, true]
+  );
+  assert.deepEqual(
+    [renamed.versionNumber, renamed.revisionNumber, renamed.semanticChanged],
+    [1, 2, false]
+  );
+  assert.deepEqual(
+    [changed.versionNumber, changed.revisionNumber, changed.semanticChanged],
+    [2, 1, true]
+  );
+});

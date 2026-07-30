@@ -4,6 +4,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { mergeInlineActions } from "./action-chips.js";
 import { hashAccessKey } from "./auth.js";
+import { definitionSemanticHash } from "./cockpit-domain.js";
 import {
   areConversationMessagesDuplicates,
   dedupeConversationMessages
@@ -7289,6 +7290,36 @@ export function saveCockpitDefinitionVersion(input) {
     db.prepare("SELECT * FROM cockpit_definition_versions WHERE id = ?")
       .get(result.lastInsertRowid)
   );
+}
+
+export function ensureCockpitDefinitionVersion({
+  botId,
+  definitionType,
+  config,
+  effectiveAt
+}) {
+  const semanticHash = definitionSemanticHash(definitionType, config);
+  const latest = rowToCockpitDefinitionVersion(db.prepare(`
+    SELECT *
+    FROM cockpit_definition_versions
+    WHERE bot_id = ? AND definition_type = ?
+    ORDER BY version_number DESC, revision_number DESC
+    LIMIT 1
+  `).get(botId, definitionType));
+  if (latest && JSON.stringify(latest.config) === JSON.stringify(config || {})) {
+    return { ...latest, semanticChanged: false };
+  }
+  const semanticChanged = !latest || latest.semanticHash !== semanticHash;
+  const saved = saveCockpitDefinitionVersion({
+    botId,
+    definitionType,
+    semanticHash,
+    versionNumber: semanticChanged ? Number(latest?.versionNumber || 0) + 1 : latest.versionNumber,
+    revisionNumber: semanticChanged ? 1 : latest.revisionNumber + 1,
+    config,
+    effectiveAt
+  });
+  return { ...saved, semanticChanged };
 }
 
 function rowToCockpitAggregationCursor(row, botId = "") {

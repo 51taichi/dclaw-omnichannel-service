@@ -98,6 +98,7 @@ import {
   getGroupById,
   hasCachedWorktoolMessageId,
   ensureConversationDateTag,
+  ensureCockpitDefinitionVersion,
   initializeLegacyDateTagRuleEffectiveTimes,
   isFlowActivationTaskProcessing,
   getOrCreateConversationSession,
@@ -6274,6 +6275,25 @@ app.put(
       config,
       enabled: body.enabled !== false
     });
+    const definition = ensureCockpitDefinitionVersion({
+      botId: req.params.botId,
+      definitionType: "flow",
+      config: machine.config,
+      effectiveAt: machine.updatedAt
+    });
+    cockpitEventRecorder.record({
+      botId: req.params.botId,
+      eventType: "flow_definition_changed",
+      sourceType: "flow_definition",
+      sourceId: definition.id,
+      occurredAt: definition.effectiveAt,
+      flowVersionId: definition.id,
+      payload: {
+        versionNumber: definition.versionNumber,
+        revisionNumber: definition.revisionNumber,
+        semanticChanged: definition.semanticChanged
+      }
+    });
     res.json({ ok: true, machine });
   })
 );
@@ -6301,6 +6321,25 @@ app.put(
     const schema = upsertAgentTagSchema({
       agentId: binding.agentId,
       schema: req.body?.schema || req.body || {}
+    });
+    const definition = ensureCockpitDefinitionVersion({
+      botId: req.params.botId,
+      definitionType: "tags",
+      config: schema.config,
+      effectiveAt: schema.updatedAt
+    });
+    cockpitEventRecorder.record({
+      botId: req.params.botId,
+      eventType: "tag_definition_changed",
+      sourceType: "tag_definition",
+      sourceId: definition.id,
+      occurredAt: definition.effectiveAt,
+      tagVersionId: definition.id,
+      payload: {
+        versionNumber: definition.versionNumber,
+        revisionNumber: definition.revisionNumber,
+        semanticChanged: definition.semanticChanged
+      }
     });
     res.json({ ok: true, agentId: binding.agentId, schema: schema.config });
   })
