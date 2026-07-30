@@ -33,7 +33,6 @@ test("cockpit exposes an icon, Bot-themed shell, and dedicated client", () => {
   assert.match(html, /<symbol id="icon-cockpit"/);
   assert.match(html, /data-tab-panel="cockpit"/);
   assert.match(html, /id="cockpitLoadingState"/);
-  assert.match(html, /id="cockpitStaleState"/);
   assert.match(html, /id="cockpitContent"/);
   assert.match(html, /src="\.\/cockpit\.js"/);
   assert.match(css, /\.cockpit-shell/);
@@ -83,4 +82,20 @@ test("report recipients and schedules live in the final config tab", () => {
     assert.match(html, new RegExp(`name="${field}"`));
   }
   assert.match(app, /\/api\/cockpit\/\$\{encodeURIComponent\(state\.selectedBotId\)\}\/config/);
+});
+
+test("cockpit uses real chart canvases with visible zero-data states", () => {
+  assert.match(cockpit, /cockpit-funnel-chart/);
+  assert.match(cockpit, /cockpit-tag-donut/);
+  assert.match(cockpit, /<svg[\s\S]*role="img"/);
+  assert.match(cockpit, /cockpit-chart-empty/);
+  assert.match(css, /\.cockpit-funnel-chart/);
+  assert.match(css, /\.cockpit-tag-donut/);
+});
+
+test("cockpit status messages use the shared top toast instead of an inline warning", () => {
+  assert.doesNotMatch(html, /id="cockpitStaleState"/);
+  assert.doesNotMatch(cockpit, /current\.stale/);
+  assert.match(cockpit, /state\.notify/);
+  assert.match(app, /notify:\s*\(message,\s*type\)\s*=>\s*toast\(message,\s*type\)/);
 });

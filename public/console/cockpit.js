@@ -5,6 +5,8 @@
     accent: "",
     periodType: "daily",
     request: null,
+    notify: null,
+    lastNoticeKey: "",
     version: 0
   };
 
@@ -34,7 +36,6 @@
   function elements() {
     return {
       loading: document.querySelector("#cockpitLoadingState"),
-      stale: document.querySelector("#cockpitStaleState"),
       content: document.querySelector("#cockpitContent")
     };
   }
@@ -45,9 +46,10 @@
     state.role = "";
     state.accent = "";
     state.request = null;
+    state.notify = null;
+    state.lastNoticeKey = "";
     const current = elements();
     if (current.loading) current.loading.hidden = false;
-    if (current.stale) current.stale.hidden = true;
     if (current.content) {
       current.content.hidden = true;
       current.content.innerHTML = "";
@@ -58,6 +60,77 @@
     const value = metrics[key] ?? today[key] ?? 0;
     if (key === "invitationRate") return `${Math.round(Number(value || 0) * 100)}%`;
     return Number(value || 0).toLocaleString("zh-CN");
+  }
+
+  function funnelChart(data) {
+    const nodes = (data.nodeDistribution?.length
+      ? data.nodeDistribution
+      : (data.funnels || []).flatMap((funnel) => funnel.nodes || []))
+      .slice(0, 8);
+    const displayNodes = nodes.length ? nodes : [
+      { nodeId: "Node 1", reached: 0, share: 0 },
+      { nodeId: "Node 2", reached: 0, share: 0 },
+      { nodeId: "Node 3", reached: 0, share: 0 },
+      { nodeId: "Node N", reached: 0, share: 0 }
+    ];
+    const rowHeight = 46;
+    const height = displayNodes.length * rowHeight + 42;
+    return `
+      <div class="cockpit-funnel-chart ${nodes.length ? "" : "is-empty"}">
+        <svg viewBox="0 0 640 ${height}" role="img" aria-label="任务节点到达人数及占比图">
+          <line class="cockpit-chart-axis" x1="150" y1="18" x2="150" y2="${height - 22}"></line>
+          ${displayNodes.map((node, index) => {
+            const y = 28 + index * rowHeight;
+            const share = Math.max(0, Math.min(1, Number(node.share || 0)));
+            const width = nodes.length ? Math.max(4, share * 390) : 0;
+            return `
+              <text class="cockpit-chart-label" x="140" y="${y + 16}" text-anchor="end">${escapeHtml(node.nodeId)}</text>
+              <rect class="cockpit-chart-track" x="166" y="${y}" width="390" height="22" rx="7"></rect>
+              <rect class="cockpit-chart-bar" x="166" y="${y}" width="${width}" height="22" rx="7"></rect>
+              <text class="cockpit-chart-value" x="570" y="${y + 16}">${Number(node.reached || 0)} · ${Math.round(share * 100)}%</text>
+            `;
+          }).join("")}
+        </svg>
+        ${nodes.length ? "" : '<span class="cockpit-chart-empty">暂无节点数据，凌晨统计后自动更新</span>'}
+      </div>
+    `;
+  }
+
+  function tagChart(tags = []) {
+    const visible = tags.filter((tag) => Number(tag.current || 0) > 0).slice(0, 6);
+    const total = visible.reduce((sum, tag) => sum + Number(tag.current || 0), 0);
+    let offset = 0;
+    const segments = visible.map((tag, index) => {
+      const percent = total ? Number(tag.current || 0) / total * 100 : 0;
+      const segment = `<circle class="cockpit-tag-segment segment-${index % 4}" cx="70" cy="70" r="52" pathLength="100" stroke-dasharray="${percent} ${100 - percent}" stroke-dashoffset="${-offset}"></circle>`;
+      offset += percent;
+      return segment;
+    }).join("");
+    return `
+      <div class="cockpit-tag-chart ${visible.length ? "" : "is-empty"}">
+        <div class="cockpit-tag-donut">
+          <svg viewBox="0 0 140 140" role="img" aria-label="客户标签占比分布图">
+            <circle class="cockpit-tag-ring" cx="70" cy="70" r="52"></circle>
+            ${segments}
+            <text class="cockpit-tag-total" x="70" y="66" text-anchor="middle">${total}</text>
+            <text class="cockpit-tag-total-label" x="70" y="84" text-anchor="middle">已标记</text>
+          </svg>
+        </div>
+        <div class="cockpit-tag-legend">
+          ${(visible.length ? visible : [
+            { tagId: "标签数据", current: 0, net: 0 }
+          ]).map((tag, index) => `
+            <div>
+              <i class="segment-${index % 4}"></i>
+              <span>${escapeHtml(tag.tagId)}</span>
+              <b>${Number(tag.current || 0)}</b>
+              <small>${Number(tag.net || 0) >= 0 ? "+" : ""}${Number(tag.net || 0)}</small>
+            </div>
+          `).join("")}
+        </div>
+        ${visible.length ? "" : '<span class="cockpit-chart-empty">暂无标签数据，图表将在统计后自动绘制</span>'}
+      </div>
+    `;
   }
 
   function render(data) {
@@ -109,21 +182,14 @@
 
         <div class="cockpit-chart-grid">
           <section id="cockpitFunnels" class="cockpit-card">
-            <h3>${icon("briefcase")}任务转化</h3>
-            ${data.funnels?.length ? data.funnels.map((funnel) => `
-              <div class="cockpit-funnel">
-                <small>任务版本 ${funnel.flowVersionId}</small>
-                ${(funnel.nodes || []).map((node) => `
-                  <div><span>${escapeHtml(node.nodeId)}</span><i style="--value:${Math.round(node.share * 100)}%"></i><b>${node.reached}</b></div>
-                `).join("")}
-              </div>
-            `).join("") : "<p>暂无任务漏斗数据。</p>"}
+            <h3>${icon("briefcase")}任务节点转化</h3>
+            <p class="cockpit-chart-caption">各节点到达人数与新增客户占比</p>
+            ${funnelChart(data)}
           </section>
           <section id="cockpitTags" class="cockpit-card">
-            <h3>${icon("tag")}标签变化</h3>
-            ${data.tagGroups?.length ? data.tagGroups.map((tag) => `
-              <div class="cockpit-tag-row"><span>${escapeHtml(tag.tagId)}</span><b>${tag.current}</b><small>净变化 ${tag.net >= 0 ? "+" : ""}${tag.net}</small></div>
-            `).join("") : "<p>暂无标签变化数据。</p>"}
+            <h3>${icon("tag")}标签分布与变化</h3>
+            <p class="cockpit-chart-caption">当前标签人数、占比及本周期净变化</p>
+            ${tagChart(data.tagGroups || [])}
           </section>
         </div>
 
@@ -153,8 +219,14 @@
       });
     });
     current.loading.hidden = true;
-    current.stale.hidden = !data.freshness?.delayed;
     current.content.hidden = false;
+    if (data.freshness?.delayed) {
+      const noticeKey = `${state.botId}:${state.periodType}:delayed`;
+      if (state.lastNoticeKey !== noticeKey) {
+        state.lastNoticeKey = noticeKey;
+        state.notify?.("驾驶舱数据更新延迟，当前展示最近一次统计结果", "info");
+      }
+    }
   }
 
   async function refresh() {
@@ -170,8 +242,17 @@
       render(data);
     } catch (error) {
       if (version !== state.version) return;
-      current.loading.querySelector("small").textContent = error?.message || "驾驶舱加载失败";
-      current.stale.hidden = false;
+      render({
+        period: { label: "当前统计周期" },
+        freshness: { completeAt: "", delayed: false },
+        metrics: {},
+        today: {},
+        funnels: [],
+        nodeDistribution: [],
+        tagGroups: [],
+        reportHistory: []
+      });
+      state.notify?.(error?.message || "驾驶舱加载失败", "error");
     }
   }
 
@@ -180,6 +261,8 @@
     state.role = String(context.role || "");
     state.accent = String(context.accent || "");
     state.request = context.request || null;
+    state.notify = context.notify || null;
+    state.lastNoticeKey = "";
     refresh();
   }
 

@@ -737,6 +737,7 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
     botId: cockpitBotId,
     role: state.currentRole,
     accent: getBotAccent(bot),
+    notify: (message, type) => toast(message, type),
     request: (path, options = {}) => request(path, {
       ...options,
       botId: cockpitBotId
