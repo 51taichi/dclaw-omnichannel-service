@@ -129,7 +129,20 @@
 
         <section id="cockpitReportHistory" class="cockpit-card cockpit-history">
           <h3>${icon("history")}报告留档</h3>
-          <p>${data.latestReport ? `最近报告：${escapeHtml(data.latestReport.generatedAt)}` : "尚未生成历史报告。"}</p>
+          ${data.reportHistory?.length ? data.reportHistory.map((item) => `
+            <details class="cockpit-report-row">
+              <summary>
+                <span>${escapeHtml(item.periodStart.slice(0, 10))} · 第 ${item.revision} 版</span>
+                <small>${escapeHtml(item.status)}</small>
+              </summary>
+              <p>${escapeHtml(item.document?.analysis?.executiveSummary || "统计报告")}</p>
+              <div class="cockpit-report-metrics">
+                <span>新增 ${Number(item.document?.statistics?.newCustomers || 0)}</span>
+                <span>邀约 ${Number(item.document?.statistics?.successfulInvitations || 0)}</span>
+                <span>未回复 ${Number(item.document?.statistics?.neverReplied || 0)}</span>
+              </div>
+            </details>
+          `).join("") : "<p>尚未生成历史报告。</p>"}
         </section>
       </div>
     `;

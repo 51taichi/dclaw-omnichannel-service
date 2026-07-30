@@ -6213,7 +6213,11 @@ app.get(
       periodType,
       periodStart: period.start
     }) || getLatestCockpitSnapshot({ botId, periodType });
-    const reports = listCockpitReports({ botId, page: 1, pageSize: 1 });
+    const reports = listCockpitReports({ botId, page: 1, pageSize: 20 });
+    const latestReport = reports.items.find((report) => (
+      report.reportType === periodType
+      && (!snapshot || report.periodStart === snapshot.periodStart)
+    )) || null;
     res.json({
       ok: true,
       freshness: {
@@ -6234,7 +6238,8 @@ app.get(
       funnels: snapshot?.charts?.funnels || [],
       nodeDistribution: snapshot?.charts?.nodeDistribution || [],
       tagGroups: snapshot?.charts?.tags || [],
-      latestReport: reports.items[0] || null
+      latestReport,
+      reportHistory: reports.items.filter((report) => report.reportType === periodType).slice(0, 8)
     });
   })
 );

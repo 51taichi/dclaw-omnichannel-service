@@ -6392,6 +6392,37 @@ td .muted {
   order: 10;
 }
 
+.cockpit-report-row {
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+}
+
+.cockpit-report-row summary,
+.cockpit-report-metrics {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.cockpit-report-row summary {
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.cockpit-report-metrics {
+  justify-content: flex-start;
+}
+
+.cockpit-report-metrics span {
+  background: var(--panel-strong);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  padding: 5px 9px;
+}
+
 .cockpit-config-form textarea {
   min-height: 82px;
   resize: vertical;
