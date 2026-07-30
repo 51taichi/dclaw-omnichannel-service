@@ -81,7 +81,10 @@ test("workspace tabs adapt to visible tab count without a fixed container width"
 test("workspace shows a mascot prompt with no active tab until a Bot is unlocked", () => {
   assert.match(
     html,
-    /id="workspaceEmptyState"[\s\S]*src="\.\/assets\/sorry\.png"[\s\S]*请您先解锁任意一Bot/
+    /id="workspaceEmptyState"[\s\S]*src="\.\/assets\/moosee-work-serious-scene\.png"[\s\S]*请您先解锁任意一 Bot/
+  );
+  assert.ok(
+    fs.statSync(new URL("../public/console/assets/moosee-work-serious-scene.png", import.meta.url)).size > 100_000
   );
   assert.doesNotMatch(
     html,
@@ -96,7 +99,10 @@ test("workspace shows a mascot prompt with no active tab until a Bot is unlocked
     /if \(!hasBotContext\)\s*\{[\s\S]*button\.classList\.remove\("active"\)[\s\S]*button\.setAttribute\("aria-selected", "false"\)[\s\S]*panel\.hidden = true/
   );
   assert.match(css, /\.workspace-empty-state\s*\{[\s\S]*place-items:\s*center/);
-  assert.match(css, /\.workspace-empty-card\s*\{[\s\S]*grid-template-columns:\s*72px max-content/);
+  assert.match(css, /\.workspace-empty-card\s*\{[\s\S]*width:\s*min\(100%,\s*760px\)[\s\S]*grid-template-columns:\s*1fr/);
+  assert.match(css, /\.workspace-empty-card img\s*\{[\s\S]*width:\s*100%[\s\S]*aspect-ratio:\s*16\s*\/\s*9[\s\S]*object-fit:\s*contain/);
+  assert.match(css, /\.workspace-empty-card span\s*\{[\s\S]*text-align:\s*center/);
+  assert.ok(css.lastIndexOf(".workspace-empty-card {") > css.indexOf(".chat-loading-card {"));
 });
 
 test("workspace tab strip follows the selected Bot accent and connects to its content panel", () => {
