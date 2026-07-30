@@ -603,6 +603,139 @@ db.exec(`
     created_at TEXT NOT NULL,
     PRIMARY KEY (group_id, tag_group_id)
   );
+
+  CREATE TABLE IF NOT EXISTS cockpit_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key TEXT NOT NULL UNIQUE,
+    bot_id TEXT NOT NULL,
+    conversation_key TEXT,
+    customer_key TEXT,
+    event_type TEXT NOT NULL,
+    occurred_at TEXT NOT NULL,
+    received_at TEXT NOT NULL,
+    flow_version_id INTEGER,
+    tag_version_id INTEGER,
+    payload_json TEXT NOT NULL,
+    source_ref_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_cockpit_events_bot_cursor
+  ON cockpit_events (bot_id, id);
+
+  CREATE INDEX IF NOT EXISTS idx_cockpit_events_bot_occurred
+  ON cockpit_events (bot_id, occurred_at, id);
+
+  CREATE TABLE IF NOT EXISTS cockpit_daily_counters (
+    bot_id TEXT NOT NULL,
+    local_date TEXT NOT NULL,
+    metric_key TEXT NOT NULL,
+    metric_value INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (bot_id, local_date, metric_key)
+  );
+
+  CREATE TABLE IF NOT EXISTS cockpit_configs (
+    bot_id TEXT PRIMARY KEY,
+    config_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS cockpit_definition_versions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    definition_type TEXT NOT NULL,
+    semantic_hash TEXT NOT NULL,
+    version_number INTEGER NOT NULL,
+    revision_number INTEGER NOT NULL,
+    config_json TEXT NOT NULL,
+    effective_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (bot_id, definition_type, version_number, revision_number)
+  );
+
+  CREATE TABLE IF NOT EXISTS cockpit_aggregation_cursors (
+    bot_id TEXT PRIMARY KEY,
+    last_event_id INTEGER NOT NULL DEFAULT 0,
+    last_success_at TEXT,
+    last_error TEXT,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS cockpit_snapshots (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    period_type TEXT NOT NULL,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    status TEXT NOT NULL,
+    source_through_event_id INTEGER NOT NULL DEFAULT 0,
+    metrics_json TEXT NOT NULL,
+    charts_json TEXT NOT NULL,
+    definitions_json TEXT NOT NULL,
+    generated_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_cockpit_snapshots_period
+  ON cockpit_snapshots (bot_id, period_type, period_start, status, id);
+
+  CREATE TABLE IF NOT EXISTS cockpit_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    snapshot_id INTEGER NOT NULL,
+    report_type TEXT NOT NULL,
+    period_start TEXT NOT NULL,
+    period_end TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    document_json TEXT NOT NULL,
+    ai_error TEXT,
+    generated_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (bot_id, report_type, period_start, period_end, revision)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_cockpit_reports_history
+  ON cockpit_reports (bot_id, report_type, period_start DESC, revision DESC);
+
+  CREATE TABLE IF NOT EXISTS cockpit_deliveries (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id INTEGER NOT NULL,
+    bot_id TEXT NOT NULL,
+    recipient TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempt_number INTEGER NOT NULL DEFAULT 0,
+    due_at TEXT NOT NULL,
+    sent_at TEXT,
+    error_message TEXT,
+    worktool_response_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_cockpit_deliveries_due
+  ON cockpit_deliveries (status, due_at, id);
+
+  CREATE TABLE IF NOT EXISTS cockpit_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempt_number INTEGER NOT NULL DEFAULT 0,
+    due_at TEXT NOT NULL,
+    processing_started_at TEXT,
+    finished_at TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_cockpit_jobs_due
+  ON cockpit_jobs (stage, status, due_at, id);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -1771,6 +1904,15 @@ export function deleteBotData(botId) {
 
   const tables = [
     "workspace_bots",
+    "cockpit_deliveries",
+    "cockpit_reports",
+    "cockpit_snapshots",
+    "cockpit_jobs",
+    "cockpit_aggregation_cursors",
+    "cockpit_definition_versions",
+    "cockpit_configs",
+    "cockpit_daily_counters",
+    "cockpit_events",
     "conversation_reset_tasks",
     "flow_activation_tasks",
     "flow_state_events",
@@ -6839,4 +6981,499 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
     .prepare(`SELECT * FROM ${config.table} ORDER BY ${config.orderBy || "id"} DESC LIMIT ?`)
     .all(Number(limit))
     .map(config.mapper);
+}
+
+const DEFAULT_COCKPIT_CONFIG = Object.freeze({
+  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  defaultNoReplyHours: 24,
+  nodeNoReplyHours: {},
+  schedules: {
+    daily: { enabled: false, sendAt: "09:00", recipients: [] },
+    weekly: { enabled: false, sendAt: "09:00", recipients: [] },
+    monthly: { enabled: false, sendAt: "09:00", recipients: [] }
+  }
+});
+
+function normalizeCockpitConfig(config = {}) {
+  const schedules = config.schedules || {};
+  return {
+    timezone: String(config.timezone || DEFAULT_COCKPIT_CONFIG.timezone),
+    defaultNoReplyHours: Number(config.defaultNoReplyHours || 24),
+    nodeNoReplyHours: { ...(config.nodeNoReplyHours || {}) },
+    schedules: Object.fromEntries(["daily", "weekly", "monthly"].map((type) => [
+      type,
+      {
+        ...DEFAULT_COCKPIT_CONFIG.schedules[type],
+        ...(schedules[type] || {}),
+        recipients: [...(schedules[type]?.recipients || [])]
+      }
+    ]))
+  };
+}
+
+function rowToCockpitEvent(row) {
+  return row ? {
+    id: row.id,
+    eventKey: row.event_key,
+    botId: row.bot_id,
+    conversationKey: row.conversation_key || "",
+    customerKey: row.customer_key || "",
+    eventType: row.event_type,
+    occurredAt: row.occurred_at,
+    receivedAt: row.received_at,
+    flowVersionId: row.flow_version_id,
+    tagVersionId: row.tag_version_id,
+    payload: parseJson(row.payload_json) || {},
+    sourceRef: parseJson(row.source_ref_json) || {},
+    createdAt: row.created_at
+  } : null;
+}
+
+export function appendCockpitEvent(input) {
+  const createdAt = now();
+  const eventKey = String(input.eventKey || "").trim();
+  const result = db.prepare(`
+    INSERT OR IGNORE INTO cockpit_events (
+      event_key, bot_id, conversation_key, customer_key, event_type,
+      occurred_at, received_at, flow_version_id, tag_version_id,
+      payload_json, source_ref_json, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    eventKey,
+    String(input.botId || "").trim(),
+    String(input.conversationKey || "").trim(),
+    String(input.customerKey || "").trim(),
+    String(input.eventType || "").trim(),
+    String(input.occurredAt || createdAt),
+    String(input.receivedAt || createdAt),
+    input.flowVersionId ?? null,
+    input.tagVersionId ?? null,
+    json(input.payload || {}),
+    json(input.sourceRef || {}),
+    createdAt
+  );
+  const row = db.prepare("SELECT id FROM cockpit_events WHERE event_key = ?").get(eventKey);
+  return { inserted: Boolean(result.changes), eventId: row?.id || null };
+}
+
+export function listCockpitEvents({ botId, afterId = 0, throughAt = "", limit = 1000 }) {
+  const boundedLimit = Math.min(5000, Math.max(1, Number(limit) || 1000));
+  const rows = throughAt
+    ? db.prepare(`
+        SELECT * FROM cockpit_events
+        WHERE bot_id = ? AND id > ? AND received_at <= ?
+        ORDER BY id ASC LIMIT ?
+      `).all(botId, Number(afterId) || 0, throughAt, boundedLimit)
+    : db.prepare(`
+        SELECT * FROM cockpit_events
+        WHERE bot_id = ? AND id > ?
+        ORDER BY id ASC LIMIT ?
+      `).all(botId, Number(afterId) || 0, boundedLimit);
+  return rows.map(rowToCockpitEvent);
+}
+
+export function incrementCockpitDailyCounter({
+  botId,
+  localDate,
+  metricKey,
+  amount = 1
+}) {
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO cockpit_daily_counters (
+      bot_id, local_date, metric_key, metric_value, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(bot_id, local_date, metric_key) DO UPDATE SET
+      metric_value = metric_value + excluded.metric_value,
+      updated_at = excluded.updated_at
+  `).run(botId, localDate, metricKey, Number(amount) || 0, timestamp);
+  return Number(db.prepare(`
+    SELECT metric_value FROM cockpit_daily_counters
+    WHERE bot_id = ? AND local_date = ? AND metric_key = ?
+  `).get(botId, localDate, metricKey)?.metric_value || 0);
+}
+
+export function getCockpitDailyCounters({ botId, localDate }) {
+  return Object.fromEntries(db.prepare(`
+    SELECT metric_key, metric_value FROM cockpit_daily_counters
+    WHERE bot_id = ? AND local_date = ?
+    ORDER BY metric_key ASC
+  `).all(botId, localDate).map((row) => [row.metric_key, Number(row.metric_value || 0)]));
+}
+
+export function getCockpitConfig(botId) {
+  const row = db.prepare("SELECT config_json FROM cockpit_configs WHERE bot_id = ?").get(botId);
+  return normalizeCockpitConfig(parseJson(row?.config_json) || {});
+}
+
+export function upsertCockpitConfig({ botId, config }) {
+  const timestamp = now();
+  const normalized = normalizeCockpitConfig(config);
+  db.prepare(`
+    INSERT INTO cockpit_configs (bot_id, config_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(bot_id) DO UPDATE SET
+      config_json = excluded.config_json,
+      updated_at = excluded.updated_at
+  `).run(botId, json(normalized), timestamp, timestamp);
+  return getCockpitConfig(botId);
+}
+
+function rowToCockpitSnapshot(row) {
+  return row ? {
+    id: row.id,
+    botId: row.bot_id,
+    periodType: row.period_type,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    status: row.status,
+    sourceThroughEventId: Number(row.source_through_event_id || 0),
+    metrics: parseJson(row.metrics_json) || {},
+    charts: parseJson(row.charts_json) || {},
+    definitions: parseJson(row.definitions_json) || {},
+    generatedAt: row.generated_at,
+    createdAt: row.created_at
+  } : null;
+}
+
+export function saveCockpitSnapshot(input) {
+  const createdAt = now();
+  const result = db.prepare(`
+    INSERT INTO cockpit_snapshots (
+      bot_id, period_type, period_start, period_end, status,
+      source_through_event_id, metrics_json, charts_json, definitions_json,
+      generated_at, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.botId,
+    input.periodType,
+    input.periodStart,
+    input.periodEnd,
+    input.status || "ready",
+    Number(input.sourceThroughEventId || 0),
+    json(input.metrics || {}),
+    json(input.charts || {}),
+    json(input.definitions || {}),
+    input.generatedAt || createdAt,
+    createdAt
+  );
+  return rowToCockpitSnapshot(
+    db.prepare("SELECT * FROM cockpit_snapshots WHERE id = ?").get(result.lastInsertRowid)
+  );
+}
+
+export function getLatestCockpitSnapshot({ botId, periodType, periodStart }) {
+  return rowToCockpitSnapshot(db.prepare(`
+    SELECT * FROM cockpit_snapshots
+    WHERE bot_id = ? AND period_type = ? AND period_start = ? AND status = 'ready'
+    ORDER BY id DESC LIMIT 1
+  `).get(botId, periodType, periodStart));
+}
+
+function rowToCockpitReport(row) {
+  return row ? {
+    id: row.id,
+    botId: row.bot_id,
+    snapshotId: row.snapshot_id,
+    reportType: row.report_type,
+    periodStart: row.period_start,
+    periodEnd: row.period_end,
+    revision: Number(row.revision || 1),
+    status: row.status,
+    summary: parseJson(row.summary_json) || {},
+    document: parseJson(row.document_json) || {},
+    aiError: row.ai_error || "",
+    generatedAt: row.generated_at,
+    createdAt: row.created_at
+  } : null;
+}
+
+export function createCockpitReport(input) {
+  const createdAt = now();
+  const result = db.prepare(`
+    INSERT INTO cockpit_reports (
+      bot_id, snapshot_id, report_type, period_start, period_end, revision,
+      status, summary_json, document_json, ai_error, generated_at, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.botId,
+    input.snapshotId,
+    input.reportType,
+    input.periodStart,
+    input.periodEnd,
+    Number(input.revision || 1),
+    input.status || "ready",
+    json(input.summary || {}),
+    json(input.document || {}),
+    input.aiError || "",
+    input.generatedAt || createdAt,
+    createdAt
+  );
+  return rowToCockpitReport(
+    db.prepare("SELECT * FROM cockpit_reports WHERE id = ?").get(result.lastInsertRowid)
+  );
+}
+
+export function createCockpitReportRevision({ reportId, ...changes }) {
+  const source = rowToCockpitReport(
+    db.prepare("SELECT * FROM cockpit_reports WHERE id = ?").get(reportId)
+  );
+  if (!source) throw new Error("cockpit report not found");
+  const latestRevision = Number(db.prepare(`
+    SELECT MAX(revision) AS revision FROM cockpit_reports
+    WHERE bot_id = ? AND report_type = ? AND period_start = ? AND period_end = ?
+  `).get(
+    source.botId,
+    source.reportType,
+    source.periodStart,
+    source.periodEnd
+  )?.revision || source.revision);
+  return createCockpitReport({ ...source, ...changes, revision: latestRevision + 1 });
+}
+
+export function listCockpitReports({ botId, page = 1, pageSize = 20 }) {
+  const normalizedPageSize = normalizePageSize(pageSize);
+  const total = Number(db.prepare(
+    "SELECT COUNT(*) AS count FROM cockpit_reports WHERE bot_id = ?"
+  ).get(botId)?.count || 0);
+  const pagination = paginationResult({ total, page, pageSize: normalizedPageSize });
+  const items = db.prepare(`
+    SELECT * FROM cockpit_reports
+    WHERE bot_id = ?
+    ORDER BY period_start DESC, revision DESC, id DESC
+    LIMIT ? OFFSET ?
+  `).all(
+    botId,
+    pagination.pageSize,
+    (pagination.page - 1) * pagination.pageSize
+  ).map(rowToCockpitReport);
+  return { items, ...pagination };
+}
+
+function rowToCockpitDefinitionVersion(row) {
+  return row ? {
+    id: row.id,
+    botId: row.bot_id,
+    definitionType: row.definition_type,
+    semanticHash: row.semantic_hash,
+    versionNumber: Number(row.version_number),
+    revisionNumber: Number(row.revision_number),
+    config: parseJson(row.config_json) || {},
+    effectiveAt: row.effective_at,
+    createdAt: row.created_at
+  } : null;
+}
+
+export function saveCockpitDefinitionVersion(input) {
+  const result = db.prepare(`
+    INSERT INTO cockpit_definition_versions (
+      bot_id, definition_type, semantic_hash, version_number, revision_number,
+      config_json, effective_at, created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    input.botId,
+    input.definitionType,
+    input.semanticHash,
+    Number(input.versionNumber),
+    Number(input.revisionNumber),
+    json(input.config || {}),
+    input.effectiveAt || now(),
+    now()
+  );
+  return rowToCockpitDefinitionVersion(
+    db.prepare("SELECT * FROM cockpit_definition_versions WHERE id = ?")
+      .get(result.lastInsertRowid)
+  );
+}
+
+function rowToCockpitAggregationCursor(row, botId = "") {
+  return row ? {
+    botId: row.bot_id,
+    lastEventId: Number(row.last_event_id || 0),
+    lastSuccessAt: row.last_success_at || "",
+    lastError: row.last_error || "",
+    updatedAt: row.updated_at
+  } : {
+    botId,
+    lastEventId: 0,
+    lastSuccessAt: "",
+    lastError: "",
+    updatedAt: ""
+  };
+}
+
+export function getCockpitAggregationCursor(botId) {
+  return rowToCockpitAggregationCursor(
+    db.prepare("SELECT * FROM cockpit_aggregation_cursors WHERE bot_id = ?").get(botId),
+    botId
+  );
+}
+
+export function saveCockpitAggregationCursor(input) {
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO cockpit_aggregation_cursors (
+      bot_id, last_event_id, last_success_at, last_error, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(bot_id) DO UPDATE SET
+      last_event_id = excluded.last_event_id,
+      last_success_at = excluded.last_success_at,
+      last_error = excluded.last_error,
+      updated_at = excluded.updated_at
+  `).run(
+    input.botId,
+    Number(input.lastEventId || 0),
+    input.lastSuccessAt || null,
+    input.lastError || "",
+    timestamp
+  );
+  return getCockpitAggregationCursor(input.botId);
+}
+
+function rowToCockpitJob(row) {
+  return row ? {
+    id: row.id,
+    botId: row.bot_id,
+    stage: row.stage,
+    payload: parseJson(row.payload_json) || {},
+    status: row.status,
+    attemptNumber: Number(row.attempt_number || 0),
+    dueAt: row.due_at,
+    processingStartedAt: row.processing_started_at || "",
+    finishedAt: row.finished_at || "",
+    errorMessage: row.error_message || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  } : null;
+}
+
+export function createCockpitJob(input) {
+  const timestamp = now();
+  const result = db.prepare(`
+    INSERT INTO cockpit_jobs (
+      bot_id, stage, payload_json, status, attempt_number, due_at,
+      created_at, updated_at
+    )
+    VALUES (?, ?, ?, 'pending', 0, ?, ?, ?)
+  `).run(
+    input.botId,
+    input.stage,
+    json(input.payload || {}),
+    input.dueAt || timestamp,
+    timestamp,
+    timestamp
+  );
+  return rowToCockpitJob(
+    db.prepare("SELECT * FROM cockpit_jobs WHERE id = ?").get(result.lastInsertRowid)
+  );
+}
+
+export function claimDueCockpitJobs({ stage, now: dueThrough, limit = 10 }) {
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const rows = db.prepare(`
+      SELECT * FROM cockpit_jobs
+      WHERE stage = ? AND status = 'pending' AND due_at <= ?
+      ORDER BY due_at ASC, id ASC
+      LIMIT ?
+    `).all(stage, dueThrough, Math.max(1, Number(limit) || 10));
+    for (const row of rows) {
+      db.prepare(`
+        UPDATE cockpit_jobs
+        SET status = 'processing',
+            attempt_number = attempt_number + 1,
+            processing_started_at = ?,
+            updated_at = ?
+        WHERE id = ? AND status = 'pending'
+      `).run(timestamp, timestamp, row.id);
+    }
+    db.exec("COMMIT");
+    return rows.map((row) => rowToCockpitJob({
+      ...row,
+      status: "processing",
+      attempt_number: Number(row.attempt_number || 0) + 1,
+      processing_started_at: timestamp,
+      updated_at: timestamp
+    }));
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function rowToCockpitDelivery(row) {
+  return row ? {
+    id: row.id,
+    reportId: row.report_id,
+    botId: row.bot_id,
+    recipient: row.recipient,
+    status: row.status,
+    attemptNumber: Number(row.attempt_number || 0),
+    dueAt: row.due_at,
+    sentAt: row.sent_at || "",
+    errorMessage: row.error_message || "",
+    worktoolResponse: parseJson(row.worktool_response_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  } : null;
+}
+
+export function createCockpitDelivery(input) {
+  const timestamp = now();
+  const result = db.prepare(`
+    INSERT INTO cockpit_deliveries (
+      report_id, bot_id, recipient, status, attempt_number, due_at,
+      created_at, updated_at
+    )
+    VALUES (?, ?, ?, 'pending', 0, ?, ?, ?)
+  `).run(
+    input.reportId,
+    input.botId,
+    input.recipient,
+    input.dueAt || timestamp,
+    timestamp,
+    timestamp
+  );
+  return rowToCockpitDelivery(
+    db.prepare("SELECT * FROM cockpit_deliveries WHERE id = ?").get(result.lastInsertRowid)
+  );
+}
+
+export function claimDueCockpitDeliveries({ now: dueThrough, limit = 10 }) {
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const rows = db.prepare(`
+      SELECT * FROM cockpit_deliveries
+      WHERE status = 'pending' AND due_at <= ?
+      ORDER BY due_at ASC, id ASC
+      LIMIT ?
+    `).all(dueThrough, Math.max(1, Number(limit) || 10));
+    for (const row of rows) {
+      db.prepare(`
+        UPDATE cockpit_deliveries
+        SET status = 'processing',
+            attempt_number = attempt_number + 1,
+            updated_at = ?
+        WHERE id = ? AND status = 'pending'
+      `).run(timestamp, row.id);
+    }
+    db.exec("COMMIT");
+    return rows.map((row) => rowToCockpitDelivery({
+      ...row,
+      status: "processing",
+      attempt_number: Number(row.attempt_number || 0) + 1,
+      updated_at: timestamp
+    }));
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }
