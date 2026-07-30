@@ -1,4 +1,34 @@
 (function exposeProactiveTargetSelection(globalObject) {
+  function createInteractionLock(onChange = () => {}) {
+    let locked = false;
+    let generation = 0;
+
+    return {
+      isLocked() {
+        return locked;
+      },
+      reset() {
+        generation += 1;
+        locked = false;
+        onChange(false);
+      },
+      async run(task) {
+        if (locked) return { accepted: false };
+        const runGeneration = generation;
+        locked = true;
+        onChange(true);
+        try {
+          return { accepted: true, value: await task() };
+        } finally {
+          if (runGeneration === generation) {
+            locked = false;
+            onChange(false);
+          }
+        }
+      }
+    };
+  }
+
   function intersectTargetMaps(targetMaps = []) {
     const maps = (Array.isArray(targetMaps) ? targetMaps : [])
       .filter((targetMap) => targetMap instanceof Map);
@@ -14,5 +44,8 @@
     return intersection;
   }
 
-  globalObject.ProactiveTargetSelection = { intersectTargetMaps };
+  globalObject.ProactiveTargetSelection = {
+    createInteractionLock,
+    intersectTargetMaps
+  };
 })(globalThis);

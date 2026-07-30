@@ -742,57 +742,65 @@
                 </button>
               </div>
             </div>
-            <div class="target-toolbar">
-              <div class="segmented" role="tablist" aria-label="目标类型">
-                <button class="active" data-target-filter="all" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
-                  全部
-                </button>
-                <button data-target-filter="private" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
-                  私聊
-                </button>
-                <button data-target-filter="group" type="button">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
-                  群组
-                </button>
-              </div>
-              <div class="target-search-actions">
-                <label class="target-search">
-                  <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索</span>
-                  <input id="targetSearchInput" type="search" placeholder="输入客户或群名" />
-                </label>
-                <div class="target-inline-bulk-actions">
-                  <button id="selectPrivateTargetsButton" class="secondary" type="button">
-                    <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
-                    全选私聊
-                  </button>
-                  <button id="selectGroupTargetsButton" class="secondary" type="button">
-                    <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
-                    全选群组
-                  </button>
-                  <button id="clearTargetsButton" class="secondary" type="button">
-                    <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
-                    清空
-                  </button>
+            <div class="proactive-filter-shell">
+              <div id="proactiveFilterControls" class="proactive-filter-controls">
+                <div class="target-toolbar">
+                  <div class="segmented" role="tablist" aria-label="目标类型">
+                    <button class="active" data-target-filter="all" type="button">
+                      <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+                      全部
+                    </button>
+                    <button data-target-filter="private" type="button">
+                      <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
+                      私聊
+                    </button>
+                    <button data-target-filter="group" type="button">
+                      <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+                      群组
+                    </button>
+                  </div>
+                  <div class="target-search-actions">
+                    <label class="target-search">
+                      <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>搜索</span>
+                      <input id="targetSearchInput" type="search" placeholder="输入客户或群名" />
+                    </label>
+                    <div class="target-inline-bulk-actions">
+                      <button id="selectPrivateTargetsButton" class="secondary" type="button">
+                        <svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>
+                        全选私聊
+                      </button>
+                      <button id="selectGroupTargetsButton" class="secondary" type="button">
+                        <svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>
+                        全选群组
+                      </button>
+                      <button id="clearTargetsButton" class="secondary" type="button">
+                        <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
+                        清空
+                      </button>
+                    </div>
+                  </div>
+                  <div class="bulk-actions">
+                    <label class="target-date-picker flow-session-date-filter">
+                      <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>按添加日期选择</span>
+                      <input id="targetDateTagSelect" type="date" />
+                    </label>
+                    <label class="target-tag-picker tag-multi-select">
+                      <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>按标签选择</span>
+                      <button id="targetTagSelectButton" class="tag-multi-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
+                        选择标签
+                      </button>
+                      <div id="targetTagSelectMenu" class="tag-multi-select-menu" role="listbox" aria-label="推送标签选择" hidden></div>
+                      <select id="targetTagSelect" multiple hidden></select>
+                    </label>
+                  </div>
                 </div>
+                <div id="targetList" class="target-list"></div>
               </div>
-              <div class="bulk-actions">
-                <label class="target-date-picker flow-session-date-filter">
-                  <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>按添加日期选择</span>
-                  <input id="targetDateTagSelect" type="date" />
-                </label>
-                <label class="target-tag-picker tag-multi-select">
-                  <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>按标签选择</span>
-                  <button id="targetTagSelectButton" class="tag-multi-select-button" type="button" aria-haspopup="listbox" aria-expanded="false">
-                    选择标签
-                  </button>
-                  <div id="targetTagSelectMenu" class="tag-multi-select-menu" role="listbox" aria-label="推送标签选择" hidden></div>
-                  <select id="targetTagSelect" multiple hidden></select>
-                </label>
+              <div id="proactiveFilterLoading" class="proactive-filter-loading" role="status" aria-live="polite" hidden>
+                <svg class="icon proactive-filter-loading-icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
+                <strong>正在筛选</strong>
               </div>
             </div>
-            <div id="targetList" class="target-list"></div>
           </div>
           <div class="target-selection-row">
             <div id="selectedTargetsSummary" class="selected-targets-summary">

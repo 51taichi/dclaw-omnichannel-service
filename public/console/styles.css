@@ -1427,6 +1427,70 @@ button.danger:hover {
   background: transparent;
 }
 
+.proactive-filter-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.proactive-filter-controls {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  transition: opacity 160ms ease, filter 160ms ease;
+}
+
+.proactive-filter-controls.is-loading {
+  opacity: 0.48;
+  filter: saturate(0.72);
+  pointer-events: none;
+  user-select: none;
+}
+
+.proactive-filter-loading {
+  --filter-loading-color: var(--accent);
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 74px;
+  border: 1px solid color-mix(in srgb, var(--filter-loading-color) 32%, var(--line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--filter-loading-color) 8%, rgba(255, 255, 255, 0.92));
+  color: color-mix(in srgb, var(--filter-loading-color) 82%, #17213f);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--filter-loading-color) 12%, transparent);
+  backdrop-filter: blur(2px);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.bot-context-panel.is-bound .proactive-filter-loading {
+  --filter-loading-color: var(--bot-accent);
+}
+
+.proactive-filter-loading[hidden] {
+  display: none;
+}
+
+.proactive-filter-loading-icon {
+  width: 20px;
+  height: 20px;
+  animation: proactiveFilterSpin 720ms linear infinite;
+}
+
+.target-pagination.is-loading {
+  opacity: 0.52;
+  pointer-events: none;
+}
+
+@keyframes proactiveFilterSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .media-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(180px, 1fr));

@@ -87,8 +87,8 @@ test("bulk target buttons select matching targets across every page", () => {
   assert.match(app, /params\.set\("pageSize", "100"\)/);
   assert.match(app, /for \(let page = 2; page <= totalPages; page \+= 1\)/);
   assert.match(app, /const allSelected = targets\.length > 0 && targets\.every\(\(target\) => selectedTargets\.has\(targetKey\(target\)\)\)/);
-  assert.match(app, /selectTargetsByTypeAcrossPages\("private"\)\.catch\(toastError\)/);
-  assert.match(app, /selectTargetsByTypeAcrossPages\("group"\)\.catch\(toastError\)/);
+  assert.match(app, /runProactiveFilterAction\(\(\) => selectTargetsByTypeAcrossPages\("private"\)\)\.catch\(toastError\)/);
+  assert.match(app, /runProactiveFilterAction\(\(\) => selectTargetsByTypeAcrossPages\("group"\)\)\.catch\(toastError\)/);
   assert.doesNotMatch(app, /function toggleTargetsByType\(type\)\s*\{[\s\S]*targetsByType\(type\)/);
 });
 

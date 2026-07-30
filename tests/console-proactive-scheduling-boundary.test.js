@@ -76,6 +76,19 @@ test("existing proactive target bulk controls remain in the same panel", () => {
   assert.doesNotMatch(bulkActions, /id="proactiveScheduleEnabled"|id="proactiveScheduledAt"/);
 });
 
+test("proactive filters expose one loading surface controlled by the interaction lock", () => {
+  const proactivePanel = sectionHtml("proactivePanel");
+
+  assert.match(proactivePanel, /id="proactiveFilterControls"/);
+  assert.match(proactivePanel, /id="proactiveFilterLoading"/);
+  assert.match(proactivePanel, /role="status"[\s\S]*正在筛选/);
+  assert.match(app, /createInteractionLock\(setProactiveFilterLoading\)/);
+  assert.match(app, /function runProactiveFilterAction/);
+  assert.match(app, /proactiveFilterLock\.reset\(\)/);
+  assert.match(css, /\.proactive-filter-loading/);
+  assert.match(css, /\.proactive-filter-controls\.is-loading/);
+});
+
 test("proactive task cancellation style is scoped to proactive rows", () => {
   assert.match(css, /\.proactive-task-cancel/);
 });

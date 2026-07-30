@@ -3,7 +3,7 @@ const SELECTED_TARGET_PREVIEW_LIMIT = 3;
 const BEIJING_TIME_ZONE = "Asia/Shanghai";
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 const DEFAULT_REPLY_WAIT_FALLBACK_REPLY = "刚刚这边有点忙，我稍后回复你哈";
-const { intersectTargetMaps } = window.ProactiveTargetSelection;
+const { createInteractionLock, intersectTargetMaps } = window.ProactiveTargetSelection;
 
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
@@ -20,6 +20,7 @@ const state = {
   unlockMode: "bot",
   pendingAdminKeyResolve: null,
   proactiveSubmitting: false,
+  proactiveFiltersLoading: false,
   proactiveUploadFiles: [],
   proactiveTargetTags: [],
   proactiveTagSelections: new Map(),
@@ -154,6 +155,8 @@ const els = {
   targetTagSelectButton: document.querySelector("#targetTagSelectButton"),
   targetTagSelectMenu: document.querySelector("#targetTagSelectMenu"),
   targetDateTagSelect: document.querySelector("#targetDateTagSelect"),
+  proactiveFilterControls: document.querySelector("#proactiveFilterControls"),
+  proactiveFilterLoading: document.querySelector("#proactiveFilterLoading"),
   targetList: document.querySelector("#targetList"),
   selectedTargetsSummary: document.querySelector("#selectedTargetsSummary"),
   selectedTargetsSummaryButton: document.querySelector("#selectedTargetsSummaryButton"),
@@ -180,6 +183,8 @@ const els = {
   botContextPanels: document.querySelectorAll(".bot-context-panel"),
   collapseButtons: document.querySelectorAll("[data-collapse-target]")
 };
+
+const proactiveFilterLock = createInteractionLock(setProactiveFilterLoading);
 
 if (els.apiKeyInput) els.apiKeyInput.value = state.apiKey;
 const today = formatLocalDate();
@@ -642,6 +647,9 @@ function connectTagAlerts(botId) {
 function clearBotScopedContent() {
   disconnectTagAlerts();
   window.cockpitConsole?.clear();
+  clearTimeout(proactiveSearchTimer);
+  proactiveSearchTimer = null;
+  proactiveFilterLock.reset();
   setFlowSessionTypeSelection("private");
   state.selectedFlowConversationKey = "";
   state.flowSessionsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
@@ -1077,6 +1085,7 @@ let currentBots = [];
 let currentAgents = [];
 let targetFilter = "all";
 let addressBookTargets = [];
+let proactiveSearchTimer = null;
 let currentFlowMachine = null;
 let currentFlowSessions = [];
 let flowDraftNodes = [];
@@ -1189,6 +1198,59 @@ function targetKey(target) {
   return `${target.targetType}:${target.targetName}`;
 }
 
+function proactiveFilterElements() {
+  return [
+    ...(els.proactiveFilterControls?.querySelectorAll("button, input, select") || []),
+    els.loadTargetsButton,
+    ...(els.targetPaginationEl?.querySelectorAll("button, select") || [])
+  ].filter(Boolean);
+}
+
+function setProactiveFilterLoading(loading) {
+  const isLoading = Boolean(loading);
+  state.proactiveFiltersLoading = isLoading;
+  if (isLoading) {
+    closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
+  }
+  if (els.proactiveFilterControls) {
+    els.proactiveFilterControls.classList.toggle("is-loading", isLoading);
+    els.proactiveFilterControls.setAttribute("aria-busy", String(isLoading));
+    els.proactiveFilterControls.inert = isLoading;
+  }
+  if (els.targetPaginationEl) {
+    els.targetPaginationEl.classList.toggle("is-loading", isLoading);
+    els.targetPaginationEl.setAttribute("aria-busy", String(isLoading));
+    els.targetPaginationEl.inert = isLoading;
+  }
+  if (els.proactiveFilterLoading) {
+    els.proactiveFilterLoading.hidden = !isLoading;
+  }
+  proactiveFilterElements().forEach((control) => {
+    if (isLoading) {
+      if (!control.hasAttribute("data-filter-lock-disabled")) {
+        control.dataset.filterLockDisabled = String(control.disabled);
+      }
+      control.disabled = true;
+      return;
+    }
+    if (!control.hasAttribute("data-filter-lock-disabled")) return;
+    control.disabled = control.dataset.filterLockDisabled === "true";
+    delete control.dataset.filterLockDisabled;
+  });
+}
+
+function runProactiveFilterAction(action) {
+  return proactiveFilterLock.run(action);
+}
+
+function scheduleProactiveTargetSearch() {
+  clearTimeout(proactiveSearchTimer);
+  proactiveSearchTimer = setTimeout(() => {
+    proactiveSearchTimer = null;
+    runProactiveFilterAction(() => reloadProactiveTargetsFromFirstPage()).catch(toastError);
+  }, 260);
+}
+
 function targetTypeLabel(type) {
   return type === "group" ? "群组" : "私聊";
 }
@@ -1249,33 +1311,25 @@ async function fetchAllAddressBookTargetsByType(type, { contextVersion = state.b
 async function selectTargetsByTypeAcrossPages(type) {
   const contextVersion = state.botContextVersion;
   const botId = state.selectedBotId;
-  const button = type === "group" ? els.selectGroupTargetsButton : els.selectPrivateTargetsButton;
-  button.disabled = true;
-  button.textContent = "加载中";
-  try {
-    const targets = await fetchAllAddressBookTargetsByType(type, { contextVersion });
-    if (!isCurrentBotContext(botId, contextVersion)) return;
-    const allSelected = targets.length > 0 && targets.every((target) => selectedTargets.has(targetKey(target)));
-    targets.forEach((target) => {
-      if (allSelected) {
-        selectedTargets.delete(targetKey(target));
-        state.proactiveManualTargetKeys.delete(targetKey(target));
-      } else {
-        selectedTargets.set(targetKey(target), target);
-        state.proactiveManualTargetKeys.add(targetKey(target));
-      }
-    });
-    renderSelectedTargets();
-    renderTargetList();
-    if (!targets.length) {
-      toast(`暂无${targetTypeLabel(type)}目标`);
-      return;
+  const targets = await fetchAllAddressBookTargetsByType(type, { contextVersion });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  const allSelected = targets.length > 0 && targets.every((target) => selectedTargets.has(targetKey(target)));
+  targets.forEach((target) => {
+    if (allSelected) {
+      selectedTargets.delete(targetKey(target));
+      state.proactiveManualTargetKeys.delete(targetKey(target));
+    } else {
+      selectedTargets.set(targetKey(target), target);
+      state.proactiveManualTargetKeys.add(targetKey(target));
     }
-    toast(`${allSelected ? "已取消" : "已选择"} ${targets.length} 个${targetTypeLabel(type)}目标`);
-  } finally {
-    button.disabled = false;
-    updateBulkActionButtons();
+  });
+  renderSelectedTargets();
+  renderTargetList();
+  if (!targets.length) {
+    toast(`暂无${targetTypeLabel(type)}目标`);
+    return;
   }
+  toast(`${allSelected ? "已取消" : "已选择"} ${targets.length} 个${targetTypeLabel(type)}目标`);
 }
 
 function clearSelectedTargets() {
@@ -1510,25 +1564,19 @@ async function toggleProactiveTagSelection(tagKey) {
     return;
   }
 
-  const select = els.targetTagSelectButton;
-  if (select) select.disabled = true;
-  try {
-    const targets = await fetchAllAddressBookTargetsByTag(tag, { contextVersion });
-    if (!isCurrentBotContext(botId, contextVersion)) return;
-    const targetMap = new Map();
-    for (const target of targets) {
-      const key = targetKey(target);
-      targetMap.set(key, target);
-    }
-    state.proactiveTagSelections.set(tagKey, targetMap);
-    reconcileProactiveTargetSelections();
-    renderProactiveTargetTags();
-    renderSelectedTargets();
-    renderTargetList();
-    toast(targets.length ? `已按标签选择 ${targets.length} 个客户` : "该标签暂无客户");
-  } finally {
-    if (select) select.disabled = false;
+  const targets = await fetchAllAddressBookTargetsByTag(tag, { contextVersion });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  const targetMap = new Map();
+  for (const target of targets) {
+    const key = targetKey(target);
+    targetMap.set(key, target);
   }
+  state.proactiveTagSelections.set(tagKey, targetMap);
+  reconcileProactiveTargetSelections();
+  renderProactiveTargetTags();
+  renderSelectedTargets();
+  renderTargetList();
+  toast(targets.length ? `已按标签选择 ${targets.length} 个客户` : "该标签暂无客户");
 }
 
 function proactiveDateTagKeyFromInput(value) {
@@ -1555,25 +1603,19 @@ async function syncProactiveDateTagSelection() {
     tagId,
     tagName: tagId
   };
-  const select = els.targetDateTagSelect;
-  if (select) select.disabled = true;
-  try {
-    const targets = await fetchAllAddressBookTargetsByTag(tag, { contextVersion });
-    if (!isCurrentBotContext(botId, contextVersion)) return;
-    const targetMap = new Map();
-    for (const target of targets) {
-      const key = targetKey(target);
-      targetMap.set(key, target);
-    }
-    state.proactiveTagSelections.set(dateKey, targetMap);
-    reconcileProactiveTargetSelections();
-    renderProactiveTargetTags();
-    renderSelectedTargets();
-    renderTargetList();
-    toast(targets.length ? `已按添加日期选择 ${targets.length} 个客户` : "该添加日期暂无客户");
-  } finally {
-    if (select) select.disabled = false;
+  const targets = await fetchAllAddressBookTargetsByTag(tag, { contextVersion });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  const targetMap = new Map();
+  for (const target of targets) {
+    const key = targetKey(target);
+    targetMap.set(key, target);
   }
+  state.proactiveTagSelections.set(dateKey, targetMap);
+  reconcileProactiveTargetSelections();
+  renderProactiveTargetTags();
+  renderSelectedTargets();
+  renderTargetList();
+  toast(targets.length ? `已按添加日期选择 ${targets.length} 个客户` : "该添加日期暂无客户");
 }
 
 function closeTagMultiSelectMenu(button, menu) {
@@ -1664,13 +1706,17 @@ async function loadAddressBookTargets({ contextVersion = state.botContextVersion
     container: els.targetPaginationEl,
     pagination: state.proactiveTargetsPagination,
     onPage: (page) => {
-      state.proactiveTargetsPagination.page = page;
-      loadAddressBookTargets().catch(toastError);
+      runProactiveFilterAction(async () => {
+        state.proactiveTargetsPagination.page = page;
+        await loadAddressBookTargets();
+      }).catch(toastError);
     },
     onPageSize: (pageSize) => {
-      state.proactiveTargetsPagination.page = 1;
-      state.proactiveTargetsPagination.pageSize = pageSize;
-      loadAddressBookTargets().catch(toastError);
+      runProactiveFilterAction(async () => {
+        state.proactiveTargetsPagination.page = 1;
+        state.proactiveTargetsPagination.pageSize = pageSize;
+        await loadAddressBookTargets();
+      }).catch(toastError);
     }
   });
   updateBulkActionButtons();
@@ -5696,9 +5742,7 @@ els.taskDateFrom.addEventListener("change", () =>
 els.taskDateTo.addEventListener("change", () =>
   reloadProactiveTasksFromFirstPage().catch(toastError)
 );
-els.targetSearchInput.addEventListener("input", () =>
-  reloadProactiveTargetsFromFirstPage().catch(toastError)
-);
+els.targetSearchInput.addEventListener("input", scheduleProactiveTargetSearch);
 els.targetTagSelectButton?.addEventListener("click", (event) => {
   event.stopPropagation();
   toggleTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
@@ -5706,13 +5750,10 @@ els.targetTagSelectButton?.addEventListener("click", (event) => {
 els.targetTagSelectMenu?.addEventListener("change", (event) => {
   const checkbox = event.target.closest('input[type="checkbox"]');
   if (!checkbox) return;
-  toggleProactiveTagSelection(checkbox.value).catch(toastError);
+  runProactiveFilterAction(() => toggleProactiveTagSelection(checkbox.value)).catch(toastError);
 });
-els.targetDateTagSelect?.addEventListener("input", () =>
-  syncProactiveDateTagSelection().catch(toastError)
-);
 els.targetDateTagSelect?.addEventListener("change", () =>
-  syncProactiveDateTagSelection().catch(toastError)
+  runProactiveFilterAction(syncProactiveDateTagSelection).catch(toastError)
 );
 els.selectedTargetsSummaryButton?.addEventListener("click", toggleSelectedTargetsPopover);
 els.selectedTargetsMoreButton?.addEventListener("click", (event) => {
@@ -5720,24 +5761,28 @@ els.selectedTargetsMoreButton?.addEventListener("click", (event) => {
   toggleSelectedTargetsPopover();
 });
 els.loadTargetsButton.addEventListener("click", () =>
-  reloadProactiveTargetsFromFirstPage().catch(toastError)
+  runProactiveFilterAction(() => reloadProactiveTargetsFromFirstPage()).catch(toastError)
 );
 els.selectPrivateTargetsButton.addEventListener("click", () =>
-  selectTargetsByTypeAcrossPages("private").catch(toastError)
+  runProactiveFilterAction(() => selectTargetsByTypeAcrossPages("private")).catch(toastError)
 );
 els.selectGroupTargetsButton.addEventListener("click", () =>
-  selectTargetsByTypeAcrossPages("group").catch(toastError)
+  runProactiveFilterAction(() => selectTargetsByTypeAcrossPages("group")).catch(toastError)
 );
-els.clearTargetsButton.addEventListener("click", clearSelectedTargets);
+els.clearTargetsButton.addEventListener("click", () =>
+  runProactiveFilterAction(async () => clearSelectedTargets()).catch(toastError)
+);
 els.proactiveScheduleEnabled?.addEventListener("change", syncProactiveScheduleFields);
 document.querySelectorAll("[data-target-filter]").forEach((button) => {
-  button.addEventListener("click", () => {
-    targetFilter = button.dataset.targetFilter;
-    document.querySelectorAll("[data-target-filter]").forEach((item) => {
-      item.classList.toggle("active", item === button);
-    });
-    reloadProactiveTargetsFromFirstPage().catch(toastError);
-  });
+  button.addEventListener("click", () =>
+    runProactiveFilterAction(async () => {
+      targetFilter = button.dataset.targetFilter;
+      document.querySelectorAll("[data-target-filter]").forEach((item) => {
+        item.classList.toggle("active", item === button);
+      });
+      await reloadProactiveTargetsFromFirstPage();
+    }).catch(toastError)
+  );
 });
 els.workspaceTabs.forEach((button) => {
   button.addEventListener("click", () => switchWorkspaceTab(button.dataset.workspaceTab));
