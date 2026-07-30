@@ -6375,8 +6375,10 @@ td .muted {
   color: var(--text);
   font-size: clamp(22px, 2.2vw, 30px);
   font-variant-numeric: tabular-nums;
+  inline-size: 4ch;
   line-height: 1;
   max-width: 100%;
+  min-inline-size: 4ch;
   overflow: hidden;
   text-align: right;
   text-overflow: ellipsis;

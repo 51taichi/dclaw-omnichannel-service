@@ -87,12 +87,16 @@ test("outcome labels stay inside the donut card and tag names align beside bars"
 
 test("large metric values use stable compact slots without changing the layout", () => {
   assert.match(cockpit, /function formatDashboardNumber/);
+  assert.match(cockpit, /1000/);
+  assert.match(cockpit, /千/);
   assert.match(cockpit, /10000/);
   assert.match(cockpit, /万/);
   assert.match(cockpit, /100000000/);
   assert.match(cockpit, /亿/);
   assert.match(cockpit, /title="\$\{fullNumber/);
   assert.match(css, /font-variant-numeric:\s*tabular-nums/);
+  assert.match(css, /\.cockpit-metric-card strong[\s\S]*inline-size:\s*4ch/);
+  assert.match(css, /\.cockpit-metric-card strong[\s\S]*min-inline-size:\s*4ch/);
   assert.match(css, /\.cockpit-metric-card strong[\s\S]*white-space:\s*nowrap/);
   assert.match(css, /\.cockpit-tag-row[\s\S]*grid-template-columns:[^;]*40px 48px/);
 });

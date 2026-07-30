@@ -72,6 +72,7 @@
     );
     if (number >= 100000000) return compact(number / 100000000, "亿");
     if (number >= 10000) return compact(number / 10000, "万");
+    if (number >= 1000) return compact(number / 1000, "千");
     return number.toLocaleString("zh-CN");
   }
 
