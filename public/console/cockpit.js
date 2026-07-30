@@ -158,6 +158,50 @@
     return percentages;
   }
 
+  function outcomeDonut(metrics = {}) {
+    const total = Math.max(0, Number(metrics.newCustomers || 0));
+    const neverReplied = Math.min(total, Math.max(0, Number(metrics.neverReplied || 0)));
+    const stoppedReplying = Math.min(
+      total - neverReplied,
+      Math.max(0, Number(metrics.stoppedReplying || 0))
+    );
+    const effectiveConversations = total - neverReplied - stoppedReplying;
+    const outcomes = [
+      { label: "从未回复", reached: neverReplied, className: "never" },
+      { label: "中途未回复", reached: stoppedReplying, className: "stopped" },
+      { label: "有效沟通", reached: effectiveConversations, className: "effective" }
+    ];
+    const percentages = distributionPercentages(outcomes);
+    let offset = 0;
+    return `
+      <article class="cockpit-card cockpit-outcome-card" aria-label="新增客户沟通结果占比">
+        <div class="cockpit-outcome-donut">
+          <svg viewBox="0 0 120 120" role="img" aria-label="从未回复、中途未回复和有效沟通占比">
+            <circle class="cockpit-outcome-ring" cx="60" cy="60" r="44"></circle>
+            ${outcomes.map((outcome, index) => {
+              const percent = percentages[index];
+              const segment = `<circle class="cockpit-outcome-segment ${outcome.className}" cx="60" cy="60" r="44" pathLength="100" stroke-dasharray="${percent} ${100 - percent}" stroke-dashoffset="${-offset}"></circle>`;
+              offset += percent;
+              return segment;
+            }).join("")}
+            <text class="cockpit-outcome-total" x="60" y="58" text-anchor="middle">${total}</text>
+            <text class="cockpit-outcome-total-label" x="60" y="74" text-anchor="middle">新增客户</text>
+          </svg>
+        </div>
+        <div class="cockpit-outcome-legend">
+          ${outcomes.map((outcome, index) => `
+            <div>
+              <i class="${outcome.className}"></i>
+              <span>${outcome.label}</span>
+              <strong>${outcome.reached}</strong>
+              <small>${percentages[index].toFixed(1)}%</small>
+            </div>
+          `).join("")}
+        </div>
+      </article>
+    `;
+  }
+
   function funnelChart(data) {
     const nodes = (data.nodeDistribution?.length
       ? data.nodeDistribution
@@ -257,11 +301,12 @@
         </header>
 
         <section id="cockpitMetricGrid" class="cockpit-metric-grid" aria-label="核心经营指标">
-          ${metricDefinitions.map(([key, label, iconName]) => `
+          ${metricDefinitions.map(([key, label, iconName], index) => `
             <article class="cockpit-card cockpit-metric-card" tabindex="0">
               <span class="cockpit-metric-label">${icon(iconName)}<span>${label}</span></span>
               <strong>${metricValue(key, data.metrics || {}, data.today || {})}</strong>
             </article>
+            ${index === 1 ? outcomeDonut(data.metrics || {}) : ""}
           `).join("")}
         </section>
 

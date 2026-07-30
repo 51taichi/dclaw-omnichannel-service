@@ -67,6 +67,17 @@ test("cockpit top metrics stay universal across sales and service Bots", () => {
   assert.match(cockpit, /<span>回复 /);
 });
 
+test("cockpit centers an exhaustive new-customer outcome donut in the metric grid", () => {
+  assert.match(cockpit, /function outcomeDonut/);
+  assert.match(cockpit, /cockpit-outcome-card/);
+  assert.match(cockpit, /从未回复/);
+  assert.match(cockpit, /中途未回复/);
+  assert.match(cockpit, /有效沟通/);
+  assert.match(cockpit, /新增客户/);
+  assert.match(css, /\.cockpit-outcome-card[\s\S]*grid-row:\s*span 2/);
+  assert.match(css, /\.cockpit-outcome-segment/);
+});
+
 test("cockpit keeps the first screen compact", () => {
   assert.doesNotMatch(cockpit, /id="cockpitAiSummary"/);
   assert.match(css, /\.cockpit-metric-card\s*\{[\s\S]*grid-template-columns:/);

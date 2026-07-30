@@ -89,9 +89,44 @@ test("snapshot includes universal message metrics, reply risks, nodes and tags",
   assert.equal(saved.metrics.replyMessages, 1);
   assert.equal(saved.metrics.customerMessages, 0);
   assert.equal(saved.metrics.neverReplied, 1);
+  assert.equal(saved.metrics.effectiveConversations, 0);
   assert.equal("invitationRate" in saved.metrics, false);
   assert.equal(saved.charts.nodeDistribution[0].nodeId, "node1");
   assert.equal(saved.charts.tags[0].tagId, "hot");
+});
+
+test("waiting customers remain part of the exhaustive effective outcome", async () => {
+  let saved;
+  const events = [
+    { id: 1, customerKey: "a", eventType: "friend_added", occurredAt: "2026-07-30T01:00:00.000Z" },
+    { id: 2, customerKey: "a", eventType: "customer_message", occurredAt: "2026-07-30T01:10:00.000Z" },
+    { id: 3, customerKey: "a", eventType: "bot_message", occurredAt: "2026-07-30T01:20:00.000Z" }
+  ];
+  const aggregator = createCockpitAggregator({
+    getConfig: () => ({ timezone: "Asia/Shanghai", defaultNoReplyHours: 48, nodeNoReplyHours: {} }),
+    getCursor: () => ({ lastEventId: 0 }),
+    listEvents: () => events,
+    loadState: () => ({ events: [] }),
+    saveState: () => {},
+    saveSnapshot: (snapshot) => { saved = snapshot; return snapshot; },
+    saveCursor: () => {}
+  });
+
+  await aggregator.aggregateBot({
+    botId: "bot-a",
+    throughAt: "2026-07-31T02:00:00.000Z",
+    periodTypes: ["daily"]
+  });
+
+  assert.equal(saved.metrics.newCustomers, 1);
+  assert.equal(saved.metrics.waiting, 1);
+  assert.equal(saved.metrics.effectiveConversations, 1);
+  assert.equal(
+    saved.metrics.neverReplied
+      + saved.metrics.stoppedReplying
+      + saved.metrics.effectiveConversations,
+    saved.metrics.newCustomers
+  );
 });
 
 test("aggregation uses the real persisted baseline when the period has no chart events", async () => {

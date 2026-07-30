@@ -23,7 +23,13 @@ export function createCockpitBootstrap({
           const hasUniversalMetrics = snapshot
             && Object.hasOwn(snapshot.metrics || {}, "customerMessages")
             && Object.hasOwn(snapshot.metrics || {}, "replyMessages");
-          if (snapshot && hasChartData && hasUniversalMetrics) {
+          const metrics = snapshot?.metrics || {};
+          const hasExhaustiveOutcomes = Number(metrics.newCustomers || 0) === (
+            Number(metrics.neverReplied || 0)
+            + Number(metrics.stoppedReplying || 0)
+            + Number(metrics.effectiveConversations || 0)
+          );
+          if (snapshot && hasChartData && hasUniversalMetrics && hasExhaustiveOutcomes) {
             skipped += 1;
             continue;
           }

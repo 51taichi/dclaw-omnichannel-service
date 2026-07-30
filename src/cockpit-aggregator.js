@@ -99,6 +99,10 @@ export function createCockpitAggregator({
       metrics.neverReplied = riskCounts.never_replied;
       metrics.stoppedReplying = riskCounts.stopped_replying;
       metrics.waiting = riskCounts.waiting;
+      metrics.effectiveConversations = Math.max(
+        0,
+        metrics.newCustomers - metrics.neverReplied - metrics.stoppedReplying
+      );
       metrics.handoffs = new Set(events
         .filter((event) => event.eventType === "handoff"
           && event.occurredAt >= period.start && event.occurredAt < period.end)
