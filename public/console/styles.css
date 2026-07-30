@@ -6578,6 +6578,10 @@ td .muted {
   fill: var(--bot-accent, var(--accent));
 }
 
+.cockpit-funnel-row {
+  cursor: help;
+}
+
 .cockpit-chart-label,
 .cockpit-chart-value {
   fill: var(--muted);

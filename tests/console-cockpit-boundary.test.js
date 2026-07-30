@@ -116,6 +116,18 @@ test("outcome legend shows only percentages and reveals counts in hover tips", (
   assert.match(css, /\.cockpit-outcome-legend > div:hover::after/);
 });
 
+test("task node chart shows only percentages and keeps counts in row tips", () => {
+  const funnelStart = cockpit.indexOf("function funnelChart");
+  const funnelEnd = cockpit.indexOf("\n  function tagChart", funnelStart);
+  const funnelSource = cockpit.slice(funnelStart, funnelEnd);
+  assert.match(funnelSource, /class="cockpit-funnel-row"/);
+  assert.match(funnelSource, /<title>\$\{escapeHtml\(tooltip\)\}<\/title>/);
+  assert.match(funnelSource, /人数：\$\{Number\(node\.reached/);
+  assert.match(funnelSource, />\$\{percentages\[index\]\.toFixed\(1\)\}%<\/text>/);
+  assert.doesNotMatch(funnelSource, /formatDashboardNumber\(node\.reached\).*·/);
+  assert.match(css, /\.cockpit-funnel-row[\s\S]*cursor:\s*help/);
+});
+
 test("large metric values use stable compact slots without changing the layout", () => {
   assert.match(cockpit, /function formatDashboardNumber/);
   assert.match(cockpit, /1000/);

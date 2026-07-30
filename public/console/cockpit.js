@@ -239,11 +239,15 @@
             const nodeName = node.nodeId === "__conversation__"
               ? "其他（未进入任务）"
               : (node.nodeName || node.nodeId);
+            const tooltip = `${nodeName} · 人数：${Number(node.reached || 0).toLocaleString("zh-CN")} · 占比：${percentages[index].toFixed(1)}%`;
             return `
-              <text class="cockpit-chart-label" x="140" y="${y + 16}" text-anchor="end">${escapeHtml(nodeName)}</text>
-              <rect class="cockpit-chart-track" x="166" y="${y}" width="390" height="22" rx="7"></rect>
-              <rect class="cockpit-chart-bar" x="166" y="${y}" width="${width}" height="22" rx="7"></rect>
-              <text class="cockpit-chart-value" x="570" y="${y + 16}">${formatDashboardNumber(node.reached)} · ${percentages[index].toFixed(1)}%</text>
+              <g class="cockpit-funnel-row" tabindex="0">
+                <title>${escapeHtml(tooltip)}</title>
+                <text class="cockpit-chart-label" x="140" y="${y + 16}" text-anchor="end">${escapeHtml(nodeName)}</text>
+                <rect class="cockpit-chart-track" x="166" y="${y}" width="390" height="22" rx="7"></rect>
+                <rect class="cockpit-chart-bar" x="166" y="${y}" width="${width}" height="22" rx="7"></rect>
+                <text class="cockpit-chart-value" x="570" y="${y + 16}">${percentages[index].toFixed(1)}%</text>
+              </g>
             `;
           }).join("")}
         </svg>
