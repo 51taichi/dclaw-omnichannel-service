@@ -142,7 +142,8 @@ export async function validateAndRetryAgentResponse({
   onLocalRepair
 }) {
   const attempts = [];
-  let currentRequest = request;
+  const originalRequest = structuredClone(request);
+  let currentRequest = structuredClone(originalRequest);
 
   for (let attemptNumber = 1; attemptNumber <= 2; attemptNumber += 1) {
     let invocation;
@@ -201,10 +202,12 @@ export async function validateAndRetryAgentResponse({
 
     if (attemptNumber === 1) {
       onRetryRequested?.({ rawReplyLength: String(invocation?.reply || "").length });
-      currentRequest = buildAgentResponseValidationRetryRequest(request, validation.errors, {
-        rawResponse: validation.rawText,
-        tagContext: validationOptions.tagContext
-      });
+      currentRequest = shouldRegenerateOriginalRequest(validation.errors)
+        ? structuredClone(originalRequest)
+        : buildAgentResponseValidationRetryRequest(originalRequest, validation.errors, {
+            rawResponse: validation.rawText,
+            tagContext: validationOptions.tagContext
+          });
     } else {
       onRetryOutcome?.({
         outcome: "failed",
@@ -222,6 +225,11 @@ export async function validateAndRetryAgentResponse({
     validation: lastAttempt.validation,
     attempts
   };
+}
+
+function shouldRegenerateOriginalRequest(errors = []) {
+  return errors.length > 0
+    && errors.every((error) => String(error?.type || "").trim() === "json_syntax");
 }
 
 export function summarizeValidationErrors(errors = []) {

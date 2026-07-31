@@ -92,7 +92,7 @@ const completeNegativeTagAudit = [
   }
 ];
 
-test("gateway retries a deliberately broken successful JSON response and validates the repair", async () => {
+test("gateway regenerates syntax failures with the unchanged original request", async () => {
   const validResponse = JSON.stringify({
     reply: "您好，我来帮您了解一下。",
     attachments: [],
@@ -102,10 +102,12 @@ test("gateway retries a deliberately broken successful JSON response and validat
   const requests = [];
   const validationFailures = [];
 
+  const originalRequest = { message: "客户：您好", metadata: { source: "test" } };
   const result = await validateAndRetryAgentResponse({
-    request: { message: "客户：您好", metadata: { source: "test" } },
+    request: originalRequest,
     invoke: async ({ request, attemptNumber }) => {
-      requests.push({ request, attemptNumber });
+      requests.push({ request: structuredClone(request), attemptNumber });
+      if (attemptNumber === 1) request.metadata.source = "mutated-by-invoke";
       return {
         reply: attemptNumber === 1 ? brokenResponse : validResponse,
         response: { attemptNumber }
@@ -121,9 +123,48 @@ test("gateway retries a deliberately broken successful JSON response and validat
   assert.equal(validationFailures[0].attemptNumber, 1);
   assert.equal(validationFailures[0].retryRequested, false);
   assert.equal(requests[1].attemptNumber, 2);
-  assert.equal(requests[1].request.metadata.validationRetry, true);
-  assert.match(requests[1].request.message, /上一条输出没有通过服务端 JSON 响应校验/);
-  assert.match(requests[1].request.message, /json_syntax/);
+  assert.deepEqual(requests[1].request, requests[0].request);
+  assert.deepEqual(requests[1].request, originalRequest);
+  assert.equal(requests[1].request.metadata.validationRetry, undefined);
+  assert.equal(requests[1].request.message, "客户：您好");
+});
+
+test("gateway uses a targeted retry request for schema failures", async () => {
+  const originalRequest = { message: "客户：您好", metadata: { source: "test" } };
+  const requests = [];
+
+  const result = await validateAndRetryAgentResponse({
+    request: originalRequest,
+    validationOptions: { requireFlowDecision: true },
+    invoke: async ({ request, attemptNumber }) => {
+      requests.push(request);
+      return {
+        reply: JSON.stringify(attemptNumber === 1
+          ? { reply: "您好", attachments: [], sources: [] }
+          : {
+              reply: "您好",
+              attachments: [],
+              sources: [],
+              flowDecision: {
+                currentNodeId: "node_1",
+                nextNodeId: "node_1",
+                nodeCompleted: false,
+                confidence: 0.8,
+                reason: "继续当前节点",
+                collectedDataPatch: {}
+              }
+            }),
+        response: { attemptNumber }
+      };
+    }
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(requests.length, 2);
+  assert.notStrictEqual(requests[1], originalRequest);
+  assert.equal(requests[1].metadata.validationRetry, true);
+  assert.match(requests[1].message, /flowDecision is required/);
+  assert.match(requests[1].message, /上一版原始响应/);
 });
 
 test("gateway reports when the validation retry succeeds", async () => {
@@ -146,6 +187,29 @@ test("gateway reports when the validation retry succeeds", async () => {
     attemptNumber: 2,
     error: null
   }]);
+});
+
+test("gateway stops after two syntax failures and reports the final outcome", async () => {
+  const requests = [];
+  const failures = [];
+  const outcomes = [];
+  const originalRequest = { message: "客户：你好", metadata: { source: "test" } };
+
+  const result = await validateAndRetryAgentResponse({
+    request: originalRequest,
+    invoke: async ({ request }) => {
+      requests.push(structuredClone(request));
+      return { reply: "not-json", response: null };
+    },
+    onValidationFailure: (failure) => failures.push(failure),
+    onRetryOutcome: (outcome) => outcomes.push(outcome)
+  });
+
+  assert.equal(result.valid, false);
+  assert.equal(requests.length, 2);
+  assert.deepEqual(requests, [originalRequest, originalRequest]);
+  assert.deepEqual(failures.map((failure) => failure.retryRequested), [false, true]);
+  assert.deepEqual(outcomes, [{ outcome: "failed", attemptNumber: 2, error: null }]);
 });
 
 test("authorized group requests retry an empty reply instead of accepting silence", async () => {
