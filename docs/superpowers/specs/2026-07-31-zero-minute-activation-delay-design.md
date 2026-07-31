@@ -27,7 +27,7 @@ Flow and tag activation normalizers accept zero while retaining current defaults
 
 Centralize the delay conversion so every activation path follows the same rule:
 
-- zero minutes: `5,000` milliseconds per interval multiplier;
+- zero minutes: always `5,000` milliseconds, including repeated attempts;
 - positive minutes: `intervalMinutes * 60,000` milliseconds per interval multiplier.
 
 This applies to friend-added entry activation, normal flow activation, subsequent activation attempts, subsequent activation messages, and tag activation.
@@ -44,4 +44,3 @@ This applies to friend-added entry activation, normal flow activation, subsequen
 - Activation normalization tests prove zero survives flow and tag configuration handling.
 - Scheduling tests prove zero maps to five seconds and positive values remain minute-based.
 - Existing activation, friend-added, tag activation, and full test suites must remain green.
-
