@@ -6,14 +6,84 @@ import {
   periodBounds
 } from "./cockpit-domain.js";
 
+export const COCKPIT_STATISTICS_VERSION = 2;
+
 function mergeEvents(existing, incoming) {
   const byId = new Map(existing.map((event) => [event.id, event]));
   for (const event of incoming) byId.set(event.id, event);
   return [...byId.values()].sort((left, right) => left.id - right.id);
 }
 
+function periodNodeDistribution({ events, period, definitions = [] }) {
+  const periodEvents = events.filter((event) => (
+    event.occurredAt >= period.start && event.occurredAt < period.end
+  ));
+  const activeCustomers = new Set(
+    periodEvents
+      .filter((event) => (
+        ["friend_added", "customer_message", "bot_message"].includes(event.eventType)
+      ))
+      .map((event) => event.customerKey)
+      .filter(Boolean)
+  );
+  if (!activeCustomers.size) return [];
+
+  const finalNodeByCustomer = new Map();
+  for (const event of periodEvents) {
+    if (
+      event.eventType !== "node_reached"
+      || !event.nodeId
+      || !activeCustomers.has(event.customerKey)
+    ) continue;
+    const existing = finalNodeByCustomer.get(event.customerKey);
+    if (
+      !existing
+      || event.occurredAt > existing.occurredAt
+      || (
+        event.occurredAt === existing.occurredAt
+        && Number(event.id || 0) > Number(existing.id || 0)
+      )
+    ) {
+      finalNodeByCustomer.set(event.customerKey, event);
+    }
+  }
+  const definitionById = new Map(
+    definitions.map((node, index) => [
+      node.nodeId,
+      { ...node, order: index }
+    ])
+  );
+  const counts = new Map();
+  for (const event of finalNodeByCustomer.values()) {
+    counts.set(event.nodeId, (counts.get(event.nodeId) || 0) + 1);
+  }
+  const rows = [...counts.entries()].map(([nodeId, reached]) => ({
+    nodeId,
+    nodeName: definitionById.get(nodeId)?.nodeName || nodeId,
+    reached,
+    share: reached / activeCustomers.size,
+    basis: "period_final_state",
+    order: definitionById.get(nodeId)?.order ?? Number.MAX_SAFE_INTEGER
+  }));
+  const unassigned = activeCustomers.size - finalNodeByCustomer.size;
+  if (unassigned > 0) {
+    rows.push({
+      nodeId: "__conversation__",
+      nodeName: "其他（未进入任务）",
+      reached: unassigned,
+      share: unassigned / activeCustomers.size,
+      basis: "period_final_state",
+      order: Number.MAX_SAFE_INTEGER
+    });
+  }
+  return rows
+    .sort((left, right) => left.order - right.order)
+    .map(({ order, ...row }) => row);
+}
+
 export function createCockpitAggregator({
   getConfig,
+  backfillEvents = () => ({ inserted: 0 }),
   getCursor,
   listEvents,
   loadState,
@@ -28,6 +98,7 @@ export function createCockpitAggregator({
     periodTypes = ["daily", "weekly", "monthly"]
   }) {
     const config = getConfig(botId);
+    await backfillEvents({ botId, throughAt });
     const cursor = getCursor(botId);
     const incoming = listEvents({
       botId,
@@ -48,13 +119,11 @@ export function createCockpitAggregator({
         timezone: config.timezone
       });
       const funnels = aggregateCohortFunnels({ events, period });
-      const eventNodeDistribution = funnels.flatMap((funnel) => (
-        funnel.nodes.map((node) => ({
-          flowVersionId: funnel.flowVersionId,
-          ...node,
-          basis: "cohort_reached"
-        }))
-      ));
+      const eventNodeDistribution = periodNodeDistribution({
+        events,
+        period,
+        definitions: baselineCharts.nodeDistribution || []
+      });
       const tagChanges = aggregateTagChanges({
         events: events.filter((event) => (
           !event.occurredAt || (
@@ -136,7 +205,7 @@ export function createCockpitAggregator({
           nodeDistribution: eventNodeDistribution,
           tags: periodTags
         },
-        definitions: {},
+        definitions: { statisticsVersion: COCKPIT_STATISTICS_VERSION },
         generatedAt: throughAt
       }));
     }

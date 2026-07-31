@@ -21,7 +21,8 @@ test("bootstrap aggregates only enabled Bots without a daily snapshot", async ()
             stoppedReplying: 0,
             effectiveConversations: 0
           },
-          charts: { nodeDistribution: [{ nodeId: "real" }], tags: [] }
+          charts: { nodeDistribution: [{ nodeId: "real" }], tags: [] },
+          definitions: { statisticsVersion: 2 }
         }
       : null,
     aggregateBot: async (input) => aggregated.push(input)
@@ -88,6 +89,33 @@ test("bootstrap refreshes snapshots whose customer outcomes are not exhaustive",
   });
 
   await bootstrap.run({ throughAt: "2026-07-30T20:00:00.000Z" });
+
+  assert.equal(calls.length, 1);
+});
+
+test("bootstrap refreshes snapshots produced by the historical-stock statistics version", async () => {
+  const calls = [];
+  const bootstrap = createCockpitBootstrap({
+    listBots: () => [{ botId: "old-statistics", enabled: true }],
+    getLatestSnapshot: () => ({
+      metrics: {
+        newCustomers: 0,
+        customerMessages: 0,
+        replyMessages: 0,
+        neverReplied: 0,
+        stoppedReplying: 0,
+        effectiveConversations: 0
+      },
+      charts: {
+        nodeDistribution: [{ nodeId: "old", basis: "current_state" }],
+        tags: []
+      },
+      definitions: { statisticsVersion: 1 }
+    }),
+    aggregateBot: async (input) => calls.push(input)
+  });
+
+  await bootstrap.run({ throughAt: "2026-07-31T01:00:00.000Z" });
 
   assert.equal(calls.length, 1);
 });

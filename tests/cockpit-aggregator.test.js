@@ -38,6 +38,40 @@ test("aggregation advances cursor only after saving a ready snapshot", async () 
   ]);
 });
 
+test("aggregation backfills committed business outcomes before reading its cursor", async () => {
+  const calls = [];
+  const aggregator = createCockpitAggregator({
+    getConfig: () => ({ timezone: "Asia/Shanghai" }),
+    backfillEvents: ({ botId, throughAt }) => {
+      calls.push(["backfill", botId, throughAt]);
+    },
+    getCursor: () => {
+      calls.push(["cursor"]);
+      return { lastEventId: 0 };
+    },
+    listEvents: () => {
+      calls.push(["events"]);
+      return [];
+    },
+    loadState: () => ({ events: [] }),
+    saveState: () => {},
+    saveSnapshot: (snapshot) => snapshot,
+    saveCursor: () => {}
+  });
+
+  await aggregator.aggregateBot({
+    botId: "bot-a",
+    throughAt: "2026-07-31T01:00:00.000Z",
+    periodTypes: ["daily"]
+  });
+
+  assert.deepEqual(calls.slice(0, 3), [
+    ["backfill", "bot-a", "2026-07-31T01:00:00.000Z"],
+    ["cursor"],
+    ["events"]
+  ]);
+});
+
 test("aggregation failure leaves state and cursor unchanged", async () => {
   const calls = [];
   const aggregator = createCockpitAggregator({
@@ -91,6 +125,7 @@ test("snapshot includes universal message metrics, reply risks, nodes and tags",
   assert.equal(saved.metrics.neverReplied, 1);
   assert.equal(saved.metrics.effectiveConversations, 0);
   assert.equal("invitationRate" in saved.metrics, false);
+  assert.equal(saved.definitions.statisticsVersion, 2);
   assert.equal(saved.charts.nodeDistribution[0].nodeId, "node1");
   assert.equal(saved.charts.tags[0].tagId, "hot");
 });
@@ -219,4 +254,53 @@ test("aggregation enriches period tag changes without copying baseline stock cou
     current: 1,
     basis: "period_change"
   }]);
+});
+
+test("node distribution uses each active customer's final period node and includes unassigned activity", async () => {
+  let saved;
+  const events = [
+    { id: 1, customerKey: "a", eventType: "customer_message", occurredAt: "2026-07-30T01:00:00.000Z" },
+    { id: 2, customerKey: "a", eventType: "node_reached", nodeId: "start", occurredAt: "2026-07-30T01:05:00.000Z" },
+    { id: 3, customerKey: "a", eventType: "node_reached", nodeId: "qualified", occurredAt: "2026-07-30T02:00:00.000Z" },
+    { id: 4, customerKey: "b", eventType: "customer_message", occurredAt: "2026-07-30T03:00:00.000Z" }
+  ];
+  const aggregator = createCockpitAggregator({
+    getConfig: () => ({ timezone: "Asia/Shanghai", defaultNoReplyHours: 24 }),
+    getCursor: () => ({ lastEventId: 0 }),
+    listEvents: () => events,
+    loadState: () => ({ events: [] }),
+    getBaselineCharts: () => ({
+      nodeDistribution: [
+        { nodeId: "start", nodeName: "开始" },
+        { nodeId: "qualified", nodeName: "已沟通" }
+      ],
+      tags: []
+    }),
+    saveState: () => {},
+    saveSnapshot: (snapshot) => { saved = snapshot; return snapshot; },
+    saveCursor: () => {}
+  });
+
+  await aggregator.aggregateBot({
+    botId: "bot-a",
+    throughAt: "2026-07-31T01:00:00.000Z",
+    periodTypes: ["daily"]
+  });
+
+  assert.deepEqual(saved.charts.nodeDistribution, [
+    {
+      nodeId: "qualified",
+      nodeName: "已沟通",
+      reached: 1,
+      share: 0.5,
+      basis: "period_final_state"
+    },
+    {
+      nodeId: "__conversation__",
+      nodeName: "其他（未进入任务）",
+      reached: 1,
+      share: 0.5,
+      basis: "period_final_state"
+    }
+  ]);
 });

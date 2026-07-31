@@ -324,3 +324,100 @@ test("cockpit baseline charts use real flow nodes and current customer tags", ()
     ["客户意向", "高意向", 1]
   ]);
 });
+
+test("cockpit backfill projects committed replies nodes and tag changes", () => {
+  const binding = seedBot("backfill-bot");
+  const conversationKey = "backfill-bot:private:alice";
+  const machine = db.upsertFlowMachine({
+    agentId: binding.agentId,
+    config: {
+      name: "回填流程",
+      version: "1",
+      entryNodeId: "start",
+      nodes: [
+        { id: "start", name: "开始" },
+        { id: "qualified", name: "已沟通" }
+      ]
+    }
+  });
+  db.getOrCreateFlowSession({
+    botId: binding.botId,
+    conversationKey,
+    machine: machine.config
+  });
+  db.upsertConversation({
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationKey,
+    message: { roomType: 2, receivedName: "alice", groupName: "alice" }
+  });
+  db.insertIncomingMessage({
+    botId: binding.botId,
+    conversationKey,
+    payload: {
+      messageId: "incoming-1",
+      spoken: "你好",
+      receivedName: "alice",
+      roomType: 2,
+      textType: 1
+    }
+  });
+  db.updateFlowSessionNode({
+    botId: binding.botId,
+    conversationKey,
+    nextNodeId: "qualified",
+    reason: "test"
+  });
+  db.insertOutgoingMessage({
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationKey,
+    messageId: "reply-1",
+    targetName: "alice",
+    content: "您好",
+    worktoolResponse: { code: 0 }
+  });
+  db.applyConversationTagChanges({
+    botId: binding.botId,
+    agentId: binding.agentId,
+    conversationKey,
+    accepted: [{
+      action: "add",
+      groupId: "intent",
+      tagId: "hot",
+      reason: "test"
+    }],
+    nextTags: [{
+      groupId: "intent",
+      groupName: "意向",
+      tagId: "hot",
+      tagName: "高意向"
+    }]
+  });
+
+  const result = db.backfillCockpitEventsFromBusiness({
+    botId: binding.botId,
+    throughAt: "2999-12-31T23:59:59.999Z"
+  });
+  const events = db.listCockpitEvents({
+    botId: binding.botId,
+    afterId: 0,
+    throughAt: "2999-12-31T23:59:59.999Z",
+    limit: 100
+  });
+
+  assert.equal(result.inserted >= 3, true);
+  assert.deepEqual(
+    events.map((event) => event.eventType).sort(),
+    ["bot_message", "customer_message", "friend_added", "node_reached", "tag_added"]
+  );
+  assert.equal(events.find((event) => event.eventType === "node_reached").nodeId, "qualified");
+  assert.equal(events.find((event) => event.eventType === "tag_added").tagId, "hot");
+  assert.equal(
+    db.backfillCockpitEventsFromBusiness({
+      botId: binding.botId,
+      throughAt: "2999-12-31T23:59:59.999Z"
+    }).inserted,
+    0
+  );
+});

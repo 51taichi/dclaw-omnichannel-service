@@ -753,6 +753,18 @@ db.exec(`
     updated_at TEXT NOT NULL,
     PRIMARY KEY (local_date, stage)
   );
+
+  CREATE INDEX IF NOT EXISTS idx_incoming_messages_cockpit_backfill
+  ON incoming_messages (bot_id, created_at, id);
+
+  CREATE INDEX IF NOT EXISTS idx_outgoing_messages_cockpit_backfill
+  ON outgoing_messages (bot_id, created_at, id);
+
+  CREATE INDEX IF NOT EXISTS idx_flow_sessions_cockpit_backfill
+  ON flow_sessions (bot_id, last_message_at, id);
+
+  CREATE INDEX IF NOT EXISTS idx_conversation_tag_events_cockpit_backfill
+  ON conversation_tag_events (bot_id, accepted, created_at, id);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -7030,7 +7042,9 @@ function normalizeCockpitConfig(config = {}) {
 }
 
 function rowToCockpitEvent(row) {
-  return row ? {
+  if (!row) return null;
+  const payload = parseJson(row.payload_json) || {};
+  return {
     id: row.id,
     eventKey: row.event_key,
     botId: row.bot_id,
@@ -7041,10 +7055,13 @@ function rowToCockpitEvent(row) {
     receivedAt: row.received_at,
     flowVersionId: row.flow_version_id,
     tagVersionId: row.tag_version_id,
-    payload: parseJson(row.payload_json) || {},
+    nodeId: payload.nodeId || "",
+    groupId: payload.groupId || "",
+    tagId: payload.tagId || "",
+    payload,
     sourceRef: parseJson(row.source_ref_json) || {},
     createdAt: row.created_at
-  } : null;
+  };
 }
 
 export function appendCockpitEvent(input) {
@@ -7073,6 +7090,201 @@ export function appendCockpitEvent(input) {
   );
   const row = db.prepare("SELECT id FROM cockpit_events WHERE event_key = ?").get(eventKey);
   return { inserted: Boolean(result.changes), eventId: row?.id || null };
+}
+
+export function backfillCockpitEventsFromBusiness({ botId, throughAt }) {
+  let inserted = 0;
+  const firstCockpitOccurrence = (eventType) => db.prepare(`
+    SELECT MIN(occurred_at) AS occurred_at
+    FROM cockpit_events
+    WHERE bot_id = ? AND event_type = ?
+  `).get(botId, eventType)?.occurred_at || throughAt;
+
+  const firstFriendEventAt = firstCockpitOccurrence("friend_added");
+  const conversations = db.prepare(`
+    SELECT conversation.*, conversation.rowid AS source_id
+    FROM conversations conversation
+    WHERE conversation.bot_id = ?
+      AND COALESCE(conversation.room_type, 2) != 1
+      AND conversation.created_at < ?
+      AND conversation.created_at <= ?
+      AND NOT EXISTS (
+        SELECT 1 FROM cockpit_events event
+        WHERE event.event_key = 'business:conversation:' || conversation.rowid
+      )
+    ORDER BY conversation.created_at ASC, conversation.rowid ASC
+    LIMIT 1000
+  `).all(botId, firstFriendEventAt, throughAt);
+  for (const row of conversations) {
+    inserted += appendCockpitEvent({
+      eventKey: `business:conversation:${row.source_id}`,
+      botId,
+      conversationKey: row.conversation_key,
+      customerKey: row.received_name || row.conversation_key,
+      eventType: "friend_added",
+      occurredAt: row.created_at,
+      receivedAt: row.created_at,
+      sourceRef: { type: "conversation", id: row.conversation_key }
+    }).inserted ? 1 : 0;
+  }
+
+  const firstCustomerMessageAt = firstCockpitOccurrence("customer_message");
+  const customerMessages = db.prepare(`
+    SELECT
+      incoming.*,
+      conversations.received_name AS conversation_received_name
+    FROM incoming_messages incoming
+    LEFT JOIN conversations
+      ON conversations.bot_id = incoming.bot_id
+     AND conversations.conversation_key = incoming.conversation_key
+    WHERE incoming.bot_id = ?
+      AND COALESCE(incoming.room_type, 2) != 1
+      AND incoming.created_at < ?
+      AND incoming.created_at <= ?
+      AND NOT EXISTS (
+        SELECT 1 FROM cockpit_events event
+        WHERE event.event_key = 'business:incoming_message:' || incoming.id
+      )
+    ORDER BY incoming.id ASC
+    LIMIT 1000
+  `).all(botId, firstCustomerMessageAt, throughAt);
+  for (const row of customerMessages) {
+    inserted += appendCockpitEvent({
+      eventKey: `business:incoming_message:${row.id}`,
+      botId,
+      conversationKey: row.conversation_key || "",
+      customerKey: row.conversation_received_name
+        || row.received_name
+        || row.conversation_key
+        || "",
+      eventType: "customer_message",
+      occurredAt: row.created_at,
+      receivedAt: row.created_at,
+      sourceRef: { type: "incoming_message_row", id: row.id }
+    }).inserted ? 1 : 0;
+  }
+
+  const replies = db.prepare(`
+    SELECT
+      outgoing.id,
+      outgoing.conversation_key,
+      outgoing.target_name,
+      outgoing.created_at,
+      conversations.received_name
+    FROM outgoing_messages outgoing
+    LEFT JOIN conversations
+      ON conversations.bot_id = outgoing.bot_id
+     AND conversations.conversation_key = outgoing.conversation_key
+    WHERE outgoing.bot_id = ?
+      AND outgoing.conversation_key LIKE '%:private:%'
+      AND outgoing.created_at <= ?
+      AND NOT EXISTS (
+        SELECT 1 FROM cockpit_events event
+        WHERE event.event_key = 'business:outgoing_message:' || outgoing.id
+      )
+    ORDER BY outgoing.id ASC
+    LIMIT 1000
+  `).all(botId, throughAt);
+  for (const row of replies) {
+    inserted += appendCockpitEvent({
+      eventKey: `business:outgoing_message:${row.id}`,
+      botId,
+      conversationKey: row.conversation_key || "",
+      customerKey: row.received_name || row.target_name || row.conversation_key || "",
+      eventType: "bot_message",
+      occurredAt: row.created_at,
+      receivedAt: row.created_at,
+      sourceRef: { type: "outgoing_message", id: row.id }
+    }).inserted ? 1 : 0;
+  }
+
+  const nodeEvents = db.prepare(`
+    SELECT
+      flow_session.id,
+      flow_session.conversation_key,
+      flow_session.current_node_id,
+      flow_session.last_message_at,
+      conversations.received_name
+    FROM flow_sessions flow_session
+    LEFT JOIN conversations
+      ON conversations.bot_id = flow_session.bot_id
+     AND conversations.conversation_key = flow_session.conversation_key
+    WHERE flow_session.bot_id = ?
+      AND flow_session.conversation_key LIKE '%:private:%'
+      AND flow_session.last_message_at <= ?
+    ORDER BY flow_session.id ASC
+  `).all(botId, throughAt);
+  for (const row of nodeEvents) {
+    inserted += appendCockpitEvent({
+      eventKey: [
+        "business:flow_session",
+        row.id,
+        encodeURIComponent(row.current_node_id || ""),
+        encodeURIComponent(row.last_message_at || "")
+      ].join(":"),
+      botId,
+      conversationKey: row.conversation_key,
+      customerKey: row.received_name || row.conversation_key,
+      eventType: "node_reached",
+      occurredAt: row.last_message_at,
+      receivedAt: row.last_message_at,
+      flowVersionId: 1,
+      payload: { nodeId: row.current_node_id },
+      sourceRef: { type: "flow_session", id: row.id }
+    }).inserted ? 1 : 0;
+  }
+
+  const tagEvents = db.prepare(`
+    SELECT
+      tag_event.*,
+      conversations.received_name
+    FROM conversation_tag_events tag_event
+    LEFT JOIN conversations
+      ON conversations.bot_id = tag_event.bot_id
+     AND conversations.conversation_key = tag_event.conversation_key
+    WHERE tag_event.bot_id = ?
+      AND tag_event.conversation_key LIKE '%:private:%'
+      AND tag_event.accepted = 1
+      AND tag_event.created_at <= ?
+      AND NOT EXISTS (
+        SELECT 1 FROM cockpit_events event
+        WHERE event.event_key LIKE
+          'business:conversation_tag_event:' || tag_event.id || ':%'
+      )
+    ORDER BY tag_event.id ASC
+    LIMIT 1000
+  `).all(botId, throughAt);
+  for (const row of tagEvents) {
+    const payload = parseJson(row.payload_json) || {};
+    const customerKey = row.received_name || row.conversation_key;
+    const appendTagEvent = ({ eventType, tagId, suffix }) => {
+      inserted += appendCockpitEvent({
+        eventKey: `business:conversation_tag_event:${row.id}:${suffix}`,
+        botId,
+        conversationKey: row.conversation_key,
+        customerKey,
+        eventType,
+        occurredAt: row.created_at,
+        receivedAt: row.created_at,
+        payload: { groupId: row.group_id || "", tagId: tagId || "" },
+        sourceRef: { type: "conversation_tag_event", id: row.id }
+      }).inserted ? 1 : 0;
+    };
+    if (["add", "replace"].includes(row.event_type) && row.tag_id) {
+      appendTagEvent({ eventType: "tag_added", tagId: row.tag_id, suffix: "add" });
+    }
+    if (row.event_type === "remove" && row.tag_id) {
+      appendTagEvent({ eventType: "tag_removed", tagId: row.tag_id, suffix: "remove" });
+    }
+    for (const oldTagId of payload.oldTagIds || []) {
+      appendTagEvent({
+        eventType: "tag_removed",
+        tagId: oldTagId,
+        suffix: `remove:${oldTagId}`
+      });
+    }
+  }
+  return { inserted };
 }
 
 export function listCockpitEvents({ botId, afterId = 0, throughAt = "", limit = 1000 }) {

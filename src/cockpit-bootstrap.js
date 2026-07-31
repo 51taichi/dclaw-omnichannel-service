@@ -2,7 +2,8 @@ export function createCockpitBootstrap({
   listBots,
   getLatestSnapshot,
   aggregateBot,
-  onError = () => {}
+  onError = () => {},
+  statisticsVersion = 2
 }) {
   return {
     async run({ throughAt = new Date().toISOString() } = {}) {
@@ -16,10 +17,6 @@ export function createCockpitBootstrap({
             botId: bot.botId,
             periodType: "daily"
           });
-          const hasChartData = Boolean(
-            snapshot?.charts?.nodeDistribution?.length
-            || snapshot?.charts?.tags?.length
-          );
           const hasUniversalMetrics = snapshot
             && Object.hasOwn(snapshot.metrics || {}, "customerMessages")
             && Object.hasOwn(snapshot.metrics || {}, "replyMessages");
@@ -29,7 +26,15 @@ export function createCockpitBootstrap({
             + Number(metrics.stoppedReplying || 0)
             + Number(metrics.effectiveConversations || 0)
           );
-          if (snapshot && hasChartData && hasUniversalMetrics && hasExhaustiveOutcomes) {
+          const hasCurrentStatistics = Number(
+            snapshot?.definitions?.statisticsVersion || 0
+          ) === statisticsVersion;
+          if (
+            snapshot
+            && hasUniversalMetrics
+            && hasExhaustiveOutcomes
+            && hasCurrentStatistics
+          ) {
             skipped += 1;
             continue;
           }

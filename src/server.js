@@ -34,7 +34,10 @@ import { buildAgentResponseValidationOptions } from "./agent-response-validation
 import { createAgentInvocationQueue } from "./agent-invocation-queue.js";
 import { createCockpitEventRecorder } from "./cockpit-events.js";
 import { periodBounds } from "./cockpit-domain.js";
-import { createCockpitAggregator } from "./cockpit-aggregator.js";
+import {
+  COCKPIT_STATISTICS_VERSION,
+  createCockpitAggregator
+} from "./cockpit-aggregator.js";
 import { createCockpitReportGenerator } from "./cockpit-report-generator.js";
 import { createCockpitDeliveryService } from "./cockpit-delivery.js";
 import { createCockpitWorker } from "./cockpit-worker.js";
@@ -86,6 +89,7 @@ import {
   createCockpitJob,
   createCockpitDelivery,
   createCockpitReport,
+  createCockpitReportRevision,
   deleteAgent,
   deleteBotData,
   finishAgentInvocation,
@@ -134,6 +138,7 @@ import {
   insertCommandCallback,
   insertIncomingMessage,
   appendCockpitEvent,
+  backfillCockpitEventsFromBusiness,
   insertOutgoingMessage,
   insertMockProactiveTargets,
   resetBotFlowStateForAgentRebind,
@@ -7104,6 +7109,7 @@ logInfo("group_date_tags.backfilled", { conversationCount: backfilledGroupDateTa
 
 const cockpitAggregator = createCockpitAggregator({
   getConfig: getCockpitConfig,
+  backfillEvents: backfillCockpitEventsFromBusiness,
   getCursor: getCockpitAggregationCursor,
   listEvents: listCockpitEvents,
   loadState: getCockpitAggregationState,
@@ -7119,7 +7125,20 @@ const cockpitReportGenerator = createCockpitReportGenerator({
     if (!binding?.enabled) throw new Error("Bot is disabled");
     return invokeDclawAgentWithRetry({ binding, request });
   },
-  saveReport: async (input) => createCockpitReport(input)
+  saveReport: async (input) => {
+    const existing = listCockpitReports({
+      botId: input.botId,
+      page: 1,
+      pageSize: 100
+    }).items.find((report) => (
+      report.reportType === input.reportType
+      && report.periodStart === input.periodStart
+      && report.periodEnd === input.periodEnd
+    ));
+    return existing
+      ? createCockpitReportRevision({ reportId: existing.id, ...input })
+      : createCockpitReport(input);
+  }
 });
 
 const cockpitDeliveryService = createCockpitDeliveryService({
@@ -7152,6 +7171,7 @@ async function generateScheduledCockpitReports({ now }) {
           report.reportType === reportType
           && report.periodStart === snapshot.periodStart
           && report.periodEnd === snapshot.periodEnd
+          && report.snapshotId === snapshot.id
         ));
       if (exists) continue;
       const report = await cockpitReportGenerator.generate({ snapshot });
@@ -7177,11 +7197,11 @@ const cockpitWorker = createCockpitWorker({
   enabled: cockpitWorkerEnabled,
   isStageCompleted: ({ localDate, stage }) => isCockpitStageCompleted({
     localDate,
-    stage
+    stage: `${stage}:v${COCKPIT_STATISTICS_VERSION}`
   }),
   markStageCompleted: ({ localDate, stage, completedAt }) => markCockpitStageCompleted({
     localDate,
-    stage,
+    stage: `${stage}:v${COCKPIT_STATISTICS_VERSION}`,
     completedAt
   }),
   handlers: {
@@ -7208,6 +7228,7 @@ const cockpitBootstrap = createCockpitBootstrap({
   listBots: listBotBindings,
   getLatestSnapshot: getLatestCockpitSnapshot,
   aggregateBot: (input) => cockpitAggregator.aggregateBot(input),
+  statisticsVersion: COCKPIT_STATISTICS_VERSION,
   onError: ({ botId, error }) => logWarn("cockpit.bootstrap.failed", { botId, error })
 });
 
