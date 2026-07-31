@@ -116,6 +116,7 @@ import {
   ensureConversationDateTag,
   ensureCockpitDefinitionVersion,
   initializeLegacyDateTagRuleEffectiveTimes,
+  isCockpitStageCompleted,
   isFlowActivationTaskProcessing,
   getOrCreateConversationSession,
   getOrCreateFlowSession,
@@ -173,6 +174,7 @@ import {
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
   markConversationFriendAddedSignal,
+  markCockpitStageCompleted,
   markConversationResetHandledForEpoch,
   markLegacyHistoryContextSent,
   markGroupRoleRemarkSynced,
@@ -7173,6 +7175,15 @@ async function generateScheduledCockpitReports({ now }) {
 const cockpitWorkerEnabled = process.env.COCKPIT_WORKER_ENABLED !== "false";
 const cockpitWorker = createCockpitWorker({
   enabled: cockpitWorkerEnabled,
+  isStageCompleted: ({ localDate, stage }) => isCockpitStageCompleted({
+    localDate,
+    stage
+  }),
+  markStageCompleted: ({ localDate, stage, completedAt }) => markCockpitStageCompleted({
+    localDate,
+    stage,
+    completedAt
+  }),
   handlers: {
     aggregate: async ({ now }) => {
       const results = [];

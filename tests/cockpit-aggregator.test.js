@@ -129,7 +129,7 @@ test("waiting customers remain part of the exhaustive effective outcome", async 
   );
 });
 
-test("aggregation uses the real persisted baseline when the period has no chart events", async () => {
+test("aggregation never falls back to all-time chart counts when the period has no chart events", async () => {
   let saved;
   const aggregator = createCockpitAggregator({
     getConfig: () => ({ timezone: "Asia/Shanghai", defaultNoReplyHours: 24 }),
@@ -164,6 +164,59 @@ test("aggregation uses the real persisted baseline when the period has no chart 
     throughAt: "2026-07-31T01:00:00.000Z",
     periodTypes: ["daily"]
   });
-  assert.equal(saved.charts.nodeDistribution[0].nodeName, "需求沟通");
-  assert.equal(saved.charts.tags[0].tagName, "高意向");
+  assert.deepEqual(saved.charts.nodeDistribution, []);
+  assert.deepEqual(saved.charts.tags, []);
+});
+
+test("aggregation enriches period tag changes without copying baseline stock counts", async () => {
+  let saved;
+  const aggregator = createCockpitAggregator({
+    getConfig: () => ({ timezone: "Asia/Shanghai", defaultNoReplyHours: 24 }),
+    getCursor: () => ({ lastEventId: 0 }),
+    listEvents: () => [{
+      id: 1,
+      customerKey: "a",
+      eventType: "tag_added",
+      groupId: "intent",
+      tagId: "hot",
+      occurredAt: "2026-07-30T01:00:00.000Z"
+    }],
+    loadState: () => ({ events: [] }),
+    getBaselineCharts: () => ({
+      nodeDistribution: [],
+      tags: [{
+        groupId: "intent",
+        groupName: "意向等级",
+        groupOrder: 2,
+        tagId: "hot",
+        tagName: "高意向",
+        tagOrder: 3,
+        current: 156,
+        basis: "current_state"
+      }]
+    }),
+    saveState: () => {},
+    saveSnapshot: (snapshot) => { saved = snapshot; return snapshot; },
+    saveCursor: () => {}
+  });
+
+  await aggregator.aggregateBot({
+    botId: "bot-a",
+    throughAt: "2026-07-31T01:00:00.000Z",
+    periodTypes: ["daily"]
+  });
+
+  assert.deepEqual(saved.charts.tags, [{
+    groupId: "intent",
+    groupName: "意向等级",
+    groupOrder: 2,
+    tagId: "hot",
+    tagName: "高意向",
+    tagOrder: 3,
+    added: 1,
+    removed: 0,
+    net: 1,
+    current: 1,
+    basis: "period_change"
+  }]);
 });

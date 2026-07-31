@@ -66,18 +66,34 @@ export function createCockpitAggregator({
       const changesByTag = new Map(
         tagChanges.map((tag) => [`${tag.groupId}\u0000${tag.tagId}`, tag])
       );
-      const baselineTags = (baselineCharts.tags || []).map((tag) => {
-        const change = changesByTag.get(`${tag.groupId}\u0000${tag.tagId}`);
-        return change ? {
-          ...tag,
+      const baselineTagsByKey = new Map(
+        (baselineCharts.tags || []).map((tag) => [
+          `${tag.groupId}\u0000${tag.tagId}`,
+          tag
+        ])
+      );
+      const periodTags = tagChanges.map((change) => {
+        const definition = baselineTagsByKey.get(
+          `${change.groupId}\u0000${change.tagId}`
+        ) || {};
+        return {
+          groupId: change.groupId,
+          ...(definition.groupName ? { groupName: definition.groupName } : {}),
+          ...(definition.groupOrder !== undefined
+            ? { groupOrder: definition.groupOrder }
+            : {}),
+          tagId: change.tagId,
+          ...(definition.tagName ? { tagName: definition.tagName } : {}),
+          ...(definition.tagOrder !== undefined
+            ? { tagOrder: definition.tagOrder }
+            : {}),
           added: change.added,
           removed: change.removed,
-          net: change.net
-        } : tag;
+          net: change.net,
+          current: Math.max(0, change.net),
+          basis: "period_change"
+        };
       });
-      const baselineTagKeys = new Set(
-        baselineTags.map((tag) => `${tag.groupId}\u0000${tag.tagId}`)
-      );
       const metrics = aggregateOccurrenceMetrics({ events, period });
       const cohortKeys = new Set(
         events
@@ -117,15 +133,8 @@ export function createCockpitAggregator({
         metrics,
         charts: {
           funnels,
-          nodeDistribution: eventNodeDistribution.length
-            ? eventNodeDistribution
-            : baselineCharts.nodeDistribution || [],
-          tags: [
-            ...baselineTags,
-            ...tagChanges.filter((tag) => (
-              !baselineTagKeys.has(`${tag.groupId}\u0000${tag.tagId}`)
-            ))
-          ]
+          nodeDistribution: eventNodeDistribution,
+          tags: periodTags
         },
         definitions: {},
         generatedAt: throughAt

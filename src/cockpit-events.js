@@ -27,7 +27,7 @@ export function createCockpitEventRecorder({
   incrementCounter,
   logWarn
 }) {
-  function record(input) {
+  function persist(input) {
     try {
       const occurredAt = String(input.occurredAt || new Date().toISOString());
       const result = appendEvent({
@@ -62,6 +62,10 @@ export function createCockpitEventRecorder({
         error
       });
     }
+  }
+
+  function record(input) {
+    setImmediate(() => persist(input));
   }
 
   return { record };

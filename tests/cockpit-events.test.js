@@ -22,7 +22,7 @@ test("event keys stay stable for the same source and differ across Bots", () => 
   );
 });
 
-test("record is fail open when analytics persistence fails", () => {
+test("record is fail open when analytics persistence fails", async () => {
   const warnings = [];
   const recorder = createCockpitEventRecorder({
     appendEvent() {
@@ -43,10 +43,34 @@ test("record is fail open when analytics persistence fails", () => {
     sourceId: "m-1",
     occurredAt: "2026-07-30T10:00:00.000Z"
   }));
+  await new Promise((resolve) => setImmediate(resolve));
   assert.equal(warnings[0].event, "cockpit.event.failed");
 });
 
-test("a newly inserted core event increments its daily counter once", () => {
+test("event persistence is deferred beyond the core reply call stack", async () => {
+  let persisted = false;
+  const recorder = createCockpitEventRecorder({
+    appendEvent() {
+      persisted = true;
+      return { inserted: true, eventId: 1 };
+    },
+    incrementCounter() {},
+    logWarn() {}
+  });
+
+  recorder.record({
+    botId: "bot-a",
+    eventType: "customer_message",
+    sourceType: "incoming_message",
+    sourceId: "m-1"
+  });
+
+  assert.equal(persisted, false);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(persisted, true);
+});
+
+test("a newly inserted core event increments its daily counter once", async () => {
   const counters = [];
   let insertions = 0;
   const recorder = createCockpitEventRecorder({
@@ -69,6 +93,7 @@ test("a newly inserted core event increments its daily counter once", () => {
 
   recorder.record(event);
   recorder.record(event);
+  await new Promise((resolve) => setImmediate(resolve));
 
   assert.deepEqual(counters, [{
     botId: "bot-a",
@@ -77,4 +102,3 @@ test("a newly inserted core event increments its daily counter once", () => {
     amount: 1
   }]);
 });
-

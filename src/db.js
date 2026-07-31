@@ -744,6 +744,15 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_cockpit_jobs_due
   ON cockpit_jobs (stage, status, due_at, id);
+
+  CREATE TABLE IF NOT EXISTS cockpit_stage_runs (
+    local_date TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    completed_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (local_date, stage)
+  );
 `);
 
 function ensureColumn(table, column, definition) {
@@ -7585,6 +7594,32 @@ export function finishCockpitJob({ id, status, errorMessage = "" }) {
     WHERE id = ?
   `).run(normalizedStatus, timestamp, errorMessage, timestamp, id);
   return rowToCockpitJob(db.prepare("SELECT * FROM cockpit_jobs WHERE id = ?").get(id));
+}
+
+export function isCockpitStageCompleted({ localDate, stage }) {
+  return Boolean(db.prepare(`
+    SELECT 1
+    FROM cockpit_stage_runs
+    WHERE local_date = ? AND stage = ?
+  `).get(localDate, stage));
+}
+
+export function markCockpitStageCompleted({ localDate, stage, completedAt }) {
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO cockpit_stage_runs (
+      local_date, stage, completed_at, created_at, updated_at
+    )
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(local_date, stage) DO UPDATE SET
+      completed_at = excluded.completed_at,
+      updated_at = excluded.updated_at
+  `).run(localDate, stage, completedAt || timestamp, timestamp, timestamp);
+  return {
+    localDate,
+    stage,
+    completedAt: completedAt || timestamp
+  };
 }
 
 function rowToCockpitDelivery(row) {

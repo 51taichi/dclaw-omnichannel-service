@@ -170,6 +170,29 @@ test("definition revisions cursors jobs and deliveries are claimable by scope", 
   }).length, 1);
 });
 
+test("scheduled cockpit stage completion survives restarts and stays idempotent", () => {
+  assert.equal(db.isCockpitStageCompleted({
+    localDate: "2026-07-31",
+    stage: "generate"
+  }), false);
+
+  db.markCockpitStageCompleted({
+    localDate: "2026-07-31",
+    stage: "generate",
+    completedAt: "2026-07-31T03:05:00.000Z"
+  });
+  db.markCockpitStageCompleted({
+    localDate: "2026-07-31",
+    stage: "generate",
+    completedAt: "2026-07-31T03:06:00.000Z"
+  });
+
+  assert.equal(db.isCockpitStageCompleted({
+    localDate: "2026-07-31",
+    stage: "generate"
+  }), true);
+});
+
 test("definition saves revise display changes and version semantic changes", () => {
   const first = db.ensureCockpitDefinitionVersion({
     botId: "version-bot",
