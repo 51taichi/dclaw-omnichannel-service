@@ -6,6 +6,7 @@ import multer from "multer";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mergeInlineActions } from "./action-chips.js";
+import { activationDelayMs } from "./activation-timing.js";
 import { loadBotBindingsFromConfig } from "./config.js";
 import { runConversationResetRequests } from "./conversation-reset.js";
 import { createConversationResetWorker } from "./conversation-reset-worker.js";
@@ -712,17 +713,14 @@ function isPrivateConversationKey(conversationKey) {
   return String(conversationKey || "").includes(":private:");
 }
 
-function addMinutes(date, minutes) {
-  return new Date(date.getTime() + Number(minutes || 0) * 60 * 1000).toISOString();
-}
-
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
 }
 
 function activationDueAtForAttempt(anchorAt, intervalMinutes, attemptNumber) {
-  const multiplier = 2 ** Math.max(0, attemptNumber - 1);
-  return addMinutes(new Date(anchorAt), Number(intervalMinutes || 0) * multiplier);
+  return new Date(
+    new Date(anchorAt).getTime() + activationDelayMs(intervalMinutes, attemptNumber)
+  ).toISOString();
 }
 
 function activationMessageForAttempt(task) {

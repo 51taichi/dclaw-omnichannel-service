@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { mergeInlineActions } from "./action-chips.js";
+import { activationDelayMs } from "./activation-timing.js";
 import { hashAccessKey } from "./auth.js";
 import { definitionSemanticHash } from "./cockpit-domain.js";
 import {
@@ -2978,7 +2979,7 @@ function rowToFlowActivationTask(row) {
     messageIndex: Number(row.message_index || 0),
     messageContent: row.message_content || "",
     maxTimes: Number(row.max_times || 1),
-    intervalMinutes: Number(row.interval_minutes || 30),
+    intervalMinutes: Number(row.interval_minutes ?? 30),
     polishByAgent: Boolean(row.polish_by_agent),
     messages: parseJson(row.messages_json) || [],
     status: row.status,
@@ -3246,8 +3247,7 @@ function flowActivationDueAt({ anchorAt, intervalMinutes, attemptNumber, fallbac
     : Number.isFinite(fallbackMs)
       ? fallbackMs
       : Date.now();
-  const multiplier = 2 ** Math.max(0, Number(attemptNumber || 1) - 1);
-  return new Date(baseMs + Number(intervalMinutes || 0) * multiplier * 60 * 1000).toISOString();
+  return new Date(baseMs + activationDelayMs(intervalMinutes, attemptNumber)).toISOString();
 }
 
 function resetAgentFlowActivationState({
@@ -4132,6 +4132,11 @@ export function normalizeFlowActions(rawActions = []) {
   return actions;
 }
 
+function nonNegativeInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
+}
+
 function normalizeActivationMessage(raw, defaults) {
   const source = typeof raw === "string" ? { content: raw } : raw || {};
   const merged = mergeInlineActions({
@@ -4143,7 +4148,7 @@ function normalizeActivationMessage(raw, defaults) {
   if (!content && actionsAfterSend.length === 0) return null;
   return {
     content,
-    intervalMinutes: Math.max(1, Number.parseInt(source.intervalMinutes ?? defaults.intervalMinutes, 10) || defaults.intervalMinutes),
+    intervalMinutes: nonNegativeInteger(source.intervalMinutes, defaults.intervalMinutes),
     maxTimes: Math.max(1, Number.parseInt(source.maxTimes ?? defaults.maxTimes, 10) || defaults.maxTimes),
     ...(actionsAfterSend.length ? { actionsAfterSend } : {})
   };
@@ -4151,7 +4156,7 @@ function normalizeActivationMessage(raw, defaults) {
 
 export function normalizeActivationConfig(raw = {}) {
   const source = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
-  const intervalMinutes = Math.max(1, Number.parseInt(source.intervalMinutes ?? 30, 10) || 30);
+  const intervalMinutes = nonNegativeInteger(source.intervalMinutes, 30);
   const maxTimes = Math.max(1, Number.parseInt(source.maxTimes ?? 1, 10) || 1);
   const messages = Array.isArray(source.messages)
     ? source.messages
@@ -4213,7 +4218,7 @@ export function scheduleFlowActivationTask({
     normalizedMessageIndex,
     message?.content || "",
     message?.maxTimes || 1,
-    message?.intervalMinutes || 30,
+    message?.intervalMinutes ?? 30,
     config.polishByAgent ? 1 : 0,
     json(config.messages),
     taskAnchorAt,

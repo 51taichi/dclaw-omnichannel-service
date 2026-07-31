@@ -72,6 +72,26 @@ test("normalizeTagSchema keeps enabled groups and normalizes activation messages
   assert.equal(schema.groups[0].tags[0].activation.polishByAgent, false);
 });
 
+test("tag activation preserves a zero-minute interval", () => {
+  const schema = normalizeTagSchema({
+    groups: [{
+      id: "intent",
+      name: "意向",
+      tags: [{
+        id: "ready",
+        name: "待跟进",
+        condition: "客户等待回复",
+        activation: {
+          enabled: true,
+          messages: [{ content: "立即跟进", intervalMinutes: 0, maxTimes: 1 }]
+        }
+      }]
+    }]
+  });
+
+  assert.equal(schema.groups[0].tags[0].activation.messages[0].intervalMinutes, 0);
+});
+
 test("normalizeTagSchema defaults and preserves voice alert settings", () => {
   const schema = normalizeTagSchema({
     groups: [{

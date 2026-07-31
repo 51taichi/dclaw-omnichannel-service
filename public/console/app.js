@@ -2022,6 +2022,20 @@ function formatActivationMessageForEditor(message = {}) {
   return [content, ...chips].filter(Boolean).join(" ");
 }
 
+function normalizeActivationIntervalMinutes(value, fallback = 30) {
+  const parsedFallback = Number(fallback);
+  const normalizedFallback = Number.isFinite(parsedFallback)
+    ? Math.max(0, Math.trunc(parsedFallback))
+    : 30;
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return normalizedFallback;
+  }
+  const parsed = Number(value);
+  return Number.isFinite(parsed)
+    ? Math.max(0, Math.trunc(parsed))
+    : normalizedFallback;
+}
+
 function normalizeActivationMessageDraft(value = {}, defaults = defaultActivationMessage()) {
   const source = typeof value === "string" ? { content: value } : value || {};
   const inlineActions = extractActionChipsFromEditorText(source.content || "");
@@ -2029,7 +2043,7 @@ function normalizeActivationMessageDraft(value = {}, defaults = defaultActivatio
   const actionsAfterSend = mergeEditorFlowActions([...structuredActions, ...inlineActions]);
   return {
     content: stripActionChipsFromEditorText(source.content || ""),
-    intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? defaults.intervalMinutes)),
+    intervalMinutes: normalizeActivationIntervalMinutes(source.intervalMinutes, defaults.intervalMinutes),
     maxTimes: Math.max(1, Number(source.maxTimes ?? defaults.maxTimes)),
     ...(actionsAfterSend.length ? { actionsAfterSend } : {})
   };
@@ -2038,7 +2052,7 @@ function normalizeActivationMessageDraft(value = {}, defaults = defaultActivatio
 function normalizeActivationDraft(value = {}) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const defaults = {
-    intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? 30)),
+    intervalMinutes: normalizeActivationIntervalMinutes(source.intervalMinutes, 30),
     maxTimes: Math.max(1, Number(source.maxTimes ?? 1))
   };
   const messages = Array.isArray(source.messages)
@@ -2411,7 +2425,7 @@ function updateDraftNodeActivationMessage(input) {
   const activation = activationDraftForEditor(node.activation);
   const message = normalizeActivationMessageDraft(activation.messages[messageIndex]);
   if (input.dataset.activationMessageInterval !== undefined) {
-    message.intervalMinutes = Math.max(1, Number(input.value || message.intervalMinutes || 1));
+    message.intervalMinutes = normalizeActivationIntervalMinutes(input.value, message.intervalMinutes);
   } else if (input.dataset.activationMessageMaxTimes !== undefined) {
     message.maxTimes = Math.max(1, Number(input.value || message.maxTimes || 1));
   } else {
@@ -3212,7 +3226,7 @@ function renderNormalTagGroups(groups) {
                                           <div class="activation-message-actions">
                                             <label class="activation-message-control" title="间隔（分钟）">
                                               ${icon("clock")}
-                                              <input data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-interval type="number" min="1" value="${escapeHtml(message.intervalMinutes)}" aria-label="间隔（分钟）" />
+                                              <input data-tag-activation-message-index="${messageIndex}" data-tag-activation-message-interval type="number" min="0" value="${escapeHtml(message.intervalMinutes)}" aria-label="间隔（分钟）" />
                                               <span class="activation-message-unit">分钟</span>
                                             </label>
                                             <label class="activation-message-control" title="发送次数">
@@ -3378,7 +3392,7 @@ function updateTagActivationMessageDraft(input) {
   const messageIndex = Number(input.dataset.tagActivationMessageIndex);
   const message = normalizeActivationMessageDraft(activation.messages[messageIndex]);
   if (input.dataset.tagActivationMessageInterval !== undefined) {
-    message.intervalMinutes = Math.max(1, Number(input.value || message.intervalMinutes || 1));
+    message.intervalMinutes = normalizeActivationIntervalMinutes(input.value, message.intervalMinutes);
   } else if (input.dataset.tagActivationMessageMaxTimes !== undefined) {
     message.maxTimes = Math.max(1, Number(input.value || message.maxTimes || 1));
   } else {
@@ -3754,7 +3768,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
                   <input data-flow-node-activation-field="polishByAgent" type="checkbox" ${activationPolishByAgent ? "checked" : ""} />
                   <span>${icon("terminal")}Agent 组织语言</span>
                 </label>
-                <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" title="${escapeHtml("例：10 分钟后发第 1 条；还没回复，第 2 次按更长间隔继续提醒。Agent 组织语言会先润色话术。")}">
+                <span class="activation-help-icon" tabindex="0" aria-label="激活参数说明" title="${escapeHtml("例：10 分钟后发第 1 条；填 0 则按 5 秒倒计时。还没回复，第 2 次按更长间隔继续提醒。Agent 组织语言会先润色话术。")}">
                   ${icon("info")}
                 </span>
               </div>
@@ -3770,7 +3784,7 @@ function renderFlowNodeEditor(entryNodeId = "") {
                     <div class="activation-message-actions">
                       <label class="activation-message-control" title="间隔（分钟）">
                         ${icon("clock")}
-                        <input data-activation-message-index="${messageIndex}" data-activation-message-interval type="number" min="1" value="${escapeHtml(activationMessage.intervalMinutes)}" aria-label="间隔（分钟）" />
+                        <input data-activation-message-index="${messageIndex}" data-activation-message-interval type="number" min="0" value="${escapeHtml(activationMessage.intervalMinutes)}" aria-label="间隔（分钟）" />
                         <span class="activation-message-unit">分钟</span>
                       </label>
                       <label class="activation-message-control" title="发送次数">

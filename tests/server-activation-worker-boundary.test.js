@@ -3,6 +3,8 @@ import fs from "node:fs";
 import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+const dbSource = fs.readFileSync(new URL("../src/db.js", import.meta.url), "utf8");
+const timingSource = fs.readFileSync(new URL("../src/activation-timing.js", import.meta.url), "utf8");
 
 test("activation worker is batch limited and non-overlapping", () => {
   assert.equal(source.includes("activationWorkerBusy"), true);
@@ -23,6 +25,8 @@ test("activation worker sends one script per attempt with exponential schedule",
   assert.equal(source.includes("activationMessageForAttempt"), true);
   assert.equal(source.includes("activationDueAtForAttempt"), true);
   assert.equal(source.includes("Math.min(task.attemptNumber - 1, task.messages.length - 1)"), true);
-  assert.equal(source.includes("2 ** Math.max(0, attemptNumber - 1)"), true);
+  assert.equal(source.includes("activationDelayMs(intervalMinutes, attemptNumber)"), true);
+  assert.equal(dbSource.includes("activationDelayMs(intervalMinutes, attemptNumber)"), true);
+  assert.equal(timingSource.includes("2 ** Math.max(0, Number(attemptNumber || 1) - 1)"), true);
   assert.equal(source.includes("anchorAt: sentTask.sentAt"), true);
 });

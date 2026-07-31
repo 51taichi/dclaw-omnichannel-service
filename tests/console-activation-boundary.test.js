@@ -74,8 +74,25 @@ test("node text fields reuse the fixed-slot expanding textarea", () => {
 
 test("legacy console string scripts inherit their activation timing defaults", () => {
   assert.equal(app.includes("normalizeActivationMessageDraft(item, defaults)"), true);
-  assert.equal(app.includes("intervalMinutes: Math.max(1, Number(source.intervalMinutes ?? defaults.intervalMinutes))"), true);
+  assert.equal(app.includes("intervalMinutes: normalizeActivationIntervalMinutes(source.intervalMinutes, defaults.intervalMinutes)"), true);
   assert.equal(app.includes("maxTimes: Math.max(1, Number(source.maxTimes ?? defaults.maxTimes))"), true);
+});
+
+test("flow and tag activation editors preserve zero minutes as a five-second delay", () => {
+  assert.equal(app.includes("function normalizeActivationIntervalMinutes(value, fallback = 30)"), true);
+  assert.equal(
+    app.includes('data-tag-activation-message-interval type="number" min="0"'),
+    true
+  );
+  assert.equal(
+    app.includes('data-activation-message-interval type="number" min="0"'),
+    true
+  );
+  assert.equal(
+    app.includes("message.intervalMinutes = normalizeActivationIntervalMinutes(input.value, message.intervalMinutes)"),
+    true
+  );
+  assert.equal(app.includes("填 0 则按 5 秒倒计时"), true);
 });
 
 test("adding an activation message keeps an editable blank draft row", () => {

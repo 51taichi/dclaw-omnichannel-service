@@ -49,6 +49,27 @@ test("normalizeActivationConfig defaults and filters messages", () => {
   }).messages, [{ content: "第一条", intervalMinutes: 30, maxTimes: 2 }]);
 });
 
+test("activation configuration and task persistence preserve zero-minute intervals", () => {
+  const activation = db.normalizeActivationConfig({
+    enabled: true,
+    messages: [{ content: "立即跟进", intervalMinutes: 0, maxTimes: 1 }]
+  });
+
+  assert.equal(activation.messages[0].intervalMinutes, 0);
+
+  const task = db.scheduleFlowActivationTask({
+    botId: "bot_zero_interval",
+    agentId: "agent_zero_interval",
+    conversationKey: "bot_zero_interval:private:客户",
+    nodeId: "node_1",
+    activation,
+    anchorAt: "2026-08-01T00:00:00.000Z",
+    dueAt: "2026-08-01T00:00:05.000Z"
+  });
+
+  assert.equal(task.intervalMinutes, 0);
+});
+
 test("legacy string messages retain the containing activation timing defaults", () => {
   assert.deepEqual(db.normalizeActivationConfig({
     intervalMinutes: 17,

@@ -57,13 +57,18 @@ function asId(value) {
   return String(value || "").trim();
 }
 
+function nonNegativeInteger(value, fallback) {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : fallback;
+}
+
 function normalizeActivationMessage(raw = {}) {
   const source = typeof raw === "string" ? { content: raw } : raw || {};
   const content = String(source.content || "").trim();
   if (!content) return null;
   return {
     content,
-    intervalMinutes: Math.max(1, Number.parseInt(source.intervalMinutes ?? 30, 10) || 30),
+    intervalMinutes: nonNegativeInteger(source.intervalMinutes, 30),
     maxTimes: Math.max(1, Number.parseInt(source.maxTimes ?? 1, 10) || 1)
   };
 }
