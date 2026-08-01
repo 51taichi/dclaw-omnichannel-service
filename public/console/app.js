@@ -4478,6 +4478,19 @@ function syncHandoffButton(session = currentFlowSession) {
   renderManualReplyComposer(currentFlowSession);
 }
 
+function resolveInboundImageMessage(message) {
+  const rawPayload = message?.rawPayload || {};
+  const isImage = Number(rawPayload.textType) === 2;
+  if (!isImage) return null;
+  const fileUrl = [rawPayload.fileUrl, rawPayload.filePath, rawPayload.imageUrl]
+    .map((value) => String(value || "").trim())
+    .find((value) => /^https?:\/\//i.test(value)) || "";
+  return {
+    fileUrl,
+    fileName: String(rawPayload.fileName || "").trim() || "图片消息"
+  };
+}
+
 function renderChatMessageContent(message) {
   const mediaPayload = message.rawPayload?.messagePayload;
   const mediaType = String(message.rawPayload?.messageType || "");
@@ -4485,6 +4498,21 @@ function renderChatMessageContent(message) {
   const attachments = renderChatAttachments(
     message.rawPayload?.attachments || message.rawPayload?.agentReply?.attachments
   );
+  const inboundImage = resolveInboundImageMessage(message);
+  if (inboundImage) {
+    const caption = String(message.content || "").trim();
+    const media = inboundImage.fileUrl
+      ? `<img class="chat-media-image" src="${escapeHtml(inboundImage.fileUrl)}" alt="${escapeHtml(inboundImage.fileName)}" loading="lazy" />`
+      : `<div class="chat-media-placeholder">${icon("image")}<span>图片消息</span></div>`;
+    return `
+      <div class="chat-media">
+        ${media}
+        ${caption && caption !== "[图片消息]" ? `<div class="chat-text">${escapeHtml(caption)}</div>` : ""}
+        ${attachments}
+        ${sources}
+      </div>
+    `;
+  }
   if (mediaType === "media" && mediaPayload?.fileUrl) {
     const fileType = String(mediaPayload.fileType || "image");
     const label = {

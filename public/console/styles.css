@@ -4880,6 +4880,28 @@ html.has-bot-context .action-toolbox-toggle:hover {
   object-fit: contain;
 }
 
+.chat-media-placeholder {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: max-content;
+  max-width: 100%;
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--cyan) 38%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--cyan) 9%, #ffffff);
+  color: color-mix(in srgb, var(--cyan) 76%, var(--text));
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chat-media-placeholder .icon {
+  flex: 0 0 18px;
+  width: 18px;
+  height: 18px;
+}
+
 .chat-media-link {
   color: var(--accent);
   font-weight: 800;
