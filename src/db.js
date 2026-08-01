@@ -11,6 +11,7 @@ import {
   dedupeConversationMessages
 } from "./conversation-message-dedupe.js";
 import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags.js";
+import { normalizeTagSyncConfig } from "./tag-sync.js";
 import { normalizeWorktoolTimestamp } from "./worktool-history.js";
 
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
@@ -766,6 +767,64 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_conversation_tag_events_cockpit_backfill
   ON conversation_tag_events (bot_id, accepted, created_at, id);
+
+  CREATE TABLE IF NOT EXISTS bot_tag_sync_configs (
+    bot_id TEXT PRIMARY KEY,
+    nightly_enabled INTEGER NOT NULL DEFAULT 0,
+    window_start TEXT NOT NULL DEFAULT '03:00',
+    window_end TEXT NOT NULL DEFAULT '06:00',
+    initial_backfill_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS tag_sync_runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    trigger_type TEXT NOT NULL,
+    window_key TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL,
+    pending_before INTEGER NOT NULL DEFAULT 0,
+    succeeded_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    pause_reason TEXT NOT NULL DEFAULT '',
+    last_error TEXT NOT NULL DEFAULT '',
+    started_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    finished_at TEXT
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_tag_sync_runs_active
+  ON tag_sync_runs (bot_id)
+  WHERE status IN ('running', 'paused');
+
+  CREATE TABLE IF NOT EXISTS tag_sync_outbox (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    target_name TEXT NOT NULL,
+    tag_name TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    run_id INTEGER,
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    run_attempt_count INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT,
+    claimed_at TEXT,
+    lease_expires_at TEXT,
+    worktool_message_id TEXT,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    succeeded_at TEXT,
+    UNIQUE(bot_id, conversation_key, tag_name)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_tag_sync_outbox_claim
+  ON tag_sync_outbox (bot_id, status, next_retry_at, id);
+
+  CREATE INDEX IF NOT EXISTS idx_tag_sync_outbox_callback
+  ON tag_sync_outbox (bot_id, worktool_message_id);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -1934,6 +1993,9 @@ export function deleteBotData(botId) {
 
   const tables = [
     "workspace_bots",
+    "tag_sync_outbox",
+    "tag_sync_runs",
+    "bot_tag_sync_configs",
     "cockpit_deliveries",
     "cockpit_reports",
     "cockpit_snapshots",
@@ -3045,6 +3107,72 @@ function rowToConversationTag(row) {
     source: row.source,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function rowToTagSyncConfig(row, botId = "") {
+  if (!row) {
+    return {
+      botId: String(botId || ""),
+      nightlyEnabled: false,
+      windowStart: "03:00",
+      windowEnd: "06:00",
+      initialBackfillAt: "",
+      createdAt: "",
+      updatedAt: ""
+    };
+  }
+  return {
+    botId: row.bot_id,
+    nightlyEnabled: Boolean(row.nightly_enabled),
+    windowStart: row.window_start,
+    windowEnd: row.window_end,
+    initialBackfillAt: row.initial_backfill_at || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToTagSyncRun(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    botId: row.bot_id,
+    triggerType: row.trigger_type,
+    windowKey: row.window_key || "",
+    status: row.status,
+    pendingBefore: Number(row.pending_before || 0),
+    succeededCount: Number(row.succeeded_count || 0),
+    failedCount: Number(row.failed_count || 0),
+    pauseReason: row.pause_reason || "",
+    lastError: row.last_error || "",
+    startedAt: row.started_at,
+    updatedAt: row.updated_at,
+    finishedAt: row.finished_at || ""
+  };
+}
+
+function rowToTagSyncOutbox(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    conversationKey: row.conversation_key,
+    targetName: row.target_name,
+    tagName: row.tag_name,
+    status: row.status,
+    runId: row.run_id == null ? null : Number(row.run_id),
+    attemptCount: Number(row.attempt_count || 0),
+    runAttemptCount: Number(row.run_attempt_count || 0),
+    nextRetryAt: row.next_retry_at || "",
+    claimedAt: row.claimed_at || "",
+    leaseExpiresAt: row.lease_expires_at || "",
+    worktoolMessageId: row.worktool_message_id || "",
+    lastError: row.last_error || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    succeededAt: row.succeeded_at || ""
   };
 }
 
@@ -4803,6 +4931,625 @@ export function listConversationTags({ botId, agentId, conversationKey }) {
   `).all(botId, agentId, conversationKey).map(rowToConversationTag);
 }
 
+function requireTagSyncBotId(botId) {
+  const normalized = String(botId || "").trim();
+  if (!normalized) throw new Error("botId is required");
+  return normalized;
+}
+
+function ensureTagSyncConfigRow(botId, timestamp = now()) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  db.prepare(`
+    INSERT OR IGNORE INTO bot_tag_sync_configs (
+      bot_id, nightly_enabled, window_start, window_end,
+      initial_backfill_at, created_at, updated_at
+    )
+    VALUES (?, 0, '03:00', '06:00', NULL, ?, ?)
+  `).run(normalizedBotId, timestamp, timestamp);
+  return normalizedBotId;
+}
+
+export function getTagSyncConfig(botId) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  return rowToTagSyncConfig(
+    db.prepare("SELECT * FROM bot_tag_sync_configs WHERE bot_id = ?")
+      .get(normalizedBotId),
+    normalizedBotId
+  );
+}
+
+export function saveTagSyncConfig({ botId, config }) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const normalized = normalizeTagSyncConfig(config);
+  const timestamp = now();
+  ensureTagSyncConfigRow(normalizedBotId, timestamp);
+  db.prepare(`
+    UPDATE bot_tag_sync_configs
+    SET nightly_enabled = ?, window_start = ?, window_end = ?, updated_at = ?
+    WHERE bot_id = ?
+  `).run(
+    normalized.nightlyEnabled ? 1 : 0,
+    normalized.windowStart,
+    normalized.windowEnd,
+    timestamp,
+    normalizedBotId
+  );
+  return getTagSyncConfig(normalizedBotId);
+}
+
+function registerTagSyncOutboxRows({
+  botId,
+  agentId,
+  conversationKey,
+  tags = [],
+  timestamp = now()
+}) {
+  const config = db.prepare(`
+    SELECT initial_backfill_at
+    FROM bot_tag_sync_configs
+    WHERE bot_id = ?
+  `).get(botId);
+  if (!config?.initial_backfill_at) return 0;
+  const conversation = db.prepare(`
+    SELECT room_type, received_name
+    FROM conversations
+    WHERE bot_id = ? AND conversation_key = ?
+  `).get(botId, conversationKey);
+  if (!conversation || ![2, 4].includes(Number(conversation.room_type))) return 0;
+  const targetName = String(conversation.received_name || "").trim();
+  if (!targetName) return 0;
+  let insertedCount = 0;
+  const names = [...new Set(tags.map((tag) => String(tag?.tagName || tag?.name || "").trim()).filter(Boolean))];
+  for (const tagName of names) {
+    insertedCount += Number(db.prepare(`
+      INSERT OR IGNORE INTO tag_sync_outbox (
+        bot_id, agent_id, conversation_key, target_name, tag_name,
+        status, created_at, updated_at
+      )
+      VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+    `).run(
+      botId,
+      agentId,
+      conversationKey,
+      targetName,
+      tagName,
+      timestamp,
+      timestamp
+    ).changes || 0);
+  }
+  return insertedCount;
+}
+
+export function ensureTagSyncInitialBackfill({ botId }) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    ensureTagSyncConfigRow(normalizedBotId, timestamp);
+    const config = db.prepare(`
+      SELECT initial_backfill_at
+      FROM bot_tag_sync_configs
+      WHERE bot_id = ?
+    `).get(normalizedBotId);
+    if (config?.initial_backfill_at) {
+      db.exec("COMMIT");
+      return {
+        botId: normalizedBotId,
+        insertedCount: 0,
+        initialBackfillAt: config.initial_backfill_at
+      };
+    }
+
+    const rows = db.prepare(`
+      SELECT
+        ct.agent_id,
+        ct.conversation_key,
+        c.received_name,
+        ct.tag_name
+      FROM conversation_tags ct
+      JOIN conversations c
+        ON c.bot_id = ct.bot_id
+       AND c.conversation_key = ct.conversation_key
+      WHERE ct.bot_id = ?
+        AND c.room_type IN (2, 4)
+        AND trim(COALESCE(c.received_name, '')) != ''
+        AND trim(COALESCE(ct.tag_name, '')) != ''
+      ORDER BY ct.id ASC
+    `).all(normalizedBotId);
+    let insertedCount = 0;
+    for (const row of rows) {
+      insertedCount += Number(db.prepare(`
+        INSERT OR IGNORE INTO tag_sync_outbox (
+          bot_id, agent_id, conversation_key, target_name, tag_name,
+          status, created_at, updated_at
+        )
+        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+      `).run(
+        normalizedBotId,
+        row.agent_id,
+        row.conversation_key,
+        row.received_name,
+        row.tag_name,
+        timestamp,
+        timestamp
+      ).changes || 0);
+    }
+    db.prepare(`
+      UPDATE bot_tag_sync_configs
+      SET initial_backfill_at = ?, updated_at = ?
+      WHERE bot_id = ?
+    `).run(timestamp, timestamp, normalizedBotId);
+    db.exec("COMMIT");
+    return {
+      botId: normalizedBotId,
+      insertedCount,
+      initialBackfillAt: timestamp
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function listRunnableTagSyncConfigs() {
+  return db.prepare(`
+    SELECT config.*
+    FROM bot_tag_sync_configs config
+    JOIN bot_agent_bindings binding ON binding.bot_id = config.bot_id
+    WHERE config.nightly_enabled = 1
+      AND binding.enabled = 1
+    ORDER BY config.bot_id ASC
+  `).all().map((row) => rowToTagSyncConfig(row));
+}
+
+export function getActiveTagSyncRun(botId) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  return rowToTagSyncRun(db.prepare(`
+    SELECT *
+    FROM tag_sync_runs
+    WHERE bot_id = ? AND status IN ('running', 'paused')
+    ORDER BY id DESC
+    LIMIT 1
+  `).get(normalizedBotId));
+}
+
+export function startTagSyncRun({
+  botId,
+  triggerType,
+  windowKey = "",
+  startedAt = now()
+}) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const normalizedTrigger = String(triggerType || "").trim();
+  if (!new Set(["manual", "scheduled"]).has(normalizedTrigger)) {
+    throw new Error("triggerType must be manual or scheduled");
+  }
+  const existing = getActiveTagSyncRun(normalizedBotId);
+  if (existing) return existing;
+  ensureTagSyncInitialBackfill({ botId: normalizedBotId });
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      UPDATE tag_sync_outbox
+      SET run_attempt_count = 0,
+          next_retry_at = NULL,
+          updated_at = ?
+      WHERE bot_id = ? AND status = 'failed'
+    `).run(startedAt, normalizedBotId);
+    const pendingBefore = Number(db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM tag_sync_outbox
+      WHERE bot_id = ? AND status IN ('pending', 'failed')
+    `).get(normalizedBotId)?.count || 0);
+    const result = db.prepare(`
+      INSERT INTO tag_sync_runs (
+        bot_id, trigger_type, window_key, status, pending_before,
+        started_at, updated_at
+      )
+      VALUES (?, ?, ?, 'running', ?, ?, ?)
+    `).run(
+      normalizedBotId,
+      normalizedTrigger,
+      String(windowKey || ""),
+      pendingBefore,
+      startedAt,
+      startedAt
+    );
+    db.exec("COMMIT");
+    return rowToTagSyncRun(
+      db.prepare("SELECT * FROM tag_sync_runs WHERE id = ?").get(result.lastInsertRowid)
+    );
+  } catch (error) {
+    db.exec("ROLLBACK");
+    const active = getActiveTagSyncRun(normalizedBotId);
+    if (active) return active;
+    throw error;
+  }
+}
+
+export function hasRecentBotMessageProcessing({ botId, sinceIso }) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  return Boolean(db.prepare(`
+    SELECT 1
+    FROM message_processing
+    WHERE bot_id = ?
+      AND status = 'processing'
+      AND updated_at >= ?
+    LIMIT 1
+  `).get(normalizedBotId, sinceIso || ""));
+}
+
+function tagSyncEligibilitySql() {
+  return `(
+    status = 'pending'
+    OR (
+      status = 'failed'
+      AND run_attempt_count < 3
+      AND (next_retry_at IS NULL OR next_retry_at <= ?)
+    )
+  )`;
+}
+
+export function claimNextTagSyncBatch({
+  botId,
+  runId,
+  nowIso = now(),
+  leaseExpiresAt,
+  limit = 5
+}) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const normalizedLimit = Math.max(1, Math.min(5, Number.parseInt(limit, 10) || 5));
+  const normalizedRunId = Number(runId);
+  if (!Number.isFinite(normalizedRunId)) throw new Error("runId is required");
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const run = db.prepare(`
+      SELECT id
+      FROM tag_sync_runs
+      WHERE id = ? AND bot_id = ? AND status IN ('running', 'paused')
+    `).get(normalizedRunId, normalizedBotId);
+    if (!run) {
+      db.exec("COMMIT");
+      return null;
+    }
+    const inFlight = db.prepare(`
+      SELECT 1
+      FROM tag_sync_outbox
+      WHERE bot_id = ? AND status = 'processing'
+      LIMIT 1
+    `).get(normalizedBotId);
+    if (inFlight) {
+      db.exec("COMMIT");
+      return null;
+    }
+    const oldest = db.prepare(`
+      SELECT outbox.conversation_key, c.received_name
+      FROM tag_sync_outbox outbox
+      JOIN conversations c
+        ON c.bot_id = outbox.bot_id
+       AND c.conversation_key = outbox.conversation_key
+      WHERE outbox.bot_id = ?
+        AND c.room_type IN (2, 4)
+        AND ${tagSyncEligibilitySql().replaceAll("status", "outbox.status").replaceAll("run_attempt_count", "outbox.run_attempt_count").replaceAll("next_retry_at", "outbox.next_retry_at")}
+      ORDER BY outbox.id ASC
+      LIMIT 1
+    `).get(normalizedBotId, nowIso);
+    if (!oldest) {
+      db.exec("COMMIT");
+      return null;
+    }
+    const rows = db.prepare(`
+      SELECT *
+      FROM tag_sync_outbox
+      WHERE bot_id = ?
+        AND conversation_key = ?
+        AND ${tagSyncEligibilitySql()}
+      ORDER BY id ASC
+      LIMIT ?
+    `).all(normalizedBotId, oldest.conversation_key, nowIso, normalizedLimit);
+    if (!rows.length) {
+      db.exec("COMMIT");
+      return null;
+    }
+    const ids = rows.map((row) => Number(row.id));
+    const placeholders = ids.map(() => "?").join(", ");
+    db.prepare(`
+      UPDATE tag_sync_outbox
+      SET status = 'processing',
+          run_id = ?,
+          attempt_count = attempt_count + 1,
+          run_attempt_count = run_attempt_count + 1,
+          claimed_at = ?,
+          lease_expires_at = ?,
+          worktool_message_id = NULL,
+          last_error = '',
+          updated_at = ?
+      WHERE id IN (${placeholders})
+        AND bot_id = ?
+    `).run(
+      normalizedRunId,
+      nowIso,
+      leaseExpiresAt || nowIso,
+      nowIso,
+      ...ids,
+      normalizedBotId
+    );
+    db.prepare(`
+      UPDATE tag_sync_runs
+      SET status = 'running', pause_reason = '', updated_at = ?
+      WHERE id = ? AND bot_id = ?
+    `).run(nowIso, normalizedRunId, normalizedBotId);
+    const claimed = db.prepare(`
+      SELECT *
+      FROM tag_sync_outbox
+      WHERE id IN (${placeholders})
+      ORDER BY id ASC
+    `).all(...ids).map(rowToTagSyncOutbox);
+    db.exec("COMMIT");
+    return {
+      botId: normalizedBotId,
+      runId: normalizedRunId,
+      conversationKey: oldest.conversation_key,
+      targetName: String(oldest.received_name || rows[0].target_name || "").trim(),
+      rows: claimed,
+      tagNames: claimed.map((row) => row.tagName)
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+function normalizeOutboxIds(outboxIds) {
+  return [...new Set((outboxIds || [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isFinite(id) && id > 0))];
+}
+
+export function markTagSyncCommandSubmitted({ botId, outboxIds, worktoolMessageId }) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const ids = normalizeOutboxIds(outboxIds);
+  const messageId = String(worktoolMessageId || "").trim();
+  if (!ids.length || !messageId) throw new Error("outboxIds and worktoolMessageId are required");
+  const placeholders = ids.map(() => "?").join(", ");
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE tag_sync_outbox
+    SET worktool_message_id = ?, updated_at = ?
+    WHERE bot_id = ?
+      AND status = 'processing'
+      AND id IN (${placeholders})
+  `).run(messageId, timestamp, normalizedBotId, ...ids);
+  return Number(result.changes || 0);
+}
+
+export function markTagSyncCommandSubmitFailed({
+  botId,
+  outboxIds,
+  error = "",
+  nextRetryAt = now()
+}) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const ids = normalizeOutboxIds(outboxIds);
+  if (!ids.length) return 0;
+  const placeholders = ids.map(() => "?").join(", ");
+  const timestamp = now();
+  const rows = db.prepare(`
+    SELECT DISTINCT run_id
+    FROM tag_sync_outbox
+    WHERE bot_id = ? AND status = 'processing' AND id IN (${placeholders})
+  `).all(normalizedBotId, ...ids);
+  const result = db.prepare(`
+    UPDATE tag_sync_outbox
+    SET status = 'failed',
+        next_retry_at = ?,
+        lease_expires_at = NULL,
+        worktool_message_id = NULL,
+        last_error = ?,
+        updated_at = ?
+    WHERE bot_id = ?
+      AND status = 'processing'
+      AND id IN (${placeholders})
+  `).run(nextRetryAt, String(error || ""), timestamp, normalizedBotId, ...ids);
+  for (const row of rows) {
+    if (row.run_id == null) continue;
+    db.prepare(`
+      UPDATE tag_sync_runs
+      SET failed_count = failed_count + ?, last_error = ?, updated_at = ?
+      WHERE id = ?
+    `).run(Number(result.changes || 0), String(error || ""), timestamp, row.run_id);
+  }
+  return Number(result.changes || 0);
+}
+
+export function resolveTagSyncCommandCallback({
+  botId,
+  worktoolMessageId,
+  succeeded,
+  error = "",
+  nextRetryAt = now()
+}) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const messageId = String(worktoolMessageId || "").trim();
+  if (!messageId) return { succeededCount: 0, failedCount: 0, rows: [] };
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const rows = db.prepare(`
+      SELECT *
+      FROM tag_sync_outbox
+      WHERE bot_id = ?
+        AND worktool_message_id = ?
+        AND status = 'processing'
+      ORDER BY id ASC
+    `).all(normalizedBotId, messageId);
+    if (!rows.length) {
+      db.exec("COMMIT");
+      return { succeededCount: 0, failedCount: 0, rows: [] };
+    }
+    const ids = rows.map((row) => Number(row.id));
+    const placeholders = ids.map(() => "?").join(", ");
+    if (succeeded) {
+      db.prepare(`
+        UPDATE tag_sync_outbox
+        SET status = 'succeeded',
+            next_retry_at = NULL,
+            lease_expires_at = NULL,
+            last_error = '',
+            succeeded_at = ?,
+            updated_at = ?
+        WHERE id IN (${placeholders})
+      `).run(timestamp, timestamp, ...ids);
+    } else {
+      db.prepare(`
+        UPDATE tag_sync_outbox
+        SET status = 'failed',
+            next_retry_at = ?,
+            lease_expires_at = NULL,
+            last_error = ?,
+            updated_at = ?
+        WHERE id IN (${placeholders})
+      `).run(nextRetryAt, String(error || ""), timestamp, ...ids);
+    }
+    const runCounts = new Map();
+    for (const row of rows) {
+      if (row.run_id == null) continue;
+      runCounts.set(row.run_id, (runCounts.get(row.run_id) || 0) + 1);
+    }
+    for (const [runId, count] of runCounts) {
+      db.prepare(`
+        UPDATE tag_sync_runs
+        SET succeeded_count = succeeded_count + ?,
+            failed_count = failed_count + ?,
+            last_error = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(
+        succeeded ? count : 0,
+        succeeded ? 0 : count,
+        succeeded ? "" : String(error || ""),
+        timestamp,
+        runId
+      );
+    }
+    const updatedRows = db.prepare(`
+      SELECT * FROM tag_sync_outbox WHERE id IN (${placeholders}) ORDER BY id ASC
+    `).all(...ids).map(rowToTagSyncOutbox);
+    db.exec("COMMIT");
+    return {
+      succeededCount: succeeded ? rows.length : 0,
+      failedCount: succeeded ? 0 : rows.length,
+      rows: updatedRows
+    };
+  } catch (callbackError) {
+    db.exec("ROLLBACK");
+    throw callbackError;
+  }
+}
+
+export function recoverExpiredTagSyncLeases({ nowIso = now(), nextRetryAt = nowIso }) {
+  const timestamp = now();
+  const rows = db.prepare(`
+    SELECT id
+    FROM tag_sync_outbox
+    WHERE status = 'processing'
+      AND lease_expires_at IS NOT NULL
+      AND lease_expires_at <= ?
+  `).all(nowIso);
+  if (!rows.length) return 0;
+  const ids = rows.map((row) => Number(row.id));
+  const placeholders = ids.map(() => "?").join(", ");
+  const result = db.prepare(`
+    UPDATE tag_sync_outbox
+    SET status = 'failed',
+        next_retry_at = ?,
+        lease_expires_at = NULL,
+        worktool_message_id = NULL,
+        last_error = 'processing lease expired',
+        updated_at = ?
+    WHERE id IN (${placeholders}) AND status = 'processing'
+  `).run(nextRetryAt, timestamp, ...ids);
+  return Number(result.changes || 0);
+}
+
+export function updateTagSyncRunStatus({
+  runId,
+  status,
+  reason = "",
+  error = ""
+}) {
+  const normalizedStatus = String(status || "").trim();
+  if (!new Set(["running", "paused", "completed", "stopped", "failed"]).has(normalizedStatus)) {
+    throw new Error("invalid tag sync run status");
+  }
+  const timestamp = now();
+  const terminal = new Set(["completed", "stopped", "failed"]).has(normalizedStatus);
+  db.prepare(`
+    UPDATE tag_sync_runs
+    SET status = ?,
+        pause_reason = ?,
+        last_error = ?,
+        updated_at = ?,
+        finished_at = ?
+    WHERE id = ?
+  `).run(
+    normalizedStatus,
+    String(reason || ""),
+    String(error || ""),
+    timestamp,
+    terminal ? timestamp : null,
+    runId
+  );
+  return rowToTagSyncRun(db.prepare("SELECT * FROM tag_sync_runs WHERE id = ?").get(runId));
+}
+
+export function finishTagSyncRunIfDrained({ botId, runId }) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const processing = Number(db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM tag_sync_outbox
+    WHERE bot_id = ? AND status = 'processing'
+  `).get(normalizedBotId)?.count || 0);
+  const remaining = Number(db.prepare(`
+    SELECT COUNT(*) AS count
+    FROM tag_sync_outbox
+    WHERE bot_id = ?
+      AND (
+        status = 'pending'
+        OR (status = 'failed' AND run_attempt_count < 3)
+      )
+  `).get(normalizedBotId)?.count || 0);
+  if (processing || remaining) return null;
+  return updateTagSyncRunStatus({ runId, status: "completed" });
+}
+
+export function getTagSyncStatus(botId) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const counts = db.prepare(`
+    SELECT
+      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
+      SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing_count,
+      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
+      SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded_count
+    FROM tag_sync_outbox
+    WHERE bot_id = ?
+  `).get(normalizedBotId) || {};
+  const lastRun = rowToTagSyncRun(db.prepare(`
+    SELECT * FROM tag_sync_runs WHERE bot_id = ? ORDER BY id DESC LIMIT 1
+  `).get(normalizedBotId));
+  return {
+    botId: normalizedBotId,
+    config: getTagSyncConfig(normalizedBotId),
+    pendingCount: Number(counts.pending_count || 0),
+    processingCount: Number(counts.processing_count || 0),
+    failedCount: Number(counts.failed_count || 0),
+    succeededCount: Number(counts.succeeded_count || 0),
+    activeRun: getActiveTagSyncRun(normalizedBotId),
+    lastRun
+  };
+}
+
 export function applyConversationTagChanges({
   botId,
   agentId,
@@ -4864,6 +5611,13 @@ export function applyConversationTagChanges({
         timestamp
       );
     }
+    registerTagSyncOutboxRows({
+      botId,
+      agentId,
+      conversationKey,
+      tags: nextTags,
+      timestamp
+    });
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -5091,6 +5845,13 @@ export function applyAgentTagOutcome({
     for (const event of rejected) {
       rejectedEvents.push(insertEvent(event, false));
     }
+    registerTagSyncOutboxRows({
+      botId,
+      agentId,
+      conversationKey,
+      tags: nextTags,
+      timestamp
+    });
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -5148,25 +5909,39 @@ export function upsertSystemDateTag({
     return listConversationTags({ botId, agentId, conversationKey });
   }
   const timestamp = now();
-  db.prepare(`
-    INSERT INTO conversation_tags (
-      bot_id, agent_id, conversation_key, group_id, group_name, tag_id, tag_name,
-      tag_type, reason, source, created_at, updated_at
-    )
-    VALUES (?, ?, ?, '', '', ?, ?, 'date', ?, ?, ?, ?)
-    ON CONFLICT(bot_id, agent_id, conversation_key, tag_type, group_id, tag_id)
-    DO NOTHING
-  `).run(
-    botId,
-    agentId,
-    conversationKey,
-    dateTagId,
-    dateTagId,
-    reason,
-    source,
-    timestamp,
-    timestamp
-  );
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      INSERT INTO conversation_tags (
+        bot_id, agent_id, conversation_key, group_id, group_name, tag_id, tag_name,
+        tag_type, reason, source, created_at, updated_at
+      )
+      VALUES (?, ?, ?, '', '', ?, ?, 'date', ?, ?, ?, ?)
+      ON CONFLICT(bot_id, agent_id, conversation_key, tag_type, group_id, tag_id)
+      DO NOTHING
+    `).run(
+      botId,
+      agentId,
+      conversationKey,
+      dateTagId,
+      dateTagId,
+      reason,
+      source,
+      timestamp,
+      timestamp
+    );
+    registerTagSyncOutboxRows({
+      botId,
+      agentId,
+      conversationKey,
+      tags: [{ tagName: dateTagId }],
+      timestamp
+    });
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
   return listConversationTags({ botId, agentId, conversationKey });
 }
 
