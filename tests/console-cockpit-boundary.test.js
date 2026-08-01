@@ -276,8 +276,6 @@ test("cockpit report fields use compact icon labels and shared recipient help", 
   const panel = html.slice(panelStart, panelEnd);
 
   for (const [icon, label] of [
-    ["clock", "统计时区"],
-    ["history", "未回复阈值"],
     ["users", "日报接收人"],
     ["users", "周报接收人"],
     ["users", "月报接收人"]
@@ -291,9 +289,19 @@ test("cockpit report fields use compact icon labels and shared recipient help", 
   assert.match(panel, /class="activation-help-icon cockpit-config-help"/);
   assert.match(panel, /title="日报、周报和月报接收人每行填写一个企微联系人"/);
   assert.doesNotMatch(panel, /接收人（每行一个企微联系人）/);
-  assert.match(panel, /class="[^"]*cockpit-unit-control[^"]*"[\s\S]*name="defaultNoReplyHours"[\s\S]*class="cockpit-field-unit">小时</);
   assert.match(css, /\.cockpit-config-form > label,\s*\.cockpit-recipient-grid > label\s*\{[\s\S]*grid-template-columns:\s*148px minmax\(0, 1fr\)/);
   assert.match(css, /\.cockpit-config-form label:has\(textarea\) \.field-label\s*\{[\s\S]*align-items:\s*center/);
+});
+
+test("cockpit keeps statistics rules as hidden system defaults", () => {
+  const panelStart = html.indexOf('id="cockpitConfigPanel"');
+  const panelEnd = html.indexOf('id="botBindingPanel"', panelStart);
+  const panel = html.slice(panelStart, panelEnd);
+
+  assert.doesNotMatch(panel, />统计时区</);
+  assert.doesNotMatch(panel, />未回复阈值</);
+  assert.match(panel, /<input name="timezone" type="hidden" value="Asia\/Shanghai" \/>/);
+  assert.match(panel, /<input name="defaultNoReplyHours" type="hidden" value="24" \/>/);
 });
 
 test("cockpit report recipients share three desktop columns with a mobile fallback", () => {

@@ -316,17 +316,8 @@
         </div>
         <div class="collapsible-content">
           <form id="cockpitConfigForm" class="form-grid cockpit-config-form">
-            <label>
-              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>统计时区</span>
-              <input name="timezone" value="Asia/Shanghai" required />
-            </label>
-            <label>
-              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>未回复阈值</span>
-              <div class="cockpit-unit-control field-control">
-                <input name="defaultNoReplyHours" type="number" min="1" value="24" required />
-                <span class="cockpit-field-unit">小时</span>
-              </div>
-            </label>
+            <input name="timezone" type="hidden" value="Asia/Shanghai" />
+            <input name="defaultNoReplyHours" type="hidden" value="24" />
             <div class="cockpit-recipient-grid wide">
               <label>
                 <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>日报接收人</span>
