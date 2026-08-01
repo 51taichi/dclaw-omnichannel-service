@@ -449,6 +449,43 @@
         </div>
       </section>
 
+      <section id="tagSyncPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
+        <div class="section-head">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>企微标签同步</h2>
+          <button class="collapse-button" data-collapse-target="tagSyncPanel" type="button" aria-label="收起企微标签同步">
+            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+          </button>
+        </div>
+        <div class="collapsible-content">
+          <form id="tagSyncForm" class="form-grid compact-form tag-sync-form">
+            <label class="toggle switch-toggle tag-sync-toggle">
+              <input id="tagSyncNightlyEnabled" name="nightlyEnabled" type="checkbox" />
+              <span class="switch-slider" aria-hidden="true"></span>
+              <span class="switch-label">夜间自动同步</span>
+            </label>
+            <label>
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>开始时间</span>
+              <select id="tagSyncWindowStart" name="windowStart" aria-label="夜间同步开始时间"></select>
+            </label>
+            <label>
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>结束时间</span>
+              <select id="tagSyncWindowEnd" name="windowEnd" aria-label="夜间同步结束时间"></select>
+            </label>
+            <div id="tagSyncStatus" class="tag-sync-status" aria-live="polite"></div>
+            <div class="actions tag-sync-actions">
+              <button class="secondary" type="submit">
+                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+                保存配置
+              </button>
+              <button id="tagSyncRunButton" class="primary" type="button">
+                <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
+                立即同步
+              </button>
+            </div>
+          </form>
+        </div>
+      </section>
+
       <section id="debugPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-terminal"></use></svg>调试自动回复</h2>
@@ -1017,7 +1054,7 @@
         </div>
         <div class="confirm-copy">
           <strong id="confirmTitle">删除会话？</strong>
-          <p>确认后会删除并清空当前会话记录。</p>
+          <p id="confirmMessage">确认后会删除并清空当前会话记录。</p>
         </div>
         <div class="confirm-actions">
           <button id="confirmCancelButton" class="secondary" type="button">

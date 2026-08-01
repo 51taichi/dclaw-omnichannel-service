@@ -12,6 +12,9 @@ const state = {
   debugReplyLoadVersion: 0,
   replyWaitLoadVersion: 0,
   historyAnalysisLoadVersion: 0,
+  tagSyncLoadVersion: 0,
+  tagSyncConfig: null,
+  pendingConfirmationResolve: null,
   selectedFlowConversationKey: "",
   loadingFlowConversationKey: "",
   currentRole: "",
@@ -68,6 +71,13 @@ const els = {
   replyWaitPanel: document.querySelector("#replyWaitPanel"),
   replyWaitForm: document.querySelector("#replyWaitForm"),
   historyAnalysisForm: document.querySelector("#historyAnalysisForm"),
+  tagSyncPanel: document.querySelector("#tagSyncPanel"),
+  tagSyncForm: document.querySelector("#tagSyncForm"),
+  tagSyncNightlyEnabled: document.querySelector("#tagSyncNightlyEnabled"),
+  tagSyncWindowStart: document.querySelector("#tagSyncWindowStart"),
+  tagSyncWindowEnd: document.querySelector("#tagSyncWindowEnd"),
+  tagSyncRunButton: document.querySelector("#tagSyncRunButton"),
+  tagSyncStatus: document.querySelector("#tagSyncStatus"),
   flowMachineForm: document.querySelector("#flowMachineForm"),
   refreshGroupsButton: document.querySelector("#refreshGroupsButton"),
   createGroupButton: document.querySelector("#createGroupButton"),
@@ -123,6 +133,8 @@ const els = {
   manualReplySendButton: document.querySelector("#manualReplySendButton"),
   resetConversationButton: document.querySelector("#resetConversationButton"),
   confirmDialog: document.querySelector("#confirmDialog"),
+  confirmTitle: document.querySelector("#confirmTitle"),
+  confirmMessage: document.querySelector("#confirmMessage"),
   confirmCancelButton: document.querySelector("#confirmCancelButton"),
   confirmAcceptButton: document.querySelector("#confirmAcceptButton"),
   conversationResetLoadingDialog: document.querySelector("#conversationResetLoadingDialog"),
@@ -656,6 +668,8 @@ function clearBotScopedContent() {
   state.proactiveTargetsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTasksPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTargetTags = [];
+  state.tagSyncLoadVersion += 1;
+  state.tagSyncConfig = null;
   state.proactiveTagSelections.clear();
   state.proactiveManualTargetKeys.clear();
   selectedTargets.clear();
@@ -694,6 +708,16 @@ function clearBotScopedContent() {
   els.historyAnalysisForm?.reset();
   if (els.historyAnalysisForm) {
     els.historyAnalysisForm.historyCustomerTextMaxChars.value = "4000";
+  }
+  if (els.tagSyncForm) {
+    els.tagSyncForm.reset();
+    els.tagSyncNightlyEnabled.checked = false;
+    els.tagSyncWindowStart.value = "03:00";
+    els.tagSyncWindowEnd.value = "06:00";
+    syncTagSyncScheduleFields();
+  }
+  if (els.tagSyncStatus) {
+    els.tagSyncStatus.innerHTML = `<span class="tag-sync-status-empty">选择 Bot 后查看同步状态</span>`;
   }
   els.manualReplyInput.value = "";
   els.accessKeyForm.reset();
@@ -767,6 +791,8 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
       await loadReplyWait({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       await loadHistoryAnalysis({ contextVersion });
+      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
+      await loadTagSyncConfig({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       await loadCockpitConfig({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
@@ -1817,6 +1843,190 @@ async function loadHistoryAnalysis({ contextVersion = state.botContextVersion } 
   ) return;
   els.historyAnalysisForm.historyCustomerTextMaxChars.value =
     String(data.config?.historyCustomerTextMaxChars ?? 4000);
+}
+
+function canonicalNightMinutes(value) {
+  const match = /^(\d{2}):(\d{2})$/.exec(String(value || ""));
+  if (!match) return Number.NaN;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  return (hour >= 22 ? hour : hour + 24) * 60 + minute;
+}
+
+function buildNightTagSyncTimeOptions() {
+  const options = [];
+  for (let minutes = 22 * 60; minutes <= 32 * 60; minutes += 15) {
+    const hour = Math.floor(minutes / 60) % 24;
+    const minute = minutes % 60;
+    const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+    options.push({
+      value,
+      minutes,
+      label: minutes >= 24 * 60 ? `次日 ${value}` : value
+    });
+  }
+  return options;
+}
+
+function initializeTagSyncTimeOptions() {
+  if (!els.tagSyncWindowStart || !els.tagSyncWindowEnd) return;
+  const options = buildNightTagSyncTimeOptions();
+  els.tagSyncWindowStart.innerHTML = options
+    .filter((option) => option.minutes < 32 * 60)
+    .map((option) => `<option value="${option.value}">${option.label}</option>`)
+    .join("");
+  els.tagSyncWindowEnd.innerHTML = options
+    .filter((option) => option.minutes > 22 * 60)
+    .map((option) => `<option value="${option.value}">${option.label}</option>`)
+    .join("");
+  els.tagSyncWindowStart.value = "03:00";
+  els.tagSyncWindowEnd.value = "06:00";
+}
+
+function syncTagSyncEndOptions() {
+  if (!els.tagSyncWindowStart || !els.tagSyncWindowEnd) return;
+  const startMinutes = canonicalNightMinutes(els.tagSyncWindowStart.value);
+  let firstAvailable = "";
+  for (const option of els.tagSyncWindowEnd.options) {
+    const optionMinutes = canonicalNightMinutes(option.value);
+    option.disabled = optionMinutes <= startMinutes;
+    if (!option.disabled && !firstAvailable) firstAvailable = option.value;
+  }
+  if (els.tagSyncWindowEnd.selectedOptions[0]?.disabled && firstAvailable) {
+    els.tagSyncWindowEnd.value = firstAvailable;
+  }
+}
+
+function syncTagSyncScheduleFields() {
+  if (!els.tagSyncNightlyEnabled) return;
+  const enabled = els.tagSyncNightlyEnabled.checked;
+  els.tagSyncWindowStart.disabled = !enabled;
+  els.tagSyncWindowEnd.disabled = !enabled;
+  syncTagSyncEndOptions();
+}
+
+function tagSyncRunLabel(run) {
+  if (!run) return "暂无运行记录";
+  const labels = {
+    pending: "等待执行",
+    running: "同步中",
+    paused: "已暂停",
+    completed: "已完成",
+    failed: "执行失败"
+  };
+  const trigger = run.triggerType === "manual" ? "手动" : "夜间";
+  return `${trigger}同步：${labels[run.status] || run.status}`;
+}
+
+function renderTagSyncStatus(status = {}) {
+  if (!els.tagSyncStatus) return;
+  const activeRun = status.activeRun || null;
+  const lastRun = status.lastRun || null;
+  const run = activeRun || lastRun;
+  const runTime = run?.updatedAt || run?.startedAt || "";
+  els.tagSyncStatus.innerHTML = `
+    <span class="tag-sync-stat is-pending">待同步 <strong>${Number(status.pendingCount || 0)}</strong></span>
+    <span class="tag-sync-stat is-processing">处理中 <strong>${Number(status.processingCount || 0)}</strong></span>
+    <span class="tag-sync-stat is-failed">失败 <strong>${Number(status.failedCount || 0)}</strong></span>
+    <span class="tag-sync-stat is-succeeded">已同步 <strong>${Number(status.succeededCount || 0)}</strong></span>
+    <span class="tag-sync-run-state" title="${escapeHtml(run?.lastError || run?.pauseReason || "")}">
+      ${icon(activeRun ? "refresh" : "history")}
+      <span>${escapeHtml(tagSyncRunLabel(run))}${runTime ? ` · ${escapeHtml(formatDisplayDateTime(runTime))}` : ""}</span>
+    </span>
+  `;
+}
+
+function applyTagSyncConfig(config = {}) {
+  state.tagSyncConfig = config;
+  els.tagSyncNightlyEnabled.checked = Boolean(config.nightlyEnabled);
+  els.tagSyncWindowStart.value = config.windowStart || "03:00";
+  els.tagSyncWindowEnd.value = config.windowEnd || "06:00";
+  syncTagSyncScheduleFields();
+}
+
+async function loadTagSyncConfig({ contextVersion = state.botContextVersion } = {}) {
+  const botId = state.selectedBotId;
+  if (state.currentRole !== "admin" || !botId || !els.tagSyncForm) return;
+  const requestVersion = ++state.tagSyncLoadVersion;
+  const [configData, statusData] = await Promise.all([
+    request(`/api/bots/${encodeURIComponent(botId)}/tag-sync/config`, { botId }),
+    request(`/api/bots/${encodeURIComponent(botId)}/tag-sync/status`, { botId })
+  ]);
+  if (
+    requestVersion !== state.tagSyncLoadVersion ||
+    state.selectedBotId !== botId ||
+    !isCurrentBotContext(botId, contextVersion)
+  ) return;
+  applyTagSyncConfig(configData.config || statusData.status?.config || {});
+  renderTagSyncStatus(statusData.status || {});
+}
+
+async function saveTagSyncConfig(event) {
+  event.preventDefault();
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (state.currentRole !== "admin" || !botId) {
+    toast("请先以管理员身份选择 Bot");
+    return;
+  }
+  const nightlyEnabled = els.tagSyncNightlyEnabled.checked;
+  if (nightlyEnabled && !state.tagSyncConfig?.initialBackfillAt) {
+    const confirmed = await openConfirmation({
+      title: "开启夜间自动同步？",
+      message: "首次开启会登记当前所有私聊客户的已有标签，并在设定的夜间时段逐步同步到企微。",
+      acceptLabel: "确认开启"
+    });
+    if (!confirmed || !isCurrentBotContext(botId, contextVersion)) {
+      els.tagSyncNightlyEnabled.checked = Boolean(state.tagSyncConfig?.nightlyEnabled);
+      syncTagSyncScheduleFields();
+      return;
+    }
+  }
+  const result = await request(`/api/bots/${encodeURIComponent(botId)}/tag-sync/config`, {
+    method: "PUT",
+    botId,
+    body: JSON.stringify({
+      nightlyEnabled,
+      windowStart: els.tagSyncWindowStart.value,
+      windowEnd: els.tagSyncWindowEnd.value
+    })
+  });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  applyTagSyncConfig(result.config || {});
+  const statusData = await request(`/api/bots/${encodeURIComponent(botId)}/tag-sync/status`, { botId });
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  renderTagSyncStatus(statusData.status || {});
+  toast("企微标签同步配置已保存");
+}
+
+async function runTagSyncNow() {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (state.currentRole !== "admin" || !botId) {
+    toast("请先以管理员身份选择 Bot");
+    return;
+  }
+  const confirmed = await openConfirmation({
+    title: "立即同步企微标签？",
+    message: "同步会使用当前 Bot 的 WorkTool 客户端队列；收到客户消息时会自动暂停，回复后继续。",
+    acceptLabel: "立即同步"
+  });
+  if (!confirmed || !isCurrentBotContext(botId, contextVersion)) return;
+  els.tagSyncRunButton.disabled = true;
+  try {
+    const data = await request(`/api/bots/${encodeURIComponent(botId)}/tag-sync/run`, {
+      method: "POST",
+      botId,
+      body: JSON.stringify({})
+    });
+    if (!isCurrentBotContext(botId, contextVersion)) return;
+    renderTagSyncStatus(data.status || {});
+    toast("企微标签同步已开始");
+  } finally {
+    if (isCurrentBotContext(botId, contextVersion)) {
+      els.tagSyncRunButton.disabled = false;
+    }
+  }
 }
 
 async function saveBot(event) {
@@ -4895,11 +5105,38 @@ function openConfirmDialog() {
     toast("请先选择会话");
     return;
   }
-  els.confirmDialog.hidden = false;
+  openConfirmation({
+    title: "删除会话？",
+    message: "确认后会删除并清空当前会话记录。",
+    acceptLabel: "确认删除",
+    danger: true
+  }).then((confirmed) => {
+    if (confirmed) resetSelectedConversation().catch(toastError);
+  });
 }
 
 function closeConfirmDialog() {
   els.confirmDialog.hidden = true;
+}
+
+function settleConfirmation(accepted) {
+  const resolve = state.pendingConfirmationResolve;
+  state.pendingConfirmationResolve = null;
+  closeConfirmDialog();
+  if (resolve) resolve(Boolean(accepted));
+}
+
+function openConfirmation({ title, message, acceptLabel = "确认", danger = false } = {}) {
+  if (state.pendingConfirmationResolve) settleConfirmation(false);
+  els.confirmTitle.textContent = title || "确认操作？";
+  els.confirmMessage.textContent = message || "请确认是否继续。";
+  els.confirmAcceptButton.classList.toggle("danger", danger);
+  els.confirmAcceptButton.classList.toggle("primary", !danger);
+  els.confirmAcceptButton.innerHTML = `${icon(danger ? "reset" : "check")} ${escapeHtml(acceptLabel)}`;
+  els.confirmDialog.hidden = false;
+  return new Promise((resolve) => {
+    state.pendingConfirmationResolve = resolve;
+  });
 }
 
 function toggleAssetsPanel() {
@@ -5628,6 +5865,12 @@ els.replyWaitForm?.addEventListener("submit", (event) =>
 els.historyAnalysisForm?.addEventListener("submit", (event) =>
   saveHistoryAnalysis(event).catch(toastError)
 );
+els.tagSyncForm?.addEventListener("submit", (event) =>
+  saveTagSyncConfig(event).catch(toastError)
+);
+els.tagSyncNightlyEnabled?.addEventListener("change", syncTagSyncScheduleFields);
+els.tagSyncWindowStart?.addEventListener("change", syncTagSyncEndOptions);
+els.tagSyncRunButton?.addEventListener("click", () => runTagSyncNow().catch(toastError));
 els.flowMachineForm.addEventListener("submit", (event) =>
   saveFlowMachine(event).catch(toastError)
 );
@@ -5757,14 +6000,11 @@ els.importTagsFile?.addEventListener("change", () =>
     })
 );
 els.resetConversationButton.addEventListener("click", openConfirmDialog);
-els.confirmCancelButton.addEventListener("click", closeConfirmDialog);
+els.confirmCancelButton.addEventListener("click", () => settleConfirmation(false));
 els.confirmDialog.addEventListener("click", (event) => {
-  if (event.target === els.confirmDialog) closeConfirmDialog();
+  if (event.target === els.confirmDialog) settleConfirmation(false);
 });
-els.confirmAcceptButton.addEventListener("click", () =>
-  resetSelectedConversation()
-    .catch(toastError)
-);
+els.confirmAcceptButton.addEventListener("click", () => settleConfirmation(true));
 els.assetsButton.addEventListener("click", toggleAssetsPanel);
 els.manualReplyComposer.addEventListener("submit", (event) =>
   sendManualReply(event).catch(toastError)
@@ -5906,6 +6146,8 @@ document.addEventListener("keydown", (event) => {
 
 async function startConsole() {
   await window.WorkspaceContext.ready;
+  initializeTagSyncTimeOptions();
+  syncTagSyncScheduleFields();
   ensureActionToolbox();
   syncFlowSessionTypeUi();
   syncRoleVisibility();
