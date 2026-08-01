@@ -6772,6 +6772,40 @@ td .muted {
   resize: vertical;
 }
 
+.cockpit-config-form > label {
+  grid-template-columns: 148px minmax(0, 1fr);
+}
+
+.cockpit-config-form label:has(textarea) .field-label {
+  align-items: center;
+  padding-top: 0;
+}
+
+.cockpit-unit-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  min-width: 0;
+}
+
+.cockpit-field-unit {
+  display: inline-flex;
+  align-items: center;
+  padding: 0 12px;
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.cockpit-config-help {
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+}
+
 .cockpit-schedule-actions {
   align-items: center;
   flex-wrap: wrap;

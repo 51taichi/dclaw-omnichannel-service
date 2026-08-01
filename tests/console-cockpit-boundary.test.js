@@ -248,6 +248,32 @@ test("report recipients and schedules live in the final config tab", () => {
   assert.match(app, /\/api\/cockpit\/\$\{encodeURIComponent\(state\.selectedBotId\)\}\/config/);
 });
 
+test("cockpit report fields use compact icon labels and shared recipient help", () => {
+  const panelStart = html.indexOf('id="cockpitConfigPanel"');
+  const panelEnd = html.indexOf('id="botBindingPanel"', panelStart);
+  const panel = html.slice(panelStart, panelEnd);
+
+  for (const [icon, label] of [
+    ["clock", "统计时区"],
+    ["history", "未回复阈值"],
+    ["users", "日报接收人"],
+    ["users", "周报接收人"],
+    ["users", "月报接收人"]
+  ]) {
+    assert.match(
+      panel,
+      new RegExp(`<span class="field-label"><svg class="icon"[^>]*><use href="#icon-${icon}"></use></svg>${label}</span>`)
+    );
+  }
+
+  assert.match(panel, /class="activation-help-icon cockpit-config-help"/);
+  assert.match(panel, /title="日报、周报和月报接收人每行填写一个企微联系人"/);
+  assert.doesNotMatch(panel, /接收人（每行一个企微联系人）/);
+  assert.match(panel, /class="[^"]*cockpit-unit-control[^"]*"[\s\S]*name="defaultNoReplyHours"[\s\S]*class="cockpit-field-unit">小时</);
+  assert.match(css, /\.cockpit-config-form > label\s*\{[\s\S]*grid-template-columns:\s*148px minmax\(0, 1fr\)/);
+  assert.match(css, /\.cockpit-config-form label:has\(textarea\) \.field-label\s*\{[\s\S]*align-items:\s*center/);
+});
+
 test("cockpit uses real chart canvases with visible zero-data states", () => {
   assert.match(cockpit, /cockpit-funnel-chart/);
   assert.match(cockpit, /cockpit-tag-group/);
