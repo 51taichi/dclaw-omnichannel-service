@@ -329,7 +329,14 @@ const TAG_SYNC_WORKER_INTERVAL_MS = Math.max(
   500,
   Number(process.env.TAG_SYNC_WORKER_INTERVAL_MS || 2000)
 );
-const tagSyncRealtimeActivityTtlMs = 15 * 60 * 1000;
+const TAG_SYNC_WORKER_LEASE_MS = Math.max(
+  30_000,
+  Number(process.env.TAG_SYNC_WORKER_LEASE_MS || 120_000)
+);
+const TAG_SYNC_REALTIME_ACTIVITY_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.TAG_SYNC_REALTIME_ACTIVITY_TTL_MS || 15 * 60 * 1000)
+);
 fs.mkdirSync(uploadDir, { recursive: true });
 
 function getUploadFolderName(botId) {
@@ -433,7 +440,7 @@ const tagSyncWorker = createTagSyncWorker({
   hasRealtimeActivity(botId) {
     return hasRecentBotMessageProcessing({
       botId,
-      sinceIso: new Date(Date.now() - tagSyncRealtimeActivityTtlMs).toISOString()
+      sinceIso: new Date(Date.now() - TAG_SYNC_REALTIME_ACTIVITY_TTL_MS).toISOString()
     });
   },
   claimBatch: claimNextTagSyncBatch,
@@ -445,6 +452,7 @@ const tagSyncWorker = createTagSyncWorker({
   recoverLeases: recoverExpiredTagSyncLeases,
   sendTags: syncFriendTags,
   getWindowState: getTagSyncWindowState,
+  leaseMs: TAG_SYNC_WORKER_LEASE_MS,
   log(event, fields) {
     if (event.endsWith("failed")) logWarn(event, fields);
     else logInfo(event, fields);

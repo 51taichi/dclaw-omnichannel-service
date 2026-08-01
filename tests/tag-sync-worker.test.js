@@ -20,6 +20,7 @@ function createHarness({
   realtimeActive = false,
   batches = [batchOne],
   sendError = null,
+  leaseMs,
   now = new Date("2026-08-01T19:00:00.000Z")
 } = {}) {
   const config = {
@@ -35,6 +36,7 @@ function createHarness({
   const submitFailures = [];
   const resolved = [];
   const recovered = [];
+  const claims = [];
   const logs = [];
   const queue = [...batches];
   let currentRun = activeRun;
@@ -64,7 +66,8 @@ function createHarness({
       return currentRun;
     },
     hasRealtimeActivity: () => isRealtimeActive,
-    claimBatch() {
+    claimBatch(input) {
+      claims.push(input);
       if (hasInFlight) return null;
       return queue.shift() || null;
     },
@@ -97,6 +100,7 @@ function createHarness({
       return { code: 200, data: `wt-${sent.length}` };
     },
     getWindowState: getTagSyncWindowState,
+    leaseMs,
     log(event, fields) {
       logs.push({ event, fields });
     }
@@ -112,6 +116,7 @@ function createHarness({
     submitFailures,
     resolved,
     recovered,
+    claims,
     logs,
     now,
     setRealtimeActive(value) {
@@ -171,6 +176,15 @@ test("worker waits for callback before submitting a second command", async () =>
   assert.equal(callback.matched, true);
   await harness.worker.runBot("bot_sync", harness.now);
   assert.equal(harness.sent.length, 2);
+});
+
+test("worker applies the configured claim lease duration", async () => {
+  const harness = createHarness({
+    activeRun: { id: 9, triggerType: "manual", status: "running" },
+    leaseMs: 180_000
+  });
+  await harness.worker.runBot("bot_sync", harness.now);
+  assert.equal(harness.claims[0].leaseExpiresAt, "2026-08-01T19:03:00.000Z");
 });
 
 test("callback success requires the submitted target to succeed", async () => {

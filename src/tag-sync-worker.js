@@ -106,7 +106,9 @@ export function createTagSyncWorker(deps) {
       botId,
       runId: run.id,
       nowIso,
-      leaseExpiresAt: new Date(clock.getTime() + 120_000).toISOString(),
+      leaseExpiresAt: new Date(
+        clock.getTime() + Number(deps.leaseMs || 120_000)
+      ).toISOString(),
       limit: 5
     });
     if (!batch) {

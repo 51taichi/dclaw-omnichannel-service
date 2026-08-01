@@ -65,4 +65,7 @@ test("tag sync startup recovers leases and runs a non-overlapping timer", () => 
   assert.match(source, /tagSyncWorker\.recover\(new Date\(\)\)/);
   assert.match(source, /tagSyncWorker\.tick\(new Date\(\)\)/);
   assert.match(source, /TAG_SYNC_WORKER_INTERVAL_MS/);
+  assert.match(source, /process\.env\.TAG_SYNC_WORKER_LEASE_MS/);
+  assert.match(source, /process\.env\.TAG_SYNC_REALTIME_ACTIVITY_TTL_MS/);
+  assert.match(source, /leaseMs:\s*TAG_SYNC_WORKER_LEASE_MS/);
 });
