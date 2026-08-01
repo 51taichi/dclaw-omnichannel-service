@@ -5132,8 +5132,20 @@ export function startTagSyncRun({
   if (!new Set(["manual", "scheduled"]).has(normalizedTrigger)) {
     throw new Error("triggerType must be manual or scheduled");
   }
+  const normalizedWindowKey = String(windowKey || "");
   const existing = getActiveTagSyncRun(normalizedBotId);
   if (existing) return existing;
+  if (normalizedTrigger === "scheduled" && normalizedWindowKey) {
+    const completedWindow = db.prepare(`
+      SELECT 1
+      FROM tag_sync_runs
+      WHERE bot_id = ?
+        AND trigger_type = 'scheduled'
+        AND window_key = ?
+      LIMIT 1
+    `).get(normalizedBotId, normalizedWindowKey);
+    if (completedWindow) return null;
+  }
   ensureTagSyncInitialBackfill({ botId: normalizedBotId });
 
   db.exec("BEGIN IMMEDIATE");
@@ -5159,7 +5171,7 @@ export function startTagSyncRun({
     `).run(
       normalizedBotId,
       normalizedTrigger,
-      String(windowKey || ""),
+      normalizedWindowKey,
       pendingBefore,
       startedAt,
       startedAt
@@ -6829,6 +6841,8 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
     db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
       .run(conversationKey, botId);
     db.prepare("DELETE FROM conversation_tags WHERE conversation_key = ? AND bot_id = ?")
+      .run(conversationKey, botId);
+    db.prepare("DELETE FROM tag_sync_outbox WHERE conversation_key = ? AND bot_id = ?")
       .run(conversationKey, botId);
     db.prepare(`
       UPDATE flow_activation_tasks

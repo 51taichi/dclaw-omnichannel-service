@@ -68,6 +68,7 @@ export function createTagSyncWorker(deps) {
         windowKey: window.windowKey,
         startedAt: clock.toISOString()
       });
+      if (!run) return { status: "already_completed" };
       log("tag_sync.run.started", {
         botId,
         runId: run.id,
@@ -198,6 +199,7 @@ export function createTagSyncWorker(deps) {
     if (ticking) return { status: "busy" };
     ticking = true;
     try {
+      recover(currentTime);
       const configs = deps.listConfigs();
       const results = await Promise.allSettled(
         configs.map((config) => runBot(config.botId, currentTime))

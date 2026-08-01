@@ -21,6 +21,7 @@ function createHarness({
   batches = [batchOne],
   sendError = null,
   leaseMs,
+  skipScheduledRun = false,
   now = new Date("2026-08-01T19:00:00.000Z")
 } = {}) {
   const config = {
@@ -49,6 +50,7 @@ function createHarness({
     getActiveRun: () => currentRun,
     startRun(input) {
       startedRuns.push(input);
+      if (skipScheduledRun && input.triggerType === "scheduled") return null;
       currentRun = {
         id: 9,
         botId: input.botId,
@@ -129,6 +131,14 @@ test("disabled nightly config never starts a scheduled run", async () => {
   const harness = createHarness({ nightlyEnabled: false });
   await harness.worker.tick(harness.now);
   assert.equal(harness.startedRuns.length, 0);
+  assert.equal(harness.sent.length, 0);
+});
+
+test("a completed scheduled window does not start or process another run", async () => {
+  const harness = createHarness({ skipScheduledRun: true });
+  const result = await harness.worker.runBot("bot_sync", harness.now);
+  assert.equal(result.status, "already_completed");
+  assert.equal(harness.startedRuns.length, 1);
   assert.equal(harness.sent.length, 0);
 });
 
@@ -225,4 +235,5 @@ test("recover delegates expired lease recovery and tick does not overlap", async
 
   await Promise.all([harness.worker.tick(harness.now), harness.worker.tick(harness.now)]);
   assert.equal(harness.startedRuns.length, 0);
+  assert.equal(harness.recovered.length, 2);
 });

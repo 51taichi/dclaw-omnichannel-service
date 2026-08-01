@@ -260,6 +260,32 @@ test("runnable configs include active manual runs while nightly automation is of
   assert.ok(db.listRunnableTagSyncConfigs().some((config) => config.botId === botId));
 });
 
+test("scheduled runs execute only once for the same Beijing night window", () => {
+  const botId = "tag_sync_once_per_window_bot";
+  ensureBot(botId);
+  const first = db.startTagSyncRun({
+    botId,
+    triggerType: "scheduled",
+    windowKey: "2026-08-01",
+    startedAt: "2026-08-01T19:00:00.000Z"
+  });
+  db.updateTagSyncRunStatus({ runId: first.id, status: "completed" });
+
+  const duplicate = db.startTagSyncRun({
+    botId,
+    triggerType: "scheduled",
+    windowKey: "2026-08-01",
+    startedAt: "2026-08-01T19:05:00.000Z"
+  });
+
+  assert.equal(duplicate, null);
+  assert.equal(sqlite.prepare(`
+    SELECT COUNT(*) AS count
+    FROM tag_sync_runs
+    WHERE bot_id = ? AND trigger_type = 'scheduled' AND window_key = ?
+  `).get(botId, "2026-08-01").count, 1);
+});
+
 test("failed callbacks and expired leases stay durable and retryable", () => {
   const botId = "tag_sync_retry_bot";
   const agentId = ensureBot(botId);
@@ -337,6 +363,27 @@ test("message processing activity is isolated by Bot", () => {
     botId,
     sinceIso: "2000-01-01T00:00:00.000Z"
   }), false);
+});
+
+test("deleting a conversation removes only its pending tag sync Outbox", () => {
+  const botId = "tag_sync_delete_conversation_bot";
+  const agentId = ensureBot(botId);
+  const deletedKey = ensureConversation({ botId, agentId, targetName: "待删除客户" });
+  const keptKey = ensureConversation({ botId, agentId, targetName: "保留客户" });
+  addNormalTags({ botId, agentId, conversationKey: deletedKey, names: ["A类"] });
+  addNormalTags({ botId, agentId, conversationKey: keptKey, names: ["VIP"] });
+  db.ensureTagSyncInitialBackfill({ botId });
+
+  db.clearConversationForReset({ botId, conversationKey: deletedKey });
+
+  assert.equal(sqlite.prepare(`
+    SELECT COUNT(*) AS count FROM tag_sync_outbox
+    WHERE bot_id = ? AND conversation_key = ?
+  `).get(botId, deletedKey).count, 0);
+  assert.equal(sqlite.prepare(`
+    SELECT COUNT(*) AS count FROM tag_sync_outbox
+    WHERE bot_id = ? AND conversation_key = ?
+  `).get(botId, keptKey).count, 1);
 });
 
 test("deleting a Bot removes its tag sync config runs and Outbox only", () => {
