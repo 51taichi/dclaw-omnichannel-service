@@ -101,6 +101,33 @@ test("current task labels show four characters before an ellipsis", () => {
   assert.match(css, /\.flow-session-current-task::before\s*\{[\s\S]*left:\s*7px[\s\S]*width:\s*5px[\s\S]*height:\s*5px/);
 });
 
+test("current task labels never expose internal or unknown node ids", () => {
+  const functionSource = app.match(/function flowNodeName\([\s\S]*?\n}\n/)[0];
+  const machine = {
+    config: {
+      nodes: [{ id: "node_1", name: "首次沟通" }]
+    }
+  };
+  const flowNodeName = Function(
+    "currentFlowMachine",
+    `${functionSource}; return flowNodeName;`
+  )(machine);
+
+  assert.equal(flowNodeName("node_1"), "首次沟通");
+  assert.equal(flowNodeName("__conversation__"), "未进入");
+  assert.equal(flowNodeName("missing_node"), "未进入");
+  assert.equal(flowNodeName(""), "未进入");
+});
+
+test("flow sessions redraw when the flow machine finishes loading", () => {
+  const functionSource = app.match(/async function loadFlowMachine\([\s\S]*?\n}\n/)[0];
+
+  assert.match(
+    functionSource,
+    /renderFlowSessionNodeFilter\(\);[\s\S]*!useDefault[\s\S]*currentFlowSessions\.length[\s\S]*renderFlowSessions\(\)/
+  );
+});
+
 test("flow session status labels do not change card or chat header layout", () => {
   assert.match(css, /\.flow-session-card\s*\{[\s\S]*display:\s*grid/);
   assert.match(css, /\.flow-workbench\s*\{[\s\S]*grid-template-columns:\s*310px minmax\(0,\s*1fr\)/);

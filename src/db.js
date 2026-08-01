@@ -3603,9 +3603,21 @@ export function getOrCreateFlowSession({ botId, conversationKey, machine }) {
     );
     row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey);
   }
-  const session = rowToFlowSession(row);
-  if (session?.botId !== botId) throw new Error("flow session not found");
-  return session;
+  if (row?.bot_id !== botId) throw new Error("flow session not found");
+  if (row.current_node_id === "__conversation__") {
+    const entryNodeId = String(machine?.entryNodeId || "").trim();
+    if (!entryNodeId) throw new Error("flow entry node is required");
+    db.prepare(`
+      UPDATE flow_sessions
+      SET current_node_id = ?,
+          updated_at = ?
+      WHERE conversation_key = ?
+        AND bot_id = ?
+        AND current_node_id = '__conversation__'
+    `).run(entryNodeId, now(), conversationKey, botId);
+    row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?").get(conversationKey);
+  }
+  return rowToFlowSession(row);
 }
 
 export function createLegacyFlowSession({ botId, conversationKey, machine }) {

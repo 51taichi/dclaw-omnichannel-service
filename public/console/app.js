@@ -2109,7 +2109,7 @@ function flowNodeLabel(nodeId) {
 
 function flowNodeName(nodeId) {
   const node = currentFlowMachine?.config?.nodes?.find((item) => item.id === nodeId);
-  return node?.name || nodeId || "-";
+  return node?.name || "未进入";
 }
 
 function compactFlowNodeName(value) {
@@ -4153,6 +4153,7 @@ async function loadFlowMachine({ useDefault = false, contextVersion = state.botC
     setFlowEditorFromConfig({});
   }
   renderFlowSessionNodeFilter();
+  if (!useDefault && currentFlowSessions.length) renderFlowSessions();
 }
 
 async function saveFlowMachine(event) {

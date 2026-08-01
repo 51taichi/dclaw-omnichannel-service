@@ -33,3 +33,15 @@ test("server persists a managed group's creation date tag with its canonical con
     /backfillManagedGroupConversationDateTags\(\)[\s\S]*app\.listen\(port, host/
   );
 });
+
+test("proactive group targets keep lightweight conversation sessions", () => {
+  const workerSource = serverSource.slice(
+    serverSource.indexOf("async function processNextProactiveTarget"),
+    serverSource.indexOf("if (proactiveWorkerConfig.enabled)")
+  );
+
+  assert.match(
+    workerSource,
+    /target\.targetType === "group"[\s\S]*getOrCreateConversationSession\(\{\s*botId: target\.botId,\s*conversationKey\s*\}\)/
+  );
+});

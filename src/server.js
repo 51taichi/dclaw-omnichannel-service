@@ -4169,7 +4169,13 @@ async function processNextProactiveTarget() {
           conversationKey,
           message: buildProactiveConversationMessage(target)
         });
-        if (flowMachine?.enabled) {
+        if (target.targetType === "group") {
+          getOrCreateConversationSession({
+            botId: target.botId,
+            conversationKey
+          });
+          touchFlowSession(conversationKey);
+        } else if (flowMachine?.enabled) {
           getOrCreateFlowSession({
             botId: target.botId,
             conversationKey,
