@@ -62,7 +62,8 @@ test("console exposes a per-session handoff switch without redundant status labe
 
 test("flow session cards show the current task inline without metadata icons", () => {
   assert.equal(app.includes("flow-session-current-task"), true);
-  assert.equal(app.includes("当前任务：${escapeHtml(status)}"), true);
+  assert.equal(app.includes('class="flow-session-current-task">${escapeHtml(status)}'), true);
+  assert.equal(app.includes("当前任务："), false);
   assert.match(app, /const privateSessionTools = sessionType === "private"/);
   assert.match(app, /const manualTagTrigger = sessionType === "private"/);
   assert.match(app, /class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\], \{ includeDate: false \}\)/);

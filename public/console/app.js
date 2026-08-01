@@ -4280,7 +4280,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
             : "";
           const privateSessionTools = sessionType === "private"
             ? `<span class="flow-session-tools">
-                <span class="flow-session-current-task">当前任务：${escapeHtml(status)}</span>
+                <span class="flow-session-current-task">${escapeHtml(status)}</span>
               </span>`
             : "";
           const handoffSwitch = sessionType === "private"
