@@ -110,6 +110,10 @@ test("snapshot includes universal message metrics, reply risks, nodes and tags",
     getCursor: () => ({ lastEventId: 0 }),
     listEvents: () => events,
     loadState: () => ({ events: [] }),
+    getBaselineCharts: () => ({
+      nodeDistribution: [{ nodeId: "node1", nodeName: "初始沟通" }],
+      tags: []
+    }),
     saveState: () => {},
     saveSnapshot: (snapshot) => { saved = snapshot; return snapshot; },
     saveCursor: () => {}
@@ -125,7 +129,7 @@ test("snapshot includes universal message metrics, reply risks, nodes and tags",
   assert.equal(saved.metrics.neverReplied, 1);
   assert.equal(saved.metrics.effectiveConversations, 0);
   assert.equal("invitationRate" in saved.metrics, false);
-  assert.equal(saved.definitions.statisticsVersion, 2);
+  assert.equal(saved.definitions.statisticsVersion, 3);
   assert.equal(saved.charts.nodeDistribution[0].nodeId, "node1");
   assert.equal(saved.charts.tags[0].tagId, "hot");
 });
@@ -256,13 +260,19 @@ test("aggregation enriches period tag changes without copying baseline stock cou
   }]);
 });
 
-test("node distribution uses each active customer's final period node and includes unassigned activity", async () => {
+test("node distribution uses each active customer's latest recognized node before period end", async () => {
   let saved;
   const events = [
-    { id: 1, customerKey: "a", eventType: "customer_message", occurredAt: "2026-07-30T01:00:00.000Z" },
-    { id: 2, customerKey: "a", eventType: "node_reached", nodeId: "start", occurredAt: "2026-07-30T01:05:00.000Z" },
-    { id: 3, customerKey: "a", eventType: "node_reached", nodeId: "qualified", occurredAt: "2026-07-30T02:00:00.000Z" },
-    { id: 4, customerKey: "b", eventType: "customer_message", occurredAt: "2026-07-30T03:00:00.000Z" }
+    { id: 1, customerKey: "a", eventType: "node_reached", nodeId: "start", occurredAt: "2026-07-29T15:00:00.000Z" },
+    { id: 2, customerKey: "a", eventType: "customer_message", occurredAt: "2026-07-30T01:00:00.000Z" },
+    { id: 3, customerKey: "b", eventType: "node_reached", nodeId: "start", occurredAt: "2026-07-29T15:30:00.000Z" },
+    { id: 4, customerKey: "b", eventType: "node_reached", nodeId: "start", occurredAt: "2026-07-30T02:00:00.000Z" },
+    { id: 5, customerKey: "b", eventType: "node_reached", nodeId: "qualified", occurredAt: "2026-07-30T02:00:00.000Z" },
+    { id: 6, customerKey: "b", eventType: "customer_message", occurredAt: "2026-07-30T03:00:00.000Z" },
+    { id: 7, customerKey: "c", eventType: "customer_message", occurredAt: "2026-07-30T04:00:00.000Z" },
+    { id: 8, customerKey: "d", eventType: "node_reached", nodeId: "qualified", occurredAt: "2026-07-29T15:45:00.000Z" },
+    { id: 9, customerKey: "d", eventType: "node_reached", nodeId: "removed-node", occurredAt: "2026-07-30T05:00:00.000Z" },
+    { id: 10, customerKey: "d", eventType: "customer_message", occurredAt: "2026-07-30T06:00:00.000Z" }
   ];
   const aggregator = createCockpitAggregator({
     getConfig: () => ({ timezone: "Asia/Shanghai", defaultNoReplyHours: 24 }),
@@ -289,15 +299,15 @@ test("node distribution uses each active customer's final period node and includ
 
   assert.deepEqual(saved.charts.nodeDistribution, [
     {
-      nodeId: "qualified",
-      nodeName: "已沟通",
+      nodeId: "start",
+      nodeName: "开始",
       reached: 1,
       share: 0.5,
       basis: "period_final_state"
     },
     {
-      nodeId: "__conversation__",
-      nodeName: "其他（未进入任务）",
+      nodeId: "qualified",
+      nodeName: "已沟通",
       reached: 1,
       share: 0.5,
       basis: "period_final_state"

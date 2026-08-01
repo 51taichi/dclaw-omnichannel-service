@@ -3,7 +3,7 @@ export function createCockpitBootstrap({
   getLatestSnapshot,
   aggregateBot,
   onError = () => {},
-  statisticsVersion = 2
+  statisticsVersion = 3
 }) {
   return {
     async run({ throughAt = new Date().toISOString() } = {}) {

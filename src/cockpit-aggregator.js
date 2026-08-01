@@ -6,7 +6,7 @@ import {
   periodBounds
 } from "./cockpit-domain.js";
 
-export const COCKPIT_STATISTICS_VERSION = 2;
+export const COCKPIT_STATISTICS_VERSION = 3;
 
 function mergeEvents(existing, incoming) {
   const byId = new Map(existing.map((event) => [event.id, event]));
@@ -28,11 +28,14 @@ function periodNodeDistribution({ events, period, definitions = [] }) {
   );
   if (!activeCustomers.size) return [];
 
+  const definedNodeIds = new Set(definitions.map((node) => node.nodeId));
   const finalNodeByCustomer = new Map();
-  for (const event of periodEvents) {
+  for (const event of events) {
     if (
       event.eventType !== "node_reached"
       || !event.nodeId
+      || !event.occurredAt
+      || event.occurredAt >= period.end
       || !activeCustomers.has(event.customerKey)
     ) continue;
     const existing = finalNodeByCustomer.get(event.customerKey);
@@ -47,38 +50,23 @@ function periodNodeDistribution({ events, period, definitions = [] }) {
       finalNodeByCustomer.set(event.customerKey, event);
     }
   }
-  const definitionById = new Map(
-    definitions.map((node, index) => [
-      node.nodeId,
-      { ...node, order: index }
-    ])
-  );
+  const recognizedNodes = [...finalNodeByCustomer.values()]
+    .filter((event) => definedNodeIds.has(event.nodeId));
+  if (!recognizedNodes.length) return [];
+
   const counts = new Map();
-  for (const event of finalNodeByCustomer.values()) {
+  for (const event of recognizedNodes) {
     counts.set(event.nodeId, (counts.get(event.nodeId) || 0) + 1);
   }
-  const rows = [...counts.entries()].map(([nodeId, reached]) => ({
-    nodeId,
-    nodeName: definitionById.get(nodeId)?.nodeName || nodeId,
-    reached,
-    share: reached / activeCustomers.size,
-    basis: "period_final_state",
-    order: definitionById.get(nodeId)?.order ?? Number.MAX_SAFE_INTEGER
-  }));
-  const unassigned = activeCustomers.size - finalNodeByCustomer.size;
-  if (unassigned > 0) {
-    rows.push({
-      nodeId: "__conversation__",
-      nodeName: "其他（未进入任务）",
-      reached: unassigned,
-      share: unassigned / activeCustomers.size,
-      basis: "period_final_state",
-      order: Number.MAX_SAFE_INTEGER
-    });
-  }
-  return rows
-    .sort((left, right) => left.order - right.order)
-    .map(({ order, ...row }) => row);
+  return definitions
+    .filter((node) => counts.has(node.nodeId))
+    .map((node) => ({
+      nodeId: node.nodeId,
+      nodeName: node.nodeName,
+      reached: counts.get(node.nodeId),
+      share: counts.get(node.nodeId) / recognizedNodes.length,
+      basis: "period_final_state"
+    }));
 }
 
 export function createCockpitAggregator({

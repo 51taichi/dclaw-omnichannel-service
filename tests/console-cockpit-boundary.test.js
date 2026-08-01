@@ -80,7 +80,7 @@ test("effective conversations replace customer messages beside the outcome chart
 });
 
 test("desktop metric labels remain fully visible", () => {
-  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 58px/);
+  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 76px/);
   assert.match(css, /\.cockpit-metric-label > span[\s\S]*flex:\s*0 0 auto/);
   const labelStart = css.indexOf(".cockpit-metric-label > span");
   const labelEnd = css.indexOf("\n}", labelStart);
@@ -128,15 +128,17 @@ test("task node chart shows only percentages and keeps counts in row tips", () =
   assert.match(css, /\.cockpit-funnel-row[\s\S]*cursor:\s*help/);
 });
 
-test("large metric values use stable compact slots without changing the layout", () => {
+test("metric values stay complete through four digits and compact from ten thousand", () => {
   assert.match(cockpit, /function formatDashboardNumber/);
-  assert.match(cockpit, /1000/);
-  assert.match(cockpit, /千/);
+  assert.doesNotMatch(cockpit, /number\s*>=\s*1000(?!0)/);
+  assert.doesNotMatch(cockpit, /"千"/);
   assert.match(cockpit, /10000/);
   assert.match(cockpit, /万/);
   assert.match(cockpit, /100000000/);
   assert.match(cockpit, /亿/);
   assert.match(cockpit, /title="\$\{fullNumber/);
+  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 76px/);
+  assert.match(css, /\.cockpit-metric-card strong[\s\S]*font-size:\s*clamp\(20px,\s*2vw,\s*26px\)/);
   assert.match(css, /font-variant-numeric:\s*tabular-nums/);
   assert.match(css, /\.cockpit-metric-card strong[\s\S]*inline-size:\s*100%/);
   assert.match(css, /\.cockpit-metric-card strong[\s\S]*min-inline-size:\s*0/);
@@ -145,7 +147,7 @@ test("large metric values use stable compact slots without changing the layout",
 });
 
 test("all dashboard value columns reserve enough space for 999", () => {
-  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 58px/);
+  assert.match(css, /\.cockpit-metric-card[\s\S]*grid-template-columns:\s*minmax\(5em,\s*1fr\) 76px/);
   assert.match(css, /\.cockpit-outcome-legend > div[\s\S]*grid-template-columns:\s*8px minmax\(4em,\s*1fr\) 5ch/);
   assert.match(css, /\.cockpit-outcome-legend small[\s\S]*min-width:\s*5ch/);
   assert.match(css, /\.cockpit-tag-row[\s\S]*grid-template-columns:[^;]*40px 48px/);
@@ -262,8 +264,9 @@ test("node distribution totals exactly one hundred percent and hides internal id
   assert.match(cockpit, /function distributionPercentages/);
   assert.match(cockpit, /100 - assigned/);
   assert.match(cockpit, /toFixed\(1\)/);
-  assert.match(cockpit, /__conversation__/);
-  assert.match(cockpit, /其他（未进入任务）/);
+  assert.match(cockpit, /Array\.isArray\(data\.nodeDistribution\)/);
+  assert.doesNotMatch(cockpit, /__conversation__/);
+  assert.doesNotMatch(cockpit, /其他（未进入任务）/);
 });
 
 test("cockpit status messages use the shared top toast instead of an inline warning", () => {

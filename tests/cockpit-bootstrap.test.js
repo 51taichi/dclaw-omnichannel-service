@@ -22,7 +22,7 @@ test("bootstrap aggregates only enabled Bots without a daily snapshot", async ()
             effectiveConversations: 0
           },
           charts: { nodeDistribution: [{ nodeId: "real" }], tags: [] },
-          definitions: { statisticsVersion: 2 }
+          definitions: { statisticsVersion: 3 }
         }
       : null,
     aggregateBot: async (input) => aggregated.push(input)
@@ -93,7 +93,7 @@ test("bootstrap refreshes snapshots whose customer outcomes are not exhaustive",
   assert.equal(calls.length, 1);
 });
 
-test("bootstrap refreshes snapshots produced by the historical-stock statistics version", async () => {
+test("bootstrap refreshes snapshots produced before latest-node distribution", async () => {
   const calls = [];
   const bootstrap = createCockpitBootstrap({
     listBots: () => [{ botId: "old-statistics", enabled: true }],
@@ -110,7 +110,7 @@ test("bootstrap refreshes snapshots produced by the historical-stock statistics 
         nodeDistribution: [{ nodeId: "old", basis: "current_state" }],
         tags: []
       },
-      definitions: { statisticsVersion: 1 }
+      definitions: { statisticsVersion: 2 }
     }),
     aggregateBot: async (input) => calls.push(input)
   });

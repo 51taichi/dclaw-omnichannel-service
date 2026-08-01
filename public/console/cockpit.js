@@ -72,7 +72,6 @@
     );
     if (number >= 100000000) return compact(number / 100000000, "亿");
     if (number >= 10000) return compact(number / 10000, "万");
-    if (number >= 1000) return compact(number / 1000, "千");
     return number.toLocaleString("zh-CN");
   }
 
@@ -218,7 +217,7 @@
   }
 
   function funnelChart(data) {
-    const nodes = (data.nodeDistribution?.length
+    const nodes = (Array.isArray(data.nodeDistribution)
       ? data.nodeDistribution
       : (data.funnels || []).flatMap((funnel) => funnel.nodes || []))
       .slice(0, 8);
@@ -236,9 +235,7 @@
             const y = 28 + index * rowHeight;
             const share = Math.max(0, Math.min(1, Number(node.share || 0)));
             const width = share > 0 ? Math.max(4, share * 390) : 0;
-            const nodeName = node.nodeId === "__conversation__"
-              ? "其他（未进入任务）"
-              : (node.nodeName || node.nodeId);
+            const nodeName = node.nodeName || node.nodeId;
             const tooltip = `${nodeName} · 人数：${Number(node.reached || 0).toLocaleString("zh-CN")} · 占比：${percentages[index].toFixed(1)}%`;
             return `
               <g class="cockpit-funnel-row" tabindex="0">
