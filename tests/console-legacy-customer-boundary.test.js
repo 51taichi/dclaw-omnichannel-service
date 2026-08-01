@@ -20,8 +20,8 @@ test("legacy customer avatar uses a gold gradient and native tooltip", () => {
   assert.match(css, /\.flow-session-avatar-shell\.is-legacy \.flow-session-avatar\s*\{[^}]*mix-blend-mode:\s*multiply/);
 });
 
-test("legacy customer controls use gold borders and icons", () => {
-  assert.match(css, /\.flow-session-card\.is-legacy :is\(\.flow-session-manual-tag-trigger,\s*\.flow-session-icons span\)\s*\{[^}]*#f59e0b[^}]*color:\s*#a16207/);
+test("legacy customer controls and current task use gold styling", () => {
+  assert.match(css, /\.flow-session-card\.is-legacy \.flow-session-manual-tag-trigger,\s*\.flow-session-card\.is-legacy \.flow-session-current-task\s*\{[^}]*#f59e0b[^}]*color:\s*#a16207/);
 });
 
 test("legacy customer handoff switch keeps the regular Bot theme", () => {

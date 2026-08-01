@@ -4267,12 +4267,6 @@ function renderFlowSessions({ animateFrom = null } = {}) {
           const avatar = sessionType === "group" ? "./assets/group.png" : "./assets/ddeer.png";
           const isLegacyCustomer = sessionType === "private" && session?.customerOrigin === "legacy";
           const status = flowNodeName(session.currentNodeId);
-          const assets = session.assets || {};
-          const assetSummary = assets.totalCount
-            ? `${assets.collectedCount || 0}/${assets.totalCount}`
-            : "0/0";
-          const taskTooltip = `当前任务：${status}`;
-          const assetTooltip = `资产：${assetSummary}`;
           const isHandoff = sessionType === "private" && session.handoffStatus === "human";
           const manualTagTrigger = sessionType === "private"
             ? `<span
@@ -4286,10 +4280,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
             : "";
           const privateSessionTools = sessionType === "private"
             ? `<span class="flow-session-tools">
-                <small class="flow-session-icons">
-                  <span class="session-icon" title="${escapeHtml(taskTooltip)}" aria-label="${escapeHtml(taskTooltip)}">${icon("edit")}</span>
-                  <span class="session-icon" title="${escapeHtml(assetTooltip)}" aria-label="${escapeHtml(assetTooltip)}">${icon("briefcase")}</span>
-                </small>
+                <span class="flow-session-current-task">当前任务：${escapeHtml(status)}</span>
               </span>`
             : "";
           const handoffSwitch = sessionType === "private"

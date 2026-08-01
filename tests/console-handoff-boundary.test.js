@@ -60,26 +60,26 @@ test("console exposes a per-session handoff switch without redundant status labe
   assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(32px\)/);
 });
 
-test("flow session cards use compact icon metadata for task, assets, and handoff", () => {
-  assert.equal(app.includes("flow-session-icons"), true);
-  assert.equal(app.includes("当前任务：${status}"), true);
-  assert.equal(app.includes("资产：${assetSummary}"), true);
+test("flow session cards show the current task inline without metadata icons", () => {
+  assert.equal(app.includes("flow-session-current-task"), true);
+  assert.equal(app.includes("当前任务：${escapeHtml(status)}"), true);
   assert.match(app, /const privateSessionTools = sessionType === "private"/);
   assert.match(app, /const manualTagTrigger = sessionType === "private"/);
   assert.match(app, /class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\], \{ includeDate: false \}\)/);
   assert.equal(app.includes('最近消息：${formatDisplayDateTime(lastMessageAt) || "暂无"}'), false);
   assert.doesNotMatch(app, /timeTooltip/);
   assert.doesNotMatch(app, /title="\$\{escapeHtml\(timeTooltip\)\}"/);
-  assert.doesNotMatch(app, /class="session-icon"[^>]*data-tooltip=/);
+  assert.doesNotMatch(app, /class="session-icon"/);
+  assert.doesNotMatch(app, /assetTooltip/);
+  assert.doesNotMatch(app, /taskTooltip/);
   assert.equal(app.includes("aria-label="), true);
   assert.equal(html.includes('id="icon-robot"'), true);
   assert.equal(app.includes("AI接待中"), false);
   assert.equal(app.includes("人工接手中"), false);
   assert.equal(app.includes("flow-session-status"), false);
-  assert.equal(css.includes(".flow-session-icons"), true);
-  assert.match(css, /\.flow-session-icons\s*\{[\s\S]*display:\s*inline-grid[\s\S]*grid-template-columns:\s*repeat\(2,\s*30px\)[\s\S]*gap:\s*2px/);
-  assert.match(css, /\.flow-session-icons span\s*\{[\s\S]*width:\s*30px[\s\S]*height:\s*30px/);
-  assert.equal(css.includes(".session-icon::after"), false);
+  assert.equal(css.includes(".flow-session-icons"), false);
+  assert.match(css, /\.flow-session-current-task\s*\{[\s\S]*white-space:\s*nowrap[\s\S]*text-overflow:\s*ellipsis/);
+  assert.match(css, /\.flow-session-card\.is-legacy \.flow-session-current-task\s*\{/);
 });
 
 test("flow session status labels do not change card or chat header layout", () => {
