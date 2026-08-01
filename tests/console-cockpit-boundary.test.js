@@ -270,8 +270,24 @@ test("cockpit report fields use compact icon labels and shared recipient help", 
   assert.match(panel, /title="日报、周报和月报接收人每行填写一个企微联系人"/);
   assert.doesNotMatch(panel, /接收人（每行一个企微联系人）/);
   assert.match(panel, /class="[^"]*cockpit-unit-control[^"]*"[\s\S]*name="defaultNoReplyHours"[\s\S]*class="cockpit-field-unit">小时</);
-  assert.match(css, /\.cockpit-config-form > label\s*\{[\s\S]*grid-template-columns:\s*148px minmax\(0, 1fr\)/);
+  assert.match(css, /\.cockpit-config-form > label,\s*\.cockpit-recipient-grid > label\s*\{[\s\S]*grid-template-columns:\s*148px minmax\(0, 1fr\)/);
   assert.match(css, /\.cockpit-config-form label:has\(textarea\) \.field-label\s*\{[\s\S]*align-items:\s*center/);
+});
+
+test("cockpit report recipients share three desktop columns with a mobile fallback", () => {
+  const panelStart = html.indexOf('id="cockpitConfigPanel"');
+  const panelEnd = html.indexOf('id="botBindingPanel"', panelStart);
+  const panel = html.slice(panelStart, panelEnd);
+  const gridStart = panel.indexOf('class="cockpit-recipient-grid wide"');
+  const gridEnd = panel.indexOf('</div>', gridStart);
+  const grid = panel.slice(gridStart, gridEnd);
+
+  assert.ok(gridStart >= 0);
+  assert.match(grid, /name="dailyRecipients"/);
+  assert.match(grid, /name="weeklyRecipients"/);
+  assert.match(grid, /name="monthlyRecipients"/);
+  assert.match(css, /\.cockpit-recipient-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(3, minmax\(0, 1fr\)\)/);
+  assert.match(css, /@media \(max-width: 760px\)[\s\S]*\.cockpit-recipient-grid\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\)/);
 });
 
 test("cockpit uses real chart canvases with visible zero-data states", () => {

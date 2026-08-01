@@ -6772,8 +6772,16 @@ td .muted {
   resize: vertical;
 }
 
-.cockpit-config-form > label {
+.cockpit-config-form > label,
+.cockpit-recipient-grid > label {
   grid-template-columns: 148px minmax(0, 1fr);
+}
+
+.cockpit-recipient-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  min-width: 0;
 }
 
 .cockpit-config-form label:has(textarea) .field-label {
@@ -6829,6 +6837,10 @@ td .muted {
 }
 
 @media (max-width: 760px) {
+  .cockpit-recipient-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .cockpit-dashboard {
     gap: 12px;
   }

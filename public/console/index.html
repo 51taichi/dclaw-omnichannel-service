@@ -327,18 +327,20 @@
                 <span class="cockpit-field-unit">小时</span>
               </div>
             </label>
-            <label class="wide">
-              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>日报接收人</span>
-              <textarea name="dailyRecipients" rows="3" placeholder="张三&#10;李四"></textarea>
-            </label>
-            <label class="wide">
-              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>周报接收人</span>
-              <textarea name="weeklyRecipients" rows="3"></textarea>
-            </label>
-            <label class="wide">
-              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>月报接收人</span>
-              <textarea name="monthlyRecipients" rows="3"></textarea>
-            </label>
+            <div class="cockpit-recipient-grid wide">
+              <label>
+                <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>日报接收人</span>
+                <textarea name="dailyRecipients" rows="3" placeholder="张三&#10;李四"></textarea>
+              </label>
+              <label>
+                <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>周报接收人</span>
+                <textarea name="weeklyRecipients" rows="3"></textarea>
+              </label>
+              <label>
+                <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>月报接收人</span>
+                <textarea name="monthlyRecipients" rows="3"></textarea>
+              </label>
+            </div>
             <div class="actions wide cockpit-schedule-actions">
               <label class="toggle switch-toggle"><input name="dailyEnabled" type="checkbox" /><span class="switch-slider"></span><span class="switch-label">发送日报</span></label>
               <label class="toggle switch-toggle"><input name="weeklyEnabled" type="checkbox" /><span class="switch-slider"></span><span class="switch-label">发送周报</span></label>
