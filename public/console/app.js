@@ -2112,6 +2112,11 @@ function flowNodeName(nodeId) {
   return node?.name || nodeId || "-";
 }
 
+function compactFlowNodeName(value) {
+  const characters = Array.from(String(value || "-"));
+  return characters.length > 4 ? `${characters.slice(0, 4).join("")}…` : characters.join("");
+}
+
 function splitList(value) {
   return String(value || "")
     .split(/\n|,/)
@@ -4477,6 +4482,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
           const avatar = sessionType === "group" ? "./assets/group.png" : "./assets/ddeer.png";
           const isLegacyCustomer = sessionType === "private" && session?.customerOrigin === "legacy";
           const status = flowNodeName(session.currentNodeId);
+          const statusLabel = compactFlowNodeName(status);
           const isHandoff = sessionType === "private" && session.handoffStatus === "human";
           const manualTagTrigger = sessionType === "private"
             ? `<span
@@ -4490,7 +4496,7 @@ function renderFlowSessions({ animateFrom = null } = {}) {
             : "";
           const privateSessionTools = sessionType === "private"
             ? `<span class="flow-session-tools">
-                <span class="flow-session-current-task" title="${escapeHtml(status)}">${escapeHtml(status)}</span>
+                <span class="flow-session-current-task" title="${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
               </span>`
             : "";
           const handoffSwitch = sessionType === "private"

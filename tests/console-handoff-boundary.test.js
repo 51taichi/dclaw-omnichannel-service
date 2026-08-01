@@ -62,7 +62,7 @@ test("console exposes a per-session handoff switch without redundant status labe
 
 test("flow session cards show the current task inline without metadata icons", () => {
   assert.equal(app.includes("flow-session-current-task"), true);
-  assert.equal(app.includes('class="flow-session-current-task" title="${escapeHtml(status)}">${escapeHtml(status)}'), true);
+  assert.equal(app.includes('class="flow-session-current-task" title="${escapeHtml(status)}">${escapeHtml(statusLabel)}'), true);
   assert.equal(app.includes("当前任务："), false);
   assert.match(app, /const privateSessionTools = sessionType === "private"/);
   assert.match(app, /const manualTagTrigger = sessionType === "private"/);
@@ -86,6 +86,18 @@ test("flow session cards show the current task inline without metadata icons", (
   assert.match(css, /@keyframes flow-current-node-pulse/);
   assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.flow-session-current-task::before\s*\{[\s\S]*animation:\s*none/);
   assert.match(css, /\.flow-session-card\.is-legacy \.flow-session-current-task\s*\{/);
+});
+
+test("current task labels show four characters before an ellipsis", () => {
+  const functionSource = app.match(/function compactFlowNodeName\([\s\S]*?\n}\n/)[0];
+  const compactFlowNodeName = Function(`${functionSource}; return compactFlowNodeName;`)();
+
+  assert.equal(compactFlowNodeName("推送卡片"), "推送卡片");
+  assert.equal(compactFlowNodeName("推送卡片节点"), "推送卡片…");
+  assert.equal(compactFlowNodeName("咨询"), "咨询");
+  assert.match(app, /const statusLabel = compactFlowNodeName\(status\)/);
+  assert.match(app, />\$\{escapeHtml\(statusLabel\)\}<\/span>/);
+  assert.match(css, /\.flow-session-current-task\s*\{[\s\S]*padding:\s*0 3px 0 13px[\s\S]*font-size:\s*10px/);
 });
 
 test("flow session status labels do not change card or chat header layout", () => {

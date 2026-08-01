@@ -4050,7 +4050,7 @@ html.has-bot-context .action-toolbox-toggle:hover {
   min-width: 68px;
   max-width: 68px;
   height: 30px;
-  padding: 0 7px 0 18px;
+  padding: 0 3px 0 13px;
   overflow: hidden;
   border: 1px solid color-mix(in srgb, var(--accent) 54%, var(--line));
   border-radius: 8px;
@@ -4058,7 +4058,7 @@ html.has-bot-context .action-toolbox-toggle:hover {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 10%, transparent),
     0 3px 10px color-mix(in srgb, var(--accent) 10%, transparent);
   color: color-mix(in srgb, var(--accent) 78%, var(--text));
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   line-height: 28px;
   text-align: center;
@@ -4070,10 +4070,10 @@ html.has-bot-context .action-toolbox-toggle:hover {
   content: "";
   position: absolute;
   top: 50%;
-  left: 7px;
-  width: 6px;
-  height: 6px;
-  margin-top: -3px;
+  left: 4px;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
   border-radius: 50%;
   background: currentColor;
   animation: flow-current-node-pulse 1.8s ease-in-out infinite;
