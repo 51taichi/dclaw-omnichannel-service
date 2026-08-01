@@ -34,22 +34,6 @@ export function validateAgentResponseText(rawText, {
     }]);
   }
 
-  let parsed;
-  let normalizedText = text;
-  let originalErrors = [];
-  try {
-    parsed = JSON.parse(text);
-  } catch (error) {
-    originalErrors = [jsonSyntaxError(text, error)];
-    const repairedDocument = repairJsonDocument(text);
-    if (!repairedDocument) {
-      return invalidResult(raw, text, normalizations, repairs, originalErrors);
-    }
-    parsed = repairedDocument.parsed;
-    normalizedText = repairedDocument.text;
-    repairs.push(repairedDocument.repair);
-  }
-
   const validationOptions = {
     requireFlowDecision,
     requireReplyContent,
@@ -59,13 +43,35 @@ export function validateAgentResponseText(rawText, {
     tagContext,
     tagEvidenceCandidates
   };
-  const beforeRepairErrors = validateResponseObject(parsed, validationOptions);
-  originalErrors = [...originalErrors, ...beforeRepairErrors];
-  repairs.push(...repairResponseObject(parsed, validationOptions));
-  const errors = validateResponseObject(parsed, validationOptions);
-  if (errors.length) {
-    return invalidResult(raw, normalizedText, normalizations, repairs, errors, originalErrors);
+  let evaluation;
+  let normalizedText = text;
+  let originalErrors = [];
+  try {
+    evaluation = evaluateResponseCandidate(JSON.parse(text), validationOptions);
+  } catch (error) {
+    originalErrors = [jsonSyntaxError(text, error)];
+    const repairedDocument = repairJsonDocument(text, validationOptions);
+    if (!repairedDocument) {
+      return invalidResult(raw, text, normalizations, repairs, originalErrors);
+    }
+    evaluation = repairedDocument.evaluation;
+    normalizedText = repairedDocument.text;
+    repairs.push(repairedDocument.repair);
   }
+
+  originalErrors = [...originalErrors, ...evaluation.originalErrors];
+  repairs.push(...evaluation.repairs);
+  if (evaluation.errors.length) {
+    return invalidResult(
+      raw,
+      normalizedText,
+      normalizations,
+      repairs,
+      evaluation.errors,
+      originalErrors
+    );
+  }
+  const parsed = evaluation.parsed;
 
   const normalizedReply = normalizeAgentReplyText(parsed.reply);
   return {
@@ -262,36 +268,92 @@ function normalizeResponseText(raw) {
   };
 }
 
-function repairJsonDocument(text) {
+function evaluateResponseCandidate(parsed, validationOptions) {
+  const candidate = structuredClone(parsed);
+  const originalErrors = validateResponseObject(candidate, validationOptions);
+  const repairs = repairResponseObject(candidate, validationOptions);
+  const errors = validateResponseObject(candidate, validationOptions);
+  return {
+    parsed: candidate,
+    originalErrors,
+    repairs,
+    errors
+  };
+}
+
+function repairJsonDocument(text, validationOptions) {
   const extracted = extractCompleteJsonObjects(text);
-  if (extracted.incomplete) return null;
-  const candidates = [];
-  for (const candidate of extracted.candidates) {
+  if (extracted.incomplete || !extracted.candidates.length) return null;
+
+  const parsedCandidates = [];
+  for (const candidateText of extracted.candidates) {
     try {
-      candidates.push({ text: candidate, parsed: JSON.parse(candidate) });
+      parsedCandidates.push({
+        text: candidateText,
+        parsed: JSON.parse(candidateText)
+      });
     } catch {
       return null;
     }
   }
-  if (candidates.length === 1) {
+
+  const distinctCandidates = [];
+  for (const candidate of parsedCandidates) {
+    if (!distinctCandidates.some((existing) =>
+      isDeepStrictEqual(existing.parsed, candidate.parsed)
+    )) {
+      distinctCandidates.push(candidate);
+    }
+  }
+
+  const evaluated = distinctCandidates.map((candidate) => ({
+    ...candidate,
+    evaluation: evaluateResponseCandidate(candidate.parsed, validationOptions)
+  }));
+  if (distinctCandidates.length === 1) {
     return {
-      ...candidates[0],
-      repair: { type: "single_embedded_json_extracted" }
+      text: evaluated[0].text,
+      evaluation: evaluated[0].evaluation,
+      repair: parsedCandidates.length === 1
+        ? { type: "single_embedded_json_extracted" }
+        : {
+            type: "duplicate_json_objects_collapsed",
+            count: parsedCandidates.length
+          }
     };
   }
-  if (
-    candidates.length > 1
-    && candidates.every((candidate) => isDeepStrictEqual(candidate.parsed, candidates[0].parsed))
-  ) {
+
+  const passing = evaluated.filter((candidate) => !candidate.evaluation.errors.length);
+  const distinctPassing = [];
+  for (const candidate of passing) {
+    if (!distinctPassing.some((existing) =>
+      isDeepStrictEqual(existing.evaluation.parsed, candidate.evaluation.parsed)
+    )) {
+      distinctPassing.push(candidate);
+    }
+  }
+  if (distinctPassing.length !== 1) return null;
+
+  const selected = distinctPassing[0];
+  if (passing.length > 1) {
     return {
-      ...candidates[0],
+      text: selected.text,
+      evaluation: selected.evaluation,
       repair: {
         type: "duplicate_json_objects_collapsed",
-        count: candidates.length
+        count: passing.length
       }
     };
   }
-  return null;
+  return {
+    text: selected.text,
+    evaluation: selected.evaluation,
+    repair: {
+      type: "single_contract_valid_json_extracted",
+      candidateCount: distinctCandidates.length,
+      validCandidateCount: passing.length
+    }
+  };
 }
 
 function extractCompleteJsonObjects(text) {
