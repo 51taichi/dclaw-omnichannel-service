@@ -108,6 +108,10 @@ import {
   getConversationKey,
   getConversationResetPending,
   getConversationAssets,
+  getActiveTagSyncRun,
+  getSubmittedTagSyncCommand,
+  getTagSyncConfig,
+  getTagSyncStatus,
   backfillManagedGroupConversationDateTags,
   ensureLegacyHistoryDateTag,
   ensureManagedGroupConversationDateTag,
@@ -118,6 +122,7 @@ import {
   getGroupByConversationKey,
   getGroupById,
   hasCachedWorktoolMessageId,
+  hasRecentBotMessageProcessing,
   ensureConversationDateTag,
   ensureCockpitDefinitionVersion,
   initializeLegacyDateTagRuleEffectiveTimes,
@@ -168,6 +173,7 @@ import {
   listProactiveTaskTargets,
   listAgents,
   listBotBindings,
+  listRunnableTagSyncConfigs,
   listUnassignedBotBindings,
   listWorkspaceBots,
   listWorkspaces,
@@ -179,6 +185,8 @@ import {
   markFlowActivationTaskFailed,
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
+  markTagSyncCommandSubmitted,
+  markTagSyncCommandSubmitFailed,
   markConversationFriendAddedSignal,
   markCockpitStageCompleted,
   markConversationResetHandledForEpoch,
@@ -193,6 +201,7 @@ import {
   normalizeActivationConfig,
   prepareConversationResetForNewActivity,
   resetInterruptedProactiveTargets,
+  recoverExpiredTagSyncLeases,
   reserveFlowActionExecution,
   reserveTagActivationTaskForSend,
   resolveConversationMessageEvidence,
@@ -200,6 +209,7 @@ import {
   scheduleTagActivationTask,
   saveGroupConfig,
   saveGroupRoles,
+  saveTagSyncConfig,
   setSetting,
   setBotAccessKey,
   touchFlowSession,
@@ -207,6 +217,7 @@ import {
   updateFlowSessionNode,
   updateLegacyHistorySync,
   updateGroupExternalSnapshot,
+  updateTagSyncRunStatus,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
   upsertAgent,
@@ -222,6 +233,13 @@ import {
   claimDueCockpitDeliveries,
   finishCockpitDelivery,
   upsertWorktoolApiMessageCache
+} from "./db.js";
+import {
+  claimNextTagSyncBatch,
+  ensureTagSyncInitialBackfill,
+  finishTagSyncRunIfDrained,
+  resolveTagSyncCommandCallback,
+  startTagSyncRun
 } from "./db.js";
 import {
   buildGroupAgentContext,
@@ -249,6 +267,7 @@ import {
   sendGroupInviteCommand,
   sendRawCommand,
   sendMediaMessage,
+  syncFriendTags,
   sendTextMessage,
   unbindCommandCallback,
   unbindMessageCallback
@@ -270,6 +289,8 @@ import { createKeyedSingleFlight, isLegacyCustomerCandidate } from "./legacy-his
 import { listApiCommandPage, listCustomerHistory } from "./worktool-history.js";
 import { createWorktoolHistoryCache } from "./worktool-history-cache.js";
 import { filterConfiguredCollectedDataPatch } from "./flow-assets.js";
+import { getTagSyncWindowState } from "./tag-sync.js";
+import { createTagSyncWorker } from "./tag-sync-worker.js";
 import {
   adjudicateTagDecision,
   compactTagRulesForAgent,
@@ -304,6 +325,11 @@ const uploadCleanupIntervalMs =
   Number(process.env.UPLOAD_CLEANUP_INTERVAL_MINUTES || 60) * 60 * 1000;
 const worktoolHistoryCacheIntervalMs =
   Number(process.env.WORKTOOL_HISTORY_CACHE_INTERVAL_MINUTES || 10) * 60 * 1000;
+const TAG_SYNC_WORKER_INTERVAL_MS = Math.max(
+  500,
+  Number(process.env.TAG_SYNC_WORKER_INTERVAL_MS || 2000)
+);
+const tagSyncRealtimeActivityTtlMs = 15 * 60 * 1000;
 fs.mkdirSync(uploadDir, { recursive: true });
 
 function getUploadFolderName(botId) {
@@ -397,6 +423,41 @@ const migratedLegacyHistorySenderCount = migrateLegacyHistoryOutboundSenderNames
 logInfo("legacy_history.outbound_senders_migrated", {
   messageCount: migratedLegacyHistorySenderCount
 });
+
+const tagSyncWorker = createTagSyncWorker({
+  getConfig: getTagSyncConfig,
+  listConfigs: listRunnableTagSyncConfigs,
+  getActiveRun: getActiveTagSyncRun,
+  startRun: startTagSyncRun,
+  setRunStatus: updateTagSyncRunStatus,
+  hasRealtimeActivity(botId) {
+    return hasRecentBotMessageProcessing({
+      botId,
+      sinceIso: new Date(Date.now() - tagSyncRealtimeActivityTtlMs).toISOString()
+    });
+  },
+  claimBatch: claimNextTagSyncBatch,
+  markSubmitted: markTagSyncCommandSubmitted,
+  markSubmitFailed: markTagSyncCommandSubmitFailed,
+  getSubmittedCommand: getSubmittedTagSyncCommand,
+  resolveCallback: resolveTagSyncCommandCallback,
+  finishRunIfDrained: finishTagSyncRunIfDrained,
+  recoverLeases: recoverExpiredTagSyncLeases,
+  sendTags: syncFriendTags,
+  getWindowState: getTagSyncWindowState,
+  log(event, fields) {
+    if (event.endsWith("failed")) logWarn(event, fields);
+    else logInfo(event, fields);
+  }
+});
+
+const recoveredTagSyncLeaseCount = tagSyncWorker.recover(new Date());
+logInfo("tag_sync.leases.recovered", { count: recoveredTagSyncLeaseCount });
+setInterval(() => {
+  void tagSyncWorker.tick(new Date()).catch((error) => {
+    logWarn("tag_sync.worker.failed", { error });
+  });
+}, TAG_SYNC_WORKER_INTERVAL_MS).unref();
 
 const legacyCustomerHistory = createLegacyCustomerHistoryService({
   listCustomerHistory,
@@ -5354,6 +5415,13 @@ app.post("/worktool/:botId/command-callback", (req, res) => {
     messageId: req.body?.messageId,
     payload: req.body || {}
   });
+  void tagSyncWorker.handleCommandCallback({
+    botId: req.params.botId,
+    messageId: req.body?.messageId,
+    payload: req.body || {}
+  }).catch((error) => {
+    logWarn("tag_sync.callback.failed", { botId: req.params.botId, error });
+  });
   res.json({ code: 0, message: "参数接收成功" });
 });
 
@@ -5384,6 +5452,13 @@ app.post("/worktool/command-callback", (req, res) => {
     botId,
     messageId: req.body?.messageId,
     payload: req.body || {}
+  });
+  void tagSyncWorker.handleCommandCallback({
+    botId,
+    messageId: req.body?.messageId,
+    payload: req.body || {}
+  }).catch((error) => {
+    logWarn("tag_sync.callback.failed", { botId, error });
   });
   res.json({ code: 0, message: "参数接收成功" });
 });
@@ -6073,6 +6148,73 @@ app.delete(
       deleted: deleted.deleted
     });
     res.json({ ok: true, deleted, removedSessions, callbackUnbinding });
+  })
+);
+
+app.get(
+  "/api/bots/:botId/tag-sync/config",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    res.json({
+      ok: true,
+      config: getTagSyncConfig(req.params.botId)
+    });
+  })
+);
+
+app.put(
+  "/api/bots/:botId/tag-sync/config",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    let config;
+    try {
+      config = saveTagSyncConfig({
+        botId: req.params.botId,
+        config: req.body || {}
+      });
+    } catch (error) {
+      if (/night window|invalid night/i.test(String(error?.message || ""))) {
+        error.status = 400;
+      }
+      throw error;
+    }
+    if (config.nightlyEnabled && !config.initialBackfillAt) {
+      const backfill = ensureTagSyncInitialBackfill({ botId: req.params.botId });
+      logInfo("tag_sync.backfill.completed", backfill);
+      config = getTagSyncConfig(req.params.botId);
+    }
+    res.json({ ok: true, config });
+  })
+);
+
+app.get(
+  "/api/bots/:botId/tag-sync/status",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    res.json({ ok: true, status: getTagSyncStatus(req.params.botId) });
+  })
+);
+
+app.post(
+  "/api/bots/:botId/tag-sync/run",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    const backfill = ensureTagSyncInitialBackfill({ botId: req.params.botId });
+    if (backfill.insertedCount > 0) {
+      logInfo("tag_sync.backfill.completed", backfill);
+    }
+    const run = startTagSyncRun({
+      botId: req.params.botId,
+      triggerType: "manual"
+    });
+    void tagSyncWorker.runBot(req.params.botId, new Date()).catch((error) => {
+      logWarn("tag_sync.worker.failed", { botId: req.params.botId, error });
+    });
+    res.status(202).json({
+      ok: true,
+      run,
+      status: getTagSyncStatus(req.params.botId)
+    });
   })
 );
 
