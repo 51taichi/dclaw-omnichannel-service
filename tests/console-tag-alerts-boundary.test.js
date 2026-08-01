@@ -113,7 +113,18 @@ test("opening an alert resets filters and selects the alert conversation type", 
 test("group detail keeps list channel metadata when the detail session is sparse", () => {
   assert.match(
     app,
-    /currentFlowSession = \{\s*\.\.\.\(session \|\| \{\}\),\s*\.\.\.\(data\.session \|\| \{\}\),\s*tags: currentTags\s*\}/
+    /const detailedSession = data\.session\s*\?\s*\{\s*\.\.\.\(session \|\| \{\}\),\s*\.\.\.data\.session,\s*tags: currentTags\s*\}/
+  );
+});
+
+test("an alert target outside the loaded page is inserted before the session list rerenders", () => {
+  assert.ok(
+    html.indexOf('<script src="./flow-session-list.js"></script>') <
+      html.indexOf('<script src="./app.js"></script>')
+  );
+  assert.match(
+    app,
+    /const detailedSession = data\.session[\s\S]*currentFlowSession = detailedSession \|\|[\s\S]*currentFlowSessions = window\.upsertFlowSession\(currentFlowSessions, detailedSession\)[\s\S]*renderFlowSessions\(\)/
   );
 });
 

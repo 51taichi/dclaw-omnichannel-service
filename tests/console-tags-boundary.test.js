@@ -176,7 +176,7 @@ test("opening a conversation refreshes its card after detail tags arrive", () =>
 
   assert.match(
     body,
-    /currentFlowSessions = currentFlowSessions\.map\([\s\S]*\);\s*renderFlowSessions\(\);\s*if \(els\.chatTagList\)/
+    /const detailedSession = data\.session[\s\S]*tags: currentTags[\s\S]*currentFlowSessions = window\.upsertFlowSession\(currentFlowSessions, detailedSession\);[\s\S]*renderFlowSessions\(\);\s*if \(els\.chatTagList\)/
   );
 });
 

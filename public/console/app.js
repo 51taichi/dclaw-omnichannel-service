@@ -4643,14 +4643,20 @@ async function openFlowSession(conversationKey, {
       return false;
     }
     const currentTags = data.tags || session?.tags || [];
-    currentFlowSession = {
+    const detailedSession = data.session
+      ? {
+          ...(session || {}),
+          ...data.session,
+          tags: currentTags
+        }
+      : null;
+    currentFlowSession = detailedSession || {
       ...(session || {}),
-      ...(data.session || {}),
       tags: currentTags
     };
-    currentFlowSessions = currentFlowSessions.map((item) =>
-      item.conversationKey === conversationKey ? { ...item, tags: currentTags } : item
-    );
+    if (detailedSession) {
+      currentFlowSessions = window.upsertFlowSession(currentFlowSessions, detailedSession);
+    }
     renderFlowSessions();
     if (els.chatTagList) els.chatTagList.innerHTML = renderConversationTags(currentTags);
     renderFlowSessionTagFilter();
