@@ -223,6 +223,16 @@ test("claim groups five tags for one customer and waits for its callback", () =>
     outboxIds: batch.rows.map((row) => row.id),
     worktoolMessageId: "wt-tags-1"
   });
+  assert.deepEqual(db.getSubmittedTagSyncCommand({
+    botId,
+    worktoolMessageId: "wt-tags-1"
+  }), {
+    botId,
+    worktoolMessageId: "wt-tags-1",
+    conversationKey,
+    targetName: "客户丙",
+    attemptNumber: 1
+  });
   const resolved = db.resolveTagSyncCommandCallback({
     botId,
     worktoolMessageId: "wt-tags-1",
@@ -239,6 +249,15 @@ test("claim groups five tags for one customer and waits for its callback", () =>
     limit: 5
   });
   assert.equal(nextBatch.rows.length, 1);
+});
+
+test("runnable configs include active manual runs while nightly automation is off", () => {
+  const botId = "tag_sync_manual_runnable_bot";
+  ensureBot(botId);
+  db.startTagSyncRun({ botId, triggerType: "manual" });
+
+  assert.equal(db.getTagSyncConfig(botId).nightlyEnabled, false);
+  assert.ok(db.listRunnableTagSyncConfigs().some((config) => config.botId === botId));
 });
 
 test("failed callbacks and expired leases stay durable and retryable", () => {

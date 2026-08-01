@@ -5096,8 +5096,16 @@ export function listRunnableTagSyncConfigs() {
     SELECT config.*
     FROM bot_tag_sync_configs config
     JOIN bot_agent_bindings binding ON binding.bot_id = config.bot_id
-    WHERE config.nightly_enabled = 1
-      AND binding.enabled = 1
+    WHERE binding.enabled = 1
+      AND (
+        config.nightly_enabled = 1
+        OR EXISTS (
+          SELECT 1
+          FROM tag_sync_runs run
+          WHERE run.bot_id = config.bot_id
+            AND run.status IN ('running', 'paused')
+        )
+      )
     ORDER BY config.bot_id ASC
   `).all().map((row) => rowToTagSyncConfig(row));
 }
@@ -5322,6 +5330,41 @@ export function markTagSyncCommandSubmitted({ botId, outboxIds, worktoolMessageI
       AND id IN (${placeholders})
   `).run(messageId, timestamp, normalizedBotId, ...ids);
   return Number(result.changes || 0);
+}
+
+export function getSubmittedTagSyncCommand({ botId, worktoolMessageId }) {
+  const normalizedBotId = requireTagSyncBotId(botId);
+  const messageId = String(worktoolMessageId || "").trim();
+  if (!messageId) return null;
+  const row = db.prepare(`
+    SELECT
+      outbox.bot_id,
+      outbox.worktool_message_id,
+      outbox.conversation_key,
+      COALESCE(NULLIF(trim(conversation.received_name), ''), outbox.target_name) AS target_name,
+      MAX(outbox.run_attempt_count) AS attempt_number
+    FROM tag_sync_outbox outbox
+    LEFT JOIN conversations conversation
+      ON conversation.bot_id = outbox.bot_id
+     AND conversation.conversation_key = outbox.conversation_key
+    WHERE outbox.bot_id = ?
+      AND outbox.worktool_message_id = ?
+      AND outbox.status = 'processing'
+    GROUP BY
+      outbox.bot_id,
+      outbox.worktool_message_id,
+      outbox.conversation_key,
+      target_name
+    LIMIT 1
+  `).get(normalizedBotId, messageId);
+  if (!row) return null;
+  return {
+    botId: row.bot_id,
+    worktoolMessageId: row.worktool_message_id,
+    conversationKey: row.conversation_key,
+    targetName: row.target_name,
+    attemptNumber: Number(row.attempt_number || 1)
+  };
 }
 
 export function markTagSyncCommandSubmitFailed({
