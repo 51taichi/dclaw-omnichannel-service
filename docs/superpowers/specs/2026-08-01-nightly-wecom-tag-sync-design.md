@@ -91,7 +91,9 @@ conversation_key
 target_name            登记时客户名称，仅作为审计快照
 tag_name
 status                 pending / processing / succeeded / failed
-attempt_count
+run_id                 最近一次领取所属的 tag_sync_runs.id，可空
+attempt_count          生命周期累计尝试次数
+run_attempt_count      当前 run 内尝试次数，新 run 开始时重置
 next_retry_at
 claimed_at
 lease_expires_at
@@ -106,6 +108,7 @@ succeeded_at
 
 - 对同一 Bot、私聊会话和标签名称建立唯一约束，防止同一标签反复打标产生重复任务。
 - 为 `bot_id + status + next_retry_at` 建立领取索引。
+- 为 `bot_id + worktool_message_id` 建立回调索引；同一条最多 5 个标签的指令允许多条 Outbox 共用一个消息 ID。
 - `target_name` 不是执行时的唯一可信名称。提交前应从当前会话数据重新解析最新客户名称。
 - 相同名称存在于不同内部标签组时，系统不做业务校验；企微侧如何呈现由客户配置承担。
 
@@ -236,6 +239,7 @@ Outbox 写入失败时标签事务整体失败，避免出现内部标签已新�
 - Worker 使用事务原子领取记录并写入处理租约。
 - 服务重启后，超过租约时间的 `processing` 记录恢复为可重试状态。
 - 单次 run 内失败采用退避重试，最多尝试 3 次。
+- 新的 scheduled 或 manual run 开始时，将该 Bot 可重试失败记录的 `run_attempt_count` 重置为 `0`，累计 `attempt_count` 不清零。
 - 3 次仍失败后保留为 `failed`，写入 `last_error` 和下一次可重试时间。
 - 下一次夜间 run 或管理员立即同步可以再次处理 `failed`。
 - 找不到客户、Bot 离线、WorkTool 请求失败、指令回调失败和回调丢失都不能删除 Outbox。
