@@ -27,7 +27,7 @@ The hidden-input approach is the smallest safe change and preserves the existing
 
 - `cockpitConfigForm` continues to expose `timezone` and `defaultNoReplyHours` to the existing JavaScript code.
 - Saving the form continues to send the same payload shape.
-- Loading saved configuration may still assign values to these hidden controls, but the fixed defaults remain the product defaults for new configurations.
+- Loading saved configuration always restores these hidden controls to `Asia/Shanghai` and `24`, so legacy persisted values cannot silently override the product defaults.
 - No server route, database schema, aggregation rule, or report-generation logic changes.
 
 ## Testing
@@ -39,4 +39,4 @@ The hidden-input approach is the smallest safe change and preserves the existing
 
 ## Scope
 
-Only console HTML and its boundary test are expected to change. Backend defaults and report semantics remain unchanged.
+Only console HTML, console configuration hydration, and their boundary tests change. Backend defaults, Agent replies, messaging, conversations, tasks, proactive push, aggregation, and report-generation code remain unchanged.
