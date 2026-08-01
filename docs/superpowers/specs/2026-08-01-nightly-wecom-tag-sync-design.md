@@ -65,7 +65,7 @@ WorkTool 的“修改好友信息”指令可以为企业微信好友添加标�
 
 ```text
 bot_id                 PRIMARY KEY
-nightly_enabled        INTEGER，默认 0，是否启用夜间自动同步
+nightly_enabled        INTEGER，默认 1，是否启用夜间自动同步
 window_start           HH:mm，默认 03:00
 window_end             HH:mm，默认 06:00
 initial_backfill_at    首次全量登记完成时间，可空
@@ -74,7 +74,7 @@ updated_at
 ```
 
 - 时区固定为 `Asia/Shanghai`，不向用户提供时区配置。
-- 现有 Bot 和新建 Bot 默认关闭夜间自动同步，避免上线后未经确认自动产生大量 WorkTool 指令。
+- 现有 Bot 和新建 Bot 默认开启夜间自动同步，每天北京时间 `03:00-06:00` 自动处理待同步记录；管理员仍可按 Bot 手动关闭。
 - 夜间窗口只能落在北京时间 `22:00-次日08:00` 内，并支持跨零点。
 - `nightly_enabled` 关闭时只禁止计划任务自动运行，不删除 Outbox，也不禁用管理员立即同步。
 - 重新开启夜间自动同步后，继续处理原有待同步记录。

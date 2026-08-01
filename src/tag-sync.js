@@ -1,7 +1,7 @@
 export const TAG_SYNC_TIME_ZONE = "Asia/Shanghai";
 
 export const DEFAULT_TAG_SYNC_CONFIG = Object.freeze({
-  nightlyEnabled: false,
+  nightlyEnabled: true,
   windowStart: "03:00",
   windowEnd: "06:00"
 });
@@ -74,7 +74,9 @@ export function validateTagSyncNightWindow({ windowStart, windowEnd }) {
 
 export function normalizeTagSyncConfig(input = {}) {
   const config = {
-    nightlyEnabled: Boolean(input.nightlyEnabled),
+    nightlyEnabled: input.nightlyEnabled === undefined
+      ? DEFAULT_TAG_SYNC_CONFIG.nightlyEnabled
+      : Boolean(input.nightlyEnabled),
     windowStart: String(input.windowStart || DEFAULT_TAG_SYNC_CONFIG.windowStart),
     windowEnd: String(input.windowEnd || DEFAULT_TAG_SYNC_CONFIG.windowEnd)
   };
@@ -100,4 +102,3 @@ export function getTagSyncWindowState(config, now = new Date()) {
     localMinute
   };
 }
-

@@ -198,6 +198,7 @@ import {
   markProactiveTargetSent,
   mergeFlowSessionData,
   migrateLegacyHistoryOutboundSenderNames,
+  migrateTagSyncNightlyDefaultEnabled,
   normalizeActivationConfig,
   prepareConversationResetForNewActivity,
   resetInterruptedProactiveTargets,
@@ -429,6 +430,10 @@ resetInterruptedProactiveTargets();
 const migratedLegacyHistorySenderCount = migrateLegacyHistoryOutboundSenderNames();
 logInfo("legacy_history.outbound_senders_migrated", {
   messageCount: migratedLegacyHistorySenderCount
+});
+const migratedTagSyncConfigCount = migrateTagSyncNightlyDefaultEnabled();
+logInfo("tag_sync.default_enabled_migrated", {
+  configCount: migratedTagSyncConfigCount
 });
 
 const tagSyncWorker = createTagSyncWorker({

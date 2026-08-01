@@ -13,8 +13,8 @@
 - Native tags are append-only; never send native delete or replacement operations.
 - Sync normal, manual, and customer-add-date tags for private conversations only.
 - Never send markName or markExtra.
-- Nightly automation defaults off for existing and new Bots.
-- Timezone is fixed to Asia/Shanghai. Windows must stay within 22:00-next-day 08:00; default is 03:00-06:00.
+- Nightly automation defaults on for existing and new Bots.
+- Timezone is fixed to Asia/Shanghai. Windows must stay within 22:00-next-day 08:00; nightly automation defaults on with a 03:00-06:00 window.
 - Immediate sync works even when nightly automation is off.
 - Persist Outbox, run, lease, retry, and callback state in SQLite.
 - Submit at most five tag names per WorkTool command and one in-flight tag command per Bot.
@@ -55,9 +55,9 @@
 - [ ] **Step 1: Write failing night-window tests**
 
 ~~~js
-test("tag sync defaults are disabled with a 03:00-06:00 window", () => {
+test("tag sync defaults are enabled with a 03:00-06:00 window", () => {
   assert.deepEqual(normalizeTagSyncConfig({}), {
-    nightlyEnabled: false,
+    nightlyEnabled: true,
     windowStart: "03:00",
     windowEnd: "06:00"
   });
@@ -101,7 +101,7 @@ Expected: FAIL with ERR_MODULE_NOT_FOUND for src/tag-sync.js.
 ~~~js
 export const TAG_SYNC_TIME_ZONE = "Asia/Shanghai";
 export const DEFAULT_TAG_SYNC_CONFIG = Object.freeze({
-  nightlyEnabled: false,
+  nightlyEnabled: true,
   windowStart: "03:00",
   windowEnd: "06:00"
 });
@@ -214,8 +214,8 @@ git commit -m "Add nightly tag sync domain and WorkTool command"
 - [ ] **Step 1: Write failing config and migration tests**
 
 ~~~js
-test("tag sync config defaults off and validates saved windows", () => {
-  assert.equal(db.getTagSyncConfig("bot_sync").nightlyEnabled, false);
+test("tag sync config defaults on and validates saved windows", () => {
+  assert.equal(db.getTagSyncConfig("bot_sync").nightlyEnabled, true);
   const saved = db.saveTagSyncConfig({
     botId: "bot_sync",
     config: {
@@ -245,7 +245,7 @@ Expected: FAIL because getTagSyncConfig is not exported.
 ~~~sql
 CREATE TABLE IF NOT EXISTS bot_tag_sync_configs (
   bot_id TEXT PRIMARY KEY,
-  nightly_enabled INTEGER NOT NULL DEFAULT 0,
+  nightly_enabled INTEGER NOT NULL DEFAULT 1,
   window_start TEXT NOT NULL DEFAULT '03:00',
   window_end TEXT NOT NULL DEFAULT '06:00',
   initial_backfill_at TEXT,
@@ -879,7 +879,7 @@ TAG_SYNC_WORKER_LEASE_MS=120000
 TAG_SYNC_REALTIME_ACTIVITY_TTL_MS=900000
 ~~~
 
-Document that nightly sync defaults off, is limited to Beijing 22:00-next-day 08:00, and immediate sync is available to the Bot administrator.
+Document that nightly sync defaults on, is limited to Beijing 22:00-next-day 08:00, and immediate sync is available to the Bot administrator.
 
 - [ ] **Step 2: Run all focused feature tests**
 
@@ -906,7 +906,7 @@ Expected: npm test reports zero failures and git diff --check prints nothing.
 
 - [ ] **Step 4: Smoke-test only in a disposable local or test environment**
 
-1. Verify the panel defaults off with 03:00-06:00.
+1. Verify the panel defaults on with 03:00-06:00.
 2. Add a private-customer internal tag and verify Outbox state survives restart.
 3. Click immediate sync and verify one type=213 command contains no remark fields.
 4. Verify pending count decreases only after a successful command callback.
@@ -923,4 +923,3 @@ git commit -m "Document nightly WeCom tag synchronization"
 - [ ] **Step 6: Request review and push**
 
 Use superpowers:requesting-code-review, address verified findings, rerun npm test, and push origin main. Include no unrelated dirty files.
-

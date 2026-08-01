@@ -16,6 +16,7 @@ function functionBody(name) {
 test("Bot config contains an admin-only nightly tag sync panel", () => {
   assert.match(html, /id="tagSyncPanel"[^>]*admin-only-panel/);
   assert.match(html, /夜间自动同步/);
+  assert.match(client, /els\.tagSyncNightlyEnabled\.checked = true/);
   assert.match(html, /id="tagSyncWindowStart"[^>]*><\/select>/);
   assert.match(html, /id="tagSyncWindowEnd"[^>]*><\/select>/);
   assert.match(html, /id="tagSyncRunButton"/);

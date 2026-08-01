@@ -770,7 +770,7 @@ db.exec(`
 
   CREATE TABLE IF NOT EXISTS bot_tag_sync_configs (
     bot_id TEXT PRIMARY KEY,
-    nightly_enabled INTEGER NOT NULL DEFAULT 0,
+    nightly_enabled INTEGER NOT NULL DEFAULT 1,
     window_start TEXT NOT NULL DEFAULT '03:00',
     window_end TEXT NOT NULL DEFAULT '06:00',
     initial_backfill_at TEXT,
@@ -1954,6 +1954,7 @@ export function upsertBotBinding(binding) {
     timestamp,
     timestamp
   );
+  ensureTagSyncConfigRow(binding.botId, timestamp);
   return getBotBinding(binding.botId);
 }
 
@@ -2143,6 +2144,40 @@ export function migrateLegacyHistoryOutboundSenderNames() {
     });
     db.exec("COMMIT");
     return Number(result.changes || 0);
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+const tagSyncNightlyDefaultEnabledMigrationKey =
+  "tag_sync_nightly_default_enabled_v1";
+
+export function migrateTagSyncNightlyDefaultEnabled() {
+  if (getSetting(tagSyncNightlyDefaultEnabledMigrationKey)) return 0;
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const inserted = db.prepare(`
+      INSERT OR IGNORE INTO bot_tag_sync_configs (
+        bot_id, nightly_enabled, window_start, window_end,
+        initial_backfill_at, created_at, updated_at
+      )
+      SELECT bot_id, 1, '03:00', '06:00', NULL, ?, ?
+      FROM bot_agent_bindings
+    `).run(timestamp, timestamp);
+    const updated = db.prepare(`
+      UPDATE bot_tag_sync_configs
+      SET nightly_enabled = 1, updated_at = ?
+      WHERE nightly_enabled = 0
+    `).run(timestamp);
+    const changedCount = Number(inserted.changes || 0) + Number(updated.changes || 0);
+    setSetting(tagSyncNightlyDefaultEnabledMigrationKey, {
+      migratedAt: timestamp,
+      updatedCount: changedCount
+    });
+    db.exec("COMMIT");
+    return changedCount;
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
@@ -3114,7 +3149,7 @@ function rowToTagSyncConfig(row, botId = "") {
   if (!row) {
     return {
       botId: String(botId || ""),
-      nightlyEnabled: false,
+      nightlyEnabled: true,
       windowStart: "03:00",
       windowEnd: "06:00",
       initialBackfillAt: "",
@@ -4944,7 +4979,7 @@ function ensureTagSyncConfigRow(botId, timestamp = now()) {
       bot_id, nightly_enabled, window_start, window_end,
       initial_backfill_at, created_at, updated_at
     )
-    VALUES (?, 0, '03:00', '06:00', NULL, ?, ?)
+    VALUES (?, 1, '03:00', '06:00', NULL, ?, ?)
   `).run(normalizedBotId, timestamp, timestamp);
   return normalizedBotId;
 }

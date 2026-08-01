@@ -62,6 +62,7 @@ test("tag sync worker observes message processing without wrapping old sends", (
 });
 
 test("tag sync startup recovers leases and runs a non-overlapping timer", () => {
+  assert.match(source, /migrateTagSyncNightlyDefaultEnabled\(\)/);
   assert.match(source, /tagSyncWorker\.recover\(new Date\(\)\)/);
   assert.match(source, /tagSyncWorker\.tick\(new Date\(\)\)/);
   assert.match(source, /TAG_SYNC_WORKER_INTERVAL_MS/);

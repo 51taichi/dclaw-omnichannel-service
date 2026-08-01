@@ -7,10 +7,10 @@ import {
   validateTagSyncNightWindow
 } from "../src/tag-sync.js";
 
-test("tag sync defaults are disabled with a 03:00-06:00 window", () => {
+test("tag sync defaults are enabled with a 03:00-06:00 window", () => {
   assert.deepEqual(normalizeTagSyncConfig({}), DEFAULT_TAG_SYNC_CONFIG);
   assert.deepEqual(DEFAULT_TAG_SYNC_CONFIG, {
-    nightlyEnabled: false,
+    nightlyEnabled: true,
     windowStart: "03:00",
     windowEnd: "06:00"
   });
@@ -64,4 +64,3 @@ test("window state uses Beijing time and one date key across midnight", () => {
   assert.equal(afterMidnight.windowKey, "2026-08-01");
   assert.equal(afterWindow.inside, false);
 });
-

@@ -65,19 +65,26 @@ function addNormalTags({ botId, agentId, conversationKey, names, source = "test"
   });
 }
 
-test("tag sync config defaults off and validates saved night windows", () => {
+test("tag sync config defaults on and validates saved night windows", () => {
   const botId = "tag_sync_config_bot";
   ensureBot(botId);
 
-  assert.deepEqual(db.getTagSyncConfig(botId), {
+  const defaults = db.getTagSyncConfig(botId);
+  assert.deepEqual({
+    botId: defaults.botId,
+    nightlyEnabled: defaults.nightlyEnabled,
+    windowStart: defaults.windowStart,
+    windowEnd: defaults.windowEnd,
+    initialBackfillAt: defaults.initialBackfillAt
+  }, {
     botId,
-    nightlyEnabled: false,
+    nightlyEnabled: true,
     windowStart: "03:00",
     windowEnd: "06:00",
-    initialBackfillAt: "",
-    createdAt: "",
-    updatedAt: ""
+    initialBackfillAt: ""
   });
+  assert.ok(defaults.createdAt);
+  assert.ok(defaults.updatedAt);
 
   const saved = db.saveTagSyncConfig({
     botId,
@@ -99,6 +106,45 @@ test("tag sync config defaults off and validates saved night windows", () => {
       windowEnd: "12:00"
     }
   }), /night window/i);
+});
+
+test("new bots persist an enabled nightly config and enter scheduler enumeration", () => {
+  const botId = "tag_sync_new_bot_default_config";
+  ensureBot(botId);
+
+  const row = sqlite.prepare(`
+    SELECT nightly_enabled, window_start, window_end
+    FROM bot_tag_sync_configs
+    WHERE bot_id = ?
+  `).get(botId);
+  assert.equal(row.nightly_enabled, 1);
+  assert.equal(row.window_start, "03:00");
+  assert.equal(row.window_end, "06:00");
+  assert.ok(db.listRunnableTagSyncConfigs().some((config) => config.botId === botId));
+});
+
+test("legacy default-off tag sync configs migrate once and preserve later opt-out", () => {
+  const missingConfigBotId = "tag_sync_missing_config_migration_bot";
+  const botId = "tag_sync_default_enabled_migration_bot";
+  ensureBot(missingConfigBotId);
+  ensureBot(botId);
+  sqlite.prepare("DELETE FROM bot_tag_sync_configs WHERE bot_id = ?")
+    .run(missingConfigBotId);
+  db.saveTagSyncConfig({
+    botId,
+    config: { nightlyEnabled: false, windowStart: "03:00", windowEnd: "06:00" }
+  });
+
+  assert.equal(db.migrateTagSyncNightlyDefaultEnabled(), 2);
+  assert.equal(db.getTagSyncConfig(missingConfigBotId).nightlyEnabled, true);
+  assert.equal(db.getTagSyncConfig(botId).nightlyEnabled, true);
+
+  db.saveTagSyncConfig({
+    botId,
+    config: { nightlyEnabled: false, windowStart: "03:00", windowEnd: "06:00" }
+  });
+  assert.equal(db.migrateTagSyncNightlyDefaultEnabled(), 0);
+  assert.equal(db.getTagSyncConfig(botId).nightlyEnabled, false);
 });
 
 test("initial backfill includes every private tag and excludes group tags", () => {
@@ -254,6 +300,14 @@ test("claim groups five tags for one customer and waits for its callback", () =>
 test("runnable configs include active manual runs while nightly automation is off", () => {
   const botId = "tag_sync_manual_runnable_bot";
   ensureBot(botId);
+  db.saveTagSyncConfig({
+    botId,
+    config: {
+      nightlyEnabled: false,
+      windowStart: "03:00",
+      windowEnd: "06:00"
+    }
+  });
   db.startTagSyncRun({ botId, triggerType: "manual" });
 
   assert.equal(db.getTagSyncConfig(botId).nightlyEnabled, false);

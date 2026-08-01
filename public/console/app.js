@@ -711,7 +711,7 @@ function clearBotScopedContent() {
   }
   if (els.tagSyncForm) {
     els.tagSyncForm.reset();
-    els.tagSyncNightlyEnabled.checked = false;
+    els.tagSyncNightlyEnabled.checked = true;
     els.tagSyncWindowStart.value = "03:00";
     els.tagSyncWindowEnd.value = "06:00";
     syncTagSyncScheduleFields();
