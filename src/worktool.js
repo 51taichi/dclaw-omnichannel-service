@@ -214,6 +214,37 @@ function normalizedUniqueNames(values) {
   )];
 }
 
+export function buildFriendTagCommand({ targetName, tagNames = [] }) {
+  const name = String(targetName || "").trim();
+  const tags = normalizedUniqueNames(tagNames);
+  if (!name) throw new Error("targetName is required");
+  if (!tags.length) throw new Error("tagNames must not be empty");
+  if (tags.length > 5) throw new Error("at most five tags are allowed");
+  return {
+    type: 213,
+    friend: {
+      name,
+      tagList: tags
+    }
+  };
+}
+
+export async function syncFriendTags({
+  robotId,
+  targetName,
+  tagNames,
+  socketType = 2
+}) {
+  return requestWorkTool("/wework/sendRawMessage", {
+    robotId,
+    method: "POST",
+    body: JSON.stringify({
+      socketType,
+      list: [buildFriendTagCommand({ targetName, tagNames })]
+    })
+  });
+}
+
 export function buildCreateExternalGroupCommand({
   groupName,
   selectList = [],
