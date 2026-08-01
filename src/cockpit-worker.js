@@ -2,6 +2,7 @@ const stageHours = new Map([
   [1, "aggregate"],
   [2, "reconcile"],
   [3, "generate"],
+  [8, "recover"],
   [9, "deliver"]
 ]);
 

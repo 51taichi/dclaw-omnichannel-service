@@ -67,6 +67,28 @@ test("cockpit top metrics stay universal across sales and service Bots", () => {
   assert.match(cockpit, /<span>回复 /);
 });
 
+test("cockpit presents separate Chinese statistics and AI statuses", () => {
+  assert.match(cockpit, /function reportStatusMarkup/);
+  assert.match(cockpit, /数据已校验/);
+  assert.match(cockpit, /AI 分析已生成/);
+  assert.match(cockpit, /AI 分析待补充/);
+  assert.match(css, /\.cockpit-report-status/);
+  assert.doesNotMatch(cockpit, /<small>\$\{escapeHtml\(item\.status\)\}<\/small>/);
+});
+
+test("waiting metric is named as an overlapping current state", () => {
+  assert.match(cockpit, /\["waiting", "待客户回复"/);
+  assert.match(cockpit, /统计结束时的当前会话状态，可与有效沟通重叠/);
+  assert.doesNotMatch(cockpit, /\["waiting", "等待中"/);
+});
+
+test("legacy AI failures render a useful Chinese fallback instead of empty placeholders", () => {
+  assert.match(cockpit, /AI 深度分析暂未生成，基础指标与图表仍可正常查看/);
+  assert.match(cockpit, /系统将在早间自动重试，无需人工补跑/);
+  assert.doesNotMatch(cockpit, /<p>当前周期暂无 AI 问题分析。<\/p>/);
+  assert.doesNotMatch(cockpit, /<p>完整统计后生成具体行动建议。<\/p>/);
+});
+
 test("effective conversations replace customer messages beside the outcome chart", () => {
   const definitionsStart = cockpit.indexOf("const metricDefinitions");
   const definitionsEnd = cockpit.indexOf("\n  ];", definitionsStart);

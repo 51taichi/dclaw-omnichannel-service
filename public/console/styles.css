@@ -6347,6 +6347,31 @@ td .muted {
   line-height: 1.45;
 }
 
+.cockpit-report-status {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cockpit-report-status span {
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 750;
+  line-height: 1;
+  padding: 5px 8px;
+}
+
+.cockpit-report-status .ok {
+  background: color-mix(in srgb, #20a66a 12%, transparent);
+  color: #158253;
+}
+
+.cockpit-report-status .pending {
+  background: color-mix(in srgb, var(--bot-accent, var(--accent)) 10%, transparent);
+  color: var(--bot-accent, var(--accent));
+}
+
 .cockpit-card p,
 .cockpit-card small {
   color: var(--muted);

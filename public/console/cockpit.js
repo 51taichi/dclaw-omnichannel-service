@@ -19,7 +19,7 @@
     ["customerMessages", "客户消息", "message"],
     ["neverReplied", "从未回复", "alert"],
     ["stoppedReplying", "中途未回复", "clock"],
-    ["waiting", "等待中", "clock"],
+    ["waiting", "待客户回复", "clock", "统计结束时的当前会话状态，可与有效沟通重叠"],
     ["handoffs", "转人工", "user"]
   ];
 
@@ -298,6 +298,31 @@
     `;
   }
 
+  function analysisStatus(report) {
+    if (!report) return "pending";
+    if (report.summary?.analysisStatus) return report.summary.analysisStatus;
+    return report.status === "ready_with_ai_error" ? "fallback" : "generated";
+  }
+
+  function reportStatusMarkup(data) {
+    const report = data.latestReport;
+    const statisticsStatus = report?.summary?.statisticsStatus
+      || (Object.keys(data.metrics || {}).length ? "verified" : "pending");
+    const aiStatus = analysisStatus(report);
+    const statisticsLabel = statisticsStatus === "verified" ? "数据已校验" : "数据待生成";
+    const aiLabel = aiStatus === "generated" ? "AI 分析已生成" : "AI 分析待补充";
+    return `
+      <div class="cockpit-report-status" aria-label="报告状态">
+        <span class="${statisticsStatus === "verified" ? "ok" : "pending"}">${statisticsLabel}</span>
+        <span class="${aiStatus === "generated" ? "ok" : "pending"}">${aiLabel}</span>
+      </div>
+    `;
+  }
+
+  function reportStatusLabel(report) {
+    return analysisStatus(report) === "generated" ? "完整报告" : "基础报告 · AI 待补充";
+  }
+
   function render(data) {
     const current = elements();
     const report = data.latestReport?.document || {};
@@ -310,6 +335,7 @@
           <div>
             <span class="cockpit-eyebrow">AI 经营驾驶舱</span>
             <strong>${escapeHtml(data.period?.label || "最近统计周期")}</strong>
+            ${reportStatusMarkup(data)}
           </div>
           <div class="cockpit-period-controls">
             ${periodInputMarkup()}
@@ -322,11 +348,11 @@
         </header>
 
         <section id="cockpitMetricGrid" class="cockpit-metric-grid" aria-label="核心经营指标">
-          ${metricDefinitions.map(([key, label, iconName], index) => {
+          ${metricDefinitions.map(([key, label, iconName, help], index) => {
             const rawValue = data.metrics?.[key] ?? data.today?.[key] ?? 0;
             const fullNumber = Number(rawValue || 0).toLocaleString("zh-CN");
             return `
-              <article class="cockpit-card cockpit-metric-card" tabindex="0">
+              <article class="cockpit-card cockpit-metric-card" tabindex="0"${help ? ` title="${escapeHtml(help)}"` : ""}>
                 <span class="cockpit-metric-label">${icon(iconName)}<span>${label}</span></span>
                 <strong title="${fullNumber}">${metricValue(key, data.metrics || {}, data.today || {})}</strong>
               </article>
@@ -343,7 +369,7 @@
             </section>
             <section id="cockpitProblems" class="cockpit-card cockpit-problem-card">
               <h3>${icon("alert")}主要问题</h3>
-              ${problems.length ? `<ol>${problems.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>当前周期暂无 AI 问题分析。</p>"}
+              ${problems.length ? `<ol>${problems.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : analysisStatus(data.latestReport) === "fallback" ? "<p>AI 深度分析暂未生成，基础指标与图表仍可正常查看。</p>" : "<p>当前周期暂无明显问题。</p>"}
             </section>
           </div>
           <div class="cockpit-insight-column">
@@ -353,7 +379,7 @@
             </section>
             <section id="cockpitActions" class="cockpit-card cockpit-action-card">
               <h3>${icon("check")}建议行动</h3>
-              ${actions.length ? `<ol>${actions.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : "<p>完整统计后生成具体行动建议。</p>"}
+              ${actions.length ? `<ol>${actions.slice(0, 3).map((item) => `<li>${escapeHtml(item.title)}</li>`).join("")}</ol>` : analysisStatus(data.latestReport) === "fallback" ? "<p>系统将在早间自动重试，无需人工补跑。</p>" : "<p>当前周期暂无新增建议。</p>"}
             </section>
           </div>
         </div>
@@ -364,7 +390,7 @@
             <details class="cockpit-report-row">
               <summary>
                 <span>${escapeHtml(item.periodStart.slice(0, 10))} · 第 ${item.revision} 版</span>
-                <small>${escapeHtml(item.status)}</small>
+                <small>${reportStatusLabel(item)}</small>
               </summary>
               <p>${escapeHtml(item.document?.analysis?.executiveSummary || "统计报告")}</p>
               <div class="cockpit-report-metrics">

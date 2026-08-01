@@ -41,3 +41,14 @@ test("cockpit overview uses an exact snapshot when the client supplies an anchor
   assert.match(route, /hasExplicitAnchor\s*\?\s*exactSnapshot/);
   assert.match(route, /report\.periodStart === period\.start/);
 });
+
+test("cockpit retries fallback AI reports without rebuilding statistics", () => {
+  const start = source.indexOf("async function recoverCockpitReportAnalysis");
+  const end = source.indexOf("\n}\n", start) + 3;
+  const recovery = source.slice(start, end);
+  assert.ok(start > 0);
+  assert.match(recovery, /ready_with_ai_error|analysisStatus/);
+  assert.match(recovery, /cockpitReportGenerator\.generate/);
+  assert.doesNotMatch(recovery, /cockpitAggregator|aggregateBot|reconcileBot/);
+  assert.match(source, /recover:\s*recoverCockpitReportAnalysis/);
+});

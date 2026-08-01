@@ -10,6 +10,7 @@ test("night schedule runs aggregate, reconcile, generate and deliver in order", 
   assert.equal(scheduledCockpitStage(new Date("2026-07-30T01:05:00+08:00")), "aggregate");
   assert.equal(scheduledCockpitStage(new Date("2026-07-30T02:05:00+08:00")), "reconcile");
   assert.equal(scheduledCockpitStage(new Date("2026-07-30T03:05:00+08:00")), "generate");
+  assert.equal(scheduledCockpitStage(new Date("2026-07-30T08:05:00+08:00")), "recover");
   assert.equal(scheduledCockpitStage(new Date("2026-07-30T09:05:00+08:00")), "deliver");
 });
 
@@ -20,7 +21,7 @@ test("schedule catches up every due stage after a restart", () => {
   );
   assert.deepEqual(
     scheduledCockpitStages(new Date("2026-07-30T10:05:00+08:00")),
-    ["aggregate", "reconcile", "generate", "deliver"]
+    ["aggregate", "reconcile", "generate", "recover", "deliver"]
   );
 });
 

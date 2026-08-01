@@ -7190,6 +7190,37 @@ async function generateScheduledCockpitReports({ now }) {
   return { generated };
 }
 
+async function recoverCockpitReportAnalysis() {
+  const recovered = [];
+  for (const binding of enabledCockpitBots()) {
+    const reports = listCockpitReports({
+      botId: binding.botId,
+      page: 1,
+      pageSize: 100
+    }).items;
+    const latestBySnapshot = new Map();
+    for (const report of reports) {
+      if (!latestBySnapshot.has(report.snapshotId)) {
+        latestBySnapshot.set(report.snapshotId, report);
+      }
+    }
+    for (const report of latestBySnapshot.values()) {
+      const needsRecovery = report.status === "ready_with_ai_error"
+        || report.summary?.analysisStatus === "fallback";
+      if (!needsRecovery) continue;
+      const snapshot = getLatestCockpitSnapshot({
+        botId: binding.botId,
+        periodType: report.reportType,
+        periodStart: report.periodStart
+      });
+      if (!snapshot || snapshot.id !== report.snapshotId) continue;
+      const revision = await cockpitReportGenerator.generate({ snapshot });
+      recovered.push(revision.id);
+    }
+  }
+  return { recovered };
+}
+
 const cockpitWorkerEnabled = process.env.COCKPIT_WORKER_ENABLED !== "false";
 const cockpitWorker = createCockpitWorker({
   enabled: cockpitWorkerEnabled,
@@ -7218,6 +7249,7 @@ const cockpitWorker = createCockpitWorker({
       return { bots: results.length };
     },
     generate: generateScheduledCockpitReports,
+    recover: recoverCockpitReportAnalysis,
     deliver: ({ now }) => cockpitDeliveryService.sendDue({ now })
   }
 });
