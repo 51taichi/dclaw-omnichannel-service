@@ -304,6 +304,17 @@ test("cockpit keeps statistics rules as hidden system defaults", () => {
   assert.match(panel, /<input name="defaultNoReplyHours" type="hidden" value="24" \/>/);
 });
 
+test("cockpit config hydration preserves fixed statistics defaults", () => {
+  const loadStart = app.indexOf("async function loadCockpitConfig");
+  const loadEnd = app.indexOf("\n}\n\nasync function saveCockpitConfig", loadStart);
+  const loader = app.slice(loadStart, loadEnd);
+
+  assert.match(loader, /els\.cockpitConfigForm\.timezone\.value = "Asia\/Shanghai";/);
+  assert.match(loader, /els\.cockpitConfigForm\.defaultNoReplyHours\.value = 24;/);
+  assert.doesNotMatch(loader, /els\.cockpitConfigForm\.timezone\.value = config\.timezone/);
+  assert.doesNotMatch(loader, /els\.cockpitConfigForm\.defaultNoReplyHours\.value = config\.defaultNoReplyHours/);
+});
+
 test("cockpit report recipients share three desktop columns with a mobile fallback", () => {
   const panelStart = html.indexOf('id="cockpitConfigPanel"');
   const panelEnd = html.indexOf('id="botBindingPanel"', panelStart);

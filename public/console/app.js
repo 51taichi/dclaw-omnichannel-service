@@ -461,8 +461,8 @@ async function loadCockpitConfig({ contextVersion } = {}) {
   const data = await request(`/api/cockpit/${encodeURIComponent(botId)}/config`, { botId });
   if (contextVersion && !isCurrentBotContext(botId, contextVersion)) return;
   const config = data.config || {};
-  els.cockpitConfigForm.timezone.value = config.timezone || "Asia/Shanghai";
-  els.cockpitConfigForm.defaultNoReplyHours.value = config.defaultNoReplyHours || 24;
+  els.cockpitConfigForm.timezone.value = "Asia/Shanghai";
+  els.cockpitConfigForm.defaultNoReplyHours.value = 24;
   for (const type of ["daily", "weekly", "monthly"]) {
     els.cockpitConfigForm[`${type}Enabled`].checked = Boolean(config.schedules?.[type]?.enabled);
     els.cockpitConfigForm[`${type}Recipients`].value =
