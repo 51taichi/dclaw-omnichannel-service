@@ -708,6 +708,108 @@ test("gateway extracts one complete JSON object from surrounding prose without a
   assert.equal(localRepairs[0].errors[0].type, "json_syntax");
 });
 
+test("gateway selects the only full-contract-valid JSON candidate without another Agent call", async () => {
+  const flow = {
+    machine: {
+      nodes: [
+        { id: "node_1", collectFields: ["年龄"] },
+        { id: "node_2", collectFields: [] }
+      ]
+    },
+    session: { currentNodeId: "node_1", collectedData: {} }
+  };
+  const businessReply = {
+    ...structuredClone(validAuditedReply),
+    flowDecision: {
+      currentNodeId: "node_1",
+      nextNodeId: "node_2",
+      nodeCompleted: true,
+      confidence: 0.9,
+      reason: "年龄已收集",
+      collectedDataPatch: { "年龄": "20" }
+    }
+  };
+  const rawReply = [
+    "I will process the age first.",
+    '{"年龄":"20"}',
+    "```json",
+    JSON.stringify(businessReply),
+    "```",
+    "Completed."
+  ].join("\n");
+  const localRepairs = [];
+  let calls = 0;
+
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：20" },
+    validationOptions: {
+      requireFlowDecision: true,
+      requireReplyContent: true,
+      allowTagDecision: true,
+      flow,
+      tagContext: auditedTagContext,
+      tagEvidenceCandidates: auditedTagEvidenceCandidates
+    },
+    invoke: async () => {
+      calls += 1;
+      return { reply: rawReply, response: { calls } };
+    },
+    onLocalRepair: (repair) => localRepairs.push(repair)
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(calls, 1);
+  assert.equal(result.attempts.length, 1);
+  assert.equal(result.agentReply.reply, businessReply.reply);
+  assert.deepEqual(result.agentReply.flowDecision, businessReply.flowDecision);
+  assert.deepEqual(result.validation.repairs[0], {
+    type: "single_contract_valid_json_extracted",
+    candidateCount: 2,
+    validCandidateCount: 1
+  });
+  assert.equal(localRepairs.length, 1);
+  assert.equal(localRepairs[0].errors[0].type, "json_syntax");
+});
+
+test("gateway keeps rejected candidate repairs out of the accepted candidate", () => {
+  const repairableButInvalid = {
+    ...structuredClone(validAuditedReply),
+    reply: 20,
+    tagDecision: { add: [], remove: [] }
+  };
+  const result = validateAgentResponseText([
+    JSON.stringify(repairableButInvalid),
+    JSON.stringify(validAuditedReply)
+  ].join("\n"), {
+    allowTagDecision: true,
+    tagContext: auditedTagContext,
+    tagEvidenceCandidates: auditedTagEvidenceCandidates
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.agentReply.reply, validAuditedReply.reply);
+  assert.deepEqual(result.agentReply.raw, validAuditedReply);
+  assert.deepEqual(result.repairs, [{
+    type: "single_contract_valid_json_extracted",
+    candidateCount: 2,
+    validCandidateCount: 1
+  }]);
+});
+
+test("gateway rejects extracted candidates when none satisfies the active contract", () => {
+  const result = validateAgentResponseText([
+    '{"年龄":"20"}',
+    '{"reply":"缺少流程决策","attachments":[],"sources":[]}'
+  ].join("\n"), {
+    requireFlowDecision: true,
+    requireReplyContent: true
+  });
+
+  assert.equal(result.valid, false);
+  assert.equal(result.repairs.length, 0);
+  assert.equal(result.errors[0].type, "json_syntax");
+});
+
 test("gateway collapses repeated identical JSON objects locally", () => {
   const json = '{"reply":"你好","attachments":[],"sources":[]}';
   const result = validateAgentResponseText(`${json}\n${json}`);
@@ -726,6 +828,7 @@ test("gateway does not choose between different complete JSON objects", () => {
   ].join("\n"));
 
   assert.equal(result.valid, false);
+  assert.equal(result.repairs.length, 0);
   assert.equal(result.errors[0].type, "json_syntax");
 });
 
