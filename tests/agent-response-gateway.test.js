@@ -167,6 +167,54 @@ test("gateway uses a targeted retry request for schema failures", async () => {
   assert.match(requests[1].message, /上一版原始响应/);
 });
 
+test("gateway retries an unknown flow asset key and accepts the configured field name", async () => {
+  const requests = [];
+  const validationFailures = [];
+  const flow = {
+    machine: {
+      nodes: [
+        { id: "node_1", collectFields: ["年龄"] },
+        { id: "node_2", collectFields: [] }
+      ]
+    },
+    session: { currentNodeId: "node_1", collectedData: {} }
+  };
+
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：17", metadata: { flow } },
+    validationOptions: { requireFlowDecision: true, flow },
+    invoke: async ({ request, attemptNumber }) => {
+      requests.push(structuredClone(request));
+      return {
+        reply: JSON.stringify({
+          reply: "收到，17岁。",
+          attachments: [],
+          sources: [],
+          flowDecision: {
+            currentNodeId: "node_1",
+            nextNodeId: "node_2",
+            nodeCompleted: true,
+            collectedDataPatch: attemptNumber === 1 ? { age: 17 } : { 年龄: 17 }
+          }
+        }),
+        response: { attemptNumber }
+      };
+    },
+    onValidationFailure: (failure) => validationFailures.push(failure)
+  });
+
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.agentReply.flowDecision.collectedDataPatch, { 年龄: 17 });
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].metadata.validationRetry, true);
+  assert.match(requests[1].message, /collectedDataPatch\.age/);
+  assert.match(requests[1].message, /年龄/);
+  assert.ok(validationFailures[0].errors.some((error) =>
+    error.type === "semantic"
+    && error.path === "flowDecision.collectedDataPatch.age"
+  ));
+});
+
 test("gateway reports when the validation retry succeeds", async () => {
   const validResponse = JSON.stringify({ reply: "修复后的回复", attachments: [], sources: [] });
   const retryOutcomes = [];
@@ -398,6 +446,113 @@ test("validation accepts only a structured reply object", () => {
   assert.equal(result.valid, true);
   assert.equal(result.agentReply.reply, "您好，课程可以了解下。");
   assert.equal(result.agentReply.flowDecision.nextNodeId, "node_1");
+});
+
+test("flow asset validation rejects patch keys outside configured collect fields", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "17岁可以",
+    attachments: [],
+    sources: [],
+    flowDecision: {
+      currentNodeId: "node_1",
+      nextNodeId: "node_2",
+      nodeCompleted: false,
+      collectedDataPatch: { age: 17 }
+    }
+  }), {
+    requireFlowDecision: true,
+    flow: {
+      machine: {
+        nodes: [
+          { id: "node_1", collectFields: [] },
+          { id: "node_2", collectFields: ["年龄"] }
+        ]
+      },
+      session: { currentNodeId: "node_1", collectedData: {} }
+    }
+  });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) =>
+    error.type === "semantic"
+    && error.path === "flowDecision.collectedDataPatch.age"
+    && error.message.includes("年龄")
+  ));
+});
+
+test("flow asset validation rejects node completion while a current-node field is missing", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "我们继续下一步",
+    attachments: [],
+    sources: [],
+    flowDecision: {
+      currentNodeId: "node_2",
+      nextNodeId: "node_3",
+      nodeCompleted: true,
+      collectedDataPatch: {}
+    }
+  }), {
+    requireFlowDecision: true,
+    flow: {
+      machine: {
+        nodes: [
+          { id: "node_2", collectFields: ["年龄"] },
+          { id: "node_3", collectFields: [] }
+        ]
+      },
+      session: { currentNodeId: "node_2", collectedData: {} }
+    }
+  });
+
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) =>
+    error.type === "semantic"
+    && error.path === "flowDecision.collectedDataPatch.年龄"
+    && error.message.includes("required before completing node 'node_2'")
+  ));
+});
+
+test("flow asset validation accepts node completion when the field is already collected", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "我们继续下一步",
+    attachments: [],
+    sources: [],
+    flowDecision: {
+      currentNodeId: "node_2",
+      nextNodeId: "node_3",
+      nodeCompleted: true,
+      collectedDataPatch: {}
+    }
+  }), {
+    requireFlowDecision: true,
+    flow: {
+      machine: {
+        nodes: [
+          { id: "node_2", collectFields: ["年龄"] },
+          { id: "node_3", collectFields: [] }
+        ]
+      },
+      session: { currentNodeId: "node_2", collectedData: { 年龄: 17 } }
+    }
+  });
+
+  assert.equal(result.valid, true);
+});
+
+test("flow asset validation does not invent a field contract without flow configuration", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "收到",
+    attachments: [],
+    sources: [],
+    flowDecision: {
+      currentNodeId: "node_1",
+      nextNodeId: "node_1",
+      nodeCompleted: false,
+      collectedDataPatch: { age: 17 }
+    }
+  }));
+
+  assert.equal(result.valid, true);
 });
 
 test("validation preserves tag decision evidence fields", () => {

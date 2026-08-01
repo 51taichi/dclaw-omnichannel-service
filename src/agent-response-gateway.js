@@ -681,6 +681,18 @@ function disclosesPrivateGroupContext(value) {
     && groupContextDisclosurePatterns.some((pattern) => pattern.test(reply));
 }
 
+function getFlowNodes(flow) {
+  if (Array.isArray(flow?.machine?.nodes)) return flow.machine.nodes;
+  if (Array.isArray(flow?.machine?.config?.nodes)) return flow.machine.config.nodes;
+  return Array.isArray(flow?.nodes) ? flow.nodes : [];
+}
+
+function hasCollectedAssetValue(value) {
+  if (typeof value === "string") return Boolean(value.trim());
+  if (typeof value === "number") return Number.isFinite(value);
+  return typeof value === "boolean";
+}
+
 function validateFlowDecision(decision, { requireFlowDecision, flow, errors }) {
   if (!decision) {
     if (requireFlowDecision) {
@@ -718,10 +730,9 @@ function validateFlowDecision(decision, { requireFlowDecision, flow, errors }) {
     });
   }
 
+  const nodes = getFlowNodes(flow);
   const validNodeIds = new Set(
-    (flow?.machine?.nodes || flow?.nodes || [])
-      .map((node) => String(node?.id || "").trim())
-      .filter(Boolean)
+    nodes.map((node) => String(node?.id || "").trim()).filter(Boolean)
   );
   const nextNodeId = String(decision.nextNodeId || "").trim();
   if (nextNodeId && validNodeIds.size && !validNodeIds.has(nextNodeId)) {
@@ -729,6 +740,48 @@ function validateFlowDecision(decision, { requireFlowDecision, flow, errors }) {
       type: "semantic",
       path: "flowDecision.nextNodeId",
       message: `nextNodeId '${nextNodeId}' is not in the current flow`
+    });
+  }
+
+  const patch = decision.collectedDataPatch;
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return;
+  if (!nodes.length) return;
+
+  const configuredFields = [...new Set(
+    nodes
+      .flatMap((node) => Array.isArray(node?.collectFields) ? node.collectFields : [])
+      .map((field) => String(field || "").trim())
+      .filter(Boolean)
+  )];
+  const configuredFieldSet = new Set(configuredFields);
+  for (const field of Object.keys(patch)) {
+    if (configuredFieldSet.has(field)) continue;
+    errors.push({
+      type: "semantic",
+      path: `flowDecision.collectedDataPatch.${field}`,
+      message: `collectedDataPatch field '${field}' is not configured; allowed fields: ${configuredFields.join(", ") || "none"}`
+    });
+  }
+
+  if (decision.nodeCompleted !== true) return;
+
+  const currentNodeId = String(flow?.session?.currentNodeId || "").trim();
+  const currentNode = nodes.find((node) => String(node?.id || "").trim() === currentNodeId);
+  const currentNodeFields = [...new Set(
+    (Array.isArray(currentNode?.collectFields) ? currentNode.collectFields : [])
+      .map((field) => String(field || "").trim())
+      .filter(Boolean)
+  )];
+  const collectedData = flow?.session?.collectedData;
+  const existingData = collectedData && typeof collectedData === "object" && !Array.isArray(collectedData)
+    ? collectedData
+    : {};
+  for (const field of currentNodeFields) {
+    if (hasCollectedAssetValue(patch[field]) || hasCollectedAssetValue(existingData[field])) continue;
+    errors.push({
+      type: "semantic",
+      path: `flowDecision.collectedDataPatch.${field}`,
+      message: `collectedDataPatch field '${field}' is required before completing node '${currentNodeId}'`
     });
   }
 }
