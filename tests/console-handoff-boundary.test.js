@@ -98,6 +98,7 @@ test("current task labels show four characters before an ellipsis", () => {
   assert.match(app, /const statusLabel = compactFlowNodeName\(status\)/);
   assert.match(app, />\$\{escapeHtml\(statusLabel\)\}<\/span>/);
   assert.match(css, /\.flow-session-current-task\s*\{[\s\S]*padding:\s*0 3px 0 13px[\s\S]*font-size:\s*10px/);
+  assert.match(css, /\.flow-session-current-task::before\s*\{[\s\S]*left:\s*7px[\s\S]*width:\s*5px[\s\S]*height:\s*5px/);
 });
 
 test("flow session status labels do not change card or chat header layout", () => {

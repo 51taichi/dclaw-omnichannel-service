@@ -4070,7 +4070,7 @@ html.has-bot-context .action-toolbox-toggle:hover {
   content: "";
   position: absolute;
   top: 50%;
-  left: 4px;
+  left: 7px;
   width: 5px;
   height: 5px;
   margin-top: -2.5px;
