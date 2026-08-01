@@ -62,7 +62,7 @@ test("console exposes a per-session handoff switch without redundant status labe
 
 test("flow session cards show the current task inline without metadata icons", () => {
   assert.equal(app.includes("flow-session-current-task"), true);
-  assert.equal(app.includes('class="flow-session-current-task">${escapeHtml(status)}'), true);
+  assert.equal(app.includes('class="flow-session-current-task" title="${escapeHtml(status)}">${escapeHtml(status)}'), true);
   assert.equal(app.includes("当前任务："), false);
   assert.match(app, /const privateSessionTools = sessionType === "private"/);
   assert.match(app, /const manualTagTrigger = sessionType === "private"/);
@@ -81,6 +81,10 @@ test("flow session cards show the current task inline without metadata icons", (
   assert.equal(css.includes(".flow-session-icons"), false);
   assert.match(css, /\.flow-session-current-task\s*\{[\s\S]*width:\s*68px[\s\S]*min-width:\s*68px[\s\S]*max-width:\s*68px/);
   assert.match(css, /\.flow-session-current-task\s*\{[\s\S]*white-space:\s*nowrap[\s\S]*text-overflow:\s*ellipsis/);
+  assert.match(app, /class="flow-session-current-task" title="\$\{escapeHtml\(status\)\}"/);
+  assert.match(css, /\.flow-session-current-task::before\s*\{[\s\S]*animation:\s*flow-current-node-pulse/);
+  assert.match(css, /@keyframes flow-current-node-pulse/);
+  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)\s*\{[\s\S]*\.flow-session-current-task::before\s*\{[\s\S]*animation:\s*none/);
   assert.match(css, /\.flow-session-card\.is-legacy \.flow-session-current-task\s*\{/);
 });
 
