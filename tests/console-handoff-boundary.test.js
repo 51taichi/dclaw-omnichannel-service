@@ -79,6 +79,7 @@ test("flow session cards show the current task inline without metadata icons", (
   assert.equal(app.includes("人工接手中"), false);
   assert.equal(app.includes("flow-session-status"), false);
   assert.equal(css.includes(".flow-session-icons"), false);
+  assert.match(css, /\.flow-session-current-task\s*\{[\s\S]*width:\s*68px[\s\S]*min-width:\s*68px[\s\S]*max-width:\s*68px/);
   assert.match(css, /\.flow-session-current-task\s*\{[\s\S]*white-space:\s*nowrap[\s\S]*text-overflow:\s*ellipsis/);
   assert.match(css, /\.flow-session-card\.is-legacy \.flow-session-current-task\s*\{/);
 });

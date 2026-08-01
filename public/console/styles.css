@@ -3948,8 +3948,9 @@ html.has-bot-context .action-toolbox-toggle:hover {
 .flow-session-current-task {
   display: block;
   box-sizing: border-box;
-  width: 112px;
-  max-width: 112px;
+  width: 68px;
+  min-width: 68px;
+  max-width: 68px;
   height: 30px;
   padding: 0 8px;
   overflow: hidden;
