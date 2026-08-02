@@ -372,50 +372,33 @@
               <span class="field-label">累计秒数</span>
               <input name="incrementSeconds" type="number" min="0" step="1" value="5" required />
             </label>
-            <label class="reply-wait-fallback-field">
-              <span class="field-label reply-wait-fallback-label">
-                失败兜底话术
-                <button class="activation-help-icon response-wait-help" type="button" aria-label="连续消息等待规则说明" title="当前等待时间 = 回复等待间隔 +（当前批次消息数 - 1）× 累计秒数&#10;例如配置 10 和 5：&#10;第 1 条后等待 10 秒&#10;第 2 条后重新等待 15 秒&#10;第 3 条后重新等待 20 秒">
-                  <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
-                </button>
-              </span>
-              <input name="fallbackReply" type="text" value="刚刚这边有点忙，我稍后回复你哈" required />
-            </label>
+            <div class="reply-wait-detail-row">
+              <label class="reply-wait-fallback-field">
+                <span class="field-label reply-wait-fallback-label">
+                  失败兜底话术
+                  <button class="activation-help-icon response-wait-help" type="button" aria-label="连续消息等待规则说明" title="当前等待时间 = 回复等待间隔 +（当前批次消息数 - 1）× 累计秒数&#10;例如配置 10 和 5：&#10;第 1 条后等待 10 秒&#10;第 2 条后重新等待 15 秒&#10;第 3 条后重新等待 20 秒">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
+                  </button>
+                </span>
+                <input name="fallbackReply" type="text" value="刚刚这边有点忙，我稍后回复你哈" required />
+              </label>
+              <label class="history-text-limit-field">
+                <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>历史客户发言加载上限</span>
+                <input
+                  name="historyCustomerTextMaxChars"
+                  type="number"
+                  min="1000"
+                  max="6000"
+                  step="100"
+                  value="4000"
+                  required
+                />
+              </label>
+            </div>
             <div class="actions">
               <button class="primary" type="submit">
                 <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
                 保存等待配置
-              </button>
-            </div>
-          </form>
-        </div>
-      </section>
-
-      <section id="historyAnalysisPanel" class="panel bot-context-panel collapsible-panel">
-        <div class="section-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>历史智能分析</h2>
-          <button class="collapse-button" data-collapse-target="historyAnalysisPanel" type="button" aria-label="收起历史智能分析">
-            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
-          </button>
-        </div>
-        <div class="collapsible-content">
-          <form id="historyAnalysisForm" class="form-grid compact-form history-analysis-form">
-            <label class="history-text-limit-field">
-              <span class="field-label">历史客户发言加载上限</span>
-              <input
-                name="historyCustomerTextMaxChars"
-                type="number"
-                min="1000"
-                max="6000"
-                step="100"
-                value="4000"
-                required
-              />
-            </label>
-            <div class="actions">
-              <button class="primary" type="submit">
-                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-                保存历史分析配置
               </button>
             </div>
           </form>

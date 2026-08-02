@@ -14,6 +14,11 @@ test("reply wait configuration is loaded and saved per selected Bot", () => {
   assert.match(app, /isCurrentBotContext\(botId, contextVersion\)/);
   assert.match(app, /fallbackReply/);
   assert.match(app, /fallbackReply:\s*els\.replyWaitForm\.fallbackReply\.value/);
+  assert.match(
+    app,
+    /async function saveReplyWait[\s\S]*settings\/reply-wait[\s\S]*settings\/history-analysis/
+  );
+  assert.match(app, /historyCustomerTextMaxChars:\s*Number\(/);
 });
 
 test("reply wait panel explains the growing quiet-window formula", () => {

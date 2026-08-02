@@ -67,7 +67,6 @@ const els = {
   generateCockpitReportButton: document.querySelector("#generateCockpitReportButton"),
   replyWaitPanel: document.querySelector("#replyWaitPanel"),
   replyWaitForm: document.querySelector("#replyWaitForm"),
-  historyAnalysisForm: document.querySelector("#historyAnalysisForm"),
   tagSyncPanel: document.querySelector("#tagSyncPanel"),
   tagSyncForm: document.querySelector("#tagSyncForm"),
   tagSyncNightlyEnabled: document.querySelector("#tagSyncNightlyEnabled"),
@@ -683,10 +682,7 @@ function clearBotScopedContent() {
     els.replyWaitForm.baseSeconds.value = "10";
     els.replyWaitForm.incrementSeconds.value = "5";
     els.replyWaitForm.fallbackReply.value = DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
-  }
-  els.historyAnalysisForm?.reset();
-  if (els.historyAnalysisForm) {
-    els.historyAnalysisForm.historyCustomerTextMaxChars.value = "4000";
+    els.replyWaitForm.historyCustomerTextMaxChars.value = "4000";
   }
   if (els.tagSyncForm) {
     els.tagSyncForm.reset();
@@ -1785,7 +1781,7 @@ async function loadReplyWait({ contextVersion = state.botContextVersion } = {}) 
 
 async function loadHistoryAnalysis({ contextVersion = state.botContextVersion } = {}) {
   const botId = state.selectedBotId;
-  if (!botId || !els.historyAnalysisForm) return;
+  if (!botId || !els.replyWaitForm) return;
   const requestVersion = ++state.historyAnalysisLoadVersion;
   const data = await request(
     `/api/bots/${encodeURIComponent(botId)}/settings/history-analysis`
@@ -1795,7 +1791,7 @@ async function loadHistoryAnalysis({ contextVersion = state.botContextVersion } 
     state.selectedBotId !== botId ||
     !isCurrentBotContext(botId, contextVersion)
   ) return;
-  els.historyAnalysisForm.historyCustomerTextMaxChars.value =
+  els.replyWaitForm.historyCustomerTextMaxChars.value =
     String(data.config?.historyCustomerTextMaxChars ?? 4000);
 }
 
@@ -5170,47 +5166,34 @@ async function saveReplyWait(event) {
     toast("请先解锁 Bot");
     return;
   }
-  const result = await request(`/api/bots/${encodeURIComponent(botId)}/settings/reply-wait`, {
-    method: "PUT",
-    botId,
-    body: JSON.stringify({
-      baseSeconds: Number(els.replyWaitForm.baseSeconds.value),
-      incrementSeconds: Number(els.replyWaitForm.incrementSeconds.value),
-      fallbackReply: els.replyWaitForm.fallbackReply.value
-    })
-  });
-  if (!isCurrentBotContext(botId, contextVersion)) return;
-  els.replyWaitForm.baseSeconds.value = String(result.config?.baseSeconds ?? 10);
-  els.replyWaitForm.incrementSeconds.value = String(result.config?.incrementSeconds ?? 5);
-  els.replyWaitForm.fallbackReply.value =
-    result.config?.fallbackReply || DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
-  toast("消息/等待回复配置已保存");
-}
-
-async function saveHistoryAnalysis(event) {
-  event.preventDefault();
-  const botId = state.selectedBotId;
-  const contextVersion = state.botContextVersion;
-  if (!botId) {
-    toast("请先解锁 Bot");
-    return;
-  }
-  const result = await request(
-    `/api/bots/${encodeURIComponent(botId)}/settings/history-analysis`,
-    {
+  const [replyWaitResult, historyAnalysisResult] = await Promise.all([
+    request(`/api/bots/${encodeURIComponent(botId)}/settings/reply-wait`, {
+      method: "PUT",
+      botId,
+      body: JSON.stringify({
+        baseSeconds: Number(els.replyWaitForm.baseSeconds.value),
+        incrementSeconds: Number(els.replyWaitForm.incrementSeconds.value),
+        fallbackReply: els.replyWaitForm.fallbackReply.value
+      })
+    }),
+    request(`/api/bots/${encodeURIComponent(botId)}/settings/history-analysis`, {
       method: "PUT",
       botId,
       body: JSON.stringify({
         historyCustomerTextMaxChars: Number(
-          els.historyAnalysisForm.historyCustomerTextMaxChars.value
+          els.replyWaitForm.historyCustomerTextMaxChars.value
         )
       })
-    }
-  );
+    })
+  ]);
   if (!isCurrentBotContext(botId, contextVersion)) return;
-  els.historyAnalysisForm.historyCustomerTextMaxChars.value =
-    String(result.config?.historyCustomerTextMaxChars ?? 4000);
-  toast("历史智能分析配置已保存");
+  els.replyWaitForm.baseSeconds.value = String(replyWaitResult.config?.baseSeconds ?? 10);
+  els.replyWaitForm.incrementSeconds.value = String(replyWaitResult.config?.incrementSeconds ?? 5);
+  els.replyWaitForm.fallbackReply.value =
+    replyWaitResult.config?.fallbackReply || DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
+  els.replyWaitForm.historyCustomerTextMaxChars.value =
+    String(historyAnalysisResult.config?.historyCustomerTextMaxChars ?? 4000);
+  toast("消息/等待回复配置已保存");
 }
 
 async function saveBotAccessKey(event) {
@@ -5876,9 +5859,6 @@ els.generateCockpitReportButton?.addEventListener("click", () =>
 );
 els.replyWaitForm?.addEventListener("submit", (event) =>
   saveReplyWait(event).catch(toastError)
-);
-els.historyAnalysisForm?.addEventListener("submit", (event) =>
-  saveHistoryAnalysis(event).catch(toastError)
 );
 els.tagSyncForm?.addEventListener("submit", (event) =>
   saveTagSyncConfig(event).catch(toastError)

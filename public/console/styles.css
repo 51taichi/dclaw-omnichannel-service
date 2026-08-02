@@ -2803,8 +2803,16 @@ textarea[data-action-target-activation].is-action-target-focused {
   align-items: end;
 }
 
-.reply-wait-fallback-field {
+.reply-wait-detail-row {
+  display: grid;
   grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.reply-wait-detail-row > label {
+  width: 100%;
+  min-width: 0;
 }
 
 .reply-wait-fallback-label {
@@ -2822,17 +2830,17 @@ textarea[data-action-target-activation].is-action-target-focused {
   padding: 0;
 }
 
-.history-analysis-form {
-  grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
-}
-
 .history-text-limit-field {
-  grid-template-columns: 168px minmax(0, 1fr);
+  grid-template-columns: minmax(190px, 42%) minmax(0, 1fr);
 }
 
 @media (max-width: 920px) {
   .reply-wait-form {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .reply-wait-detail-row {
+    grid-template-columns: 1fr;
   }
 }
 

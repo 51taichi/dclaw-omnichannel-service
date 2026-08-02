@@ -67,7 +67,7 @@ test("config tab is available to every unlocked Bot without owning global mainte
   assert.equal(app.includes("agentManagementPanel"), false);
   assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), false);
   assert.match(app, /async function loadReplyWait[\s\S]*if \(!botId \|\| !els\.replyWaitForm\) return/);
-  assert.match(app, /async function loadHistoryAnalysis[\s\S]*if \(!botId \|\| !els\.historyAnalysisForm\) return/);
+  assert.match(app, /async function loadHistoryAnalysis[\s\S]*if \(!botId \|\| !els\.replyWaitForm\) return/);
   assert.match(app, /async function loadTagSyncConfig[\s\S]*if \(!botId \|\| !els\.tagSyncForm\) return/);
   assert.equal(app.includes("/access-key"), true);
   assert.equal(app.includes("settings/debug-reply"), false);
