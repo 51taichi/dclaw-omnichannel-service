@@ -355,7 +355,7 @@ body {
 
 .admin-bot-maintenance-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
 }
 
@@ -413,12 +413,16 @@ body {
 
 .admin-table-row {
   display: grid;
-  grid-template-columns: 1.2fr 1.2fr 1fr 1.1fr;
+  grid-template-columns: minmax(130px, 1.1fr) minmax(130px, 1fr) minmax(110px, 0.8fr) minmax(300px, 1.5fr);
   gap: 10px;
   align-items: center;
   min-height: 52px;
   padding: 8px 12px;
   border-bottom: 1px solid var(--line);
+}
+
+.admin-table-row > .admin-actions {
+  flex-wrap: wrap;
 }
 
 .admin-table-head {
@@ -452,6 +456,51 @@ body {
   padding: 20px;
   border-radius: 8px;
   background: #fff;
+}
+
+.admin-bot-password-modal {
+  width: min(480px, 100%);
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 48px rgba(24, 29, 51, 0.18);
+}
+
+.admin-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.admin-modal-head h2,
+.admin-modal-head p {
+  margin: 0;
+}
+
+.admin-modal-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.admin-modal-head h2 svg {
+  color: var(--accent);
+}
+
+.admin-modal-head p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.admin-dialog-form {
+  grid-template-columns: 1fr;
+}
+
+.admin-dialog-form .admin-actions {
+  grid-column: 1;
+  justify-content: flex-end;
 }
 
 .admin-assignment-modal h2 {

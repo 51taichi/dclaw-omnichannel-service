@@ -117,25 +117,9 @@
           </form>
           <section id="botMaintenancePanel" class="admin-bot-maintenance" hidden>
             <div class="admin-subhead admin-maintenance-head">
-              <h2><svg><use href="#admin-icon-settings"></use></svg>系统维护 · <span id="botMaintenanceName"></span></h2>
+              <h2><span id="botMaintenanceName"></span></h2>
             </div>
             <div class="admin-bot-maintenance-grid">
-              <form id="adminBotAccessKeyForm" class="admin-form admin-maintenance-card">
-                <div class="admin-maintenance-card-head">
-                  <svg><use href="#admin-icon-key"></use></svg>
-                  <div>
-                    <h3>Bot 密钥</h3>
-                    <p>重置当前 Bot 的独立访问密钥。</p>
-                  </div>
-                </div>
-                <label>
-                  <span><svg><use href="#admin-icon-key"></use></svg>新 Bot 密钥</span>
-                  <input name="accessKey" type="password" autocomplete="new-password" required />
-                </label>
-                <div class="admin-actions">
-                  <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>修改密钥</button>
-                </div>
-              </form>
               <form id="adminDebugReplyForm" class="admin-form admin-maintenance-card">
                 <div class="admin-maintenance-card-head">
                   <svg><use href="#admin-icon-terminal"></use></svg>
@@ -214,6 +198,26 @@
           <button id="assignmentCancelButton" class="secondary"><svg><use href="#admin-icon-close"></use></svg>取消</button>
           <button id="assignmentConfirmButton" class="primary"><svg><use href="#admin-icon-check"></use></svg>确认分配</button>
         </div>
+      </section>
+    </div>
+    <div id="botPasswordModal" class="admin-modal" hidden>
+      <section class="admin-bot-password-modal" role="dialog" aria-modal="true" aria-labelledby="botPasswordTitle">
+        <div class="admin-modal-head">
+          <div>
+            <h2 id="botPasswordTitle"><svg><use href="#admin-icon-key"></use></svg>修改 Bot 密码</h2>
+            <p>当前 Bot：<strong id="botPasswordName"></strong></p>
+          </div>
+        </div>
+        <form id="botPasswordForm" class="admin-form admin-dialog-form">
+          <label>
+            <span><svg><use href="#admin-icon-key"></use></svg>新密码</span>
+            <input name="accessKey" type="password" autocomplete="new-password" required />
+          </label>
+          <div class="admin-actions">
+            <button id="botPasswordCancelButton" class="secondary" type="button"><svg><use href="#admin-icon-close"></use></svg>取消</button>
+            <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>保存密码</button>
+          </div>
+        </form>
       </section>
     </div>
     <div id="adminToast" class="admin-toast" hidden></div>

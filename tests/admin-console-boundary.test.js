@@ -154,15 +154,47 @@ test("admin console owns Agent and Bot global maintenance", () => {
 
 test("administrator Bots page owns Bot key and debug reply maintenance", () => {
   assert.match(html, /id="botMaintenancePanel"[^>]*hidden/);
-  assert.match(html, /id="adminBotAccessKeyForm"[\s\S]*name="accessKey"[^>]*type="password"/);
+  assert.match(html, /<h2><span id="botMaintenanceName"><\/span><\/h2>/);
+  assert.doesNotMatch(html, /系统维护 ·/);
+  assert.doesNotMatch(html, /id="adminBotAccessKeyForm"/);
+  assert.match(
+    html,
+    /id="botPasswordModal"[^>]*hidden[\s\S]*role="dialog"[\s\S]*id="botPasswordTitle"[\s\S]*id="botPasswordName"[\s\S]*id="botPasswordForm"[\s\S]*name="accessKey"[^>]*type="password"[\s\S]*id="botPasswordCancelButton"/
+  );
   assert.match(html, /id="adminDebugReplyForm"[\s\S]*name="enabled"[^>]*type="checkbox"[\s\S]*name="trigger"[\s\S]*name="reply"/);
   assert.match(app, /selectedBotId:\s*""/);
+  assert.match(app, /passwordBotId:\s*""/);
+  assert.match(app, /passwordDialogVersion:\s*0/);
+  assert.match(app, /passwordDialogTrigger:\s*null/);
   assert.match(app, /debugReplyLoadVersion:\s*0/);
   assert.match(app, /async function selectBotForEditing\(botId\)/);
   assert.match(app, /async function loadBotMaintenance\(botId\)/);
+  assert.match(app, /function openBotPasswordDialog\(botId, trigger = null\)/);
+  assert.match(app, /function closeBotPasswordDialog\(\{ force = false \} = \{\}\)/);
+  assert.match(app, /if \(!force && els\.botPasswordForm\.classList\.contains\("is-busy"\)\) return/);
+  assert.match(app, /const requestVersion = state\.passwordDialogVersion/);
+  assert.match(app, /state\.passwordDialogVersion !== requestVersion \|\| state\.passwordBotId !== botId/);
+  assert.match(app, /function trapBotPasswordFocus\(event\)/);
+  assert.match(app, /event\.key === "Escape"/);
+  assert.match(app, /event\.key === "Tab"/);
   assert.match(app, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/access-key/);
   assert.match(app, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/settings\/debug-reply/);
-  assert.match(css, /\.admin-bot-maintenance-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+  assert.match(css, /\.admin-bot-password-modal\s*\{[\s\S]*width:\s*min\(480px,\s*100%\)/);
+});
+
+test("Bot list exposes password and direct Bot actions", () => {
+  const renderStart = app.indexOf("function renderBotList()");
+  const renderEnd = app.indexOf("async function saveBot", renderStart);
+  const renderSource = app.slice(renderStart, renderEnd);
+
+  assert.match(renderSource, /data-password-bot="\$\{escapeHtml\(bot\.botId\)\}"[\s\S]*adminIcon\("key"\)\}修改密码/);
+  assert.match(renderSource, /data-enter-bot="\$\{escapeHtml\(bot\.botId\)\}"[\s\S]*adminIcon\("open"\)\}进入 Bot/);
+  assert.doesNotMatch(renderSource, /进入配置/);
+  assert.match(renderSource, /openBotPasswordDialog\(button\.dataset\.passwordBot, button\)/);
+  assert.match(renderSource, /await openWorkspace\(button\.dataset\.enterBot\)/);
+  assert.match(app, /const suffix = botId \? `\?bot=\$\{encodeURIComponent\(botId\)\}` : ""/);
+  assert.match(css, /\.admin-table-row\s*\{[\s\S]*grid-template-columns:[^;]*minmax\(300px/);
+  assert.match(css, /\.admin-table-row > \.admin-actions\s*\{[\s\S]*flex-wrap:\s*wrap/);
 });
 
 test("admin console reuses platform styles with focused operational layout", () => {
@@ -222,7 +254,7 @@ test("admin fields and buttons consistently render semantic icons", () => {
 
   assert.match(html, /class="admin-search-field"[\s\S]*?<svg[\s\S]*?id="assignmentSearch"/);
   assert.match(app, /function adminIcon\(name\)/);
-  for (const icon of ["grid", "open", "transfer", "unlink", "edit", "settings", "trash"]) {
+  for (const icon of ["grid", "open", "transfer", "unlink", "edit", "key", "trash"]) {
     assert.equal(app.includes(`adminIcon("${icon}")`), true, `dynamic controls missing ${icon} icon`);
   }
 });

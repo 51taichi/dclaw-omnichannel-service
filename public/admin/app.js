@@ -7,6 +7,9 @@ const state = {
   workspaceDetails: new Map(),
   selectedWorkspaceId: 0,
   selectedBotId: "",
+  passwordBotId: "",
+  passwordDialogVersion: 0,
+  passwordDialogTrigger: null,
   debugReplyLoadVersion: 0,
   bots: [],
   agents: [],
@@ -31,8 +34,11 @@ const els = {
   botList: document.querySelector("#botList"),
   botMaintenancePanel: document.querySelector("#botMaintenancePanel"),
   botMaintenanceName: document.querySelector("#botMaintenanceName"),
-  botAccessKeyForm: document.querySelector("#adminBotAccessKeyForm"),
   debugReplyForm: document.querySelector("#adminDebugReplyForm"),
+  botPasswordModal: document.querySelector("#botPasswordModal"),
+  botPasswordName: document.querySelector("#botPasswordName"),
+  botPasswordForm: document.querySelector("#botPasswordForm"),
+  botPasswordCancel: document.querySelector("#botPasswordCancelButton"),
   agentForm: document.querySelector("#agentForm"),
   agentList: document.querySelector("#agentList"),
   passwordForm: document.querySelector("#adminPasswordForm"),
@@ -452,11 +458,9 @@ function clearBotMaintenance() {
   state.selectedBotId = "";
   els.botMaintenancePanel.hidden = true;
   els.botMaintenanceName.textContent = "";
-  els.botAccessKeyForm.reset();
   els.debugReplyForm.reset();
   els.debugReplyForm.trigger.value = "ping";
   els.debugReplyForm.reply.value = "pong";
-  setFormBusy(els.botAccessKeyForm, false);
   setFormBusy(els.debugReplyForm, false);
 }
 
@@ -501,8 +505,6 @@ async function selectBotForEditing(botId) {
   els.botForm.enabled.checked = bot.botEnabled !== false;
   els.botMaintenanceName.textContent = bot.botName || bot.botId;
   els.botMaintenancePanel.hidden = false;
-  els.botAccessKeyForm.reset();
-  setFormBusy(els.botAccessKeyForm, false);
   els.debugReplyForm.reset();
   els.debugReplyForm.trigger.value = "ping";
   els.debugReplyForm.reply.value = "pong";
@@ -520,7 +522,8 @@ function renderBotList() {
         <span>${workspace ? escapeHtml(workspace.name) : "未分配"}</span>
         <span class="admin-actions">
           <button data-edit-bot="${escapeHtml(bot.botId)}">${adminIcon("edit")}编辑</button>
-          <button data-enter-bot="${escapeHtml(bot.botId)}" ${workspace ? "" : "disabled"}>${adminIcon("settings")}进入配置</button>
+          <button data-password-bot="${escapeHtml(bot.botId)}">${adminIcon("key")}修改密码</button>
+          <button data-enter-bot="${escapeHtml(bot.botId)}" ${workspace ? "" : "disabled"}>${adminIcon("open")}进入 Bot</button>
         </span>
       </div>
     `;
@@ -529,6 +532,9 @@ function renderBotList() {
     button.addEventListener("click", () => {
       selectBotForEditing(button.dataset.editBot).catch((error) => toast(error.message));
     });
+  });
+  els.botList.querySelectorAll("[data-password-bot]").forEach((button) => {
+    button.addEventListener("click", () => openBotPasswordDialog(button.dataset.passwordBot, button));
   });
   els.botList.querySelectorAll("[data-enter-bot]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -561,23 +567,68 @@ async function saveBot(event) {
   }
 }
 
+function openBotPasswordDialog(botId, trigger = null) {
+  const bot = state.bots.find((item) => item.botId === botId);
+  if (!bot) return;
+  state.passwordDialogVersion += 1;
+  state.passwordBotId = botId;
+  state.passwordDialogTrigger = trigger || document.activeElement;
+  els.botPasswordName.textContent = bot.botName || bot.botId;
+  els.botPasswordForm.reset();
+  setFormBusy(els.botPasswordForm, false);
+  els.botPasswordModal.hidden = false;
+  els.botPasswordForm.accessKey.focus();
+}
+
+function closeBotPasswordDialog({ force = false } = {}) {
+  if (!force && els.botPasswordForm.classList.contains("is-busy")) return;
+  const trigger = state.passwordDialogTrigger;
+  state.passwordDialogVersion += 1;
+  state.passwordBotId = "";
+  state.passwordDialogTrigger = null;
+  els.botPasswordName.textContent = "";
+  setFormBusy(els.botPasswordForm, false);
+  els.botPasswordForm.reset();
+  els.botPasswordModal.hidden = true;
+  if (trigger instanceof HTMLElement && trigger.isConnected && !trigger.disabled) trigger.focus();
+}
+
+function trapBotPasswordFocus(event) {
+  const focusable = Array.from(els.botPasswordModal.querySelectorAll(
+    'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+  ));
+  if (!focusable.length) return;
+  const first = focusable[0];
+  const last = focusable.at(-1);
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 async function saveBotAccessKey(event) {
   event.preventDefault();
-  const botId = state.selectedBotId;
-  if (!botId) throw new Error("请先选择一个已保存的 Bot");
-  const accessKey = String(new FormData(els.botAccessKeyForm).get("accessKey") || "").trim();
-  if (!accessKey) throw new Error("请输入新的 Bot 密钥");
-  setFormBusy(els.botAccessKeyForm, true);
+  const botId = state.passwordBotId;
+  const requestVersion = state.passwordDialogVersion;
+  if (!botId) throw new Error("请重新选择需要修改密码的 Bot");
+  const accessKey = String(new FormData(els.botPasswordForm).get("accessKey") || "").trim();
+  if (!accessKey) throw new Error("请输入新的 Bot 密码");
+  setFormBusy(els.botPasswordForm, true);
   try {
     await adminRequest(`/api/bots/${encodeURIComponent(botId)}/access-key`, {
       method: "PUT",
       body: JSON.stringify({ accessKey })
     });
-    if (state.selectedBotId !== botId) return;
-    els.botAccessKeyForm.reset();
-    toast("Bot 密钥已修改");
+    if (state.passwordDialogVersion !== requestVersion || state.passwordBotId !== botId) return;
+    closeBotPasswordDialog({ force: true });
+    toast("Bot 密码已修改");
   } finally {
-    if (state.selectedBotId === botId) setFormBusy(els.botAccessKeyForm, false);
+    if (state.passwordDialogVersion === requestVersion && state.passwordBotId === botId) {
+      setFormBusy(els.botPasswordForm, false);
+    }
   }
 }
 
@@ -704,9 +755,22 @@ els.botForm.botId.addEventListener("input", () => {
     clearBotMaintenance();
   }
 });
-els.botAccessKeyForm.addEventListener("submit", (event) =>
+els.botPasswordForm.addEventListener("submit", (event) =>
   saveBotAccessKey(event).catch((error) => toast(error.message))
 );
+els.botPasswordCancel.addEventListener("click", closeBotPasswordDialog);
+els.botPasswordModal.addEventListener("click", (event) => {
+  if (event.target === els.botPasswordModal) closeBotPasswordDialog();
+});
+document.addEventListener("keydown", (event) => {
+  if (els.botPasswordModal.hidden) return;
+  if (event.key === "Escape") {
+    event.preventDefault();
+    closeBotPasswordDialog();
+  } else if (event.key === "Tab") {
+    trapBotPasswordFocus(event);
+  }
+});
 els.debugReplyForm.addEventListener("submit", (event) =>
   saveDebugReply(event).catch((error) => toast(error.message))
 );
