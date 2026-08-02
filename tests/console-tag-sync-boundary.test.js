@@ -80,6 +80,11 @@ test("manual synchronization locks the button and follows the background run", (
   assert.match(trackBody, /setTagSyncBusy\(false\)/);
 
   assert.match(css, /\.tag-sync-form\s*\{[\s\S]*grid-template-columns:/);
+  assert.match(
+    css,
+    /\.tag-sync-form\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/,
+  );
+  assert.match(css, /\.tag-sync-actions\s*\{[^}]*grid-column:\s*1\s*\/\s*-1/);
   assert.match(css, /\.tag-sync-result\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
   assert.match(css, /\.tag-sync-run-button\.is-syncing \.icon\s*\{[\s\S]*animation:/);
   assert.match(css, /@media \(max-width:\s*980px\)[\s\S]*\.tag-sync-form/);

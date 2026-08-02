@@ -974,13 +974,13 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
 }
 
 .tag-sync-form {
-  grid-template-columns:
-    minmax(180px, 0.8fr)
-    minmax(210px, 0.9fr)
-    minmax(150px, 0.6fr)
-    minmax(150px, 0.6fr)
-    auto;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   align-items: center;
+}
+
+.tag-sync-form > label {
+  width: 100%;
+  min-width: 0;
 }
 
 .tag-sync-toggle {
@@ -1077,7 +1077,7 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
 }
 
 .tag-sync-actions {
-  grid-column: auto;
+  grid-column: 1 / -1;
   justify-content: flex-end;
   flex-wrap: nowrap;
   white-space: nowrap;
