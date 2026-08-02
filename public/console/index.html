@@ -333,9 +333,9 @@
               </label>
             </div>
             <div class="actions wide cockpit-schedule-actions">
-              <label class="toggle switch-toggle"><input name="dailyEnabled" type="checkbox" /><span class="switch-slider"></span><span class="switch-label">发送日报</span></label>
-              <label class="toggle switch-toggle"><input name="weeklyEnabled" type="checkbox" /><span class="switch-slider"></span><span class="switch-label">发送周报</span></label>
-              <label class="toggle switch-toggle"><input name="monthlyEnabled" type="checkbox" /><span class="switch-slider"></span><span class="switch-label">发送月报</span></label>
+              <label class="toggle switch-toggle"><input name="dailyEnabled" type="checkbox" /><span class="switch-slider"></span><span class="switch-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>发送日报</span></label>
+              <label class="toggle switch-toggle"><input name="weeklyEnabled" type="checkbox" /><span class="switch-slider"></span><span class="switch-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>发送周报</span></label>
+              <label class="toggle switch-toggle"><input name="monthlyEnabled" type="checkbox" /><span class="switch-slider"></span><span class="switch-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>发送月报</span></label>
               <button id="generateCockpitReportButton" type="button"><svg class="icon"><use href="#icon-cockpit"></use></svg>生成日报</button>
               <button class="primary" type="submit"><svg class="icon"><use href="#icon-save"></use></svg>保存报告配置</button>
             </div>
@@ -364,25 +364,27 @@
         </div>
         <div class="collapsible-content">
           <form id="replyWaitForm" class="form-grid compact-form reply-wait-form">
-            <label>
-              <span class="field-label">回复等待间隔（秒）</span>
+            <label class="field-with-unit">
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>回复等待间隔</span>
               <input name="baseSeconds" type="number" min="1" step="1" value="10" required />
+              <span class="field-unit">秒</span>
             </label>
-            <label>
-              <span class="field-label">累计秒数</span>
+            <label class="field-with-unit">
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>累计等待时间</span>
               <input name="incrementSeconds" type="number" min="0" step="1" value="5" required />
+              <span class="field-unit">秒</span>
             </label>
             <div class="reply-wait-detail-row">
               <label class="reply-wait-fallback-field">
                 <span class="field-label reply-wait-fallback-label">
-                  失败兜底话术
+                  <svg class="icon" aria-hidden="true"><use href="#icon-message"></use></svg>失败兜底话术
                   <button class="activation-help-icon response-wait-help" type="button" aria-label="连续消息等待规则说明" title="当前等待时间 = 回复等待间隔 +（当前批次消息数 - 1）× 累计秒数&#10;例如配置 10 和 5：&#10;第 1 条后等待 10 秒&#10;第 2 条后重新等待 15 秒&#10;第 3 条后重新等待 20 秒">
                     <svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>
                   </button>
                 </span>
                 <input name="fallbackReply" type="text" value="刚刚这边有点忙，我稍后回复你哈" required />
               </label>
-              <label class="history-text-limit-field">
+              <label class="history-text-limit-field field-with-unit">
                 <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>历史客户发言加载上限</span>
                 <input
                   name="historyCustomerTextMaxChars"
@@ -393,6 +395,7 @@
                   value="4000"
                   required
                 />
+                <span class="field-unit">字符</span>
               </label>
             </div>
             <div class="actions">
@@ -417,12 +420,12 @@
             <label class="toggle switch-toggle tag-sync-toggle">
               <input id="tagSyncNightlyEnabled" name="nightlyEnabled" type="checkbox" />
               <span class="switch-slider" aria-hidden="true"></span>
-              <span class="switch-label">夜间自动同步</span>
+              <span class="switch-label"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>夜间自动同步</span>
             </label>
             <label class="toggle switch-toggle tag-sync-toggle">
               <input id="tagSyncDateTagsEnabled" name="syncDateTags" type="checkbox" />
               <span class="switch-slider" aria-hidden="true"></span>
-              <span class="switch-label">同步添加日期标签</span>
+              <span class="switch-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>同步添加日期标签</span>
             </label>
             <label>
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>开始时间</span>

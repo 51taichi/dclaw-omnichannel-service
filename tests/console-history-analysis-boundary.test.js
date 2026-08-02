@@ -35,6 +35,10 @@ test("reply wait panel exposes the bounded historical customer text setting", ()
   assert.match(html, /max="6000"/);
   assert.match(html, /step="100"/);
   assert.match(html, /value="4000"/);
+  assert.match(
+    html,
+    /class="history-text-limit-field field-with-unit"[\s\S]*name="historyCustomerTextMaxChars"[\s\S]*<span class="field-unit">字符<\/span>/
+  );
   assert.doesNotMatch(html, /保存历史分析配置/);
   assert.match(css, /\.reply-wait-detail-row\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
 });

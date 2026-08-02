@@ -226,3 +226,13 @@ test("admin fields and buttons consistently render semantic icons", () => {
     assert.equal(app.includes(`adminIcon("${icon}")`), true, `dynamic controls missing ${icon} icon`);
   }
 });
+
+test("admin configuration labels remain icon-led and do not embed display units", () => {
+  const formLabels = [...html.matchAll(/<form\b[^>]*class="[^"]*admin-form[^"]*"[^>]*>([\s\S]*?)<\/form>/g)]
+    .flatMap((formMatch) => [...formMatch[1].matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)])
+    .map((labelMatch) => labelMatch[1]);
+
+  assert.ok(formLabels.length > 0);
+  for (const body of formLabels) assert.match(body, /<svg\b/);
+  assert.doesNotMatch(html, /（(?:秒|分钟|小时|字符)）/);
+});

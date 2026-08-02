@@ -1172,6 +1172,22 @@ label:focus-within,
   color: var(--accent);
 }
 
+.field-with-unit {
+  grid-template-columns: 132px minmax(0, 1fr) auto;
+}
+
+.field-unit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 52px;
+  padding: 0 12px;
+  background: var(--panel-strong);
+  border-left: 1px solid var(--line);
+  color: #302321;
+  white-space: nowrap;
+}
+
 label > :is(input, select, textarea),
 .field-row > .field-control {
   min-width: 0;
@@ -1257,7 +1273,17 @@ label.wide,
 }
 
 .switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-weight: 800;
+}
+
+.switch-label .icon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+  color: var(--accent);
 }
 
 input,
@@ -2831,7 +2857,7 @@ textarea[data-action-target-activation].is-action-target-focused {
 }
 
 .history-text-limit-field {
-  grid-template-columns: minmax(190px, 42%) minmax(0, 1fr);
+  grid-template-columns: minmax(190px, 42%) minmax(0, 1fr) auto;
 }
 
 @media (max-width: 920px) {
