@@ -5,6 +5,8 @@ import {
   aggregateOccurrenceMetrics,
   aggregateTagChanges,
   classifyReplyRisk,
+  cockpitPeriodCandidates,
+  COCKPIT_TIME_ZONE,
   definitionSemanticHash,
   periodBounds
 } from "../src/cockpit-domain.js";
@@ -74,10 +76,10 @@ test("tag display renames keep semantic hash while rules rotate it", () => {
 });
 
 test("natural periods respect Asia Shanghai calendar boundaries", () => {
+  assert.equal(COCKPIT_TIME_ZONE, "Asia/Shanghai");
   assert.deepEqual(periodBounds({
     type: "daily",
-    anchor: "2026-07-30T12:00:00.000Z",
-    timezone: "Asia/Shanghai"
+    anchor: "2026-07-30T12:00:00.000Z"
   }), {
     start: "2026-07-29T16:00:00.000Z",
     end: "2026-07-30T16:00:00.000Z",
@@ -92,6 +94,21 @@ test("natural periods respect Asia Shanghai calendar boundaries", () => {
     end: "2026-08-02T16:00:00.000Z",
     label: "2026-07-27 至 2026-08-02"
   });
+});
+
+test("cockpit period candidates prefer Shanghai and retain legacy UTC dates", () => {
+  assert.deepEqual(cockpitPeriodCandidates({
+    type: "daily",
+    anchor: "2026-08-01T04:00:00.000Z"
+  }), [{
+    start: "2026-07-31T16:00:00.000Z",
+    end: "2026-08-01T16:00:00.000Z",
+    label: "2026-08-01"
+  }, {
+    start: "2026-08-01T00:00:00.000Z",
+    end: "2026-08-02T00:00:00.000Z",
+    label: "2026-08-01"
+  }]);
 });
 
 test("reply risk applies node override and distinguishes never from stopped", () => {

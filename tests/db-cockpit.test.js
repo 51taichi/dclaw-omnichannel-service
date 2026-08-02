@@ -44,8 +44,16 @@ test("cockpit events are idempotent and isolated by Bot", () => {
 });
 
 test("cockpit config defaults and daily counters stay Bot scoped", () => {
+  assert.equal(db.getCockpitConfig("bot-a").timezone, "Asia/Shanghai");
   assert.equal(db.getCockpitConfig("bot-a").defaultNoReplyHours, 24);
   assert.equal(db.getCockpitConfig("bot-a").schedules.daily.sendAt, "09:00");
+
+  const normalized = db.upsertCockpitConfig({
+    botId: "bot-a",
+    config: { timezone: "UTC", defaultNoReplyHours: 12 }
+  });
+  assert.equal(normalized.timezone, "Asia/Shanghai");
+  assert.equal(normalized.defaultNoReplyHours, 12);
 
   assert.equal(db.incrementCockpitDailyCounter({
     botId: "bot-a",

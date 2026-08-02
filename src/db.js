@@ -5,7 +5,7 @@ import { DatabaseSync } from "node:sqlite";
 import { mergeInlineActions } from "./action-chips.js";
 import { activationDelayMs } from "./activation-timing.js";
 import { hashAccessKey } from "./auth.js";
-import { definitionSemanticHash } from "./cockpit-domain.js";
+import { COCKPIT_TIME_ZONE, definitionSemanticHash } from "./cockpit-domain.js";
 import {
   areConversationMessagesDuplicates,
   dedupeConversationMessages
@@ -7996,7 +7996,7 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
 }
 
 const DEFAULT_COCKPIT_CONFIG = Object.freeze({
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+  timezone: COCKPIT_TIME_ZONE,
   defaultNoReplyHours: 24,
   nodeNoReplyHours: {},
   schedules: {
@@ -8009,7 +8009,7 @@ const DEFAULT_COCKPIT_CONFIG = Object.freeze({
 function normalizeCockpitConfig(config = {}) {
   const schedules = config.schedules || {};
   return {
-    timezone: String(config.timezone || DEFAULT_COCKPIT_CONFIG.timezone),
+    timezone: COCKPIT_TIME_ZONE,
     defaultNoReplyHours: Number(config.defaultNoReplyHours || 24),
     nodeNoReplyHours: { ...(config.nodeNoReplyHours || {}) },
     schedules: Object.fromEntries(["daily", "weekly", "monthly"].map((type) => [

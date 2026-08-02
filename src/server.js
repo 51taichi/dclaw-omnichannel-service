@@ -34,7 +34,7 @@ import {
 import { buildAgentResponseValidationOptions } from "./agent-response-validation-options.js";
 import { createAgentInvocationQueue } from "./agent-invocation-queue.js";
 import { createCockpitEventRecorder } from "./cockpit-events.js";
-import { periodBounds } from "./cockpit-domain.js";
+import { cockpitPeriodCandidates, periodBounds } from "./cockpit-domain.js";
 import {
   COCKPIT_STATISTICS_VERSION,
   createCockpitAggregator
@@ -6374,25 +6374,32 @@ app.get(
   asyncHandler(async (req, res) => {
     const botId = req.params.botId;
     assertBotAccess(req, botId);
-    const config = getCockpitConfig(botId);
     const periodType = ["daily", "weekly", "monthly"].includes(req.query.periodType)
       ? req.query.periodType
       : "daily";
     const hasExplicitAnchor = typeof req.query.anchor === "string" && req.query.anchor.trim();
     const anchor = String(hasExplicitAnchor || new Date().toISOString());
-    const period = periodBounds({ type: periodType, anchor, timezone: config.timezone });
-    const exactSnapshot = getLatestCockpitSnapshot({
+    const periodCandidates = cockpitPeriodCandidates({ type: periodType, anchor });
+    const period = periodCandidates[0];
+    const exactSnapshots = periodCandidates.map((candidate) => getLatestCockpitSnapshot({
       botId,
       periodType,
-      periodStart: period.start
-    });
+      periodStart: candidate.start
+    }));
+    const exactSnapshot = exactSnapshots.find(Boolean) || null;
     const snapshot = hasExplicitAnchor
       ? exactSnapshot
       : exactSnapshot || getLatestCockpitSnapshot({ botId, periodType });
+    const selectedPeriod = periodCandidates.find((candidate) => (
+      candidate.start === snapshot?.periodStart
+    )) || period;
     const reports = listCockpitReports({ botId, page: 1, pageSize: 20 });
     const latestReport = reports.items.find((report) => (
       report.reportType === periodType
-      && report.periodStart === period.start
+      && periodCandidates.some((candidate) => (
+        report.periodStart === candidate.start
+        && report.periodEnd === candidate.end
+      ))
     )) || null;
     res.json({
       ok: true,
@@ -6406,8 +6413,7 @@ app.get(
         botId,
         localDate: periodBounds({
           type: "daily",
-          anchor: new Date().toISOString(),
-          timezone: config.timezone
+          anchor: new Date().toISOString()
         }).label
       }),
       metrics: snapshot?.metrics || {},
@@ -6417,7 +6423,8 @@ app.get(
       latestReport,
       reportHistory: reports.items.filter((report) => (
         report.reportType === periodType
-        && report.periodStart === period.start
+        && report.periodStart === selectedPeriod.start
+        && report.periodEnd === selectedPeriod.end
       )).slice(0, 8)
     });
   })

@@ -3,6 +3,7 @@ import {
   aggregateOccurrenceMetrics,
   aggregateTagChanges,
   classifyReplyRisk,
+  COCKPIT_TIME_ZONE,
   periodBounds
 } from "./cockpit-domain.js";
 
@@ -104,7 +105,7 @@ export function createCockpitAggregator({
       const period = periodBounds({
         type: periodType,
         anchor,
-        timezone: config.timezone
+        timezone: COCKPIT_TIME_ZONE
       });
       const funnels = aggregateCohortFunnels({ events, period });
       const eventNodeDistribution = periodNodeDistribution({

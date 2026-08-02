@@ -34,13 +34,22 @@ test("cockpit overview is read-only and never aggregates or invokes AI", () => {
   assert.doesNotMatch(route, /aggregate|rebuild|invokeDclaw|createCockpitReport/);
 });
 
-test("cockpit overview uses an exact snapshot when the client supplies an anchor", () => {
+test("cockpit overview uses canonical then legacy exact snapshots for an explicit anchor", () => {
   const start = source.indexOf('"/api/cockpit/:botId/overview"');
   const end = source.indexOf("\n);", start) + 3;
   const route = source.slice(start, end);
   assert.match(route, /hasExplicitAnchor/);
-  assert.match(route, /hasExplicitAnchor\s*\?\s*exactSnapshot/);
-  assert.match(route, /report\.periodStart === period\.start/);
+  assert.match(route, /cockpitPeriodCandidates/);
+  assert.match(route, /periodCandidates\.map/);
+  assert.match(route, /find\(Boolean\)/);
+  assert.match(route, /selectedPeriod\.start/);
+  assert.match(route, /report\.periodStart === candidate\.start/);
+});
+
+test("cockpit runtime configuration cannot change the system timezone", () => {
+  const database = fs.readFileSync(new URL("../src/db.js", import.meta.url), "utf8");
+  assert.match(database, /timezone:\s*COCKPIT_TIME_ZONE/);
+  assert.doesNotMatch(database, /timezone:\s*Intl\.DateTimeFormat\(\)\.resolvedOptions\(\)\.timeZone/);
 });
 
 test("cockpit retries fallback AI reports without rebuilding statistics", () => {

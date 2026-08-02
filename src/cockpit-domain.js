@@ -1,5 +1,7 @@
 import crypto from "node:crypto";
 
+export const COCKPIT_TIME_ZONE = "Asia/Shanghai";
+
 function canonicalize(value, { omitDisplay = false } = {}) {
   if (Array.isArray(value)) {
     return value
@@ -75,7 +77,7 @@ function addUtcDays(parts, amount) {
   };
 }
 
-export function periodBounds({ type, anchor, timezone }) {
+export function periodBounds({ type, anchor, timezone = COCKPIT_TIME_ZONE }) {
   const anchorDate = new Date(anchor);
   const local = zonedParts(anchorDate, timezone);
   let startParts = { year: local.year, month: local.month, day: local.day };
@@ -105,6 +107,14 @@ export function periodBounds({ type, anchor, timezone }) {
     end: zonedMidnightToUtc(endParts, timezone).toISOString(),
     label
   };
+}
+
+export function cockpitPeriodCandidates({ type, anchor }) {
+  const canonical = periodBounds({ type, anchor });
+  const legacyUtc = periodBounds({ type, anchor, timezone: "UTC" });
+  return canonical.start === legacyUtc.start
+    ? [canonical]
+    : [canonical, legacyUtc];
 }
 
 export function classifyReplyRisk({
