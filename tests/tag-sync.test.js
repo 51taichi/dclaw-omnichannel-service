@@ -17,22 +17,22 @@ test("tag sync defaults are enabled with a 03:00-06:00 window", () => {
   });
 });
 
-test("night window accepts same-side and cross-midnight ranges", () => {
+test("night window accepts only forward ranges between midnight and 06:00", () => {
   assert.deepEqual(
     validateTagSyncNightWindow({ windowStart: "03:00", windowEnd: "06:00" }),
-    { startMinute: 1620, endMinute: 1800 }
+    { startMinute: 180, endMinute: 360 }
   );
   assert.deepEqual(
-    validateTagSyncNightWindow({ windowStart: "23:30", windowEnd: "04:00" }),
-    { startMinute: 1410, endMinute: 1680 }
+    validateTagSyncNightWindow({ windowStart: "00:00", windowEnd: "00:15" }),
+    { startMinute: 0, endMinute: 15 }
   );
 });
 
-test("night window rejects daytime reverse and zero-length ranges", () => {
+test("night window rejects values outside 00:00-06:00 and non-forward ranges", () => {
   for (const input of [
-    { windowStart: "21:00", windowEnd: "03:00" },
-    { windowStart: "03:00", windowEnd: "10:00" },
-    { windowStart: "07:00", windowEnd: "23:00" },
+    { windowStart: "23:30", windowEnd: "04:00" },
+    { windowStart: "03:00", windowEnd: "06:15" },
+    { windowStart: "06:00", windowEnd: "06:00" },
     { windowStart: "03:00", windowEnd: "03:00" },
     { windowStart: "invalid", windowEnd: "04:00" }
   ]) {
@@ -40,28 +40,22 @@ test("night window rejects daytime reverse and zero-length ranges", () => {
   }
 });
 
-test("window state uses Beijing time and one date key across midnight", () => {
+test("window state uses the same Beijing calendar date inside the daily window", () => {
   const config = {
     nightlyEnabled: true,
-    windowStart: "23:30",
+    windowStart: "00:00",
     windowEnd: "04:00"
   };
-  const beforeMidnight = getTagSyncWindowState(
+  const midnight = getTagSyncWindowState(
     config,
     new Date("2026-08-01T16:00:00.000Z")
-  );
-  const afterMidnight = getTagSyncWindowState(
-    config,
-    new Date("2026-08-01T18:00:00.000Z")
   );
   const afterWindow = getTagSyncWindowState(
     config,
     new Date("2026-08-01T21:00:00.000Z")
   );
 
-  assert.equal(beforeMidnight.inside, true);
-  assert.equal(beforeMidnight.windowKey, "2026-08-01");
-  assert.equal(afterMidnight.inside, true);
-  assert.equal(afterMidnight.windowKey, "2026-08-01");
+  assert.equal(midnight.inside, true);
+  assert.equal(midnight.windowKey, "2026-08-02");
   assert.equal(afterWindow.inside, false);
 });

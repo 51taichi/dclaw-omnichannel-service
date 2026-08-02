@@ -62,6 +62,7 @@ const els = {
   workspaceLockPanel: document.querySelector("#workspaceLockPanel"),
   workspaceEmptyState: document.querySelector("#workspaceEmptyState"),
   botForm: document.querySelector("#botForm"),
+  botAccessKeyForm: document.querySelector("#botAccessKeyForm"),
   cockpitConfigForm: document.querySelector("#cockpitConfigForm"),
   generateCockpitReportButton: document.querySelector("#generateCockpitReportButton"),
   replyWaitPanel: document.querySelector("#replyWaitPanel"),
@@ -334,21 +335,13 @@ function isWorkspaceLocked() {
   return Boolean(state.selectedBotId && !state.currentRole);
 }
 
-function shouldHideConfigTab() {
-  return Boolean(state.selectedBotId && state.currentRole !== "admin");
-}
-
 function syncRoleVisibility() {
   const isAdmin = state.currentRole === "admin";
   const hasBot = Boolean(state.selectedBotId);
   const workspaceLocked = isWorkspaceLocked();
-  const hideConfig = shouldHideConfigTab();
-  const activeWorkspaceTab = document.querySelector(".workspace-tabs button.active")?.dataset.workspaceTab || "";
   document.body.classList.toggle("is-admin-role", isAdmin);
   document.body.classList.toggle("is-bot-role", state.currentRole === "bot");
   document.body.classList.toggle("is-workspace-locked", workspaceLocked);
-  els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig);
-  document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", hideConfig);
   els.resetFormButton.hidden = !hasBot;
   if (els.lockBotButton) els.lockBotButton.hidden = !hasBot || workspaceLocked;
   if (els.workspaceLockPanel) els.workspaceLockPanel.hidden = !workspaceLocked;
@@ -357,8 +350,6 @@ function syncRoleVisibility() {
       panel.hidden = true;
       panel.classList.remove("active");
     });
-  } else if (hideConfig && activeWorkspaceTab === "config") {
-    switchWorkspaceTab("sessions", { force: true });
   }
 }
 
@@ -464,7 +455,7 @@ function cockpitRecipients(value) {
 }
 
 async function loadCockpitConfig({ contextVersion } = {}) {
-  if (!state.selectedBotId || !els.cockpitConfigForm || state.currentRole !== "admin") return;
+  if (!state.selectedBotId || !els.cockpitConfigForm) return;
   const botId = state.selectedBotId;
   const data = await request(`/api/cockpit/${encodeURIComponent(botId)}/config`, { botId });
   if (contextVersion && !isCurrentBotContext(botId, contextVersion)) return;
@@ -543,10 +534,6 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
     toast("请先选择或保存一个 Bot");
     return;
   }
-  if (!force && tabName === "config" && state.selectedBotId && state.currentRole !== "admin") {
-    toast("当前 Bot 未以管理员身份解锁");
-    return;
-  }
   els.workspaceTabs.forEach((button) => {
     const active = button.dataset.workspaceTab === tabName;
     button.classList.toggle("active", active);
@@ -588,10 +575,7 @@ function syncWorkspaceSelectionState(hasBotContext) {
 function updateWorkspaceTabAccess(hasBotContext) {
   const workspaceLocked = isWorkspaceLocked();
   els.workspaceTabs.forEach((button) => {
-    const locked =
-      workspaceLocked ||
-      !hasBotContext ||
-      (button.dataset.workspaceTab === "config" && hasBotContext && state.currentRole !== "admin");
+    const locked = workspaceLocked || !hasBotContext;
     button.disabled = locked;
     button.setAttribute("aria-disabled", String(locked));
   });
@@ -691,6 +675,7 @@ function clearBotScopedContent() {
   els.flowNodeList.innerHTML = `<div class="empty-state">正在加载当前 Bot 的任务状态机...</div>`;
   els.botForm.reset();
   els.botForm.enabled.checked = true;
+  els.botAccessKeyForm?.reset();
   els.flowMachineForm.reset();
   els.flowMachineForm.enabled.checked = false;
   els.replyWaitForm?.reset();
@@ -779,15 +764,15 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       renderBots(currentBots);
       fillForm(activeBot);
-      await loadReplyWait({ contextVersion });
-      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
-      await loadHistoryAnalysis({ contextVersion });
-      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
-      await loadTagSyncConfig({ contextVersion });
-      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
-      await loadCockpitConfig({ contextVersion });
-      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
     }
+    await loadReplyWait({ contextVersion });
+    if (!isCurrentBotContext(bot.botId, contextVersion)) return;
+    await loadHistoryAnalysis({ contextVersion });
+    if (!isCurrentBotContext(bot.botId, contextVersion)) return;
+    await loadTagSyncConfig({ contextVersion });
+    if (!isCurrentBotContext(bot.botId, contextVersion)) return;
+    await loadCockpitConfig({ contextVersion });
+    if (!isCurrentBotContext(bot.botId, contextVersion)) return;
     const tasks = [
       loadAddressBookTargets({ contextVersion }),
       loadProactiveTargetTags({ contextVersion }),
@@ -1069,9 +1054,7 @@ function renderBots(bots) {
         return;
       }
       if (actionTarget.dataset.action === "open") {
-        await applyBotContext(bot, {
-          tabName: getBotSession(botId)?.role === "admin" ? "config" : ""
-        });
+        await applyBotContext(bot);
         return;
       }
       if (actionTarget.dataset.action === "push") {
@@ -1762,9 +1745,7 @@ async function openDirectBotFromUrl() {
   const bot = currentBots.find((item) => item.botId === directBotId);
   if (!bot) return;
   if (isBotUnlocked(directBotId)) {
-    await applyBotContext(bot, {
-      tabName: getBotSession(directBotId)?.role === "admin" ? "config" : ""
-    });
+    await applyBotContext(bot);
     return;
   }
   openUnlockDialog(bot);
@@ -1785,7 +1766,7 @@ async function loadAgents({ silent = false, headers: requestHeaders = {} } = {})
 
 async function loadReplyWait({ contextVersion = state.botContextVersion } = {}) {
   const botId = state.selectedBotId;
-  if (state.currentRole !== "admin" || !botId || !els.replyWaitForm) return;
+  if (!botId || !els.replyWaitForm) return;
   const requestVersion = ++state.replyWaitLoadVersion;
   const data = await request(
     `/api/bots/${encodeURIComponent(botId)}/settings/reply-wait`
@@ -1804,7 +1785,7 @@ async function loadReplyWait({ contextVersion = state.botContextVersion } = {}) 
 
 async function loadHistoryAnalysis({ contextVersion = state.botContextVersion } = {}) {
   const botId = state.selectedBotId;
-  if (state.currentRole !== "admin" || !botId || !els.historyAnalysisForm) return;
+  if (!botId || !els.historyAnalysisForm) return;
   const requestVersion = ++state.historyAnalysisLoadVersion;
   const data = await request(
     `/api/bots/${encodeURIComponent(botId)}/settings/history-analysis`
@@ -1823,19 +1804,19 @@ function canonicalNightMinutes(value) {
   if (!match) return Number.NaN;
   const hour = Number(match[1]);
   const minute = Number(match[2]);
-  return (hour >= 22 ? hour : hour + 24) * 60 + minute;
+  return hour * 60 + minute;
 }
 
 function buildNightTagSyncTimeOptions() {
   const options = [];
-  for (let minutes = 22 * 60; minutes <= 32 * 60; minutes += 15) {
-    const hour = Math.floor(minutes / 60) % 24;
+  for (let minutes = 0; minutes <= 6 * 60; minutes += 15) {
+    const hour = Math.floor(minutes / 60);
     const minute = minutes % 60;
     const value = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
     options.push({
       value,
       minutes,
-      label: minutes >= 24 * 60 ? `次日 ${value}` : value
+      label: value
     });
   }
   return options;
@@ -1845,11 +1826,11 @@ function initializeTagSyncTimeOptions() {
   if (!els.tagSyncWindowStart || !els.tagSyncWindowEnd) return;
   const options = buildNightTagSyncTimeOptions();
   els.tagSyncWindowStart.innerHTML = options
-    .filter((option) => option.minutes < 32 * 60)
+    .filter((option) => option.minutes < 6 * 60)
     .map((option) => `<option value="${option.value}">${option.label}</option>`)
     .join("");
   els.tagSyncWindowEnd.innerHTML = options
-    .filter((option) => option.minutes > 22 * 60)
+    .filter((option) => option.minutes > 0)
     .map((option) => `<option value="${option.value}">${option.label}</option>`)
     .join("");
   els.tagSyncWindowStart.value = "03:00";
@@ -1987,7 +1968,7 @@ function applyTagSyncConfig(config = {}) {
 
 async function loadTagSyncConfig({ contextVersion = state.botContextVersion } = {}) {
   const botId = state.selectedBotId;
-  if (state.currentRole !== "admin" || !botId || !els.tagSyncForm) return;
+  if (!botId || !els.tagSyncForm) return;
   const requestVersion = ++state.tagSyncLoadVersion;
   const [configData, statusData] = await Promise.all([
     request(`/api/bots/${encodeURIComponent(botId)}/tag-sync/config`, { botId }),
@@ -2017,8 +1998,8 @@ async function saveTagSyncConfig(event) {
   event.preventDefault();
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
-  if (state.currentRole !== "admin" || !botId) {
-    toast("请先以管理员身份选择 Bot");
+  if (!botId) {
+    toast("请先解锁 Bot");
     return;
   }
   const nightlyEnabled = els.tagSyncNightlyEnabled.checked;
@@ -2052,8 +2033,8 @@ async function saveTagSyncConfig(event) {
 async function runTagSyncNow() {
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
-  if (state.currentRole !== "admin" || !botId) {
-    toast("请先以管理员身份选择 Bot");
+  if (!botId) {
+    toast("请先解锁 Bot");
     return;
   }
   const confirmed = await openConfirmation({
@@ -5185,8 +5166,8 @@ async function saveReplyWait(event) {
   event.preventDefault();
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
-  if (state.currentRole !== "admin" || !botId) {
-    toast("请先以管理员身份选择 Bot");
+  if (!botId) {
+    toast("请先解锁 Bot");
     return;
   }
   const result = await request(`/api/bots/${encodeURIComponent(botId)}/settings/reply-wait`, {
@@ -5210,8 +5191,8 @@ async function saveHistoryAnalysis(event) {
   event.preventDefault();
   const botId = state.selectedBotId;
   const contextVersion = state.botContextVersion;
-  if (state.currentRole !== "admin" || !botId) {
-    toast("请先以管理员身份选择 Bot");
+  if (!botId) {
+    toast("请先解锁 Bot");
     return;
   }
   const result = await request(
@@ -5230,6 +5211,27 @@ async function saveHistoryAnalysis(event) {
   els.historyAnalysisForm.historyCustomerTextMaxChars.value =
     String(result.config?.historyCustomerTextMaxChars ?? 4000);
   toast("历史智能分析配置已保存");
+}
+
+async function saveBotAccessKey(event) {
+  event.preventDefault();
+  const botId = state.selectedBotId;
+  if (!botId || !els.botAccessKeyForm) {
+    toast("请先解锁 Bot");
+    return;
+  }
+  const accessKey = String(new FormData(els.botAccessKeyForm).get("accessKey") || "").trim();
+  if (!accessKey) {
+    toast("请输入新的 Bot 密钥");
+    return;
+  }
+  await request(`/api/bots/${encodeURIComponent(botId)}/access-key`, {
+    method: "PUT",
+    botId,
+    body: JSON.stringify({ accessKey })
+  });
+  els.botAccessKeyForm.reset();
+  toast("Bot 密钥已修改");
 }
 
 function proactiveAttachmentIcon(type) {
@@ -5863,6 +5865,9 @@ els.unlockAcceptButton.addEventListener("click", () =>
   acceptUnlockDialog().catch(toastError)
 );
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch(toastError));
+els.botAccessKeyForm?.addEventListener("submit", (event) =>
+  saveBotAccessKey(event).catch(toastError)
+);
 els.cockpitConfigForm?.addEventListener("submit", (event) =>
   saveCockpitConfig(event).catch(toastError)
 );

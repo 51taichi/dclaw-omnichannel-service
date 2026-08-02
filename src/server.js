@@ -6004,11 +6004,11 @@ app.post(
 app.put(
   "/api/bots/:botId/access-key",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     const accessKey = String(req.body?.accessKey || "").trim();
     if (!accessKey) throw new Error("accessKey is required");
     const binding = setBotAccessKey({ botId: req.params.botId, accessKey });
-    res.json({ ok: true, binding });
+    res.json({ ok: true, bot: publicBotView(binding) });
   })
 );
 
@@ -6177,7 +6177,7 @@ app.delete(
 app.get(
   "/api/bots/:botId/tag-sync/config",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     res.json({
       ok: true,
       config: getTagSyncConfig(req.params.botId)
@@ -6188,7 +6188,7 @@ app.get(
 app.put(
   "/api/bots/:botId/tag-sync/config",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     let config;
     try {
       config = saveTagSyncConfig({
@@ -6213,7 +6213,7 @@ app.put(
 app.get(
   "/api/bots/:botId/tag-sync/status",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     res.json({ ok: true, status: getTagSyncStatus(req.params.botId) });
   })
 );
@@ -6221,7 +6221,7 @@ app.get(
 app.post(
   "/api/bots/:botId/tag-sync/run",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     const backfill = ensureTagSyncInitialBackfill({ botId: req.params.botId });
     if (backfill.insertedCount > 0) {
       logInfo("tag_sync.backfill.completed", backfill);
@@ -6266,7 +6266,7 @@ app.put(
 app.get(
   "/api/bots/:botId/settings/reply-wait",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     res.json({ ok: true, botId: req.params.botId, config: getReplyWaitConfig(req.params.botId) });
   })
 );
@@ -6274,7 +6274,7 @@ app.get(
 app.put(
   "/api/bots/:botId/settings/reply-wait",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     const config = normalizeReplyWaitConfig({
       ...getReplyWaitConfig(req.params.botId),
       ...(req.body || {})
@@ -6287,7 +6287,7 @@ app.put(
 app.get(
   "/api/bots/:botId/settings/history-analysis",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     res.json({
       ok: true,
       botId: req.params.botId,
@@ -6299,7 +6299,7 @@ app.get(
 app.put(
   "/api/bots/:botId/settings/history-analysis",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     const config = normalizeHistoryAnalysisConfig({
       ...getHistoryAnalysisConfig(req.params.botId),
       ...(req.body || {})
@@ -6441,7 +6441,7 @@ app.get(
 app.post(
   "/api/cockpit/:botId/reports",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     const reportType = ["daily", "weekly", "monthly"].includes(req.body?.reportType)
       ? req.body.reportType
       : "daily";
@@ -6482,7 +6482,7 @@ app.get(
 app.put(
   "/api/cockpit/:botId/config",
   asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
+    assertBotAccess(req, req.params.botId);
     res.json({
       ok: true,
       config: upsertCockpitConfig({

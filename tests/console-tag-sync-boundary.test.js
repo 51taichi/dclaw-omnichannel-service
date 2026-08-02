@@ -13,8 +13,9 @@ function functionBody(name) {
   return client.slice(start, next === -1 ? client.length : next);
 }
 
-test("Bot config contains an admin-only nightly tag sync panel", () => {
-  assert.match(html, /id="tagSyncPanel"[^>]*admin-only-panel/);
+test("Bot config contains a Bot-accessible nightly tag sync panel", () => {
+  assert.match(html, /id="tagSyncPanel"[^>]*bot-context-panel/);
+  assert.doesNotMatch(html, /id="tagSyncPanel"[^>]*admin-only-panel/);
   assert.match(html, /夜间自动同步/);
   assert.match(html, /id="tagSyncDateTagsEnabled"[^>]*name="syncDateTags"[^>]*type="checkbox"/);
   assert.match(html, /同步添加日期标签/);
@@ -29,9 +30,9 @@ test("Bot config contains an admin-only nightly tag sync panel", () => {
 
 test("night schedule options are restricted and stale Bot loads are ignored", () => {
   const optionsBody = functionBody("buildNightTagSyncTimeOptions");
-  assert.match(optionsBody, /22 \* 60/);
-  assert.match(optionsBody, /32 \* 60/);
-  assert.match(optionsBody, /次日/);
+  assert.match(optionsBody, /minutes = 0/);
+  assert.match(optionsBody, /6 \* 60/);
+  assert.doesNotMatch(optionsBody, /22 \* 60|32 \* 60|次日/);
 
   const loadBody = functionBody("loadTagSyncConfig");
   assert.match(loadBody, /requestVersion/);

@@ -52,25 +52,27 @@ test("console header actions do not show the current bot status label", () => {
   assert.match(css, /\.current-bot-actions button\[hidden\]\s*\{[^}]*display:\s*none !important/);
 });
 
-test("console hides config tab for bot role without owning system maintenance", () => {
-  assert.equal(html.includes("accessKeyForm"), false);
+test("config tab is available to every unlocked Bot without owning global maintenance", () => {
+  assert.equal(html.includes("botAccessKeyForm"), true);
   assert.equal(html.includes("debugReplyForm"), false);
   assert.equal(html.includes('data-workspace-tab="agents"'), false);
   assert.equal(html.includes("agentForm"), false);
   assert.equal(html.includes("agentsList"), false);
   assert.equal(app.includes("syncRoleVisibility"), true);
-  assert.equal(app.includes("shouldHideConfigTab"), true);
+  assert.equal(app.includes("shouldHideConfigTab"), false);
   assert.equal(app.includes("isAdminWorkspaceTab"), false);
-  assert.equal(app.includes('els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig)'), true);
-  assert.equal(app.includes('document.querySelector(\'[data-workspace-tab="config"]\')?.toggleAttribute("hidden", hideConfig)'), true);
+  assert.equal(app.includes('els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig)'), false);
+  assert.equal(app.includes('document.querySelector(\'[data-workspace-tab="config"]\')?.toggleAttribute("hidden", hideConfig)'), false);
   assert.equal(app.includes('document.querySelector("#configTab")?.toggleAttribute("hidden", hideConfig)'), false);
   assert.equal(app.includes("agentManagementPanel"), false);
-  assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), true);
-  assert.equal(app.includes("state.currentRole === \"admin\""), true);
-  assert.equal(app.includes("/access-key"), false);
+  assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), false);
+  assert.match(app, /async function loadReplyWait[\s\S]*if \(!botId \|\| !els\.replyWaitForm\) return/);
+  assert.match(app, /async function loadHistoryAnalysis[\s\S]*if \(!botId \|\| !els\.historyAnalysisForm\) return/);
+  assert.match(app, /async function loadTagSyncConfig[\s\S]*if \(!botId \|\| !els\.tagSyncForm\) return/);
+  assert.equal(app.includes("/access-key"), true);
   assert.equal(app.includes("settings/debug-reply"), false);
   assert.equal(css.includes(".bot-card.is-locked"), true);
-  assert.equal(css.includes('.workspace-tabs.is-config-hidden [data-workspace-tab="config"]'), true);
+  assert.equal(css.includes('.workspace-tabs.is-config-hidden [data-workspace-tab="config"]'), false);
   assert.equal(css.includes("display: none !important"), true);
 });
 
@@ -184,6 +186,17 @@ test("config saves can request admin password on demand", () => {
   assert.equal(app.includes("state.unlockMode === \"admin\""), true);
 });
 
+test("workspace config can change the selected Bot password with Bot session access", () => {
+  assert.match(html, /id="botAccessKeyPanel"[\s\S]*id="botAccessKeyForm"[\s\S]*name="accessKey"[^>]*type="password"/);
+  assert.match(app, /botAccessKeyForm:\s*document\.querySelector\("#botAccessKeyForm"\)/);
+  assert.match(app, /async function saveBotAccessKey[\s\S]*\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/access-key/);
+  assert.match(app, /Bot 密钥已修改/);
+  const saveStart = app.indexOf("async function saveBotAccessKey");
+  const saveEnd = app.indexOf("\nfunction ", saveStart + 1);
+  const saveBody = app.slice(saveStart, saveEnd);
+  assert.doesNotMatch(saveBody, /promptAdminHeaders/);
+});
+
 test("bot cards expose quick actions in workspace tab order", () => {
   assert.equal(app.includes("showConfigQuickAction"), false);
   assert.equal(app.includes('data-action="config"'), false);
@@ -248,7 +261,7 @@ test("lock and reset return to an unselected workspace", () => {
   const resetBody = app.slice(resetStart, resetEnd);
   assert.equal(resetBody.includes('switchWorkspaceTab("config", { force: true });'), false);
   assert.match(resetBody, /setBindingState\(null\)/);
-  assert.equal(app.includes("const hideConfig = shouldHideConfigTab();"), true);
+  assert.equal(app.includes("shouldHideConfigTab"), false);
 });
 
 test("locked bot cards never show using status", () => {
@@ -289,7 +302,7 @@ test("bot card quick actions let applyBotContext own form synchronization", () =
   assert.match(body, /await applyBotContext\(bot(?:,\s*\{[\s\S]*?\})?\)/);
 });
 
-test("switching from a Bot session to an admin Bot opens config after context synchronization", () => {
+test("switching unlocked Bots does not special-case config by role", () => {
   const renderStart = app.indexOf("function renderBots");
   const renderEnd = app.indexOf("let currentBots", renderStart);
   const body = app.slice(renderStart, renderEnd);
@@ -300,7 +313,8 @@ test("switching from a Bot session to an admin Bot opens config after context sy
   const applyEnd = app.indexOf("function openUnlockDialog", applyStart);
   const applyBody = app.slice(applyStart, applyEnd);
 
-  assert.match(openAction, /await applyBotContext\(bot,\s*\{\s*tabName:\s*getBotSession\(botId\)\?\.role === "admin" \? "config" : ""\s*\}\)/);
+  assert.match(openAction, /await applyBotContext\(bot\)/);
+  assert.doesNotMatch(openAction, /getBotSession\(botId\)\?\.role/);
   assert.doesNotMatch(openAction, /switchWorkspaceTab\("config"\)/);
   assert.match(applyBody, /setBindingState\(bot\);[\s\S]*if \(tabName\) switchWorkspaceTab\(tabName\);/);
   assert.equal(applyBody.indexOf("setBindingState(bot);") < applyBody.indexOf("switchWorkspaceTab(tabName)"), true);

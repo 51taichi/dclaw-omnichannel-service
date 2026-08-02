@@ -257,7 +257,6 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
   font-weight: 800;
 }
 
-.workspace-tabs.is-config-hidden [data-workspace-tab="config"],
 .workspace-tabs button[hidden] {
   display: none !important;
 }
@@ -971,6 +970,15 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
 .compact-form {
   grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr);
   align-items: end;
+}
+
+.bot-access-key-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.bot-access-key-form .actions {
+  grid-column: auto;
 }
 
 .tag-sync-form {

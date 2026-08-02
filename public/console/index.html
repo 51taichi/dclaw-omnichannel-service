@@ -302,7 +302,7 @@
       </div>
 
       <div id="configTab" class="tab-panel" data-tab-panel="config" hidden>
-      <section id="cockpitConfigPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
+      <section id="cockpitConfigPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-cockpit"></use></svg>驾驶舱报告</h2>
           <div class="section-actions">
@@ -355,7 +355,7 @@
         </label>
       </form>
 
-      <section id="replyWaitPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
+      <section id="replyWaitPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>消息/等待回复</h2>
           <button class="collapse-button" data-collapse-target="replyWaitPanel" type="button" aria-label="收起消息/等待回复">
@@ -391,7 +391,7 @@
         </div>
       </section>
 
-      <section id="historyAnalysisPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
+      <section id="historyAnalysisPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg>历史智能分析</h2>
           <button class="collapse-button" data-collapse-target="historyAnalysisPanel" type="button" aria-label="收起历史智能分析">
@@ -422,7 +422,7 @@
         </div>
       </section>
 
-      <section id="tagSyncPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
+      <section id="tagSyncPanel" class="panel bot-context-panel collapsible-panel">
         <div class="section-head">
           <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>企微标签同步</h2>
           <button class="collapse-button" data-collapse-target="tagSyncPanel" type="button" aria-label="收起企微标签同步">
@@ -460,6 +460,29 @@
               </button>
             </div>
             <div id="tagSyncResult" class="tag-sync-result" aria-live="polite" hidden></div>
+          </form>
+        </div>
+      </section>
+
+      <section id="botAccessKeyPanel" class="panel bot-context-panel collapsible-panel">
+        <div class="section-head">
+          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-key"></use></svg>Bot 密钥修改</h2>
+          <button class="collapse-button" data-collapse-target="botAccessKeyPanel" type="button" aria-label="收起 Bot 密钥修改">
+            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
+          </button>
+        </div>
+        <div class="collapsible-content">
+          <form id="botAccessKeyForm" class="form-grid compact-form bot-access-key-form">
+            <label>
+              <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-key"></use></svg>新 Bot 密钥</span>
+              <input name="accessKey" type="password" autocomplete="new-password" placeholder="输入后重置当前 Bot 独立密钥" required />
+            </label>
+            <div class="actions">
+              <button class="primary" type="submit">
+                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
+                修改密钥
+              </button>
+            </div>
           </form>
         </div>
       </section>

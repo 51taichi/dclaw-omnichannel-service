@@ -93,13 +93,13 @@ test("tag sync config defaults on and validates saved night windows", () => {
     config: {
       nightlyEnabled: true,
       syncDateTags: true,
-      windowStart: "23:30",
+      windowStart: "00:30",
       windowEnd: "04:00"
     }
   });
   assert.equal(saved.nightlyEnabled, true);
   assert.equal(saved.syncDateTags, true);
-  assert.equal(saved.windowStart, "23:30");
+  assert.equal(saved.windowStart, "00:30");
   assert.equal(saved.windowEnd, "04:00");
 
   assert.throws(() => db.saveTagSyncConfig({

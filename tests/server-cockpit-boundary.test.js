@@ -20,7 +20,8 @@ test("cockpit supports queued manual report generation", () => {
   const start = source.indexOf('app.post(\\n  "/api/cockpit/:botId/reports"'.replace("\\n", "\n"));
   const end = source.indexOf("\n);", start) + 3;
   const route = source.slice(start, end);
-  assert.match(route, /assertAdminForBot/);
+  assert.match(route, /assertBotAccess/);
+  assert.doesNotMatch(route, /assertAdminForBot/);
   assert.match(route, /stage:\s*"generate"/);
   assert.match(route, /status:\s*"queued"/);
 });

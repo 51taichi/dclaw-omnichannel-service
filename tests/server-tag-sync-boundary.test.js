@@ -12,7 +12,7 @@ function section(startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test("tag sync APIs require current Bot administrator access", () => {
+test("tag sync APIs accept the current unlocked Bot session", () => {
   const routes = [
     [
       '"/api/bots/:botId/tag-sync/config"',
@@ -28,7 +28,8 @@ test("tag sync APIs require current Bot administrator access", () => {
     ]
   ];
   for (const [start, end] of routes) {
-    assert.match(section(start, end), /assertAdminForBot\(req, req\.params\.botId\)/);
+    assert.match(section(start, end), /assertBotAccess\(req, req\.params\.botId\)/);
+    assert.doesNotMatch(section(start, end), /assertAdminForBot\(req, req\.params\.botId\)/);
   }
   assert.equal(source.match(/"\/api\/bots\/:botId\/tag-sync\/config"/g)?.length, 2);
 });

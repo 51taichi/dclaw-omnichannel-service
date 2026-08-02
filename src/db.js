@@ -5029,11 +5029,21 @@ function ensureTagSyncConfigRow(botId, timestamp = now()) {
 
 export function getTagSyncConfig(botId) {
   const normalizedBotId = requireTagSyncBotId(botId);
-  return rowToTagSyncConfig(
+  const config = rowToTagSyncConfig(
     db.prepare("SELECT * FROM bot_tag_sync_configs WHERE bot_id = ?")
       .get(normalizedBotId),
     normalizedBotId
   );
+  try {
+    normalizeTagSyncConfig(config);
+    return config;
+  } catch {
+    return {
+      ...config,
+      windowStart: "03:00",
+      windowEnd: "06:00"
+    };
+  }
 }
 
 export function saveTagSyncConfig({ botId, config }) {

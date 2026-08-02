@@ -26,30 +26,13 @@ function parseTime(value) {
   return { hour, minute };
 }
 
-function nightMinute(value) {
+function dailyWindowMinute(value) {
   const { hour, minute } = parseTime(value);
-  if (hour >= 22) return hour * 60 + minute;
-  if (hour < 8 || (hour === 8 && minute === 0)) {
-    return 24 * 60 + hour * 60 + minute;
+  const minutes = hour * 60 + minute;
+  if (minutes > 6 * 60) {
+    throw new Error("night window must stay within 00:00-06:00");
   }
-  throw new Error("night window must stay within 22:00-08:00");
-}
-
-function localTimelineMinute(hour, minute) {
-  if (hour < 8 || (hour === 8 && minute === 0)) {
-    return 24 * 60 + hour * 60 + minute;
-  }
-  return hour * 60 + minute;
-}
-
-function previousDateKey({ year, month, day }) {
-  const date = new Date(Date.UTC(year, month - 1, day));
-  date.setUTCDate(date.getUTCDate() - 1);
-  return [
-    date.getUTCFullYear(),
-    String(date.getUTCMonth() + 1).padStart(2, "0"),
-    String(date.getUTCDate()).padStart(2, "0")
-  ].join("-");
+  return minutes;
 }
 
 function beijingParts(now) {
@@ -65,8 +48,8 @@ function beijingParts(now) {
 }
 
 export function validateTagSyncNightWindow({ windowStart, windowEnd }) {
-  const startMinute = nightMinute(windowStart);
-  const endMinute = nightMinute(windowEnd);
+  const startMinute = dailyWindowMinute(windowStart);
+  const endMinute = dailyWindowMinute(windowEnd);
   if (endMinute <= startMinute) {
     throw new Error("night window end must be after start");
   }
@@ -92,7 +75,7 @@ export function getTagSyncWindowState(config, now = new Date()) {
   const normalized = normalizeTagSyncConfig(config);
   const { startMinute, endMinute } = validateTagSyncNightWindow(normalized);
   const parts = beijingParts(now);
-  const localMinute = localTimelineMinute(parts.hour, parts.minute);
+  const localMinute = parts.hour * 60 + parts.minute;
   const localDateKey = [
     parts.year,
     String(parts.month).padStart(2, "0"),
@@ -100,9 +83,7 @@ export function getTagSyncWindowState(config, now = new Date()) {
   ].join("-");
   return {
     inside: localMinute >= startMinute && localMinute < endMinute,
-    windowKey: parts.hour < 8 || (parts.hour === 8 && parts.minute === 0)
-      ? previousDateKey(parts)
-      : localDateKey,
+    windowKey: localDateKey,
     localMinute
   };
 }

@@ -4,6 +4,13 @@ import test from "node:test";
 
 const serverSource = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 
+function routeBody(method, route) {
+  const start = serverSource.indexOf(`app.${method}(\n  "${route}"`);
+  assert.notEqual(start, -1, `missing ${method.toUpperCase()} ${route}`);
+  const end = serverSource.indexOf("\n);", start);
+  return serverSource.slice(start, end + 3);
+}
+
 test("server exposes public bot list and unified unlock routes", () => {
   assert.equal(serverSource.includes('"/api/public/bots"'), true);
   assert.equal(serverSource.includes('"/api/agents"'), true);
@@ -48,4 +55,27 @@ test("business routes are not protected only by global admin key", () => {
     assert.equal(serverSource.includes(check.route), true, `missing route ${check.route}`);
     assert.equal(serverSource.includes(check.guard), true, `missing guard ${check.guard}`);
   }
+});
+
+test("workspace business config and Bot password routes accept Bot sessions", () => {
+  for (const [method, route] of [
+    ["put", "/api/bots/:botId/access-key"],
+    ["get", "/api/bots/:botId/tag-sync/config"],
+    ["put", "/api/bots/:botId/tag-sync/config"],
+    ["get", "/api/bots/:botId/tag-sync/status"],
+    ["post", "/api/bots/:botId/tag-sync/run"],
+    ["get", "/api/bots/:botId/settings/reply-wait"],
+    ["put", "/api/bots/:botId/settings/reply-wait"],
+    ["get", "/api/bots/:botId/settings/history-analysis"],
+    ["put", "/api/bots/:botId/settings/history-analysis"],
+    ["post", "/api/cockpit/:botId/reports"],
+    ["put", "/api/cockpit/:botId/config"]
+  ]) {
+    const body = routeBody(method, route);
+    assert.match(body, /assertBotAccess\(req, req\.params\.botId\)/, route);
+    assert.doesNotMatch(body, /assertAdminForBot/, route);
+  }
+
+  assert.match(routeBody("put", "/api/bots/:botId"), /assertAdminForBot/);
+  assert.match(routeBody("delete", "/api/bots/:botId"), /assertAdminForBot/);
 });
