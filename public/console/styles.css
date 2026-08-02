@@ -976,6 +976,7 @@ html.has-bot-context .current-bot-actions #lockBotButton:hover {
 .tag-sync-form {
   grid-template-columns:
     minmax(180px, 0.8fr)
+    minmax(210px, 0.9fr)
     minmax(150px, 0.6fr)
     minmax(150px, 0.6fr)
     auto;

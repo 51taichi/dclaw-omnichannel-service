@@ -16,7 +16,10 @@ function functionBody(name) {
 test("Bot config contains an admin-only nightly tag sync panel", () => {
   assert.match(html, /id="tagSyncPanel"[^>]*admin-only-panel/);
   assert.match(html, /夜间自动同步/);
+  assert.match(html, /id="tagSyncDateTagsEnabled"[^>]*name="syncDateTags"[^>]*type="checkbox"/);
+  assert.match(html, /同步添加日期标签/);
   assert.match(client, /els\.tagSyncNightlyEnabled\.checked = true/);
+  assert.match(client, /els\.tagSyncDateTagsEnabled\.checked = false/);
   assert.match(html, /id="tagSyncWindowStart"[^>]*><\/select>/);
   assert.match(html, /id="tagSyncWindowEnd"[^>]*><\/select>/);
   assert.match(html, /id="tagSyncRunButton"[^>]*class="[^"]*tag-sync-run-button/);
@@ -42,10 +45,21 @@ test("night automation disables only schedule selects and validates forward wind
   assert.match(toggleBody, /tagSyncWindowStart\.disabled = !enabled/);
   assert.match(toggleBody, /tagSyncWindowEnd\.disabled = !enabled/);
   assert.doesNotMatch(toggleBody, /tagSyncRunButton\.disabled/);
+  assert.doesNotMatch(toggleBody, /tagSyncDateTagsEnabled\.disabled/);
 
   const endOptionsBody = functionBody("syncTagSyncEndOptions");
   assert.match(endOptionsBody, /canonicalNightMinutes/);
   assert.match(endOptionsBody, /option\.disabled = optionMinutes <= startMinutes/);
+});
+
+test("date tag synchronization switch loads and saves independently", () => {
+  assert.match(client, /tagSyncDateTagsEnabled:\s*document\.querySelector\("#tagSyncDateTagsEnabled"\)/);
+
+  const applyBody = functionBody("applyTagSyncConfig");
+  assert.match(applyBody, /tagSyncDateTagsEnabled\.checked = Boolean\(config\.syncDateTags\)/);
+
+  const saveBody = functionBody("saveTagSyncConfig");
+  assert.match(saveBody, /syncDateTags:\s*els\.tagSyncDateTagsEnabled\.checked/);
 });
 
 test("manual synchronization locks the button and follows the background run", () => {

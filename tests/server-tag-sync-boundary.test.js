@@ -49,6 +49,7 @@ test("both command callbacks preserve old updates and finalize tag sync afterwar
     assert.ok(outgoing >= 0);
     assert.ok(proactive > outgoing);
     assert.ok(tagSync > proactive);
+    assert.match(body, /Number\(req\.body\?\.type\) === 213/);
   }
 });
 

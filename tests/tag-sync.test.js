@@ -11,6 +11,7 @@ test("tag sync defaults are enabled with a 03:00-06:00 window", () => {
   assert.deepEqual(normalizeTagSyncConfig({}), DEFAULT_TAG_SYNC_CONFIG);
   assert.deepEqual(DEFAULT_TAG_SYNC_CONFIG, {
     nightlyEnabled: true,
+    syncDateTags: false,
     windowStart: "03:00",
     windowEnd: "06:00"
   });

@@ -2,6 +2,7 @@ export const TAG_SYNC_TIME_ZONE = "Asia/Shanghai";
 
 export const DEFAULT_TAG_SYNC_CONFIG = Object.freeze({
   nightlyEnabled: true,
+  syncDateTags: false,
   windowStart: "03:00",
   windowEnd: "06:00"
 });
@@ -77,6 +78,9 @@ export function normalizeTagSyncConfig(input = {}) {
     nightlyEnabled: input.nightlyEnabled === undefined
       ? DEFAULT_TAG_SYNC_CONFIG.nightlyEnabled
       : Boolean(input.nightlyEnabled),
+    syncDateTags: input.syncDateTags === undefined
+      ? DEFAULT_TAG_SYNC_CONFIG.syncDateTags
+      : Boolean(input.syncDateTags),
     windowStart: String(input.windowStart || DEFAULT_TAG_SYNC_CONFIG.windowStart),
     windowEnd: String(input.windowEnd || DEFAULT_TAG_SYNC_CONFIG.windowEnd)
   };

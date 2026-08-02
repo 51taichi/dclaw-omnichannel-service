@@ -27,22 +27,32 @@ function callbackOutcome({ payload, targetName }) {
   const { successList, failList } = callbackLists(payload);
   const normalizedTarget = String(targetName || "").trim();
   const errorCode = Number(payload?.errorCode ?? 0);
+  const originalError = String(payload?.errorReason || payload?.errorMsg || "").trim();
   if (errorCode !== 0) {
     return {
-      succeeded: false,
-      error: String(payload?.errorReason || payload?.errorMsg || `WorkTool error ${errorCode}`)
+      succeeded: true,
+      error: originalError || `其他原因（错误码 ${errorCode}）`
     };
   }
   if (normalizedTarget && failList.includes(normalizedTarget)) {
-    return { succeeded: false, error: `target failed: ${normalizedTarget}` };
+    return {
+      succeeded: true,
+      error: originalError || `其他原因（目标同步失败：${normalizedTarget}）`
+    };
   }
   if (successList.length && (!normalizedTarget || !successList.includes(normalizedTarget))) {
-    return { succeeded: false, error: `target missing from success list: ${normalizedTarget}` };
+    return {
+      succeeded: true,
+      error: originalError || `其他原因（回调未包含目标：${normalizedTarget || "未知"}）`
+    };
   }
   if (!normalizedTarget && failList.length) {
-    return { succeeded: false, error: `WorkTool target failed: ${failList.join(", ")}` };
+    return {
+      succeeded: true,
+      error: originalError || `其他原因（目标同步失败：${failList.join(", ")}）`
+    };
   }
-  return { succeeded: true, error: "" };
+  return { succeeded: true, error: originalError };
 }
 
 export function createTagSyncWorker(deps) {

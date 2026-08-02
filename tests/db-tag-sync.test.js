@@ -73,12 +73,14 @@ test("tag sync config defaults on and validates saved night windows", () => {
   assert.deepEqual({
     botId: defaults.botId,
     nightlyEnabled: defaults.nightlyEnabled,
+    syncDateTags: defaults.syncDateTags,
     windowStart: defaults.windowStart,
     windowEnd: defaults.windowEnd,
     initialBackfillAt: defaults.initialBackfillAt
   }, {
     botId,
     nightlyEnabled: true,
+    syncDateTags: false,
     windowStart: "03:00",
     windowEnd: "06:00",
     initialBackfillAt: ""
@@ -90,11 +92,13 @@ test("tag sync config defaults on and validates saved night windows", () => {
     botId,
     config: {
       nightlyEnabled: true,
+      syncDateTags: true,
       windowStart: "23:30",
       windowEnd: "04:00"
     }
   });
   assert.equal(saved.nightlyEnabled, true);
+  assert.equal(saved.syncDateTags, true);
   assert.equal(saved.windowStart, "23:30");
   assert.equal(saved.windowEnd, "04:00");
 
@@ -147,7 +151,7 @@ test("legacy default-off tag sync configs migrate once and preserve later opt-ou
   assert.equal(db.getTagSyncConfig(botId).nightlyEnabled, false);
 });
 
-test("initial backfill includes every private tag and excludes group tags", () => {
+test("initial backfill excludes date and group tags by default", () => {
   const botId = "tag_sync_backfill_bot";
   const agentId = ensureBot(botId);
   const privateKey = ensureConversation({ botId, agentId, targetName: "客户甲" });
@@ -170,16 +174,16 @@ test("initial backfill includes every private tag and excludes group tags", () =
   const first = db.ensureTagSyncInitialBackfill({ botId });
   const second = db.ensureTagSyncInitialBackfill({ botId });
 
-  assert.equal(first.insertedCount, 3);
+  assert.equal(first.insertedCount, 2);
   assert.equal(second.insertedCount, 0);
   assert.ok(first.initialBackfillAt);
   assert.deepEqual(
     outboxRows(botId).map((row) => row.tag_name).sort(),
-    ["20260801", "A类", "VIP"]
+    ["A类", "VIP"]
   );
 });
 
-test("initialized Bots register agent manual and date tag additions without duplicates", () => {
+test("initialized Bots exclude date tag additions by default", () => {
   const botId = "tag_sync_registration_bot";
   const agentId = ensureBot(botId);
   const conversationKey = ensureConversation({ botId, agentId, targetName: "客户乙" });
@@ -227,7 +231,83 @@ test("initialized Bots register agent manual and date tag additions without dupl
 
   assert.deepEqual(
     outboxRows(botId).map((row) => row.tag_name).sort(),
-    ["20260801", "A类", "VIP"]
+    ["A类", "VIP"]
+  );
+});
+
+test("enabling date tag sync backfills current dates and disabling removes only unsent dates", () => {
+  const botId = "tag_sync_date_policy_bot";
+  const agentId = ensureBot(botId);
+  const conversations = ["待同步", "失败", "处理中", "已同步"].map((targetName) => ({
+    targetName,
+    conversationKey: ensureConversation({ botId, agentId, targetName })
+  }));
+
+  for (const [index, item] of conversations.entries()) {
+    db.upsertSystemDateTag({
+      botId,
+      agentId,
+      conversationKey: item.conversationKey,
+      dateTagId: `2026080${index + 1}`
+    });
+  }
+  db.ensureTagSyncInitialBackfill({ botId });
+  assert.equal(outboxRows(botId).length, 0);
+
+  const enabled = db.saveTagSyncConfig({
+    botId,
+    config: {
+      nightlyEnabled: true,
+      syncDateTags: true,
+      windowStart: "03:00",
+      windowEnd: "06:00"
+    }
+  });
+  assert.equal(enabled.syncDateTags, true);
+  assert.deepEqual(
+    outboxRows(botId)
+      .map((row) => [row.tag_name, row.tag_type])
+      .sort(([left], [right]) => left.localeCompare(right)),
+    [
+      ["20260801", "date"],
+      ["20260802", "date"],
+      ["20260803", "date"],
+      ["20260804", "date"]
+    ]
+  );
+
+  sqlite.prepare(`UPDATE tag_sync_outbox SET status = 'failed' WHERE tag_name = '20260802'`).run();
+  sqlite.prepare(`
+    UPDATE tag_sync_outbox
+    SET status = 'processing', lease_expires_at = '2026-08-01T16:00:00.000Z'
+    WHERE tag_name = '20260803'
+  `).run();
+  sqlite.prepare(`UPDATE tag_sync_outbox SET status = 'succeeded' WHERE tag_name = '20260804'`).run();
+
+  const disabled = db.saveTagSyncConfig({
+    botId,
+    config: {
+      nightlyEnabled: true,
+      syncDateTags: false,
+      windowStart: "03:00",
+      windowEnd: "06:00"
+    }
+  });
+  assert.equal(disabled.syncDateTags, false);
+  assert.deepEqual(
+    outboxRows(botId)
+      .map((row) => [row.tag_name, row.status])
+      .sort(([left], [right]) => left.localeCompare(right)),
+    [["20260803", "processing"], ["20260804", "succeeded"]]
+  );
+
+  assert.equal(db.recoverExpiredTagSyncLeases({
+    nowIso: "2026-08-01T16:01:00.000Z",
+    nextRetryAt: "2026-08-01T16:01:30.000Z"
+  }), 1);
+  assert.deepEqual(
+    outboxRows(botId).map((row) => [row.tag_name, row.status]),
+    [["20260804", "succeeded"]]
   );
 });
 
@@ -283,9 +363,11 @@ test("claim groups five tags for one customer and waits for its callback", () =>
     botId,
     worktoolMessageId: "wt-tags-1",
     succeeded: true,
-    error: ""
+    error: "Enterprise WeChat customers cannot be tagged"
   });
   assert.equal(resolved.succeededCount, 5);
+  assert.equal(resolved.rows[0].lastError, "Enterprise WeChat customers cannot be tagged");
+  assert.equal(resolved.rows[0].nextRetryAt, "");
 
   const nextBatch = db.claimNextTagSyncBatch({
     botId,

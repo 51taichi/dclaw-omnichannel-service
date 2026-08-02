@@ -197,7 +197,7 @@ test("worker applies the configured claim lease duration", async () => {
   assert.equal(harness.claims[0].leaseExpiresAt, "2026-08-01T19:03:00.000Z");
 });
 
-test("callback success requires the submitted target to succeed", async () => {
+test("a type 213 callback is terminal when its success list omits the target", async () => {
   const harness = createHarness({
     activeRun: { id: 9, triggerType: "manual", status: "running" }
   });
@@ -209,8 +209,50 @@ test("callback success requires the submitted target to succeed", async () => {
   });
 
   assert.equal(harness.resolved.length, 1);
-  assert.equal(harness.resolved[0].succeeded, false);
-  assert.match(harness.resolved[0].error, /target/i);
+  assert.equal(harness.resolved[0].succeeded, true);
+  assert.match(harness.resolved[0].error, /其他原因/);
+});
+
+test("business error callbacks finish synchronization and preserve WorkTool reasons", async () => {
+  const harness = createHarness({
+    activeRun: { id: 9, triggerType: "manual", status: "running" }
+  });
+  await harness.worker.runBot("bot_sync", harness.now);
+  const callback = await harness.worker.handleCommandCallback({
+    botId: "bot_sync",
+    messageId: "wt-1",
+    payload: {
+      type: 213,
+      errorCode: 201103,
+      errorReason: "Enterprise WeChat customers cannot be tagged",
+      successList: [],
+      failList: ["客户甲"]
+    }
+  });
+
+  assert.equal(callback.matched, true);
+  assert.equal(callback.succeeded, true);
+  assert.equal(harness.resolved[0].succeeded, true);
+  assert.equal(
+    harness.resolved[0].error,
+    "Enterprise WeChat customers cannot be tagged"
+  );
+  assert.equal(harness.resolved[0].nextRetryAt, undefined);
+});
+
+test("business errors without text use a generic terminal reason", async () => {
+  const harness = createHarness({
+    activeRun: { id: 9, triggerType: "manual", status: "running" }
+  });
+  await harness.worker.runBot("bot_sync", harness.now);
+  await harness.worker.handleCommandCallback({
+    botId: "bot_sync",
+    messageId: "wt-1",
+    payload: { type: 213, errorCode: 299999, successList: [], failList: [] }
+  });
+
+  assert.equal(harness.resolved[0].succeeded, true);
+  assert.equal(harness.resolved[0].error, "其他原因（错误码 299999）");
 });
 
 test("send failures keep rows retryable with bounded backoff", async () => {

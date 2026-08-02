@@ -5434,13 +5434,15 @@ app.post("/worktool/:botId/command-callback", (req, res) => {
     messageId: req.body?.messageId,
     payload: req.body || {}
   });
-  void tagSyncWorker.handleCommandCallback({
-    botId: req.params.botId,
-    messageId: req.body?.messageId,
-    payload: req.body || {}
-  }).catch((error) => {
-    logWarn("tag_sync.callback.failed", { botId: req.params.botId, error });
-  });
+  if (Number(req.body?.type) === 213) {
+    void tagSyncWorker.handleCommandCallback({
+      botId: req.params.botId,
+      messageId: req.body?.messageId,
+      payload: req.body || {}
+    }).catch((error) => {
+      logWarn("tag_sync.callback.failed", { botId: req.params.botId, error });
+    });
+  }
   res.json({ code: 0, message: "参数接收成功" });
 });
 
@@ -5472,13 +5474,15 @@ app.post("/worktool/command-callback", (req, res) => {
     messageId: req.body?.messageId,
     payload: req.body || {}
   });
-  void tagSyncWorker.handleCommandCallback({
-    botId,
-    messageId: req.body?.messageId,
-    payload: req.body || {}
-  }).catch((error) => {
-    logWarn("tag_sync.callback.failed", { botId, error });
-  });
+  if (Number(req.body?.type) === 213) {
+    void tagSyncWorker.handleCommandCallback({
+      botId,
+      messageId: req.body?.messageId,
+      payload: req.body || {}
+    }).catch((error) => {
+      logWarn("tag_sync.callback.failed", { botId, error });
+    });
+  }
   res.json({ code: 0, message: "参数接收成功" });
 });
 

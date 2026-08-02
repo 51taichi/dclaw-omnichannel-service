@@ -771,6 +771,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS bot_tag_sync_configs (
     bot_id TEXT PRIMARY KEY,
     nightly_enabled INTEGER NOT NULL DEFAULT 1,
+    sync_date_tags INTEGER NOT NULL DEFAULT 0,
     window_start TEXT NOT NULL DEFAULT '03:00',
     window_end TEXT NOT NULL DEFAULT '06:00',
     initial_backfill_at TEXT,
@@ -805,6 +806,7 @@ db.exec(`
     conversation_key TEXT NOT NULL,
     target_name TEXT NOT NULL,
     tag_name TEXT NOT NULL,
+    tag_type TEXT NOT NULL DEFAULT 'normal',
     status TEXT NOT NULL DEFAULT 'pending',
     run_id INTEGER,
     attempt_count INTEGER NOT NULL DEFAULT 0,
@@ -907,6 +909,32 @@ ensureColumn("flow_activation_tasks", "message_content", "TEXT");
 ensureColumn("proactive_tasks", "scheduled_at", "TEXT");
 ensureColumn("proactive_tasks", "canceled_at", "TEXT");
 ensureColumn("proactive_tasks", "cancel_reason", "TEXT");
+ensureColumn("bot_tag_sync_configs", "sync_date_tags", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("tag_sync_outbox", "tag_type", "TEXT NOT NULL DEFAULT 'normal'");
+db.exec(`
+  UPDATE tag_sync_outbox
+  SET tag_type = 'date'
+  WHERE tag_type = 'normal'
+    AND EXISTS (
+      SELECT 1
+      FROM conversation_tags tag
+      WHERE tag.bot_id = tag_sync_outbox.bot_id
+        AND tag.agent_id = tag_sync_outbox.agent_id
+        AND tag.conversation_key = tag_sync_outbox.conversation_key
+        AND tag.tag_name = tag_sync_outbox.tag_name
+        AND tag.tag_type = 'date'
+    )
+`);
+db.exec(`
+  DELETE FROM tag_sync_outbox
+  WHERE tag_type = 'date'
+    AND status IN ('pending', 'failed')
+    AND COALESCE((
+      SELECT config.sync_date_tags
+      FROM bot_tag_sync_configs config
+      WHERE config.bot_id = tag_sync_outbox.bot_id
+    ), 0) = 0
+`);
 
 function now() {
   return new Date().toISOString();
@@ -3150,6 +3178,7 @@ function rowToTagSyncConfig(row, botId = "") {
     return {
       botId: String(botId || ""),
       nightlyEnabled: true,
+      syncDateTags: false,
       windowStart: "03:00",
       windowEnd: "06:00",
       initialBackfillAt: "",
@@ -3160,6 +3189,7 @@ function rowToTagSyncConfig(row, botId = "") {
   return {
     botId: row.bot_id,
     nightlyEnabled: Boolean(row.nightly_enabled),
+    syncDateTags: Boolean(row.sync_date_tags),
     windowStart: row.window_start,
     windowEnd: row.window_end,
     initialBackfillAt: row.initial_backfill_at || "",
@@ -3196,6 +3226,7 @@ function rowToTagSyncOutbox(row) {
     conversationKey: row.conversation_key,
     targetName: row.target_name,
     tagName: row.tag_name,
+    tagType: row.tag_type || "normal",
     status: row.status,
     runId: row.run_id == null ? null : Number(row.run_id),
     attemptCount: Number(row.attempt_count || 0),
@@ -4988,10 +5019,10 @@ function ensureTagSyncConfigRow(botId, timestamp = now()) {
   const normalizedBotId = requireTagSyncBotId(botId);
   db.prepare(`
     INSERT OR IGNORE INTO bot_tag_sync_configs (
-      bot_id, nightly_enabled, window_start, window_end,
+      bot_id, nightly_enabled, sync_date_tags, window_start, window_end,
       initial_backfill_at, created_at, updated_at
     )
-    VALUES (?, 1, '03:00', '06:00', NULL, ?, ?)
+    VALUES (?, 1, 0, '03:00', '06:00', NULL, ?, ?)
   `).run(normalizedBotId, timestamp, timestamp);
   return normalizedBotId;
 }
@@ -5010,17 +5041,52 @@ export function saveTagSyncConfig({ botId, config }) {
   const normalized = normalizeTagSyncConfig(config);
   const timestamp = now();
   ensureTagSyncConfigRow(normalizedBotId, timestamp);
+  const previous = getTagSyncConfig(normalizedBotId);
   db.prepare(`
     UPDATE bot_tag_sync_configs
-    SET nightly_enabled = ?, window_start = ?, window_end = ?, updated_at = ?
+    SET nightly_enabled = ?, sync_date_tags = ?, window_start = ?, window_end = ?, updated_at = ?
     WHERE bot_id = ?
   `).run(
     normalized.nightlyEnabled ? 1 : 0,
+    normalized.syncDateTags ? 1 : 0,
     normalized.windowStart,
     normalized.windowEnd,
     timestamp,
     normalizedBotId
   );
+  if (!normalized.syncDateTags) {
+    db.prepare(`
+      DELETE FROM tag_sync_outbox
+      WHERE bot_id = ?
+        AND tag_type = 'date'
+        AND status IN ('pending', 'failed')
+    `).run(normalizedBotId);
+  } else if (!previous.syncDateTags && previous.initialBackfillAt) {
+    db.prepare(`
+      INSERT OR IGNORE INTO tag_sync_outbox (
+        bot_id, agent_id, conversation_key, target_name, tag_name, tag_type,
+        status, created_at, updated_at
+      )
+      SELECT
+        tag.bot_id,
+        tag.agent_id,
+        tag.conversation_key,
+        conversation.received_name,
+        tag.tag_name,
+        'date',
+        'pending',
+        ?,
+        ?
+      FROM conversation_tags tag
+      JOIN conversations conversation
+        ON conversation.bot_id = tag.bot_id
+       AND conversation.conversation_key = tag.conversation_key
+      WHERE tag.bot_id = ?
+        AND tag.tag_type = 'date'
+        AND conversation.room_type IN (2, 4)
+        AND trim(COALESCE(conversation.received_name, '')) != ''
+    `).run(timestamp, timestamp, normalizedBotId);
+  }
   return getTagSyncConfig(normalizedBotId);
 }
 
@@ -5032,7 +5098,7 @@ function registerTagSyncOutboxRows({
   timestamp = now()
 }) {
   const config = db.prepare(`
-    SELECT initial_backfill_at
+    SELECT initial_backfill_at, sync_date_tags
     FROM bot_tag_sync_configs
     WHERE bot_id = ?
   `).get(botId);
@@ -5046,20 +5112,27 @@ function registerTagSyncOutboxRows({
   const targetName = String(conversation.received_name || "").trim();
   if (!targetName) return 0;
   let insertedCount = 0;
-  const names = [...new Set(tags.map((tag) => String(tag?.tagName || tag?.name || "").trim()).filter(Boolean))];
-  for (const tagName of names) {
+  const uniqueTags = new Map();
+  for (const tag of tags) {
+    const tagName = String(tag?.tagName || tag?.name || "").trim();
+    const tagType = String(tag?.tagType || "normal").trim() || "normal";
+    if (!tagName || (tagType === "date" && !config.sync_date_tags)) continue;
+    uniqueTags.set(`${tagType}:${tagName}`, { tagName, tagType });
+  }
+  for (const { tagName, tagType } of uniqueTags.values()) {
     insertedCount += Number(db.prepare(`
       INSERT OR IGNORE INTO tag_sync_outbox (
-        bot_id, agent_id, conversation_key, target_name, tag_name,
+        bot_id, agent_id, conversation_key, target_name, tag_name, tag_type,
         status, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
     `).run(
       botId,
       agentId,
       conversationKey,
       targetName,
       tagName,
+      tagType,
       timestamp,
       timestamp
     ).changes || 0);
@@ -5074,7 +5147,7 @@ export function ensureTagSyncInitialBackfill({ botId }) {
   try {
     ensureTagSyncConfigRow(normalizedBotId, timestamp);
     const config = db.prepare(`
-      SELECT initial_backfill_at
+      SELECT initial_backfill_at, sync_date_tags
       FROM bot_tag_sync_configs
       WHERE bot_id = ?
     `).get(normalizedBotId);
@@ -5092,7 +5165,8 @@ export function ensureTagSyncInitialBackfill({ botId }) {
         ct.agent_id,
         ct.conversation_key,
         c.received_name,
-        ct.tag_name
+        ct.tag_name,
+        ct.tag_type
       FROM conversation_tags ct
       JOIN conversations c
         ON c.bot_id = ct.bot_id
@@ -5101,22 +5175,24 @@ export function ensureTagSyncInitialBackfill({ botId }) {
         AND c.room_type IN (2, 4)
         AND trim(COALESCE(c.received_name, '')) != ''
         AND trim(COALESCE(ct.tag_name, '')) != ''
+        AND (ct.tag_type != 'date' OR ? = 1)
       ORDER BY ct.id ASC
-    `).all(normalizedBotId);
+    `).all(normalizedBotId, config.sync_date_tags ? 1 : 0);
     let insertedCount = 0;
     for (const row of rows) {
       insertedCount += Number(db.prepare(`
         INSERT OR IGNORE INTO tag_sync_outbox (
-          bot_id, agent_id, conversation_key, target_name, tag_name,
+          bot_id, agent_id, conversation_key, target_name, tag_name, tag_type,
           status, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, ?, 'pending', ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
       `).run(
         normalizedBotId,
         row.agent_id,
         row.conversation_key,
         row.received_name,
         row.tag_name,
+        row.tag_type || "normal",
         timestamp,
         timestamp
       ).changes || 0);
@@ -5498,11 +5574,11 @@ export function resolveTagSyncCommandCallback({
         SET status = 'succeeded',
             next_retry_at = NULL,
             lease_expires_at = NULL,
-            last_error = '',
+            last_error = ?,
             succeeded_at = ?,
             updated_at = ?
         WHERE id IN (${placeholders})
-      `).run(timestamp, timestamp, ...ids);
+      `).run(String(error || ""), timestamp, timestamp, ...ids);
     } else {
       db.prepare(`
         UPDATE tag_sync_outbox
@@ -5552,6 +5628,18 @@ export function resolveTagSyncCommandCallback({
 
 export function recoverExpiredTagSyncLeases({ nowIso = now(), nextRetryAt = nowIso }) {
   const timestamp = now();
+  const discarded = Number(db.prepare(`
+    DELETE FROM tag_sync_outbox
+    WHERE status = 'processing'
+      AND tag_type = 'date'
+      AND lease_expires_at IS NOT NULL
+      AND lease_expires_at <= ?
+      AND COALESCE((
+        SELECT config.sync_date_tags
+        FROM bot_tag_sync_configs config
+        WHERE config.bot_id = tag_sync_outbox.bot_id
+      ), 0) = 0
+  `).run(nowIso).changes || 0);
   const rows = db.prepare(`
     SELECT id
     FROM tag_sync_outbox
@@ -5559,7 +5647,7 @@ export function recoverExpiredTagSyncLeases({ nowIso = now(), nextRetryAt = nowI
       AND lease_expires_at IS NOT NULL
       AND lease_expires_at <= ?
   `).all(nowIso);
-  if (!rows.length) return 0;
+  if (!rows.length) return discarded;
   const ids = rows.map((row) => Number(row.id));
   const placeholders = ids.map(() => "?").join(", ");
   const result = db.prepare(`
@@ -5572,7 +5660,7 @@ export function recoverExpiredTagSyncLeases({ nowIso = now(), nextRetryAt = nowI
         updated_at = ?
     WHERE id IN (${placeholders}) AND status = 'processing'
   `).run(nextRetryAt, timestamp, ...ids);
-  return Number(result.changes || 0);
+  return discarded + Number(result.changes || 0);
 }
 
 export function updateTagSyncRunStatus({
@@ -6036,7 +6124,7 @@ export function upsertSystemDateTag({
       botId,
       agentId,
       conversationKey,
-      tags: [{ tagName: dateTagId }],
+      tags: [{ tagName: dateTagId, tagType: "date" }],
       timestamp
     });
     db.exec("COMMIT");
