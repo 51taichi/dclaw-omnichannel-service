@@ -19,8 +19,8 @@ test("Bot config contains an admin-only nightly tag sync panel", () => {
   assert.match(client, /els\.tagSyncNightlyEnabled\.checked = true/);
   assert.match(html, /id="tagSyncWindowStart"[^>]*><\/select>/);
   assert.match(html, /id="tagSyncWindowEnd"[^>]*><\/select>/);
-  assert.match(html, /id="tagSyncRunButton"/);
-  assert.match(html, /id="tagSyncStatus"[^>]*aria-live="polite"/);
+  assert.match(html, /id="tagSyncRunButton"[^>]*class="[^"]*tag-sync-run-button/);
+  assert.match(html, /id="tagSyncResult"[^>]*aria-live="polite"[^>]*hidden/);
   assert.doesNotMatch(html, /id="tagSyncWindow(?:Start|End)"[^>]*type="time"/);
 });
 
@@ -48,14 +48,32 @@ test("night automation disables only schedule selects and validates forward wind
   assert.match(endOptionsBody, /option\.disabled = optionMinutes <= startMinutes/);
 });
 
-test("manual synchronization uses the existing confirmation dialog and keeps status visible", () => {
+test("manual synchronization locks the button and follows the background run", () => {
   const runBody = functionBody("runTagSyncNow");
   assert.match(runBody, /立即同步企微标签/);
   assert.match(runBody, /收到客户消息时会自动暂停/);
   assert.match(runBody, /openConfirmation/);
   assert.match(runBody, /\/tag-sync\/run/);
+  assert.match(runBody, /trackTagSyncRun/);
+  assert.doesNotMatch(runBody, /finally[\s\S]*tagSyncRunButton\.disabled = false/);
+
+  const trackBody = functionBody("trackTagSyncRun");
+  assert.match(trackBody, /setTagSyncBusy\(true\)/);
+  assert.match(trackBody, /\/tag-sync\/status/);
+  assert.match(trackBody, /new Set\(\["completed", "stopped", "failed"\]\)/);
+  assert.match(trackBody, /setTimeout/);
+  assert.match(trackBody, /renderTagSyncResult/);
+  assert.match(trackBody, /setTagSyncBusy\(false\)/);
 
   assert.match(css, /\.tag-sync-form\s*\{[\s\S]*grid-template-columns:/);
-  assert.match(css, /\.tag-sync-status\s*\{[\s\S]*min-height:\s*42px/);
+  assert.match(css, /\.tag-sync-result\s*\{[\s\S]*grid-column:\s*1\s*\/\s*-1/);
+  assert.match(css, /\.tag-sync-run-button\.is-syncing \.icon\s*\{[\s\S]*animation:/);
   assert.match(css, /@media \(max-width:\s*980px\)[\s\S]*\.tag-sync-form/);
+});
+
+test("loading tag sync config resumes only an active run instead of rendering stale counts", () => {
+  const loadBody = functionBody("loadTagSyncConfig");
+  assert.match(loadBody, /statusData\.status\?\.activeRun/);
+  assert.match(loadBody, /trackTagSyncRun/);
+  assert.doesNotMatch(loadBody, /renderTagSyncStatus/);
 });

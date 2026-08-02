@@ -13,6 +13,7 @@ const state = {
   replyWaitLoadVersion: 0,
   historyAnalysisLoadVersion: 0,
   tagSyncLoadVersion: 0,
+  tagSyncTrackVersion: 0,
   tagSyncConfig: null,
   pendingConfirmationResolve: null,
   selectedFlowConversationKey: "",
@@ -55,7 +56,6 @@ const els = {
   unlockKeyInput: document.querySelector("#unlockKeyInput"),
   unlockCancelButton: document.querySelector("#unlockCancelButton"),
   unlockAcceptButton: document.querySelector("#unlockAcceptButton"),
-  botBindingPanel: document.querySelector("#botBindingPanel"),
   accessKeyPanel: document.querySelector("#accessKeyPanel"),
   accessKeyForm: document.querySelector("#accessKeyForm"),
   proactivePanel: document.querySelector("#proactivePanel"),
@@ -77,7 +77,7 @@ const els = {
   tagSyncWindowStart: document.querySelector("#tagSyncWindowStart"),
   tagSyncWindowEnd: document.querySelector("#tagSyncWindowEnd"),
   tagSyncRunButton: document.querySelector("#tagSyncRunButton"),
-  tagSyncStatus: document.querySelector("#tagSyncStatus"),
+  tagSyncResult: document.querySelector("#tagSyncResult"),
   flowMachineForm: document.querySelector("#flowMachineForm"),
   refreshGroupsButton: document.querySelector("#refreshGroupsButton"),
   createGroupButton: document.querySelector("#createGroupButton"),
@@ -669,6 +669,7 @@ function clearBotScopedContent() {
   state.proactiveTasksPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTargetTags = [];
   state.tagSyncLoadVersion += 1;
+  state.tagSyncTrackVersion += 1;
   state.tagSyncConfig = null;
   state.proactiveTagSelections.clear();
   state.proactiveManualTargetKeys.clear();
@@ -716,9 +717,8 @@ function clearBotScopedContent() {
     els.tagSyncWindowEnd.value = "06:00";
     syncTagSyncScheduleFields();
   }
-  if (els.tagSyncStatus) {
-    els.tagSyncStatus.innerHTML = `<span class="tag-sync-status-empty">选择 Bot 后查看同步状态</span>`;
-  }
+  setTagSyncBusy(false);
+  clearTagSyncResult();
   els.manualReplyInput.value = "";
   els.accessKeyForm.reset();
   els.proactiveForm.reset();
@@ -1905,35 +1905,102 @@ function syncTagSyncScheduleFields() {
   syncTagSyncEndOptions();
 }
 
-function tagSyncRunLabel(run) {
-  if (!run) return "暂无运行记录";
-  const labels = {
-    pending: "等待执行",
-    running: "同步中",
-    paused: "已暂停",
-    completed: "已完成",
-    failed: "执行失败"
-  };
-  const trigger = run.triggerType === "manual" ? "手动" : "夜间";
-  return `${trigger}同步：${labels[run.status] || run.status}`;
+function setTagSyncBusy(busy) {
+  if (!els.tagSyncRunButton) return;
+  const active = Boolean(busy);
+  els.tagSyncRunButton.disabled = active;
+  els.tagSyncRunButton.classList.toggle("is-syncing", active);
+  els.tagSyncRunButton.setAttribute("aria-busy", String(active));
+  const label = els.tagSyncRunButton.querySelector(".tag-sync-run-label");
+  if (label) label.textContent = active ? "同步中" : "立即同步";
 }
 
-function renderTagSyncStatus(status = {}) {
-  if (!els.tagSyncStatus) return;
-  const activeRun = status.activeRun || null;
-  const lastRun = status.lastRun || null;
-  const run = activeRun || lastRun;
-  const runTime = run?.updatedAt || run?.startedAt || "";
-  els.tagSyncStatus.innerHTML = `
-    <span class="tag-sync-stat is-pending">待同步 <strong>${Number(status.pendingCount || 0)}</strong></span>
-    <span class="tag-sync-stat is-processing">处理中 <strong>${Number(status.processingCount || 0)}</strong></span>
-    <span class="tag-sync-stat is-failed">失败 <strong>${Number(status.failedCount || 0)}</strong></span>
-    <span class="tag-sync-stat is-succeeded">已同步 <strong>${Number(status.succeededCount || 0)}</strong></span>
-    <span class="tag-sync-run-state" title="${escapeHtml(run?.lastError || run?.pauseReason || "")}">
-      ${icon(activeRun ? "refresh" : "history")}
-      <span>${escapeHtml(tagSyncRunLabel(run))}${runTime ? ` · ${escapeHtml(formatDisplayDateTime(runTime))}` : ""}</span>
-    </span>
+function clearTagSyncResult() {
+  if (!els.tagSyncResult) return;
+  els.tagSyncResult.hidden = true;
+  els.tagSyncResult.className = "tag-sync-result";
+  els.tagSyncResult.innerHTML = "";
+}
+
+function renderTagSyncResult(status = {}, run = {}) {
+  if (!els.tagSyncResult) return;
+  const resultLabels = {
+    completed: "同步完成",
+    stopped: "同步已停止",
+    failed: "同步失败"
+  };
+  const runStatus = String(run.status || "completed");
+  const resultTime = run.finishedAt || run.updatedAt || "";
+  const error = run.lastError || run.pauseReason || "";
+  els.tagSyncResult.className = `tag-sync-result is-${escapeHtml(runStatus)}`;
+  els.tagSyncResult.innerHTML = `
+    <div class="tag-sync-result-heading"${error ? ` title="${escapeHtml(error)}"` : ""}>
+      ${icon(runStatus === "failed" ? "alert" : "check")}
+      <strong>${escapeHtml(resultLabels[runStatus] || "同步结束")}</strong>
+      ${resultTime ? `<span>${escapeHtml(formatDisplayDateTime(resultTime))}</span>` : ""}
+    </div>
+    <div class="tag-sync-result-stats">
+      <span class="tag-sync-stat is-pending">待同步 <strong>${Number(status.pendingCount || 0)}</strong></span>
+      <span class="tag-sync-stat is-processing">处理中 <strong>${Number(status.processingCount || 0)}</strong></span>
+      <span class="tag-sync-stat is-failed">失败 <strong>${Number(status.failedCount || 0)}</strong></span>
+      <span class="tag-sync-stat is-succeeded">已同步 <strong>${Number(status.succeededCount || 0)}</strong></span>
+    </div>
   `;
+  els.tagSyncResult.hidden = false;
+}
+
+function findTagSyncRun(status = {}, runId) {
+  return [status.activeRun, status.lastRun]
+    .find((run) => Number(run?.id || 0) === Number(runId || 0)) || null;
+}
+
+async function trackTagSyncRun({ botId, contextVersion, runId, initialStatus = null }) {
+  const trackVersion = ++state.tagSyncTrackVersion;
+  const terminalStatuses = new Set(["completed", "stopped", "failed"]);
+  let status = initialStatus;
+  let requestFailures = 0;
+  setTagSyncBusy(true);
+  clearTagSyncResult();
+  try {
+    while (
+      trackVersion === state.tagSyncTrackVersion &&
+      isCurrentBotContext(botId, contextVersion)
+    ) {
+      if (!status) {
+        try {
+          const data = await request(`/api/bots/${encodeURIComponent(botId)}/tag-sync/status`, { botId });
+          status = data.status || {};
+          requestFailures = 0;
+        } catch (error) {
+          requestFailures += 1;
+          if (requestFailures >= 3) throw error;
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
+        }
+      }
+      const run = findTagSyncRun(status, runId);
+      if (run && terminalStatuses.has(run.status)) {
+        renderTagSyncResult(status, run);
+        const notices = {
+          completed: ["企微标签同步已完成", "success"],
+          stopped: ["企微标签同步已停止", "info"],
+          failed: ["企微标签同步失败", "error"]
+        };
+        const [message, tone] = notices[run.status] || ["企微标签同步已结束", "info"];
+        toast(message, tone);
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      status = null;
+    }
+  } finally {
+    if (
+      trackVersion === state.tagSyncTrackVersion &&
+      isCurrentBotContext(botId, contextVersion)
+    ) {
+      setTagSyncBusy(false);
+    }
+  }
 }
 
 function applyTagSyncConfig(config = {}) {
@@ -1958,7 +2025,18 @@ async function loadTagSyncConfig({ contextVersion = state.botContextVersion } = 
     !isCurrentBotContext(botId, contextVersion)
   ) return;
   applyTagSyncConfig(configData.config || statusData.status?.config || {});
-  renderTagSyncStatus(statusData.status || {});
+  clearTagSyncResult();
+  const activeRun = statusData.status?.activeRun || null;
+  if (activeRun) {
+    void trackTagSyncRun({
+      botId,
+      contextVersion,
+      runId: activeRun.id,
+      initialStatus: statusData.status || {}
+    }).catch(toastError);
+  } else {
+    setTagSyncBusy(false);
+  }
 }
 
 async function saveTagSyncConfig(event) {
@@ -1993,9 +2071,6 @@ async function saveTagSyncConfig(event) {
   });
   if (!isCurrentBotContext(botId, contextVersion)) return;
   applyTagSyncConfig(result.config || {});
-  const statusData = await request(`/api/bots/${encodeURIComponent(botId)}/tag-sync/status`, { botId });
-  if (!isCurrentBotContext(botId, contextVersion)) return;
-  renderTagSyncStatus(statusData.status || {});
   toast("企微标签同步配置已保存");
 }
 
@@ -2012,7 +2087,8 @@ async function runTagSyncNow() {
     acceptLabel: "立即同步"
   });
   if (!confirmed || !isCurrentBotContext(botId, contextVersion)) return;
-  els.tagSyncRunButton.disabled = true;
+  setTagSyncBusy(true);
+  clearTagSyncResult();
   try {
     const data = await request(`/api/bots/${encodeURIComponent(botId)}/tag-sync/run`, {
       method: "POST",
@@ -2020,12 +2096,18 @@ async function runTagSyncNow() {
       body: JSON.stringify({})
     });
     if (!isCurrentBotContext(botId, contextVersion)) return;
-    renderTagSyncStatus(data.status || {});
+    const run = data.run || data.status?.activeRun || null;
+    if (!run?.id) throw new Error("未能获取企微标签同步任务");
     toast("企微标签同步已开始");
-  } finally {
-    if (isCurrentBotContext(botId, contextVersion)) {
-      els.tagSyncRunButton.disabled = false;
-    }
+    await trackTagSyncRun({
+      botId,
+      contextVersion,
+      runId: run.id,
+      initialStatus: data.status || null
+    });
+  } catch (error) {
+    if (isCurrentBotContext(botId, contextVersion)) setTagSyncBusy(false);
+    throw error;
   }
 }
 

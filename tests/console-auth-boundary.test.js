@@ -135,7 +135,9 @@ test("bot binding form selects a saved agent instead of storing agent credential
   assert.equal(app.includes("/api/agents"), true);
   assert.equal(app.includes("renderAgentOptions"), true);
   assert.equal(app.includes("`${agent.agentName} (${agent.agentId})`"), false);
-  assert.equal(css.includes("#botForm.form-grid"), true);
+  assert.match(botForm, /class="bot-binding-state"[^>]*hidden/);
+  assert.doesNotMatch(html, /id="botBindingPanel"/);
+  assert.doesNotMatch(html, />Bot 绑定</);
   assert.equal(app.includes("data-agent-delete"), false);
   assert.equal(app.includes("deleteAgent(agent)"), false);
 });

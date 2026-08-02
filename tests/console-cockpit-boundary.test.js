@@ -272,7 +272,7 @@ test("report recipients and schedules live in the final config tab", () => {
 
 test("cockpit report fields use compact icon labels and shared recipient help", () => {
   const panelStart = html.indexOf('id="cockpitConfigPanel"');
-  const panelEnd = html.indexOf('id="botBindingPanel"', panelStart);
+  const panelEnd = html.indexOf('id="replyWaitPanel"', panelStart);
   const panel = html.slice(panelStart, panelEnd);
 
   for (const [icon, label] of [
@@ -295,7 +295,7 @@ test("cockpit report fields use compact icon labels and shared recipient help", 
 
 test("cockpit keeps statistics rules as hidden system defaults", () => {
   const panelStart = html.indexOf('id="cockpitConfigPanel"');
-  const panelEnd = html.indexOf('id="botBindingPanel"', panelStart);
+  const panelEnd = html.indexOf('id="replyWaitPanel"', panelStart);
   const panel = html.slice(panelStart, panelEnd);
 
   assert.doesNotMatch(panel, />统计时区</);
@@ -317,7 +317,7 @@ test("cockpit config hydration preserves fixed statistics defaults", () => {
 
 test("cockpit report recipients share three desktop columns with a mobile fallback", () => {
   const panelStart = html.indexOf('id="cockpitConfigPanel"');
-  const panelEnd = html.indexOf('id="botBindingPanel"', panelStart);
+  const panelEnd = html.indexOf('id="replyWaitPanel"', panelStart);
   const panel = html.slice(panelStart, panelEnd);
   const gridStart = panel.indexOf('class="cockpit-recipient-grid wide"');
   const gridEnd = panel.indexOf('</div>', gridStart);

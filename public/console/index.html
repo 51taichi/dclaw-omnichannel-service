@@ -342,45 +342,18 @@
           </form>
         </div>
       </section>
-      <section id="botBindingPanel" class="panel binding-panel bot-context-panel collapsible-panel">
-        <div class="section-head binding-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-link"></use></svg>Bot 绑定</h2>
-          <div class="section-actions">
-            <button class="collapse-button" data-collapse-target="botBindingPanel" type="button" aria-label="收起 Bot 绑定">
-              <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
-            </button>
-          </div>
-        </div>
-        <div class="collapsible-content">
-        <form id="botForm" class="form-grid">
-          <label>
-            <span class="field-label">Bot ID</span>
-            <input name="botId" required placeholder="WorkTool botId" />
-          </label>
-          <label>
-            <span class="field-label">Bot 名称</span>
-            <input name="botName" placeholder="A部门机器人" />
-          </label>
-          <label>
-            <span class="field-label">绑定 Agent</span>
-            <select name="agentId" required>
-              <option value="">请先在 Agents 中创建 Agent</option>
-            </select>
-          </label>
-          <div class="actions">
-            <label class="toggle switch-toggle action-toggle">
-              <input name="enabled" type="checkbox" checked />
-              <span class="switch-slider" aria-hidden="true"></span>
-              <span class="switch-label">启用</span>
-            </label>
-            <button class="primary" type="submit">
-              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-              保存绑定
-            </button>
-          </div>
-        </form>
-        </div>
-      </section>
+      <form id="botForm" class="bot-binding-state" hidden aria-hidden="true">
+        <input name="botId" />
+        <input name="botName" />
+        <select name="agentId" required>
+          <option value="">请先在 Agents 中创建 Agent</option>
+        </select>
+        <label class="toggle switch-toggle action-toggle">
+          <input name="enabled" type="checkbox" checked />
+          <span class="switch-slider" aria-hidden="true"></span>
+          <span class="switch-label">启用</span>
+        </label>
+      </form>
 
       <section id="replyWaitPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
         <div class="section-head">
@@ -471,17 +444,17 @@
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>结束时间</span>
               <select id="tagSyncWindowEnd" name="windowEnd" aria-label="夜间同步结束时间"></select>
             </label>
-            <div id="tagSyncStatus" class="tag-sync-status" aria-live="polite"></div>
             <div class="actions tag-sync-actions">
               <button class="secondary" type="submit">
                 <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
                 保存配置
               </button>
-              <button id="tagSyncRunButton" class="primary" type="button">
+              <button id="tagSyncRunButton" class="primary tag-sync-run-button" type="button">
                 <svg class="icon" aria-hidden="true"><use href="#icon-refresh"></use></svg>
-                立即同步
+                <span class="tag-sync-run-label">立即同步</span>
               </button>
             </div>
+            <div id="tagSyncResult" class="tag-sync-result" aria-live="polite" hidden></div>
           </form>
         </div>
       </section>
