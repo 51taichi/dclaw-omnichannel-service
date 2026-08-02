@@ -9,7 +9,6 @@ const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
   selectedBotId: "",
   botContextVersion: 0,
-  debugReplyLoadVersion: 0,
   replyWaitLoadVersion: 0,
   historyAnalysisLoadVersion: 0,
   tagSyncLoadVersion: 0,
@@ -56,8 +55,6 @@ const els = {
   unlockKeyInput: document.querySelector("#unlockKeyInput"),
   unlockCancelButton: document.querySelector("#unlockCancelButton"),
   unlockAcceptButton: document.querySelector("#unlockAcceptButton"),
-  accessKeyPanel: document.querySelector("#accessKeyPanel"),
-  accessKeyForm: document.querySelector("#accessKeyForm"),
   proactivePanel: document.querySelector("#proactivePanel"),
   workspaceTabBar: document.querySelector(".workspace-tabs"),
   workspaceTabs: document.querySelectorAll("[data-workspace-tab]"),
@@ -67,13 +64,13 @@ const els = {
   botForm: document.querySelector("#botForm"),
   cockpitConfigForm: document.querySelector("#cockpitConfigForm"),
   generateCockpitReportButton: document.querySelector("#generateCockpitReportButton"),
-  debugReplyForm: document.querySelector("#debugReplyForm"),
   replyWaitPanel: document.querySelector("#replyWaitPanel"),
   replyWaitForm: document.querySelector("#replyWaitForm"),
   historyAnalysisForm: document.querySelector("#historyAnalysisForm"),
   tagSyncPanel: document.querySelector("#tagSyncPanel"),
   tagSyncForm: document.querySelector("#tagSyncForm"),
   tagSyncNightlyEnabled: document.querySelector("#tagSyncNightlyEnabled"),
+  tagSyncDateTagsEnabled: document.querySelector("#tagSyncDateTagsEnabled"),
   tagSyncWindowStart: document.querySelector("#tagSyncWindowStart"),
   tagSyncWindowEnd: document.querySelector("#tagSyncWindowEnd"),
   tagSyncRunButton: document.querySelector("#tagSyncRunButton"),
@@ -353,7 +350,6 @@ function syncRoleVisibility() {
   els.workspaceTabBar?.classList.toggle("is-config-hidden", hideConfig);
   document.querySelector('[data-workspace-tab="config"]')?.toggleAttribute("hidden", hideConfig);
   els.resetFormButton.hidden = !hasBot;
-  if (els.accessKeyPanel) els.accessKeyPanel.hidden = !isAdmin;
   if (els.lockBotButton) els.lockBotButton.hidden = !hasBot || workspaceLocked;
   if (els.workspaceLockPanel) els.workspaceLockPanel.hidden = !workspaceLocked;
   if (workspaceLocked) {
@@ -697,9 +693,6 @@ function clearBotScopedContent() {
   els.botForm.enabled.checked = true;
   els.flowMachineForm.reset();
   els.flowMachineForm.enabled.checked = false;
-  els.debugReplyForm.reset();
-  els.debugReplyForm.trigger.value = "ping";
-  els.debugReplyForm.reply.value = "pong";
   els.replyWaitForm?.reset();
   if (els.replyWaitForm) {
     els.replyWaitForm.baseSeconds.value = "10";
@@ -713,6 +706,7 @@ function clearBotScopedContent() {
   if (els.tagSyncForm) {
     els.tagSyncForm.reset();
     els.tagSyncNightlyEnabled.checked = true;
+    els.tagSyncDateTagsEnabled.checked = false;
     els.tagSyncWindowStart.value = "03:00";
     els.tagSyncWindowEnd.value = "06:00";
     syncTagSyncScheduleFields();
@@ -720,7 +714,6 @@ function clearBotScopedContent() {
   setTagSyncBusy(false);
   clearTagSyncResult();
   els.manualReplyInput.value = "";
-  els.accessKeyForm.reset();
   els.proactiveForm.reset();
   if (els.proactiveFileUrl) els.proactiveFileUrl.value = "";
   clearProactiveUpload();
@@ -786,8 +779,6 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       renderBots(currentBots);
       fillForm(activeBot);
-      await loadDebugReply({ contextVersion });
-      if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       await loadReplyWait({ contextVersion });
       if (!isCurrentBotContext(bot.botId, contextVersion)) return;
       await loadHistoryAnalysis({ contextVersion });
@@ -1792,24 +1783,6 @@ async function loadAgents({ silent = false, headers: requestHeaders = {} } = {})
   }
 }
 
-async function loadDebugReply({ contextVersion = state.botContextVersion } = {}) {
-  const botId = state.selectedBotId;
-  if (state.currentRole !== "admin" || !botId) return;
-  const requestVersion = ++state.debugReplyLoadVersion;
-  const data = await request(
-    `/api/bots/${encodeURIComponent(botId)}/settings/debug-reply`
-  );
-  if (
-    requestVersion !== state.debugReplyLoadVersion ||
-    state.selectedBotId !== botId ||
-    !isCurrentBotContext(botId, contextVersion)
-  ) return;
-  const config = data.config || {};
-  els.debugReplyForm.enabled.checked = Boolean(config.enabled);
-  els.debugReplyForm.trigger.value = config.trigger || "ping";
-  els.debugReplyForm.reply.value = config.reply || "pong";
-}
-
 async function loadReplyWait({ contextVersion = state.botContextVersion } = {}) {
   const botId = state.selectedBotId;
   if (state.currentRole !== "admin" || !botId || !els.replyWaitForm) return;
@@ -2006,6 +1979,7 @@ async function trackTagSyncRun({ botId, contextVersion, runId, initialStatus = n
 function applyTagSyncConfig(config = {}) {
   state.tagSyncConfig = config;
   els.tagSyncNightlyEnabled.checked = Boolean(config.nightlyEnabled);
+  els.tagSyncDateTagsEnabled.checked = Boolean(config.syncDateTags);
   els.tagSyncWindowStart.value = config.windowStart || "03:00";
   els.tagSyncWindowEnd.value = config.windowEnd || "06:00";
   syncTagSyncScheduleFields();
@@ -2065,6 +2039,7 @@ async function saveTagSyncConfig(event) {
     botId,
     body: JSON.stringify({
       nightlyEnabled,
+      syncDateTags: els.tagSyncDateTagsEnabled.checked,
       windowStart: els.tagSyncWindowStart.value,
       windowEnd: els.tagSyncWindowEnd.value
     })
@@ -2133,33 +2108,6 @@ async function saveBot(event) {
   const savedBot = currentBots.find((item) => item.botId === bot.botId) || unlockedBot || result.binding;
   if (savedBot && unlockedBot) Object.assign(savedBot, unlockedBot);
   if (savedBot) await applyBotContext(savedBot);
-}
-
-async function saveAccessKey(event) {
-  event.preventDefault();
-  const botId = state.selectedBotId;
-  const contextVersion = state.botContextVersion;
-  if (!botId) {
-    toast("请选择 Bot");
-    return;
-  }
-  const adminHeaders = await promptAdminHeaders("修改 Bot 密钥需要管理员密码。");
-  if (!adminHeaders || !isCurrentBotContext(botId, contextVersion)) return;
-  const accessKey = String(new FormData(els.accessKeyForm).get("accessKey") || "").trim();
-  if (!accessKey) {
-    toast("请输入新的 Bot 密钥");
-    return;
-  }
-  await request(`/api/bots/${encodeURIComponent(botId)}/access-key`, {
-    method: "PUT",
-    headers: adminHeaders,
-    botId,
-    body: JSON.stringify({ accessKey })
-  });
-  if (!isCurrentBotContext(botId, contextVersion)) return;
-  els.accessKeyForm.reset();
-  toast("Bot 密钥已修改");
-  await loadBots();
 }
 
 async function bindCallback(botId, type) {
@@ -5233,27 +5181,6 @@ function toggleAssetsPanel() {
   els.assetsPanel.hidden = !els.assetsPanel.hidden;
 }
 
-async function saveDebugReply(event) {
-  event.preventDefault();
-  const botId = state.selectedBotId;
-  const contextVersion = state.botContextVersion;
-  if (state.currentRole !== "admin" || !botId) {
-    toast("请先以管理员身份选择 Bot");
-    return;
-  }
-  await request(`/api/bots/${encodeURIComponent(botId)}/settings/debug-reply`, {
-    method: "PUT",
-    botId,
-    body: JSON.stringify({
-      enabled: els.debugReplyForm.enabled.checked,
-      trigger: els.debugReplyForm.trigger.value,
-      reply: els.debugReplyForm.reply.value
-    })
-  });
-  if (!isCurrentBotContext(botId, contextVersion)) return;
-  toast("调试自动回复已保存");
-}
-
 async function saveReplyWait(event) {
   event.preventDefault();
   const botId = state.selectedBotId;
@@ -5941,12 +5868,6 @@ els.cockpitConfigForm?.addEventListener("submit", (event) =>
 );
 els.generateCockpitReportButton?.addEventListener("click", () =>
   generateCockpitReport().catch(toastError)
-);
-els.accessKeyForm.addEventListener("submit", (event) =>
-  saveAccessKey(event).catch(toastError)
-);
-els.debugReplyForm.addEventListener("submit", (event) =>
-  saveDebugReply(event).catch(toastError)
 );
 els.replyWaitForm?.addEventListener("submit", (event) =>
   saveReplyWait(event).catch(toastError)

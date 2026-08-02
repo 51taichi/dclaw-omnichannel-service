@@ -6,6 +6,8 @@ const state = {
   workspaces: [],
   workspaceDetails: new Map(),
   selectedWorkspaceId: 0,
+  selectedBotId: "",
+  debugReplyLoadVersion: 0,
   bots: [],
   agents: [],
   selectedBotIds: new Set(),
@@ -27,6 +29,10 @@ const els = {
   assignBots: document.querySelector("#assignBotsButton"),
   botForm: document.querySelector("#botForm"),
   botList: document.querySelector("#botList"),
+  botMaintenancePanel: document.querySelector("#botMaintenancePanel"),
+  botMaintenanceName: document.querySelector("#botMaintenanceName"),
+  botAccessKeyForm: document.querySelector("#adminBotAccessKeyForm"),
+  debugReplyForm: document.querySelector("#adminDebugReplyForm"),
   agentForm: document.querySelector("#agentForm"),
   agentList: document.querySelector("#agentList"),
   passwordForm: document.querySelector("#adminPasswordForm"),
@@ -66,6 +72,13 @@ function escapeHtml(value) {
 
 function adminIcon(name) {
   return `<svg aria-hidden="true"><use href="#admin-icon-${name}"></use></svg>`;
+}
+
+function setFormBusy(form, busy) {
+  form.classList.toggle("is-busy", busy);
+  Array.from(form.elements).forEach((control) => {
+    control.disabled = busy;
+  });
 }
 
 function toast(message) {
@@ -434,6 +447,69 @@ function renderAgentOptions() {
   ).join("")}`;
 }
 
+function clearBotMaintenance() {
+  state.debugReplyLoadVersion += 1;
+  state.selectedBotId = "";
+  els.botMaintenancePanel.hidden = true;
+  els.botMaintenanceName.textContent = "";
+  els.botAccessKeyForm.reset();
+  els.debugReplyForm.reset();
+  els.debugReplyForm.trigger.value = "ping";
+  els.debugReplyForm.reply.value = "pong";
+  setFormBusy(els.botAccessKeyForm, false);
+  setFormBusy(els.debugReplyForm, false);
+}
+
+async function loadBotMaintenance(botId) {
+  const requestVersion = ++state.debugReplyLoadVersion;
+  setFormBusy(els.debugReplyForm, true);
+  try {
+    const data = await adminRequest(
+      `/api/bots/${encodeURIComponent(botId)}/settings/debug-reply`
+    );
+    if (
+      requestVersion !== state.debugReplyLoadVersion ||
+      state.selectedBotId !== botId
+    ) return;
+    const config = data.config || {};
+    els.debugReplyForm.enabled.checked = Boolean(config.enabled);
+    els.debugReplyForm.trigger.value = config.trigger || "ping";
+    els.debugReplyForm.reply.value = config.reply || "pong";
+    setFormBusy(els.debugReplyForm, false);
+  } catch (error) {
+    if (
+      requestVersion !== state.debugReplyLoadVersion ||
+      state.selectedBotId !== botId
+    ) return;
+    els.debugReplyForm.reset();
+    els.debugReplyForm.trigger.value = "ping";
+    els.debugReplyForm.reply.value = "pong";
+    throw error;
+  }
+}
+
+async function selectBotForEditing(botId) {
+  const bot = state.bots.find((item) => item.botId === botId);
+  if (!bot) {
+    clearBotMaintenance();
+    return;
+  }
+  state.selectedBotId = botId;
+  els.botForm.botId.value = bot.botId;
+  els.botForm.botName.value = bot.botName || "";
+  els.botForm.agentId.value = bot.agentId || "";
+  els.botForm.enabled.checked = bot.botEnabled !== false;
+  els.botMaintenanceName.textContent = bot.botName || bot.botId;
+  els.botMaintenancePanel.hidden = false;
+  els.botAccessKeyForm.reset();
+  setFormBusy(els.botAccessKeyForm, false);
+  els.debugReplyForm.reset();
+  els.debugReplyForm.trigger.value = "ping";
+  els.debugReplyForm.reply.value = "pong";
+  els.botForm.scrollIntoView({ behavior: "smooth" });
+  await loadBotMaintenance(botId);
+}
+
 function renderBotList() {
   els.botList.innerHTML = state.bots.map((bot) => {
     const workspace = workspaceNameForBot(bot.botId);
@@ -451,12 +527,7 @@ function renderBotList() {
   }).join("");
   els.botList.querySelectorAll("[data-edit-bot]").forEach((button) => {
     button.addEventListener("click", () => {
-      const bot = state.bots.find((item) => item.botId === button.dataset.editBot);
-      els.botForm.botId.value = bot.botId;
-      els.botForm.botName.value = bot.botName || "";
-      els.botForm.agentId.value = bot.agentId || "";
-      els.botForm.enabled.checked = bot.botEnabled !== false;
-      els.botForm.scrollIntoView({ behavior: "smooth" });
+      selectBotForEditing(button.dataset.editBot).catch((error) => toast(error.message));
     });
   });
   els.botList.querySelectorAll("[data-enter-bot]").forEach((button) => {
@@ -472,7 +543,8 @@ function renderBotList() {
 async function saveBot(event) {
   event.preventDefault();
   const form = new FormData(els.botForm);
-  await adminRequest(`/api/bots/${encodeURIComponent(form.get("botId"))}`, {
+  const botId = String(form.get("botId") || "").trim();
+  await adminRequest(`/api/bots/${encodeURIComponent(botId)}`, {
     method: "PUT",
     body: JSON.stringify({
       botName: form.get("botName"),
@@ -481,7 +553,54 @@ async function saveBot(event) {
     })
   });
   await loadGlobalData();
-  toast("Bot 已保存");
+  try {
+    await selectBotForEditing(botId);
+    toast("Bot 已保存");
+  } catch {
+    toast("Bot 已保存，但调试配置加载失败");
+  }
+}
+
+async function saveBotAccessKey(event) {
+  event.preventDefault();
+  const botId = state.selectedBotId;
+  if (!botId) throw new Error("请先选择一个已保存的 Bot");
+  const accessKey = String(new FormData(els.botAccessKeyForm).get("accessKey") || "").trim();
+  if (!accessKey) throw new Error("请输入新的 Bot 密钥");
+  setFormBusy(els.botAccessKeyForm, true);
+  try {
+    await adminRequest(`/api/bots/${encodeURIComponent(botId)}/access-key`, {
+      method: "PUT",
+      body: JSON.stringify({ accessKey })
+    });
+    if (state.selectedBotId !== botId) return;
+    els.botAccessKeyForm.reset();
+    toast("Bot 密钥已修改");
+  } finally {
+    if (state.selectedBotId === botId) setFormBusy(els.botAccessKeyForm, false);
+  }
+}
+
+async function saveDebugReply(event) {
+  event.preventDefault();
+  const botId = state.selectedBotId;
+  if (!botId) throw new Error("请先选择一个已保存的 Bot");
+  const body = {
+    enabled: els.debugReplyForm.enabled.checked,
+    trigger: els.debugReplyForm.trigger.value,
+    reply: els.debugReplyForm.reply.value
+  };
+  setFormBusy(els.debugReplyForm, true);
+  try {
+    await adminRequest(`/api/bots/${encodeURIComponent(botId)}/settings/debug-reply`, {
+      method: "PUT",
+      body: JSON.stringify(body)
+    });
+    if (state.selectedBotId !== botId) return;
+    toast("调试自动回复已保存");
+  } finally {
+    if (state.selectedBotId === botId) setFormBusy(els.debugReplyForm, false);
+  }
 }
 
 function renderAgentList() {
@@ -580,6 +699,17 @@ els.assignmentSearch.addEventListener("input", renderAssignmentBots);
 els.assignmentCancel.addEventListener("click", () => { els.assignmentModal.hidden = true; });
 els.assignmentConfirm.addEventListener("click", () => confirmAssignment().catch((error) => toast(error.message)));
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch((error) => toast(error.message)));
+els.botForm.botId.addEventListener("input", () => {
+  if (state.selectedBotId && els.botForm.botId.value.trim() !== state.selectedBotId) {
+    clearBotMaintenance();
+  }
+});
+els.botAccessKeyForm.addEventListener("submit", (event) =>
+  saveBotAccessKey(event).catch((error) => toast(error.message))
+);
+els.debugReplyForm.addEventListener("submit", (event) =>
+  saveDebugReply(event).catch((error) => toast(error.message))
+);
 els.agentForm.addEventListener("submit", (event) => saveAgent(event).catch((error) => toast(error.message)));
 els.passwordForm.addEventListener("submit", (event) => changePassword(event).catch((error) => toast(error.message)));
 

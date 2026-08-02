@@ -332,6 +332,79 @@ body {
   margin: 18px 0;
 }
 
+.admin-bot-maintenance[hidden] {
+  display: none;
+}
+
+.admin-bot-maintenance {
+  margin: 22px 0 18px;
+  padding-top: 2px;
+}
+
+.admin-maintenance-head h2,
+.admin-maintenance-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.admin-maintenance-head h2 > svg,
+.admin-maintenance-card-head > svg {
+  color: var(--accent);
+}
+
+.admin-bot-maintenance-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.admin-maintenance-card {
+  grid-template-columns: 1fr;
+  align-content: start;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(43, 57, 116, 0.06);
+}
+
+.admin-maintenance-card-head {
+  min-height: 44px;
+}
+
+.admin-maintenance-card-head h3,
+.admin-maintenance-card-head p {
+  margin: 0;
+}
+
+.admin-maintenance-card-head h3 {
+  font-size: 16px;
+}
+
+.admin-maintenance-card-head p {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.admin-maintenance-card label:not(.toggle-line) {
+  grid-template-columns: 150px minmax(0, 1fr);
+}
+
+.admin-maintenance-card .admin-actions {
+  grid-column: 1;
+  justify-content: flex-end;
+}
+
+.admin-maintenance-switch {
+  width: 100%;
+}
+
+.admin-maintenance-card.is-busy {
+  opacity: 0.68;
+}
+
 .admin-table {
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -445,6 +518,10 @@ body {
 
   .admin-form,
   .admin-table-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-bot-maintenance-grid {
     grid-template-columns: 1fr;
   }
 

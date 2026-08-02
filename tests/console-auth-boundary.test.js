@@ -52,8 +52,9 @@ test("console header actions do not show the current bot status label", () => {
   assert.match(css, /\.current-bot-actions button\[hidden\]\s*\{[^}]*display:\s*none !important/);
 });
 
-test("console hides config tab for bot role and exposes access-key reset for admin", () => {
-  assert.equal(html.includes("accessKeyForm"), true);
+test("console hides config tab for bot role without owning system maintenance", () => {
+  assert.equal(html.includes("accessKeyForm"), false);
+  assert.equal(html.includes("debugReplyForm"), false);
   assert.equal(html.includes('data-workspace-tab="agents"'), false);
   assert.equal(html.includes("agentForm"), false);
   assert.equal(html.includes("agentsList"), false);
@@ -66,7 +67,8 @@ test("console hides config tab for bot role and exposes access-key reset for adm
   assert.equal(app.includes("agentManagementPanel"), false);
   assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), true);
   assert.equal(app.includes("state.currentRole === \"admin\""), true);
-  assert.equal(app.includes("/access-key"), true);
+  assert.equal(app.includes("/access-key"), false);
+  assert.equal(app.includes("settings/debug-reply"), false);
   assert.equal(css.includes(".bot-card.is-locked"), true);
   assert.equal(css.includes('.workspace-tabs.is-config-hidden [data-workspace-tab="config"]'), true);
   assert.equal(css.includes("display: none !important"), true);
@@ -148,14 +150,13 @@ test("admin Bot context reloads Agent data with the selected Bot session", () =>
     /if \(state\.currentRole === "admin"\) \{[\s\S]*await loadAgents\(\);[\s\S]*fillForm\(activeBot\);/
   );
   const loadAgentsStart = app.indexOf("async function loadAgents");
-  const loadAgentsEnd = app.indexOf("async function loadDebugReply", loadAgentsStart);
+  const loadAgentsEnd = app.indexOf("async function loadReplyWait", loadAgentsStart);
   const loadAgentsBody = app.slice(loadAgentsStart, loadAgentsEnd);
   assert.doesNotMatch(loadAgentsBody, /botId:\s*""/);
 });
 
 test("startup toggles render as switch components instead of plain checkboxes", () => {
   assert.match(html, /class="toggle switch-toggle action-toggle"[\s\S]*name="enabled" type="checkbox" checked[\s\S]*class="switch-slider"/);
-  assert.match(html, /id="debugReplyForm"[\s\S]*class="toggle switch-toggle"[\s\S]*name="enabled" type="checkbox"[\s\S]*class="switch-slider"/);
   assert.match(html, /id="flowMachineForm"[\s\S]*class="toggle switch-toggle"[\s\S]*name="enabled" type="checkbox"[\s\S]*class="switch-slider"/);
   assert.match(app, /id="dateTagEnabled" type="checkbox"[\s\S]*class="switch-slider"/);
   assert.match(css, /\.switch-toggle/);
@@ -176,7 +177,7 @@ test("config saves can request admin password on demand", () => {
   assert.equal(app.includes("openAdminKeyDialog"), true);
   assert.equal(app.includes("promptAdminHeaders"), true);
   assert.equal(app.includes("保存 Bot 配置需要管理员密码"), true);
-  assert.equal(app.includes("修改 Bot 密钥需要管理员密码"), true);
+  assert.equal(app.includes("修改 Bot 密钥需要管理员密码"), false);
   assert.equal(app.includes('return { "x-api-key": adminKey }'), true);
   assert.equal(app.includes("ensureAdminBotSession"), true);
   assert.equal(app.includes("acceptUnlockDialog"), true);
@@ -339,27 +340,12 @@ test("tag alert streaming follows the authenticated Bot lifecycle", () => {
 });
 
 test("bot scoped loaders ignore responses from a previous bot selection", () => {
-  ["loadAddressBookTargets", "loadDebugReply", "loadLogs", "loadProactiveTasks", "loadFlowMachine", "loadFlowSessions"].forEach((name) => {
+  ["loadAddressBookTargets", "loadLogs", "loadProactiveTasks", "loadFlowMachine", "loadFlowSessions"].forEach((name) => {
     const start = app.indexOf(`async function ${name}`);
     const end = app.indexOf("\nasync function ", start + 1);
     const body = app.slice(start, end === -1 ? undefined : end);
     assert.match(body, /isCurrentBotContext\(botId, contextVersion\)/);
   });
-});
-
-test("debug auto-reply configuration is requested and saved for the selected bot", () => {
-  const loadStart = app.indexOf("async function loadDebugReply");
-  const loadEnd = app.indexOf("async function saveBot", loadStart);
-  const loadBody = app.slice(loadStart, loadEnd);
-  const saveStart = app.indexOf("async function saveDebugReply");
-  const saveEnd = app.indexOf("async function createProactiveTask", saveStart);
-  const saveBody = app.slice(saveStart, saveEnd);
-
-  assert.match(loadBody, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/settings\/debug-reply/);
-  assert.match(loadBody, /isCurrentBotContext\(botId, contextVersion\)/);
-  assert.match(saveBody, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/settings\/debug-reply/);
-  assert.equal(loadBody.includes('"/api/settings/debug-reply"'), false);
-  assert.equal(saveBody.includes('"/api/settings/debug-reply"'), false);
 });
 
 test("Bot-scoped mutations and drafts cannot cross an in-flight Bot switch", () => {
@@ -368,15 +354,12 @@ test("Bot-scoped mutations and drafts cannot cross an in-flight Bot switch", () 
   const clearBody = app.slice(clearStart, clearEnd);
   assert.match(clearBody, /els\.manualReplyInput\.value = ""/);
   assert.match(clearBody, /els\.proactiveForm\.reset\(\)/);
-  assert.match(clearBody, /els\.accessKeyForm\.reset\(\)/);
 
   [
-    "saveAccessKey",
     "saveFlowMachine",
     "toggleSelectedConversationHandoff",
     "sendManualReply",
     "resetSelectedConversation",
-    "saveDebugReply",
     "createProactiveTask"
   ].forEach((name) => {
     const start = app.indexOf(`async function ${name}`);

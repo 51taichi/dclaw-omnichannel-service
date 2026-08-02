@@ -152,6 +152,19 @@ test("admin console owns Agent and Bot global maintenance", () => {
   assert.equal(html.includes("workspaceColumn"), true);
 });
 
+test("administrator Bots page owns Bot key and debug reply maintenance", () => {
+  assert.match(html, /id="botMaintenancePanel"[^>]*hidden/);
+  assert.match(html, /id="adminBotAccessKeyForm"[\s\S]*name="accessKey"[^>]*type="password"/);
+  assert.match(html, /id="adminDebugReplyForm"[\s\S]*name="enabled"[^>]*type="checkbox"[\s\S]*name="trigger"[\s\S]*name="reply"/);
+  assert.match(app, /selectedBotId:\s*""/);
+  assert.match(app, /debugReplyLoadVersion:\s*0/);
+  assert.match(app, /async function selectBotForEditing\(botId\)/);
+  assert.match(app, /async function loadBotMaintenance\(botId\)/);
+  assert.match(app, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/access-key/);
+  assert.match(app, /\/api\/bots\/\$\{encodeURIComponent\(botId\)\}\/settings\/debug-reply/);
+  assert.match(css, /\.admin-bot-maintenance-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
+});
+
 test("admin console reuses platform styles with focused operational layout", () => {
   assert.equal(css.includes('@import url("/console/styles.css")'), true);
   assert.equal(css.includes(".admin-workspace-layout"), true);

@@ -436,6 +436,11 @@
               <span class="switch-slider" aria-hidden="true"></span>
               <span class="switch-label">夜间自动同步</span>
             </label>
+            <label class="toggle switch-toggle tag-sync-toggle">
+              <input id="tagSyncDateTagsEnabled" name="syncDateTags" type="checkbox" />
+              <span class="switch-slider" aria-hidden="true"></span>
+              <span class="switch-label">同步添加日期标签</span>
+            </label>
             <label>
               <span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>开始时间</span>
               <select id="tagSyncWindowStart" name="windowStart" aria-label="夜间同步开始时间"></select>
@@ -455,61 +460,6 @@
               </button>
             </div>
             <div id="tagSyncResult" class="tag-sync-result" aria-live="polite" hidden></div>
-          </form>
-        </div>
-      </section>
-
-      <section id="debugPanel" class="panel bot-context-panel collapsible-panel">
-        <div class="section-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-terminal"></use></svg>调试自动回复</h2>
-          <button class="collapse-button" data-collapse-target="debugPanel" type="button" aria-label="收起调试自动回复">
-            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
-          </button>
-        </div>
-        <div class="collapsible-content">
-        <form id="debugReplyForm" class="form-grid compact-form">
-          <label class="toggle switch-toggle">
-            <input name="enabled" type="checkbox" />
-            <span class="switch-slider" aria-hidden="true"></span>
-            <span class="switch-label">开启调试自动回复</span>
-          </label>
-          <label>
-            <span class="field-label">触发词</span>
-            <input name="trigger" placeholder="ping" />
-          </label>
-          <label>
-            <span class="field-label">回复内容</span>
-            <input name="reply" placeholder="pong" />
-          </label>
-          <div class="actions">
-            <button class="primary" type="submit">
-              <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-              保存调试配置
-            </button>
-          </div>
-        </form>
-        </div>
-      </section>
-
-      <section id="accessKeyPanel" class="panel bot-context-panel collapsible-panel admin-only-panel">
-        <div class="section-head">
-          <h2 class="module-title"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>Bot 密钥</h2>
-          <button class="collapse-button" data-collapse-target="accessKeyPanel" type="button" aria-label="收起 Bot 密钥">
-            <svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>
-          </button>
-        </div>
-        <div class="collapsible-content">
-          <form id="accessKeyForm" class="form-grid compact-form">
-            <label class="wide">
-              <span class="field-label">新 Bot 密钥</span>
-              <input name="accessKey" type="password" placeholder="输入后重置当前 Bot 独立密钥" autocomplete="off" />
-            </label>
-            <div class="actions">
-              <button class="primary" type="submit">
-                <svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>
-                修改密钥
-              </button>
-            </div>
           </form>
         </div>
       </section>

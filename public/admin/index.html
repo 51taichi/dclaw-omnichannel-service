@@ -31,6 +31,7 @@
       <symbol id="admin-icon-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></symbol>
       <symbol id="admin-icon-close" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"></path></symbol>
       <symbol id="admin-icon-login" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5M15 12H3M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"></path></symbol>
+      <symbol id="admin-icon-terminal" viewBox="0 0 24 24"><path d="m4 17 5-5-5-5M12 19h8"></path></symbol>
     </svg>
 
     <div id="adminAuthRoot"></div>
@@ -114,6 +115,55 @@
               <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>保存 Bot</button>
             </div>
           </form>
+          <section id="botMaintenancePanel" class="admin-bot-maintenance" hidden>
+            <div class="admin-subhead admin-maintenance-head">
+              <h2><svg><use href="#admin-icon-settings"></use></svg>系统维护 · <span id="botMaintenanceName"></span></h2>
+            </div>
+            <div class="admin-bot-maintenance-grid">
+              <form id="adminBotAccessKeyForm" class="admin-form admin-maintenance-card">
+                <div class="admin-maintenance-card-head">
+                  <svg><use href="#admin-icon-key"></use></svg>
+                  <div>
+                    <h3>Bot 密钥</h3>
+                    <p>重置当前 Bot 的独立访问密钥。</p>
+                  </div>
+                </div>
+                <label>
+                  <span><svg><use href="#admin-icon-key"></use></svg>新 Bot 密钥</span>
+                  <input name="accessKey" type="password" autocomplete="new-password" required />
+                </label>
+                <div class="admin-actions">
+                  <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>修改密钥</button>
+                </div>
+              </form>
+              <form id="adminDebugReplyForm" class="admin-form admin-maintenance-card">
+                <div class="admin-maintenance-card-head">
+                  <svg><use href="#admin-icon-terminal"></use></svg>
+                  <div>
+                    <h3>调试自动回复</h3>
+                    <p>用于验证 Bot 回调与发送链路。</p>
+                  </div>
+                </div>
+                <label class="toggle-line admin-switch-field switch-toggle admin-maintenance-switch">
+                  <svg><use href="#admin-icon-power"></use></svg>
+                  <span>开启调试回复</span>
+                  <input name="enabled" type="checkbox" aria-label="开启调试自动回复" />
+                  <span class="switch-slider" aria-hidden="true"></span>
+                </label>
+                <label>
+                  <span><svg><use href="#admin-icon-terminal"></use></svg>触发词</span>
+                  <input name="trigger" placeholder="ping" />
+                </label>
+                <label>
+                  <span><svg><use href="#admin-icon-quote"></use></svg>回复内容</span>
+                  <input name="reply" placeholder="pong" />
+                </label>
+                <div class="admin-actions">
+                  <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>保存调试配置</button>
+                </div>
+              </form>
+            </div>
+          </section>
           <div class="admin-table">
             <div class="admin-table-row admin-table-head"><span>Bot</span><span>Agent</span><span id="workspaceColumn">工作区</span><span>操作</span></div>
             <div id="botList"></div>
