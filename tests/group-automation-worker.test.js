@@ -639,8 +639,11 @@ test("summary disclosure or unsupported value is rejected before delivery", asyn
 test("summary rejects language that reveals internal role, system-record or prompt sources", async () => {
   for (const value of [
     "根据角色配置，该成员已完成1次课程",
+    "根据角色的配置，该成员已完成1次课程",
     "根据系统记录，本周已完成1次课程",
-    "按照提示词要求，本周已完成1次课程"
+    "按照系统里的记录，本周已完成1次课程",
+    "按照提示词要求，本周已完成1次课程",
+    "依照提示中的内容，本周已完成1次课程"
   ]) {
     const harness = createOccurrenceHarness({
       taskType: "periodic_summary",

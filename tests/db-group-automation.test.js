@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-group-automation-db-test-"));
@@ -210,6 +211,13 @@ test("deleting a task cancels and fences an already claimed unsent occurrence", 
     executionToken: occurrence.executionToken,
     renderedContent: "删除后不得发送"
   }), /lease|token|owner/i);
+  assert.throws(() => db.completeGroupAutomationOccurrence({
+    botId,
+    occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
+    status: "skipped",
+    reason: "旧 Worker 不得覆盖取消状态"
+  }), /lease|token|owner/i);
 });
 
 test("re-enabling a task discards stale disabled schedules instead of backfilling old sends", () => {
@@ -289,6 +297,14 @@ test("re-enabling a task cancels retry occurrences created before it was disable
     expectedVersion: task.version,
     enabled: false
   });
+  const legacyDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  legacyDb.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET status = 'retry_wait', next_retry_at = '2020-01-01T12:01:00.000Z',
+        finished_at = NULL
+    WHERE id = ?
+  `).run(occurrence.id);
+  legacyDb.close();
   const enabled = db.updateGroupAutomationTask({
     botId,
     taskId: task.id,

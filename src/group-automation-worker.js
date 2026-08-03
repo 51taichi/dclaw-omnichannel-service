@@ -25,6 +25,11 @@ const CUSTOMER_VISIBLE_DISCLOSURE_MARKERS = [
   "提示词",
   "privateContext"
 ];
+const CUSTOMER_VISIBLE_SOURCE_DISCLOSURE_PATTERNS = [
+  /(?:根据|按照|依照|依据|来自|参考|从).{0,16}角色\s*(?:的)?\s*(?:配置|设定|资料|备注)/u,
+  /(?:根据|按照|依照|依据|来自|参考|从).{0,16}(?:系统|后台|内部)\s*(?:里|内|中|里面|内部)?\s*(?:的)?\s*(?:记录|资料|配置|数据|信息)/u,
+  /(?:根据|按照|依照|依据|来自|参考|从).{0,16}(?:提示词|提示\s*(?:里|内|中|里面)?\s*(?:的)?\s*(?:内容|要求)|指令)/u
+];
 
 function instantFrom(value) {
   const result = typeof value === "function" ? value() : value;
@@ -677,6 +682,10 @@ function assertNoPrivateContextDisclosure(content, { group = null, roles = [] } 
   const text = String(content || "");
   const marker = CUSTOMER_VISIBLE_DISCLOSURE_MARKERS.find((item) => text.includes(item));
   if (marker) throw new Error(`summary contains private context disclosure marker: ${marker}`);
+  const disclosurePattern = CUSTOMER_VISIBLE_SOURCE_DISCLOSURE_PATTERNS.find((pattern) => (
+    pattern.test(text)
+  ));
+  if (disclosurePattern) throw new Error("summary reveals a private context source");
   const privateTexts = [
     group?.background,
     ...(Array.isArray(roles) ? roles.map((role) => role.description) : [])

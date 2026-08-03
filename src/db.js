@@ -1999,16 +1999,23 @@ export function updateGroupAutomationTask(input) {
     );
     if (Number(result.changes) !== 1) throw new Error("group automation task version conflict");
     replaceGroupAutomationMentions(taskId, values.mentionRoleIds);
-    if (current.enabled && !values.enabled) {
+    const taskActivationChanged = current.enabled !== values.enabled;
+    if (taskActivationChanged) {
       db.prepare(`
         UPDATE managed_group_automation_occurrences
         SET status = 'canceled', lease_expires_at = NULL, execution_token = NULL,
             next_retry_at = NULL,
-            reason = CASE WHEN reason = '' THEN '任务已停用，旧执行已取消' ELSE reason END,
+            reason = CASE WHEN reason = '' THEN ? ELSE reason END,
             finished_at = COALESCE(finished_at, ?), updated_at = ?
         WHERE bot_id = ? AND task_id = ?
           AND status IN ('pending', 'retry_wait', 'evaluating')
-      `).run(timestamp, timestamp, botId, taskId);
+      `).run(
+        values.enabled ? '任务重新启用，旧执行已取消' : '任务已停用，旧执行已取消',
+        timestamp,
+        timestamp,
+        botId,
+        taskId
+      );
     }
     db.exec("COMMIT");
   } catch (error) {
@@ -2377,9 +2384,7 @@ export function completeGroupAutomationOccurrence({
   `).get(botId, occurrenceId);
   if (!current) throw new Error("group automation occurrence not found");
   const normalizedExecutionToken = String(executionToken || "").trim();
-  const requiresExecutionToken = ["evaluating", "sending"].includes(current.status);
-  if (requiresExecutionToken
-    && (!normalizedExecutionToken || normalizedExecutionToken !== current.execution_token)) {
+  if (!normalizedExecutionToken || normalizedExecutionToken !== current.execution_token) {
     throw new Error("group automation execution lease token no longer owns this occurrence");
   }
   const result = db.prepare(`
@@ -2392,7 +2397,7 @@ export function completeGroupAutomationOccurrence({
         worktool_message_id = ?, worktool_response_json = ?, error_message = ?,
         finished_at = ?, updated_at = ?
     WHERE bot_id = ? AND id = ?
-      AND (? = 0 OR execution_token = ?)
+      AND execution_token = ?
   `).run(
     String(status || "completed"),
     conditionAchieved == null ? null : conditionAchieved ? 1 : 0,
@@ -2415,7 +2420,6 @@ export function completeGroupAutomationOccurrence({
     finishedAt,
     botId,
     occurrenceId,
-    requiresExecutionToken ? 1 : 0,
     normalizedExecutionToken
   );
   if (Number(result.changes) !== 1) {
