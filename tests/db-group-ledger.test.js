@@ -311,3 +311,73 @@ test("keeps one live cursor and independent per-task backfill cursors", () => {
   assert.equal(state.liveCursorMessageId, 0);
   assert.equal(state.backfillCursors[task.id], message.id);
 });
+
+test("ledger message batches contain only bounded inbound rows from the managed group", () => {
+  const botId = "ledger_message_batch_bot";
+  const { group } = setupLedgerGroup(botId);
+  const first = db.insertConversationMessage({
+    botId,
+    conversationKey: group.conversationKey,
+    direction: "inbound",
+    senderName: "家长",
+    content: "第一条"
+  });
+  db.insertConversationMessage({
+    botId,
+    conversationKey: group.conversationKey,
+    direction: "outbound",
+    senderName: "Bot",
+    content: "自动回复"
+  });
+  const last = db.insertConversationMessage({
+    botId,
+    conversationKey: group.conversationKey,
+    direction: "inbound",
+    senderName: "家长",
+    content: "第二条"
+  });
+
+  assert.deepEqual(db.listInboundGroupMessagesForLedger({
+    botId,
+    groupId: group.id,
+    afterMessageId: 0,
+    throughMessageId: last.id,
+    limit: 10
+  }).map((message) => message.id), [first.id, last.id]);
+  assert.equal(db.getLatestInboundGroupMessageId({ botId, groupId: group.id }), last.id);
+});
+
+test("terminal ledger failures are not reclaimed after the bounded retry budget", () => {
+  const botId = "ledger_terminal_retry_bot";
+  const { group } = setupLedgerGroup(botId);
+  const message = db.insertConversationMessage({
+    botId,
+    conversationKey: group.conversationKey,
+    direction: "inbound",
+    senderName: "家长",
+    content: "待分析"
+  });
+  db.enqueueGroupLedgerJob({
+    botId,
+    groupId: group.id,
+    mode: "live",
+    throughMessageId: message.id
+  });
+  const job = db.claimGroupLedgerJobs({
+    nowIso: "2026-08-04T12:00:00.000Z",
+    limit: 1,
+    leaseMs: 300000
+  })[0];
+  db.failGroupLedgerJob({
+    jobId: job.id,
+    botId,
+    errorMessage: "重试耗尽",
+    terminal: true
+  });
+  const reclaimed = db.claimGroupLedgerJobs({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 100,
+    leaseMs: 300000
+  });
+  assert.equal(reclaimed.some((item) => item.id === job.id), false);
+});

@@ -19,6 +19,19 @@ test("server records unmentioned group messages before agent mention filtering",
   );
 });
 
+test("server enqueues every persisted managed-group inbound message before reply-policy exits", () => {
+  assert.match(processIncomingSource, /groupAutomationWorker\.enqueueLive\(\{/);
+  assert.equal(
+    processIncomingSource.indexOf("groupAutomationWorker.enqueueLive({") <
+      processIncomingSource.indexOf("group_mention_required"),
+    true
+  );
+  assert.match(
+    processIncomingSource,
+    /groupAutomationWorker\.enqueueLive\(\{[\s\S]*throughMessageId:\s*persisted\.messageRecord\.id/
+  );
+});
+
 test("server persists a managed group's creation date tag with its canonical conversation", () => {
   assert.match(
     processIncomingSource,

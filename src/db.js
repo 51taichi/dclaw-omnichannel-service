@@ -2664,15 +2664,17 @@ export function failGroupLedgerJob({
   jobId,
   botId,
   errorMessage,
-  nextRetryAt = ""
+  nextRetryAt = "",
+  terminal = false
 }) {
   const timestamp = now();
   const result = db.prepare(`
     UPDATE managed_group_ledger_jobs
-    SET status = 'failed', lease_expires_at = NULL, next_retry_at = ?,
+    SET status = ?, lease_expires_at = NULL, next_retry_at = ?,
         error_message = ?, updated_at = ?
     WHERE id = ? AND bot_id = ? AND status = 'processing'
   `).run(
+    terminal ? "dead" : "failed",
     nextRetryAt || null,
     String(errorMessage || "group ledger evaluation failed"),
     timestamp,
@@ -2718,6 +2720,42 @@ export function listGroupAutomationEvidenceMessages({
     messageIds: normalizedIds
   });
   return normalizedIds.map((id) => rowToConversationMessage(rowsById.get(id)));
+}
+
+export function listInboundGroupMessagesForLedger({
+  botId,
+  groupId,
+  afterMessageId = 0,
+  throughMessageId,
+  limit = 120
+}) {
+  const group = assertGroupAutomationScope({ botId, groupId });
+  const normalizedLimit = Math.max(1, Math.min(500, Number(limit) || 120));
+  const through = Number(throughMessageId);
+  if (!Number.isSafeInteger(through) || through <= 0) return [];
+  return db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE bot_id = ? AND conversation_key = ? AND direction = 'inbound'
+      AND id > ? AND id <= ?
+    ORDER BY id ASC
+    LIMIT ?
+  `).all(
+    botId,
+    group.conversationKey,
+    Math.max(0, Number(afterMessageId) || 0),
+    through,
+    normalizedLimit
+  ).map(rowToConversationMessage);
+}
+
+export function getLatestInboundGroupMessageId({ botId, groupId }) {
+  const group = assertGroupAutomationScope({ botId, groupId });
+  return Number(db.prepare(`
+    SELECT MAX(id) AS id
+    FROM conversation_messages
+    WHERE bot_id = ? AND conversation_key = ? AND direction = 'inbound'
+  `).get(botId, group.conversationKey)?.id || 0);
 }
 
 export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {

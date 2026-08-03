@@ -121,6 +121,7 @@ import {
   getFlowSessionForBot,
   getGroupByConversationKey,
   getGroupById,
+  getLatestInboundGroupMessageId,
   hasCachedWorktoolMessageId,
   hasRecentBotMessageProcessing,
   ensureConversationDateTag,
@@ -158,6 +159,9 @@ import {
   listConversationMessagesAround,
   listConversationTags,
   listGroupRoles,
+  listGroupAutomationTasks,
+  listGroupLedgerProjection,
+  listInboundGroupMessagesForLedger,
   listGroupsPage,
   listUnreadTagAlerts,
   listCachedApiMessages,
@@ -209,6 +213,10 @@ import {
   scheduleTagActivationTask,
   saveGroupConfig,
   saveGroupRoles,
+  enqueueGroupLedgerJob,
+  claimGroupLedgerJobs,
+  applyGroupLedgerEvaluation,
+  failGroupLedgerJob,
   saveTagSyncConfig,
   setSetting,
   setBotAccessKey,
@@ -233,6 +241,7 @@ import {
   finishCockpitDelivery,
   upsertWorktoolApiMessageCache
 } from "./db.js";
+import { createGroupAutomationWorker } from "./group-automation-worker.js";
 import {
   claimNextTagSyncBatch,
   ensureTagSyncInitialBackfill,
@@ -1569,6 +1578,25 @@ const tagActivationWorkerConfig = {
   sendDelayMs: Number(process.env.TAG_ACTIVATION_SEND_DELAY_MS || 500),
   maxConcurrentAgentCalls: Number(process.env.TAG_ACTIVATION_MAX_CONCURRENT_AGENT_CALLS || 2)
 };
+const groupAutomationWorkerConfig = {
+  enabled: process.env.GROUP_AUTOMATION_WORKER_ENABLED !== "false",
+  ledgerIntervalMs: Math.max(
+    500,
+    Number(process.env.GROUP_AUTOMATION_LEDGER_INTERVAL_MS || 2000)
+  ),
+  occurrenceIntervalMs: Math.max(
+    500,
+    Number(process.env.GROUP_AUTOMATION_OCCURRENCE_INTERVAL_MS || 2000)
+  ),
+  leaseMs: Math.max(
+    30_000,
+    Number(process.env.GROUP_AUTOMATION_LEASE_MS || 300000)
+  ),
+  batchSize: Math.max(
+    1,
+    Math.min(100, Number(process.env.GROUP_AUTOMATION_BATCH_SIZE || 10))
+  )
+};
 const friendAddedReentryCooldownMs = Math.max(
   0,
   Number(process.env.FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES || 0) * 60 * 1000
@@ -1702,6 +1730,35 @@ const inboundCoalescer = createInboundMessageCoalescer({
 function enqueueAgentInvocation(task, options) {
   return agentInvocationQueue.enqueue(task, options);
 }
+
+const groupAutomationWorker = createGroupAutomationWorker({
+  db: {
+    enqueueGroupLedgerJob,
+    claimGroupLedgerJobs,
+    getGroupById,
+    listGroupRoles,
+    listGroupAutomationTasks,
+    listGroupLedgerProjection,
+    listInboundGroupMessagesForLedger,
+    getLatestInboundGroupMessageId,
+    applyGroupLedgerEvaluation,
+    failGroupLedgerJob
+  },
+  getBinding: getBotBinding,
+  invokeAgent: ({ binding, request, priority, key }) => enqueueAgentInvocation(
+    () => invokeDclawAgentWithRetry({ binding, request }),
+    { priority, key }
+  ),
+  sendText: sendTextMessage,
+  now: () => new Date(),
+  logger: {
+    info: logInfo,
+    warn: logWarn,
+    error: logError
+  },
+  batchSize: groupAutomationWorkerConfig.batchSize,
+  leaseMs: groupAutomationWorkerConfig.leaseMs
+});
 
 const conversationResetTimeoutMs = Math.max(
   1000,
@@ -4274,6 +4331,14 @@ if (tagActivationWorkerConfig.enabled) {
   }, tagActivationWorkerConfig.intervalMs).unref();
 }
 
+if (groupAutomationWorkerConfig.enabled) {
+  setInterval(() => {
+    void groupAutomationWorker.runLedgerTick().catch((error) => {
+      logError("group_automation.ledger.worker_failed", { error });
+    });
+  }, groupAutomationWorkerConfig.ledgerIntervalMs).unref();
+}
+
 function ingestIncomingMessage({ botId, message }) {
   const friendAddedSignal = resolveFriendAddedSignal(message);
   const routingMessage = friendAddedSignal?.message || message;
@@ -4378,6 +4443,21 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         managedGroup: group
       })
     : { conversation: null, messageRecord: null };
+
+  if (group && persisted.messageRecord?.id) {
+    void groupAutomationWorker.enqueueLive({
+      botId,
+      groupId: group.id,
+      throughMessageId: persisted.messageRecord.id
+    }).catch((error) => {
+      logWarn("group_automation.ledger.enqueue_failed", {
+        botId,
+        groupId: group.id,
+        conversationMessageId: persisted.messageRecord.id,
+        error: error.message
+      });
+    });
+  }
 
   if (!shouldProcessInboundForAgent(message)) {
     logInfo("incoming.skipped", {
@@ -5704,6 +5784,17 @@ app.patch(
       background: body.background || "",
       tagGroupIds: requested
     });
+    void groupAutomationWorker.enqueueReindex({
+      botId,
+      groupId: group.id,
+      reason: "group_context_changed"
+    }).catch((error) => {
+      logWarn("group_automation.ledger.reindex_failed", {
+        botId,
+        groupId: group.id,
+        error: error.message
+      });
+    });
     res.json({ ok: true, group });
   })
 );
@@ -5719,6 +5810,17 @@ app.patch(
       groupId: req.params.groupId,
       expectedVersion: body.expectedVersion,
       roles: body.roles
+    });
+    void groupAutomationWorker.enqueueReindex({
+      botId,
+      groupId: saved.group.id,
+      reason: "group_context_changed"
+    }).catch((error) => {
+      logWarn("group_automation.ledger.reindex_failed", {
+        botId,
+        groupId: saved.group.id,
+        error: error.message
+      });
     });
     res.json({
       ok: true,
