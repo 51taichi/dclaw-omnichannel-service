@@ -67,6 +67,26 @@ test("group human handoff bypasses visible reply policy and uses the silent sync
   assert.doesNotMatch(coalescedBody, /flow\?\.session\?\.handoffStatus === "human"/);
 });
 
+test("visible Agent sends recheck handoff after DClaw and before every WorkTool command", () => {
+  const coalescedBody = functionBody("processCoalescedIncomingBatch");
+  const textSendBody = functionBody("sendTextReplyParts");
+  const attachmentSendBody = functionBody("sendAgentAttachments");
+  const callbackText = "beforeSend: () => assertConversationAiControlled({ botId, conversationKey })";
+
+  assert.equal(coalescedBody.split(callbackText).length - 1, 2);
+  assert.ok(textSendBody.indexOf("beforeSend?.()") < textSendBody.indexOf("sendTextMessage({"));
+  assert.ok(attachmentSendBody.indexOf("beforeSend?.()") < attachmentSendBody.indexOf("sendMediaMessage({"));
+  assert.match(
+    coalescedBody,
+    /sentAttachments = await sendAgentAttachments\([\s\S]*assertConversationAiControlled\(\{ botId, conversationKey \}\);[\s\S]*if \(flow\)/
+  );
+  assert.match(coalescedBody, /if \(error\?\.code === "HUMAN_HANDOFF_BEFORE_SEND"\)/);
+  assert.ok(
+    coalescedBody.indexOf('error?.code === "HUMAN_HANDOFF_BEFORE_SEND"')
+      < coalescedBody.indexOf("sendAgentFailureFallback({")
+  );
+});
+
 test("human handoff is evaluated before debug auto-reply", () => {
   assert.equal(
     serverSource.indexOf('status: "human_handoff"') < serverSource.indexOf("incoming.debug_reply"),

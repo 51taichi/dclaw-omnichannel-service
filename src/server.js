@@ -826,6 +826,14 @@ function invalidateFlowActivation({ conversationKey, reason }) {
   return session;
 }
 
+function assertConversationAiControlled({ botId, conversationKey }) {
+  const session = getFlowSessionForBot({ botId, conversationKey });
+  if (session?.handoffStatus !== "human") return;
+  const error = new Error("human_handoff_before_send");
+  error.code = "HUMAN_HANDOFF_BEFORE_SEND";
+  throw error;
+}
+
 function applySystemDateTag({ botId, binding, conversationKey, firstSeenAt }) {
   if (!binding?.agentId) return null;
   return ensureConversationDateTag({
@@ -2561,12 +2569,18 @@ function splitAgentReplyForWorkTool(reply, { allowSplit = true } = {}) {
   ];
 }
 
-async function sendTextReplyParts({ robotId, target, reply, allowSplit }) {
+async function sendTextReplyParts({ robotId, target, reply, allowSplit, beforeSend = null }) {
   const parts = splitAgentReplyForWorkTool(reply, { allowSplit });
   const results = [];
   for (const [index, content] of parts.entries()) {
     if (index > 0 && replySplitConfig.delayMs > 0) {
       await sleep(replySplitConfig.delayMs);
+    }
+    try {
+      beforeSend?.();
+    } catch (error) {
+      error.sentTextParts = results;
+      throw error;
     }
     const result = await sendTextMessage({
       robotId,
@@ -2609,10 +2623,16 @@ function appendLinkAttachmentsToReply(reply, attachments = []) {
   return [String(reply || "").trim(), links].filter(Boolean).join("\n\n");
 }
 
-async function sendAgentAttachments({ robotId, target, attachments = [] }) {
+async function sendAgentAttachments({ robotId, target, attachments = [], beforeSend = null }) {
   const sent = [];
   for (const attachment of attachments.map(normalizeAgentAttachment).filter(Boolean)) {
     if (!supportedAgentMediaTypes.has(attachment.type)) continue;
+    try {
+      beforeSend?.();
+    } catch (error) {
+      error.sentAttachments = sent;
+      throw error;
+    }
     const result = await sendMediaMessage({
       robotId,
       targets: [target],
@@ -4753,6 +4773,8 @@ async function processCoalescedIncomingBatch(batch) {
   });
 
   let agentInvocationSucceeded = false;
+  let sentParts = [];
+  let sentAttachments = [];
   try {
     const strictInvocation = await invokeStrictAgentReply({
       binding,
@@ -4996,17 +5018,20 @@ async function processCoalescedIncomingBatch(batch) {
       return;
     }
 
-    const sentParts = await sendTextReplyParts({
+    sentParts = await sendTextReplyParts({
       robotId: botId,
       target,
       reply: replyWithLinkAttachments,
-      allowSplit: isPrivateMessage(message) || replySplitConfig.splitGroup
+      allowSplit: isPrivateMessage(message) || replySplitConfig.splitGroup,
+      beforeSend: () => assertConversationAiControlled({ botId, conversationKey })
     });
-    const sentAttachments = await sendAgentAttachments({
+    sentAttachments = await sendAgentAttachments({
       robotId: botId,
       target,
-      attachments
+      attachments,
+      beforeSend: () => assertConversationAiControlled({ botId, conversationKey })
     });
+    assertConversationAiControlled({ botId, conversationKey });
     const primaryResult = sentParts[0]?.result || {};
     const textMessageIds = sentParts.map((part) => part.result?.data || "").filter(Boolean);
     const attachmentMessageIds = sentAttachments.map((part) => part.result?.data || "").filter(Boolean);
@@ -5132,6 +5157,81 @@ async function processCoalescedIncomingBatch(batch) {
     }
     finishCoalescedMessageProcessing({ batch, status: "coalesced_processed" });
   } catch (error) {
+    if (error?.code === "HUMAN_HANDOFF_BEFORE_SEND") {
+      const deliveredTextParts = error.sentTextParts || sentParts;
+      const deliveredAttachments = error.sentAttachments || sentAttachments;
+      const deliveredMessageIds = [
+        ...deliveredTextParts.map((part) => part.result?.data || ""),
+        ...deliveredAttachments.map((part) => part.result?.data || "")
+      ].filter(Boolean);
+      const deliveredContent = deliveredTextParts
+        .map((part) => part.content)
+        .filter(Boolean)
+        .join("\n\n") || deliveredAttachments
+        .map((part) => part.attachment?.url || "")
+        .filter(Boolean)
+        .join("\n");
+
+      if (deliveredContent && shouldRecordConversationHistory(message)) {
+        insertConversationMessage({
+          botId,
+          conversationKey,
+          direction: "outbound",
+          senderName: binding.botName || binding.agentName || "机器人",
+          content: deliveredContent,
+          rawPayload: {
+            worktoolMessageId: deliveredMessageIds[0] || "",
+            worktoolMessageIds: deliveredMessageIds,
+            replyParts: deliveredTextParts.map((part) => part.content),
+            attachments: deliveredAttachments.map((part) => part.attachment),
+            sources: [],
+            interruptedByHumanHandoff: true
+          }
+        });
+      }
+      for (const [index, part] of deliveredTextParts.entries()) {
+        insertOutgoingMessage({
+          botId,
+          agentId: binding.agentId,
+          conversationKey,
+          messageId: part.result?.data || "",
+          targetName: getReplyTarget(message),
+          content: part.content,
+          worktoolResponse: {
+            ...(part.result || {}),
+            replyPartIndex: index,
+            replyPartCount: deliveredTextParts.length,
+            interruptedByHumanHandoff: true
+          }
+        });
+      }
+      for (const [index, part] of deliveredAttachments.entries()) {
+        insertOutgoingMessage({
+          botId,
+          agentId: binding.agentId,
+          conversationKey,
+          messageId: part.result?.data || "",
+          targetName: getReplyTarget(message),
+          content: part.attachment.url,
+          worktoolResponse: {
+            ...(part.result || {}),
+            attachmentIndex: index,
+            attachmentCount: deliveredAttachments.length,
+            attachment: part.attachment,
+            interruptedByHumanHandoff: true
+          }
+        });
+      }
+      logInfo("agent.reply.handoff_skipped", {
+        ...logContext,
+        agentId: binding.agentId,
+        invocationId,
+        sentReplyPartCount: deliveredTextParts.length,
+        sentAttachmentCount: deliveredAttachments.length
+      });
+      finishCoalescedMessageProcessing({ batch, status: "human_handoff" });
+      return;
+    }
     if (!isConversationEpochCurrent({
       botId,
       conversationKey,
