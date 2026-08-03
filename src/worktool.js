@@ -97,12 +97,24 @@ export async function unbindCommandCallback({ robotId }) {
   });
 }
 
-export async function sendTextMessage({ robotId, targets, content, socketType = 2 }) {
+export async function sendTextMessage({
+  robotId,
+  targets,
+  content,
+  socketType = 2,
+  atList = []
+}) {
   if (!Array.isArray(targets) || targets.length === 0) {
     throw new Error("targets must be a non-empty array");
   }
   if (!content || typeof content !== "string") {
     throw new Error("content must be a non-empty string");
+  }
+  const mentions = [...new Set((Array.isArray(atList) ? atList : [])
+    .map((name) => String(name || "").trim())
+    .filter(Boolean))];
+  if (mentions.some((name) => name === "@所有人" || name === "所有人")) {
+    throw new Error("at everyone is not supported");
   }
 
   return requestWorkTool("/wework/sendRawMessage", {
@@ -114,7 +126,8 @@ export async function sendTextMessage({ robotId, targets, content, socketType = 
         {
           type: 203,
           titleList: targets,
-          receivedContent: content
+          receivedContent: content,
+          ...(mentions.length ? { atList: mentions } : {})
         }
       ]
     })
