@@ -481,12 +481,13 @@ export function createGroupAutomationWorker({
     }
   }
 
-  async function retryOccurrence({ botId, occurrenceId }) {
+  async function retryOccurrence({ botId, groupId = "", occurrenceId }) {
     if (typeof db.retryGroupAutomationOccurrence !== "function") {
       throw new Error("group automation occurrence retry is unavailable");
     }
     return db.retryGroupAutomationOccurrence({
       botId,
+      groupId,
       occurrenceId,
       nextRetryAt: instantFrom(now).toISOString()
     });

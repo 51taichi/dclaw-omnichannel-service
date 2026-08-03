@@ -86,6 +86,7 @@ import {
   claimNextConversationResetTask,
   completeConversationResetTask,
   createOrGetGroup,
+  createGroupAutomationTask,
   createLegacyFlowSession,
   createProactiveTask,
   createCockpitJob,
@@ -123,6 +124,7 @@ import {
   getGroupByConversationKey,
   getGroupById,
   getGroupAutomationTask,
+  getGroupAutomationCycleState,
   getGroupLedgerState,
   getLatestInboundGroupMessageId,
   hasCachedWorktoolMessageId,
@@ -163,6 +165,8 @@ import {
   listConversationTags,
   listGroupRoles,
   listGroupAutomationTasks,
+  listGroupAutomationOccurrences,
+  listGroupAutomationEvidenceMessages,
   listGroupLedgerProjection,
   listInboundGroupMessagesForLedger,
   listGroupsPage,
@@ -226,6 +230,9 @@ import {
   scheduleGroupAutomationOccurrenceRetry,
   failGroupAutomationOccurrence,
   retryGroupAutomationOccurrence,
+  updateGroupAutomationTask,
+  duplicateGroupAutomationTask,
+  softDeleteGroupAutomationTask,
   saveTagSyncConfig,
   setSetting,
   setBotAccessKey,
@@ -251,6 +258,13 @@ import {
   upsertWorktoolApiMessageCache
 } from "./db.js";
 import { createGroupAutomationWorker } from "./group-automation-worker.js";
+import {
+  groupAutomationCycleKey,
+  nextGroupAutomationRunAt,
+  normalizeGroupAutomationSchedule
+} from "./group-automation-schedule.js";
+import { parseGroupSummaryTemplate } from "./group-summary-template.js";
+import { createGroupAutomationStreamHub } from "./group-automation-stream.js";
 import {
   claimNextTagSyncBatch,
   ensureTagSyncInitialBackfill,
@@ -318,6 +332,7 @@ const cockpitEventRecorder = createCockpitEventRecorder({
 
 const app = express();
 const tagAlertStreamHub = createTagAlertStreamHub();
+const groupAutomationStreamHub = createGroupAutomationStreamHub();
 const port = Number(process.env.PORT || 8765);
 const host = process.env.HOST || "0.0.0.0";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -1769,6 +1784,7 @@ const groupAutomationWorker = createGroupAutomationWorker({
     { priority, key }
   ),
   sendText: sendTextMessage,
+  publish: (event) => groupAutomationStreamHub.publish(event),
   now: () => new Date(),
   logger: {
     info: logInfo,
@@ -5505,6 +5521,126 @@ function resolveLegacyBotId(req) {
   return req.params.botId || req.query.botId || process.env.ROBOT_ID;
 }
 
+function serializeGroupAutomationTask({ botId, groupId, task }) {
+  const cycleKey = groupAutomationCycleKey(task.cadence, new Date().toISOString());
+  const cycleState = task.taskType === "conditional_push" && task.conditionText
+    ? getGroupAutomationCycleState({
+        botId,
+        groupId,
+        taskId: task.id,
+        cycleKey
+      })
+    : null;
+  const lastOccurrence = listGroupAutomationOccurrences({
+    botId,
+    taskId: task.id,
+    page: 1,
+    pageSize: 1
+  }).items[0] || null;
+  return {
+    id: task.id,
+    groupId: task.groupId,
+    name: task.name,
+    taskType: task.taskType,
+    enabled: task.enabled,
+    cadence: task.cadence,
+    scheduleDays: task.scheduleDays,
+    timeOfDay: task.timeOfDay,
+    conditionText: task.conditionText,
+    content: task.content,
+    summaryTemplate: task.summaryTemplate,
+    mentionRoleIds: task.mentionRoleIds,
+    nextRunAt: task.nextRunAt,
+    version: task.version,
+    currentState: cycleState
+      ? {
+          achieved: cycleState.achieved,
+          reason: cycleState.reason,
+          evaluatedAt: cycleState.evaluatedAt,
+          stale: false,
+          lastError: lastOccurrence?.errorMessage || ""
+        }
+      : task.taskType === "conditional_push" && task.conditionText
+        ? {
+            achieved: false,
+            reason: "尚未发现达成条件的明确事实",
+            evaluatedAt: "",
+            stale: true,
+            lastError: lastOccurrence?.errorMessage || ""
+          }
+        : null,
+    lastOccurrence,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt
+  };
+}
+
+function validateGroupAutomationRequest({ botId, groupId, body, current = null }) {
+  let schedule;
+  try {
+    schedule = normalizeGroupAutomationSchedule({
+      cadence: body.cadence === undefined ? current?.cadence : body.cadence,
+      scheduleDays: body.scheduleDays === undefined ? current?.scheduleDays : body.scheduleDays,
+      timeOfDay: body.timeOfDay === undefined ? current?.timeOfDay : body.timeOfDay
+    });
+  } catch (error) {
+    error.status = 422;
+    throw error;
+  }
+  const taskType = String(
+    body.taskType === undefined ? current?.taskType || "" : body.taskType || ""
+  ).trim();
+  const content = body.content === undefined ? current?.content || "" : String(body.content || "");
+  const summaryTemplate = body.summaryTemplate === undefined
+    ? current?.summaryTemplate || ""
+    : String(body.summaryTemplate || "");
+  if (taskType === "conditional_push" && !content.trim()) {
+    const error = new Error("conditional push content is required");
+    error.status = 422;
+    throw error;
+  }
+  if (taskType === "periodic_summary") {
+    try {
+      parseGroupSummaryTemplate(summaryTemplate);
+    } catch (error) {
+      error.status = 422;
+      throw error;
+    }
+  }
+  if (!["conditional_push", "periodic_summary"].includes(taskType)) {
+    const error = new Error("invalid group automation task type");
+    error.status = 422;
+    throw error;
+  }
+  const mentionRoleIds = body.mentionRoleIds === undefined
+    ? current?.mentionRoleIds || []
+    : Array.isArray(body.mentionRoleIds) ? body.mentionRoleIds : [];
+  const mentionResolution = resolveGroupAutomationMentionNames({
+    botId,
+    groupId,
+    roleIds: mentionRoleIds
+  });
+  if (mentionResolution.warnings.length) {
+    const error = new Error("one or more mention roles do not belong to this group");
+    error.status = 422;
+    throw error;
+  }
+  const scheduleChanged = !current
+    || body.cadence !== undefined
+    || body.scheduleDays !== undefined
+    || body.timeOfDay !== undefined;
+  return {
+    taskType,
+    ...schedule,
+    content,
+    summaryTemplate,
+    mentionRoleIds,
+    ...(scheduleChanged
+      ? { nextRunAt: nextGroupAutomationRunAt(schedule, new Date().toISOString()) }
+      : {})
+  };
+}
+
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
@@ -5783,6 +5919,276 @@ app.get(
       tagGroupIds: group.tagGroupIds,
       availableTagGroups: schema.groups
     });
+  })
+);
+
+app.get(
+  "/api/groups/:groupId/automations",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    if (!getGroupById({ botId, groupId })) {
+      res.status(404).json({ ok: false, message: "managed group not found" });
+      return;
+    }
+    const tasks = listGroupAutomationTasks({ botId, groupId }).map((task) => (
+      serializeGroupAutomationTask({ botId, groupId, task })
+    ));
+    res.json({ ok: true, tasks, serverTime: new Date().toISOString() });
+  })
+);
+
+app.post(
+  "/api/groups/:groupId/automations",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    if (!getGroupById({ botId, groupId })) {
+      res.status(404).json({ ok: false, message: "managed group not found" });
+      return;
+    }
+    const normalized = validateGroupAutomationRequest({ botId, groupId, body });
+    const task = createGroupAutomationTask({
+      botId,
+      groupId,
+      name: body.name,
+      conditionText: body.conditionText || "",
+      enabled: body.enabled !== false,
+      ...normalized
+    });
+    void groupAutomationWorker.enqueueReindex({
+      botId,
+      groupId,
+      reason: "automation_created"
+    }).catch((error) => logWarn("group_automation.ledger.reindex_failed", {
+      botId,
+      groupId,
+      error: error.message
+    }));
+    const serialized = serializeGroupAutomationTask({ botId, groupId, task });
+    groupAutomationStreamHub.publish({ botId, groupId, task: serialized });
+    res.status(201).json({ ok: true, task: serialized });
+  })
+);
+
+app.get(
+  "/api/groups/:groupId/automations/events",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    if (!getGroupById({ botId, groupId })) {
+      res.status(404).json({ ok: false, message: "managed group not found" });
+      return;
+    }
+    const snapshot = listGroupAutomationTasks({ botId, groupId }).map((task) => (
+      serializeGroupAutomationTask({ botId, groupId, task })
+    ));
+    groupAutomationStreamHub.subscribe({ botId, groupId, req, res, snapshot });
+  })
+);
+
+app.get(
+  "/api/groups/:groupId/automations/evidence/:messageId",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    const group = getGroupById({ botId, groupId });
+    if (!group) {
+      res.status(404).json({ ok: false, message: "managed group not found" });
+      return;
+    }
+    const messageId = Number(req.params.messageId);
+    const message = listGroupAutomationEvidenceMessages({
+      botId,
+      groupId,
+      messageIds: [messageId]
+    })[0];
+    if (!message) {
+      res.status(404).json({ ok: false, message: "evidence message not found" });
+      return;
+    }
+    res.json({
+      ok: true,
+      anchor: {
+        botId,
+        groupId,
+        conversationKey: group.conversationKey,
+        messageId: message.id,
+        createdAt: message.createdAt,
+        senderName: message.senderName,
+        content: message.content
+      }
+    });
+  })
+);
+
+app.post(
+  "/api/groups/:groupId/automations/occurrences/:occurrenceId/retry",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    if (!getGroupById({ botId, groupId })) {
+      res.status(404).json({ ok: false, message: "managed group not found" });
+      return;
+    }
+    const occurrence = await groupAutomationWorker.retryOccurrence({
+      botId,
+      groupId,
+      occurrenceId: req.params.occurrenceId
+    });
+    res.json({ ok: true, occurrence });
+  })
+);
+
+app.get(
+  "/api/groups/:groupId/automations/:taskId",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    const task = getGroupAutomationTask({ botId, taskId: req.params.taskId });
+    if (!task || task.groupId !== groupId || task.deletedAt) {
+      res.status(404).json({ ok: false, message: "group automation task not found" });
+      return;
+    }
+    res.json({
+      ok: true,
+      task: serializeGroupAutomationTask({ botId, groupId, task })
+    });
+  })
+);
+
+app.patch(
+  "/api/groups/:groupId/automations/:taskId",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    const current = getGroupAutomationTask({ botId, taskId: req.params.taskId });
+    if (!current || current.groupId !== groupId || current.deletedAt) {
+      res.status(404).json({ ok: false, message: "group automation task not found" });
+      return;
+    }
+    const normalized = validateGroupAutomationRequest({
+      botId,
+      groupId,
+      body,
+      current
+    });
+    const task = updateGroupAutomationTask({
+      ...body,
+      ...normalized,
+      botId,
+      taskId: current.id,
+      expectedVersion: body.expectedVersion
+    });
+    void groupAutomationWorker.enqueueReindex({
+      botId,
+      groupId,
+      reason: "automation_updated"
+    }).catch((error) => logWarn("group_automation.ledger.reindex_failed", {
+      botId,
+      groupId,
+      error: error.message
+    }));
+    const serialized = serializeGroupAutomationTask({ botId, groupId, task });
+    groupAutomationStreamHub.publish({ botId, groupId, task: serialized });
+    res.json({ ok: true, task: serialized });
+  })
+);
+
+app.post(
+  "/api/groups/:groupId/automations/:taskId/duplicate",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    const sourceTask = getGroupAutomationTask({ botId, taskId: req.params.taskId });
+    if (!sourceTask || sourceTask.groupId !== groupId || sourceTask.deletedAt) {
+      res.status(404).json({ ok: false, message: "group automation task not found" });
+      return;
+    }
+    const task = duplicateGroupAutomationTask({
+      botId,
+      taskId: sourceTask.id,
+      name: body.name || ""
+    });
+    const serialized = serializeGroupAutomationTask({ botId, groupId, task });
+    groupAutomationStreamHub.publish({ botId, groupId, task: serialized });
+    res.status(201).json({ ok: true, task: serialized });
+  })
+);
+
+app.delete(
+  "/api/groups/:groupId/automations/:taskId",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || req.query.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    const current = getGroupAutomationTask({ botId, taskId: req.params.taskId });
+    if (!current || current.groupId !== groupId || current.deletedAt) {
+      res.status(404).json({ ok: false, message: "group automation task not found" });
+      return;
+    }
+    const task = softDeleteGroupAutomationTask({
+      botId,
+      taskId: current.id,
+      expectedVersion: body.expectedVersion ?? req.query.expectedVersion
+    });
+    groupAutomationStreamHub.publish({ botId, groupId, task: { id: task.id, deleted: true } });
+    res.json({ ok: true, taskId: task.id });
+  })
+);
+
+app.get(
+  "/api/groups/:groupId/automations/:taskId/occurrences",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    const task = getGroupAutomationTask({ botId, taskId: req.params.taskId });
+    if (!task || task.groupId !== groupId) {
+      res.status(404).json({ ok: false, message: "group automation task not found" });
+      return;
+    }
+    const result = listGroupAutomationOccurrences({
+      botId,
+      taskId: task.id,
+      page: Number(req.query.page || 1),
+      pageSize: Number(req.query.pageSize || 20)
+    });
+    res.json({ ok: true, ...result });
+  })
+);
+
+app.post(
+  "/api/groups/:groupId/automations/:taskId/refresh",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    const groupId = req.params.groupId;
+    assertBotAccess(req, botId);
+    const task = getGroupAutomationTask({ botId, taskId: req.params.taskId });
+    if (!task || task.groupId !== groupId || task.deletedAt) {
+      res.status(404).json({ ok: false, message: "group automation task not found" });
+      return;
+    }
+    const job = await groupAutomationWorker.enqueueReindex({
+      botId,
+      groupId,
+      reason: "automation_refreshed"
+    });
+    res.status(202).json({ ok: true, queued: Boolean(job) });
   })
 );
 

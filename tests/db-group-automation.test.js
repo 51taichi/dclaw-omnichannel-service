@@ -284,3 +284,28 @@ test("delivery_unknown is never automatically reclaimed but can be manually retr
     leaseMs: 300000
   }).some((item) => item.id === occurrence.id), true);
 });
+
+test("manual occurrence retry enforces the managed group scope", () => {
+  const botId = "group_automation_retry_scope_bot";
+  const { group } = createGroupWithRoles(botId, "原群");
+  const { group: otherGroup } = createGroupWithRoles(botId, "其他群");
+  createWeeklyTask({ botId, groupId: group.id });
+  const occurrence = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 100,
+    leaseMs: 300000
+  }).find((item) => item.groupId === group.id);
+  db.completeGroupAutomationOccurrence({
+    botId,
+    occurrenceId: occurrence.id,
+    status: "delivery_unknown",
+    errorMessage: "未知"
+  });
+
+  assert.throws(() => db.retryGroupAutomationOccurrence({
+    botId,
+    groupId: otherGroup.id,
+    occurrenceId: occurrence.id,
+    nextRetryAt: "2026-08-06T12:01:00.000Z"
+  }), /not found/);
+});

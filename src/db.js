@@ -2175,6 +2175,7 @@ export function scheduleGroupAutomationOccurrenceRetry({
 
 export function retryGroupAutomationOccurrence({
   botId,
+  groupId = "",
   occurrenceId,
   nextRetryAt = now()
 }) {
@@ -2186,8 +2187,16 @@ export function retryGroupAutomationOccurrence({
     SET status = 'retry_wait', lease_expires_at = NULL, next_retry_at = ?,
         error_message = '', finished_at = NULL, updated_at = ?
     WHERE bot_id = ? AND id = ?
+      AND (? = '' OR group_id = ?)
       AND status IN ('failed', 'delivery_unknown', 'retry_wait')
-  `).run(retryAt.toISOString(), timestamp, botId, occurrenceId);
+  `).run(
+    retryAt.toISOString(),
+    timestamp,
+    botId,
+    occurrenceId,
+    String(groupId || ""),
+    String(groupId || "")
+  );
   if (Number(result.changes) !== 1) {
     throw new Error("retryable group automation occurrence not found");
   }

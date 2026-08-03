@@ -1,0 +1,41 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import test from "node:test";
+
+const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+
+const routes = [
+  ["get", "/api/groups/:groupId/automations"],
+  ["post", "/api/groups/:groupId/automations"],
+  ["get", "/api/groups/:groupId/automations/events"],
+  ["get", "/api/groups/:groupId/automations/:taskId"],
+  ["patch", "/api/groups/:groupId/automations/:taskId"],
+  ["post", "/api/groups/:groupId/automations/:taskId/duplicate"],
+  ["delete", "/api/groups/:groupId/automations/:taskId"],
+  ["get", "/api/groups/:groupId/automations/:taskId/occurrences"],
+  ["post", "/api/groups/:groupId/automations/:taskId/refresh"],
+  ["post", "/api/groups/:groupId/automations/occurrences/:occurrenceId/retry"],
+  ["get", "/api/groups/:groupId/automations/evidence/:messageId"]
+];
+
+test("exposes the complete authorized group automation API", () => {
+  for (const [method, path] of routes) {
+    const marker = `app.${method}(\n  \"${path}\"`;
+    assert.equal(source.includes(marker), true, `${method.toUpperCase()} ${path}`);
+    const routeSource = source.slice(source.indexOf(marker), source.indexOf(marker) + 1400);
+    assert.match(routeSource, /assertBotAccess\(req, botId\)/);
+  }
+});
+
+test("create and update validate recurrence, summary templates, and group role mentions", () => {
+  assert.match(source, /normalizeGroupAutomationSchedule\(\{/);
+  assert.match(source, /parseGroupSummaryTemplate\(/);
+  assert.match(source, /resolveGroupAutomationMentionNames\(\{/);
+  assert.match(source, /nextGroupAutomationRunAt\(/);
+  assert.match(source, /enqueueReindex\(\{[\s\S]*automation_(?:created|updated|refreshed)/);
+});
+
+test("group automation responses exclude private group background and expose evidence anchors", () => {
+  assert.match(source, /serializeGroupAutomationTask\(/);
+  assert.match(source, /conversationKey:[\s\S]*messageId:[\s\S]*createdAt:/);
+});
