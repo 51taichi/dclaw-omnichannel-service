@@ -13,6 +13,11 @@ import {
 import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags.js";
 import { normalizeTagSyncConfig } from "./tag-sync.js";
 import { normalizeWorktoolTimestamp } from "./worktool-history.js";
+import {
+  groupAutomationCycleWindow,
+  nextGroupAutomationRunAt,
+  normalizeGroupAutomationSchedule
+} from "./group-automation-schedule.js";
 
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
 fs.mkdirSync(dataDir, { recursive: true });
@@ -606,6 +611,75 @@ db.exec(`
     created_at TEXT NOT NULL,
     PRIMARY KEY (group_id, tag_group_id)
   );
+
+  CREATE TABLE IF NOT EXISTS managed_group_automation_tasks (
+    id TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    task_type TEXT NOT NULL CHECK (task_type IN ('conditional_push','periodic_summary')),
+    cadence TEXT NOT NULL CHECK (cadence IN ('daily','weekly','monthly')),
+    schedule_days_json TEXT NOT NULL DEFAULT '[]',
+    time_of_day TEXT NOT NULL,
+    condition_text TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    summary_template TEXT NOT NULL DEFAULT '',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    next_run_at TEXT,
+    version INTEGER NOT NULL DEFAULT 1,
+    deleted_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_automation_tasks_due
+  ON managed_group_automation_tasks (enabled, deleted_at, next_run_at);
+
+  CREATE INDEX IF NOT EXISTS idx_group_automation_tasks_scope
+  ON managed_group_automation_tasks (bot_id, group_id, deleted_at, created_at);
+
+  CREATE TABLE IF NOT EXISTS managed_group_automation_mentions (
+    task_id TEXT NOT NULL,
+    role_id TEXT NOT NULL,
+    ordinal INTEGER NOT NULL,
+    PRIMARY KEY (task_id, role_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS managed_group_automation_occurrences (
+    id TEXT PRIMARY KEY,
+    task_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    scheduled_for TEXT NOT NULL,
+    cycle_key TEXT NOT NULL,
+    cycle_start_at TEXT NOT NULL,
+    cycle_end_at TEXT NOT NULL,
+    status TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_expires_at TEXT,
+    condition_achieved INTEGER,
+    reason TEXT NOT NULL DEFAULT '',
+    variable_values_json TEXT NOT NULL DEFAULT '{}',
+    fact_ids_json TEXT NOT NULL DEFAULT '[]',
+    evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
+    mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
+    mention_names_json TEXT NOT NULL DEFAULT '[]',
+    rendered_content TEXT NOT NULL DEFAULT '',
+    worktool_message_id TEXT NOT NULL DEFAULT '',
+    worktool_response_json TEXT,
+    error_message TEXT NOT NULL DEFAULT '',
+    started_at TEXT,
+    finished_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (task_id, scheduled_for)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_automation_occurrences_task
+  ON managed_group_automation_occurrences (bot_id, task_id, scheduled_for DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_group_automation_occurrences_lease
+  ON managed_group_automation_occurrences (status, lease_expires_at);
 
   CREATE TABLE IF NOT EXISTS cockpit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1540,6 +1614,536 @@ export function saveGroupRoles({ botId, groupId, expectedVersion, roles = [] }) 
   return {
     group: getGroupById({ botId, groupId }),
     roles: listGroupRoles({ botId, groupId })
+  };
+}
+
+const groupAutomationTaskTypes = new Set(["conditional_push", "periodic_summary"]);
+
+function listGroupAutomationMentionRoleIds(taskId) {
+  return db.prepare(`
+    SELECT role_id
+    FROM managed_group_automation_mentions
+    WHERE task_id = ?
+    ORDER BY ordinal ASC, role_id ASC
+  `).all(taskId).map((row) => row.role_id);
+}
+
+function rowToGroupAutomationTask(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    groupId: row.group_id,
+    name: row.name,
+    taskType: row.task_type,
+    cadence: row.cadence,
+    scheduleDays: parseJson(row.schedule_days_json) || [],
+    timeOfDay: row.time_of_day,
+    conditionText: row.condition_text || "",
+    content: row.content || "",
+    summaryTemplate: row.summary_template || "",
+    mentionRoleIds: listGroupAutomationMentionRoleIds(row.id),
+    enabled: Boolean(row.enabled),
+    nextRunAt: row.next_run_at || "",
+    version: Number(row.version || 1),
+    deletedAt: row.deleted_at || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToGroupAutomationOccurrence(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    botId: row.bot_id,
+    groupId: row.group_id,
+    scheduledFor: row.scheduled_for,
+    cycleKey: row.cycle_key,
+    cycleStartAt: row.cycle_start_at,
+    cycleEndAt: row.cycle_end_at,
+    status: row.status,
+    attempts: Number(row.attempts || 0),
+    leaseExpiresAt: row.lease_expires_at || "",
+    conditionAchieved: row.condition_achieved == null
+      ? null
+      : Boolean(row.condition_achieved),
+    reason: row.reason || "",
+    variableValues: parseJson(row.variable_values_json) || {},
+    factIds: parseJson(row.fact_ids_json) || [],
+    evidenceMessageIds: parseJson(row.evidence_message_ids_json) || [],
+    mentionRoleIds: parseJson(row.mention_role_ids_json) || [],
+    mentionNames: parseJson(row.mention_names_json) || [],
+    renderedContent: row.rendered_content || "",
+    worktoolMessageId: row.worktool_message_id || "",
+    worktoolResponse: parseJson(row.worktool_response_json),
+    errorMessage: row.error_message || "",
+    startedAt: row.started_at || "",
+    finishedAt: row.finished_at || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function normalizeGroupAutomationTaskValues(input, current = null) {
+  const name = input.name === undefined
+    ? current?.name || ""
+    : String(input.name || "").trim();
+  if (!name) throw new Error("group automation task name is required");
+
+  const taskType = input.taskType === undefined
+    ? current?.taskType || ""
+    : String(input.taskType || "").trim();
+  if (!groupAutomationTaskTypes.has(taskType)) {
+    throw new Error("invalid group automation task type");
+  }
+
+  const scheduleChanged = !current
+    || input.cadence !== undefined
+    || input.scheduleDays !== undefined
+    || input.timeOfDay !== undefined;
+  const schedule = normalizeGroupAutomationSchedule({
+    cadence: input.cadence === undefined ? current?.cadence : input.cadence,
+    scheduleDays: input.scheduleDays === undefined ? current?.scheduleDays : input.scheduleDays,
+    timeOfDay: input.timeOfDay === undefined ? current?.timeOfDay : input.timeOfDay
+  });
+  const enabled = input.enabled === undefined ? current?.enabled ?? true : Boolean(input.enabled);
+  let nextRunAt = input.nextRunAt === undefined ? current?.nextRunAt || "" : String(input.nextRunAt || "");
+  if (nextRunAt && Number.isNaN(new Date(nextRunAt).getTime())) {
+    throw new Error("invalid group automation nextRunAt");
+  }
+  if (scheduleChanged && input.nextRunAt === undefined) {
+    nextRunAt = nextGroupAutomationRunAt(schedule, now());
+  } else if (enabled && !nextRunAt) {
+    nextRunAt = nextGroupAutomationRunAt(schedule, now());
+  }
+
+  const mentionRoleIds = input.mentionRoleIds === undefined
+    ? current?.mentionRoleIds || []
+    : [...new Set((Array.isArray(input.mentionRoleIds) ? input.mentionRoleIds : [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean))];
+
+  return {
+    name,
+    taskType,
+    ...schedule,
+    conditionText: input.conditionText === undefined
+      ? current?.conditionText || ""
+      : String(input.conditionText || "").trim(),
+    content: input.content === undefined ? current?.content || "" : String(input.content || ""),
+    summaryTemplate: input.summaryTemplate === undefined
+      ? current?.summaryTemplate || ""
+      : String(input.summaryTemplate || ""),
+    mentionRoleIds,
+    enabled,
+    nextRunAt
+  };
+}
+
+function assertGroupAutomationScope({ botId, groupId }) {
+  const group = getGroupById({ botId, groupId });
+  if (!group) throw new Error("managed group not found");
+  return group;
+}
+
+function assertGroupAutomationMentionRoles({ botId, groupId, roleIds }) {
+  if (!roleIds.length) return;
+  const placeholders = roleIds.map(() => "?").join(", ");
+  const rows = db.prepare(`
+    SELECT id
+    FROM managed_group_roles
+    WHERE bot_id = ? AND group_id = ? AND id IN (${placeholders})
+  `).all(botId, groupId, ...roleIds);
+  if (rows.length !== roleIds.length) throw new Error("group automation mention role not found");
+}
+
+function replaceGroupAutomationMentions(taskId, roleIds) {
+  db.prepare(`
+    DELETE FROM managed_group_automation_mentions
+    WHERE task_id = ?
+  `).run(taskId);
+  const insert = db.prepare(`
+    INSERT INTO managed_group_automation_mentions (task_id, role_id, ordinal)
+    VALUES (?, ?, ?)
+  `);
+  roleIds.forEach((roleId, ordinal) => insert.run(taskId, roleId, ordinal));
+}
+
+export function getGroupAutomationTask({ botId, taskId }) {
+  return rowToGroupAutomationTask(db.prepare(`
+    SELECT *
+    FROM managed_group_automation_tasks
+    WHERE bot_id = ? AND id = ?
+  `).get(botId, taskId));
+}
+
+export function listGroupAutomationTasks({ botId, groupId, includeDeleted = false }) {
+  const deletedClause = includeDeleted ? "" : "AND deleted_at IS NULL";
+  return db.prepare(`
+    SELECT *
+    FROM managed_group_automation_tasks
+    WHERE bot_id = ? AND group_id = ? ${deletedClause}
+    ORDER BY created_at ASC, id ASC
+  `).all(botId, groupId).map(rowToGroupAutomationTask);
+}
+
+export function createGroupAutomationTask(input) {
+  const botId = String(input?.botId || "").trim();
+  const groupId = String(input?.groupId || "").trim();
+  assertGroupAutomationScope({ botId, groupId });
+  const values = normalizeGroupAutomationTaskValues(input);
+  assertGroupAutomationMentionRoles({ botId, groupId, roleIds: values.mentionRoleIds });
+  const taskId = crypto.randomUUID();
+  const timestamp = now();
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      INSERT INTO managed_group_automation_tasks (
+        id, bot_id, group_id, name, task_type, cadence, schedule_days_json,
+        time_of_day, condition_text, content, summary_template, enabled,
+        next_run_at, version, deleted_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
+    `).run(
+      taskId,
+      botId,
+      groupId,
+      values.name,
+      values.taskType,
+      values.cadence,
+      json(values.scheduleDays),
+      values.timeOfDay,
+      values.conditionText,
+      values.content,
+      values.summaryTemplate,
+      values.enabled ? 1 : 0,
+      values.nextRunAt || null,
+      timestamp,
+      timestamp
+    );
+    replaceGroupAutomationMentions(taskId, values.mentionRoleIds);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return getGroupAutomationTask({ botId, taskId });
+}
+
+export function updateGroupAutomationTask(input) {
+  const botId = String(input?.botId || "").trim();
+  const taskId = String(input?.taskId || "").trim();
+  const current = getGroupAutomationTask({ botId, taskId });
+  if (!current || current.deletedAt) throw new Error("group automation task not found");
+  if (Number(current.version) !== Number(input.expectedVersion)) {
+    const error = new Error("group automation task version conflict");
+    error.code = "GROUP_AUTOMATION_VERSION_CONFLICT";
+    throw error;
+  }
+  const values = normalizeGroupAutomationTaskValues(input, current);
+  assertGroupAutomationMentionRoles({
+    botId,
+    groupId: current.groupId,
+    roleIds: values.mentionRoleIds
+  });
+  const timestamp = now();
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = db.prepare(`
+      UPDATE managed_group_automation_tasks
+      SET name = ?, task_type = ?, cadence = ?, schedule_days_json = ?,
+          time_of_day = ?, condition_text = ?, content = ?, summary_template = ?,
+          enabled = ?, next_run_at = ?, version = version + 1, updated_at = ?
+      WHERE bot_id = ? AND id = ? AND version = ? AND deleted_at IS NULL
+    `).run(
+      values.name,
+      values.taskType,
+      values.cadence,
+      json(values.scheduleDays),
+      values.timeOfDay,
+      values.conditionText,
+      values.content,
+      values.summaryTemplate,
+      values.enabled ? 1 : 0,
+      values.nextRunAt || null,
+      timestamp,
+      botId,
+      taskId,
+      Number(input.expectedVersion)
+    );
+    if (Number(result.changes) !== 1) throw new Error("group automation task version conflict");
+    replaceGroupAutomationMentions(taskId, values.mentionRoleIds);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return getGroupAutomationTask({ botId, taskId });
+}
+
+export function duplicateGroupAutomationTask({ botId, taskId, name = "" }) {
+  const current = getGroupAutomationTask({ botId, taskId });
+  if (!current || current.deletedAt) throw new Error("group automation task not found");
+  return createGroupAutomationTask({
+    ...current,
+    id: undefined,
+    name: String(name || "").trim() || `${current.name} 副本`,
+    nextRunAt: current.nextRunAt,
+    version: undefined,
+    deletedAt: undefined
+  });
+}
+
+export function softDeleteGroupAutomationTask({ botId, taskId, expectedVersion }) {
+  const current = getGroupAutomationTask({ botId, taskId });
+  if (!current || current.deletedAt) throw new Error("group automation task not found");
+  if (Number(current.version) !== Number(expectedVersion)) {
+    const error = new Error("group automation task version conflict");
+    error.code = "GROUP_AUTOMATION_VERSION_CONFLICT";
+    throw error;
+  }
+  const timestamp = now();
+  db.prepare(`
+    UPDATE managed_group_automation_tasks
+    SET enabled = 0, deleted_at = ?, version = version + 1, updated_at = ?
+    WHERE bot_id = ? AND id = ? AND version = ? AND deleted_at IS NULL
+  `).run(timestamp, timestamp, botId, taskId, Number(expectedVersion));
+  return getGroupAutomationTask({ botId, taskId });
+}
+
+export function resolveGroupAutomationMentionNames({ botId, groupId, roleIds = [] }) {
+  const normalizedRoleIds = [...new Set((Array.isArray(roleIds) ? roleIds : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean))];
+  if (!normalizedRoleIds.length) return { names: [], warnings: [] };
+  const placeholders = normalizedRoleIds.map(() => "?").join(", ");
+  const roles = db.prepare(`
+    SELECT id, current_name
+    FROM managed_group_roles
+    WHERE bot_id = ? AND group_id = ? AND id IN (${placeholders})
+  `).all(botId, groupId, ...normalizedRoleIds);
+  const namesById = new Map(roles.map((role) => [role.id, role.current_name]));
+  const names = [];
+  const warnings = [];
+  for (const roleId of normalizedRoleIds) {
+    const roleName = namesById.get(roleId);
+    if (roleName) names.push(roleName);
+    else warnings.push(`Mention role ${roleId} was removed`);
+  }
+  return { names, warnings };
+}
+
+function claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt }) {
+  const result = db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET status = 'evaluating', attempts = attempts + 1,
+        lease_expires_at = ?, started_at = COALESCE(started_at, ?), updated_at = ?
+    WHERE id = ?
+      AND (
+        status = 'pending'
+        OR (status IN ('evaluating', 'sending') AND lease_expires_at <= ?)
+      )
+  `).run(leaseExpiresAt, nowIso, nowIso, row.id, nowIso);
+  if (Number(result.changes) !== 1) return null;
+  return rowToGroupAutomationOccurrence(db.prepare(`
+    SELECT * FROM managed_group_automation_occurrences WHERE id = ?
+  `).get(row.id));
+}
+
+export function claimDueGroupAutomationOccurrences({
+  nowIso = now(),
+  limit = 10,
+  leaseMs = 300000
+} = {}) {
+  const claimLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+  const nowInstant = new Date(nowIso);
+  if (Number.isNaN(nowInstant.getTime())) throw new Error("invalid claim time");
+  const leaseExpiresAt = new Date(nowInstant.getTime() + Math.max(1000, Number(leaseMs) || 0))
+    .toISOString();
+  const claimed = [];
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const expiredRows = db.prepare(`
+      SELECT occurrence.*
+      FROM managed_group_automation_occurrences occurrence
+      JOIN managed_group_automation_tasks task ON task.id = occurrence.task_id
+      WHERE occurrence.status IN ('evaluating', 'sending')
+        AND occurrence.lease_expires_at <= ?
+        AND task.enabled = 1
+        AND task.deleted_at IS NULL
+      ORDER BY occurrence.scheduled_for ASC, occurrence.id ASC
+      LIMIT ?
+    `).all(nowIso, claimLimit);
+    for (const row of expiredRows) {
+      const occurrence = claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt });
+      if (occurrence) claimed.push(occurrence);
+    }
+
+    const remaining = claimLimit - claimed.length;
+    if (remaining > 0) {
+      const dueTasks = db.prepare(`
+        SELECT *
+        FROM managed_group_automation_tasks
+        WHERE enabled = 1 AND deleted_at IS NULL
+          AND next_run_at IS NOT NULL AND next_run_at <= ?
+        ORDER BY next_run_at ASC, created_at ASC, id ASC
+        LIMIT ?
+      `).all(nowIso, remaining);
+      for (const taskRow of dueTasks) {
+        const scheduledFor = taskRow.next_run_at;
+        const cycle = groupAutomationCycleWindow(taskRow.cadence, scheduledFor);
+        const occurrenceId = crypto.randomUUID();
+        db.prepare(`
+          INSERT OR IGNORE INTO managed_group_automation_occurrences (
+            id, task_id, bot_id, group_id, scheduled_for, cycle_key,
+            cycle_start_at, cycle_end_at, status, attempts, lease_expires_at,
+            mention_role_ids_json, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, ?, ?, ?)
+        `).run(
+          occurrenceId,
+          taskRow.id,
+          taskRow.bot_id,
+          taskRow.group_id,
+          scheduledFor,
+          cycle.cycleKey,
+          cycle.startAt,
+          cycle.endAt,
+          json(listGroupAutomationMentionRoleIds(taskRow.id)),
+          nowIso,
+          nowIso
+        );
+        const schedule = {
+          cadence: taskRow.cadence,
+          scheduleDays: parseJson(taskRow.schedule_days_json) || [],
+          timeOfDay: taskRow.time_of_day
+        };
+        db.prepare(`
+          UPDATE managed_group_automation_tasks
+          SET next_run_at = ?, updated_at = ?
+          WHERE id = ? AND next_run_at = ?
+        `).run(
+          nextGroupAutomationRunAt(schedule, scheduledFor),
+          nowIso,
+          taskRow.id,
+          scheduledFor
+        );
+        const occurrenceRow = db.prepare(`
+          SELECT *
+          FROM managed_group_automation_occurrences
+          WHERE task_id = ? AND scheduled_for = ?
+        `).get(taskRow.id, scheduledFor);
+        const occurrence = claimGroupAutomationOccurrenceRow({
+          row: occurrenceRow,
+          nowIso,
+          leaseExpiresAt
+        });
+        if (occurrence) claimed.push(occurrence);
+      }
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return claimed;
+}
+
+export function completeGroupAutomationOccurrence({
+  botId,
+  occurrenceId,
+  status,
+  conditionAchieved = null,
+  reason = "",
+  variableValues = {},
+  factIds = [],
+  evidenceMessageIds = [],
+  mentionRoleIds,
+  mentionNames = [],
+  renderedContent = "",
+  worktoolMessageId = "",
+  worktoolResponse = null,
+  errorMessage = "",
+  finishedAt = now()
+}) {
+  const current = db.prepare(`
+    SELECT * FROM managed_group_automation_occurrences
+    WHERE bot_id = ? AND id = ?
+  `).get(botId, occurrenceId);
+  if (!current) throw new Error("group automation occurrence not found");
+  db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET status = ?, lease_expires_at = NULL, condition_achieved = ?, reason = ?,
+        variable_values_json = ?, fact_ids_json = ?, evidence_message_ids_json = ?,
+        mention_role_ids_json = ?, mention_names_json = ?, rendered_content = ?,
+        worktool_message_id = ?, worktool_response_json = ?, error_message = ?,
+        finished_at = ?, updated_at = ?
+    WHERE bot_id = ? AND id = ?
+  `).run(
+    String(status || "completed"),
+    conditionAchieved == null ? null : conditionAchieved ? 1 : 0,
+    String(reason || ""),
+    json(variableValues || {}),
+    json(Array.isArray(factIds) ? factIds : []),
+    json(Array.isArray(evidenceMessageIds) ? evidenceMessageIds : []),
+    json(mentionRoleIds === undefined
+      ? parseJson(current.mention_role_ids_json) || []
+      : Array.isArray(mentionRoleIds) ? mentionRoleIds : []),
+    json(Array.isArray(mentionNames) ? mentionNames : []),
+    String(renderedContent || ""),
+    String(worktoolMessageId || ""),
+    worktoolResponse == null ? null : json(worktoolResponse),
+    String(errorMessage || ""),
+    finishedAt,
+    finishedAt,
+    botId,
+    occurrenceId
+  );
+  return rowToGroupAutomationOccurrence(db.prepare(`
+    SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
+  `).get(botId, occurrenceId));
+}
+
+export function failGroupAutomationOccurrence({ botId, occurrenceId, errorMessage }) {
+  return completeGroupAutomationOccurrence({
+    botId,
+    occurrenceId,
+    status: "failed",
+    errorMessage: String(errorMessage || "group automation occurrence failed")
+  });
+}
+
+export function listGroupAutomationOccurrences({
+  botId,
+  taskId,
+  page = 1,
+  pageSize = 20
+}) {
+  const normalizedPage = normalizePage(page);
+  const normalizedPageSize = normalizePageSize(pageSize, 20, 100);
+  const total = Number(db.prepare(`
+    SELECT COUNT(*) AS total
+    FROM managed_group_automation_occurrences
+    WHERE bot_id = ? AND task_id = ?
+  `).get(botId, taskId)?.total || 0);
+  const items = db.prepare(`
+    SELECT *
+    FROM managed_group_automation_occurrences
+    WHERE bot_id = ? AND task_id = ?
+    ORDER BY scheduled_for DESC, id DESC
+    LIMIT ? OFFSET ?
+  `).all(
+    botId,
+    taskId,
+    normalizedPageSize,
+    (normalizedPage - 1) * normalizedPageSize
+  ).map(rowToGroupAutomationOccurrence);
+  return {
+    items,
+    pagination: paginationResult({ total, page: normalizedPage, pageSize: normalizedPageSize })
   };
 }
 
