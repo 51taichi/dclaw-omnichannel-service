@@ -50,7 +50,7 @@ test("created alerts publish only after the tag transaction returns", () => {
   const normal = source.slice(normalStart, normalEnd);
   assert.ok(normal.indexOf("applyAgentTagDecision({") < normal.indexOf("publishCommittedTagAlerts({"));
 
-  const handoffStart = source.indexOf('flow?.session?.handoffStatus === "human"');
+  const handoffStart = source.indexOf("if (isHumanHandoff)");
   const handoffEnd = source.indexOf('status: "human_handoff"', handoffStart);
   const handoff = source.slice(handoffStart, handoffEnd);
   assert.ok(handoff.indexOf("applyAgentTagDecision({") < handoff.indexOf("publishCommittedTagAlerts({"));
