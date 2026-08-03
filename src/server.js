@@ -801,6 +801,15 @@ function privateTargetNameFromConversationKey(conversationKey) {
   return String(conversationKey || "").split(":private:")[1] || "";
 }
 
+function manualReplyTargetForConversation({ botId, conversationKey }) {
+  const managedGroup = getGroupByConversationKey({ botId, conversationKey });
+  return String(
+    managedGroup?.currentName
+    || privateTargetNameFromConversationKey(conversationKey)
+    || ""
+  ).trim();
+}
+
 function isConversationEpochCurrent({ botId, conversationKey, expectedEpoch }) {
   const current = getConversation(conversationKey);
   return Boolean(
@@ -6713,16 +6722,6 @@ app.post(
     if (!binding || !binding.enabled) throw new Error("no enabled bot binding");
     const session = getFlowSessionForBot({ botId, conversationKey });
     if (!session) throw new Error("flow session not found");
-    const conversation = getConversation(conversationKey);
-    if (
-      [1, 3].includes(Number(conversation?.roomType))
-      || conversationKey.includes(":group:")
-      || conversationKey.includes(":group-id:")
-    ) {
-      const error = new Error("group conversations do not support manual tags");
-      error.status = 400;
-      throw error;
-    }
     const result = applyManualConversationTagChange({
       botId,
       binding,
@@ -6782,9 +6781,6 @@ app.post(
     assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
     if (!content) throw new Error("content is required");
-    if (!isPrivateConversationKey(conversationKey)) {
-      throw new Error("manual reply only supports private conversations");
-    }
     const session = getFlowSession(conversationKey);
     if (!session || session.botId !== botId) {
       throw new Error("flow session not found");
@@ -6796,7 +6792,7 @@ app.post(
     if (!binding || !binding.enabled) {
       throw new Error("no enabled bot binding");
     }
-    const target = privateTargetNameFromConversationKey(conversationKey);
+    const target = manualReplyTargetForConversation({ botId, conversationKey });
     if (!target) {
       throw new Error("missing manual reply target");
     }

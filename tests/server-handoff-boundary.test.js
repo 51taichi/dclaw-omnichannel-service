@@ -11,6 +11,21 @@ function processIncomingBody() {
   return serverSource.slice(start, end);
 }
 
+function functionBody(name) {
+  const start = serverSource.indexOf(`function ${name}`);
+  assert.notEqual(start, -1, `${name} is defined`);
+  const signatureEnd = serverSource.indexOf(") {", start);
+  assert.notEqual(signatureEnd, -1, `${name} has a function signature`);
+  const open = signatureEnd + 2;
+  let depth = 0;
+  for (let index = open; index < serverSource.length; index += 1) {
+    if (serverSource[index] === "{") depth += 1;
+    if (serverSource[index] === "}") depth -= 1;
+    if (depth === 0) return serverSource.slice(open + 1, index);
+  }
+  assert.fail(`${name} body is closed`);
+}
+
 test("server exposes a bot-scoped handoff route", () => {
   assert.equal(serverSource.includes('"/api/flow-sessions/:conversationKey/handoff"'), true);
   assert.equal(serverSource.includes("updateFlowSessionHandoff"), true);
@@ -55,11 +70,16 @@ test("debug auto-reply is scoped to the incoming bot", () => {
   assert.equal(serverSource.includes("assertAdminForBot(req, req.params.botId)"), true);
 });
 
-test("server exposes manual reply route only for human handoff", () => {
+test("server exposes manual reply route for private and group human handoff", () => {
   assert.equal(serverSource.includes('"/api/flow-sessions/:conversationKey/manual-reply"'), true);
   assert.equal(serverSource.includes('handoffStatus !== "human"'), true);
   assert.equal(serverSource.includes('source: "manual_reply"'), true);
   assert.equal(serverSource.includes("sendTextMessage({"), true);
   assert.equal(serverSource.includes("insertConversationMessage({"), true);
   assert.equal(serverSource.includes("insertOutgoingMessage({"), true);
+  assert.doesNotMatch(serverSource, /manual reply only supports private conversations/);
+  const targetBody = functionBody("manualReplyTargetForConversation");
+  assert.match(targetBody, /getGroupByConversationKey\(\{ botId, conversationKey \}\)/);
+  assert.match(targetBody, /managedGroup\?\.currentName/);
+  assert.match(targetBody, /privateTargetNameFromConversationKey\(conversationKey\)/);
 });
