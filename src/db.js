@@ -681,6 +681,82 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_group_automation_occurrences_lease
   ON managed_group_automation_occurrences (status, lease_expires_at);
 
+  CREATE TABLE IF NOT EXISTS managed_group_facts (
+    id TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    semantic_key TEXT NOT NULL,
+    category TEXT NOT NULL,
+    statement TEXT NOT NULL,
+    value_json TEXT NOT NULL DEFAULT '{}',
+    happened_at TEXT NOT NULL,
+    speaker_name TEXT NOT NULL DEFAULT '',
+    role_id TEXT NOT NULL DEFAULT '',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (bot_id, group_id, semantic_key)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_managed_group_facts_projection
+  ON managed_group_facts (bot_id, group_id, active, happened_at, updated_at);
+
+  CREATE TABLE IF NOT EXISTS managed_group_fact_evidence (
+    fact_id TEXT NOT NULL,
+    message_id INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    PRIMARY KEY (fact_id, message_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS managed_group_ledger_states (
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    live_cursor_message_id INTEGER NOT NULL DEFAULT 0,
+    backfill_cursors_json TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (bot_id, group_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS managed_group_ledger_jobs (
+    id TEXT PRIMARY KEY,
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('live','backfill','reindex')),
+    task_id TEXT NOT NULL DEFAULT '',
+    from_message_id INTEGER NOT NULL DEFAULT 0,
+    through_message_id INTEGER NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_expires_at TEXT,
+    next_retry_at TEXT,
+    error_message TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    UNIQUE (bot_id, group_id, mode, task_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_managed_group_ledger_jobs_claim
+  ON managed_group_ledger_jobs (status, next_retry_at, lease_expires_at, created_at);
+
+  CREATE TABLE IF NOT EXISTS managed_group_automation_cycle_states (
+    task_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    cycle_key TEXT NOT NULL,
+    achieved INTEGER NOT NULL DEFAULT 0,
+    reason TEXT NOT NULL DEFAULT '',
+    supporting_fact_keys_json TEXT NOT NULL DEFAULT '[]',
+    contradicting_fact_keys_json TEXT NOT NULL DEFAULT '[]',
+    evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
+    evaluated_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (task_id, cycle_key)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_automation_cycle_scope
+  ON managed_group_automation_cycle_states (bot_id, group_id, task_id, cycle_key);
+
   CREATE TABLE IF NOT EXISTS cockpit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     event_key TEXT NOT NULL UNIQUE,
@@ -2145,6 +2221,503 @@ export function listGroupAutomationOccurrences({
     items,
     pagination: paginationResult({ total, page: normalizedPage, pageSize: normalizedPageSize })
   };
+}
+
+function rowToGroupLedgerJob(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    groupId: row.group_id,
+    mode: row.mode,
+    taskId: row.task_id || "",
+    fromMessageId: Number(row.from_message_id || 0),
+    throughMessageId: Number(row.through_message_id || 0),
+    status: row.status,
+    attempts: Number(row.attempts || 0),
+    leaseExpiresAt: row.lease_expires_at || "",
+    nextRetryAt: row.next_retry_at || "",
+    errorMessage: row.error_message || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at || ""
+  };
+}
+
+function listGroupFactEvidenceIds(factId) {
+  return db.prepare(`
+    SELECT message_id
+    FROM managed_group_fact_evidence
+    WHERE fact_id = ?
+    ORDER BY ordinal ASC, message_id ASC
+  `).all(factId).map((row) => Number(row.message_id));
+}
+
+function rowToGroupFact(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    botId: row.bot_id,
+    groupId: row.group_id,
+    semanticKey: row.semantic_key,
+    category: row.category,
+    statement: row.statement,
+    value: parseJson(row.value_json) || {},
+    happenedAt: row.happened_at,
+    speakerName: row.speaker_name || "",
+    roleId: row.role_id || "",
+    active: Boolean(row.active),
+    evidenceMessageIds: listGroupFactEvidenceIds(row.id),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+function rowToGroupAutomationCycleState(row) {
+  if (!row) return null;
+  return {
+    taskId: row.task_id,
+    botId: row.bot_id,
+    groupId: row.group_id,
+    cycleKey: row.cycle_key,
+    achieved: Boolean(row.achieved),
+    reason: row.reason || "",
+    supportingFactKeys: parseJson(row.supporting_fact_keys_json) || [],
+    contradictingFactKeys: parseJson(row.contradicting_fact_keys_json) || [],
+    evidenceMessageIds: parseJson(row.evidence_message_ids_json) || [],
+    evaluatedAt: row.evaluated_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function getGroupLedgerState({ botId, groupId }) {
+  const row = db.prepare(`
+    SELECT *
+    FROM managed_group_ledger_states
+    WHERE bot_id = ? AND group_id = ?
+  `).get(botId, groupId);
+  return {
+    botId,
+    groupId,
+    liveCursorMessageId: Number(row?.live_cursor_message_id || 0),
+    backfillCursors: parseJson(row?.backfill_cursors_json) || {},
+    updatedAt: row?.updated_at || ""
+  };
+}
+
+export function enqueueGroupLedgerJob({
+  botId,
+  groupId,
+  mode = "live",
+  taskId = "",
+  fromMessageId,
+  throughMessageId
+}) {
+  assertGroupAutomationScope({ botId, groupId });
+  if (!["live", "backfill", "reindex"].includes(mode)) {
+    throw new Error("invalid group ledger job mode");
+  }
+  const normalizedTaskId = mode === "live" ? "" : String(taskId || "").trim();
+  if (mode === "backfill") {
+    const task = getGroupAutomationTask({ botId, taskId: normalizedTaskId });
+    if (!task || task.groupId !== groupId || task.deletedAt) {
+      throw new Error("group automation task not found");
+    }
+  }
+  const through = Number(throughMessageId);
+  if (!Number.isSafeInteger(through) || through <= 0) {
+    throw new Error("invalid group ledger throughMessageId");
+  }
+  const state = getGroupLedgerState({ botId, groupId });
+  const cursor = mode === "live"
+    ? state.liveCursorMessageId
+    : Number(state.backfillCursors[normalizedTaskId] || 0);
+  const from = fromMessageId == null ? cursor : Number(fromMessageId);
+  const timestamp = now();
+  const jobId = crypto.randomUUID();
+  db.prepare(`
+    INSERT INTO managed_group_ledger_jobs (
+      id, bot_id, group_id, mode, task_id, from_message_id,
+      through_message_id, status, attempts, lease_expires_at,
+      next_retry_at, error_message, created_at, updated_at, completed_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, NULL, '', ?, ?, NULL)
+    ON CONFLICT(bot_id, group_id, mode, task_id) DO UPDATE SET
+      from_message_id = MIN(managed_group_ledger_jobs.from_message_id, excluded.from_message_id),
+      through_message_id = MAX(managed_group_ledger_jobs.through_message_id, excluded.through_message_id),
+      status = CASE
+        WHEN managed_group_ledger_jobs.status = 'processing' THEN 'processing'
+        ELSE 'pending'
+      END,
+      next_retry_at = NULL,
+      error_message = '',
+      completed_at = NULL,
+      updated_at = excluded.updated_at
+  `).run(
+    jobId,
+    botId,
+    groupId,
+    mode,
+    normalizedTaskId,
+    Math.max(0, Number.isSafeInteger(from) ? from : 0),
+    through,
+    timestamp,
+    timestamp
+  );
+  return rowToGroupLedgerJob(db.prepare(`
+    SELECT *
+    FROM managed_group_ledger_jobs
+    WHERE bot_id = ? AND group_id = ? AND mode = ? AND task_id = ?
+  `).get(botId, groupId, mode, normalizedTaskId));
+}
+
+export function claimGroupLedgerJobs({
+  nowIso = now(),
+  limit = 10,
+  leaseMs = 300000
+} = {}) {
+  const claimLimit = Math.max(1, Math.min(100, Number(limit) || 10));
+  const instant = new Date(nowIso);
+  if (Number.isNaN(instant.getTime())) throw new Error("invalid group ledger claim time");
+  const leaseExpiresAt = new Date(
+    instant.getTime() + Math.max(1000, Number(leaseMs) || 0)
+  ).toISOString();
+  const claimed = [];
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const rows = db.prepare(`
+      SELECT *
+      FROM managed_group_ledger_jobs
+      WHERE status = 'pending'
+        OR (status = 'failed' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+        OR (status = 'processing' AND lease_expires_at <= ?)
+      ORDER BY created_at ASC, id ASC
+      LIMIT ?
+    `).all(nowIso, nowIso, claimLimit);
+    const claim = db.prepare(`
+      UPDATE managed_group_ledger_jobs
+      SET status = 'processing', attempts = attempts + 1,
+          lease_expires_at = ?, error_message = '', updated_at = ?
+      WHERE id = ?
+        AND (
+          status = 'pending'
+          OR (status = 'failed' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+          OR (status = 'processing' AND lease_expires_at <= ?)
+        )
+    `);
+    for (const row of rows) {
+      const result = claim.run(leaseExpiresAt, nowIso, row.id, nowIso, nowIso);
+      if (Number(result.changes) !== 1) continue;
+      claimed.push(rowToGroupLedgerJob(db.prepare(`
+        SELECT * FROM managed_group_ledger_jobs WHERE id = ?
+      `).get(row.id)));
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return claimed;
+}
+
+function assertGroupLedgerEvidence({ botId, groupId, messageIds }) {
+  const uniqueMessageIds = [...new Set(messageIds.map(Number))];
+  if (!uniqueMessageIds.length) return new Map();
+  if (uniqueMessageIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+    throw new Error("invalid group ledger evidence message ID");
+  }
+  const group = assertGroupAutomationScope({ botId, groupId });
+  const placeholders = uniqueMessageIds.map(() => "?").join(", ");
+  const rows = db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE id IN (${placeholders})
+      AND bot_id = ? AND conversation_key = ? AND direction = 'inbound'
+  `).all(...uniqueMessageIds, botId, group.conversationKey);
+  if (rows.length !== uniqueMessageIds.length) {
+    throw new Error("ledger evidence must be an inbound group message in the same Bot and group");
+  }
+  return new Map(rows.map((row) => [Number(row.id), row]));
+}
+
+function replaceGroupFactEvidence(factId, messageIds) {
+  db.prepare(`DELETE FROM managed_group_fact_evidence WHERE fact_id = ?`).run(factId);
+  const insert = db.prepare(`
+    INSERT INTO managed_group_fact_evidence (fact_id, message_id, ordinal)
+    VALUES (?, ?, ?)
+  `);
+  [...new Set(messageIds.map(Number))]
+    .forEach((messageId, ordinal) => insert.run(factId, messageId, ordinal));
+}
+
+export function applyGroupLedgerEvaluation({
+  jobId,
+  botId,
+  groupId,
+  throughMessageId,
+  facts = [],
+  conditionStates = []
+}) {
+  const processedThrough = Number(throughMessageId);
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const job = db.prepare(`
+      SELECT *
+      FROM managed_group_ledger_jobs
+      WHERE id = ? AND bot_id = ? AND group_id = ? AND status = 'processing'
+    `).get(jobId, botId, groupId);
+    if (!job) throw new Error("processing group ledger job not found");
+    if (!Number.isSafeInteger(processedThrough) || processedThrough <= 0
+      || processedThrough > Number(job.through_message_id)) {
+      throw new Error("invalid processed group ledger cursor");
+    }
+
+    const normalizedFacts = Array.isArray(facts) ? facts : [];
+    const normalizedStates = Array.isArray(conditionStates) ? conditionStates : [];
+    const allEvidenceIds = normalizedFacts.flatMap((fact) => (
+      Array.isArray(fact?.evidenceMessageIds) ? fact.evidenceMessageIds : []
+    ));
+    assertGroupLedgerEvidence({ botId, groupId, messageIds: allEvidenceIds });
+
+    for (const mutation of normalizedFacts) {
+      const operation = String(mutation?.operation || "").trim();
+      const semanticKey = String(mutation?.semanticKey || "").trim();
+      const evidenceMessageIds = [...new Set(
+        (Array.isArray(mutation?.evidenceMessageIds) ? mutation.evidenceMessageIds : []).map(Number)
+      )];
+      if (!semanticKey || !["upsert", "retract"].includes(operation)) {
+        throw new Error("invalid group fact mutation");
+      }
+      if (!evidenceMessageIds.length) throw new Error("group fact evidence is required");
+      const existing = db.prepare(`
+        SELECT * FROM managed_group_facts
+        WHERE bot_id = ? AND group_id = ? AND semantic_key = ?
+      `).get(botId, groupId, semanticKey);
+
+      if (operation === "retract") {
+        if (!existing) throw new Error(`group fact not found for retraction: ${semanticKey}`);
+        db.prepare(`
+          UPDATE managed_group_facts
+          SET active = 0, updated_at = ?
+          WHERE id = ?
+        `).run(timestamp, existing.id);
+        replaceGroupFactEvidence(existing.id, evidenceMessageIds);
+        continue;
+      }
+
+      const category = String(mutation.category || "").trim();
+      const statement = String(mutation.statement || "").trim();
+      const happenedAt = String(mutation.happenedAt || "").trim();
+      if (!category || !statement || Number.isNaN(new Date(happenedAt).getTime())) {
+        throw new Error("invalid group fact content");
+      }
+      const roleId = String(mutation.roleId || "").trim();
+      if (roleId) {
+        const role = db.prepare(`
+          SELECT id FROM managed_group_roles
+          WHERE id = ? AND bot_id = ? AND group_id = ?
+        `).get(roleId, botId, groupId);
+        if (!role) throw new Error("group fact role not found");
+      }
+      const factId = existing?.id || crypto.randomUUID();
+      db.prepare(`
+        INSERT INTO managed_group_facts (
+          id, bot_id, group_id, semantic_key, category, statement, value_json,
+          happened_at, speaker_name, role_id, active, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        ON CONFLICT(bot_id, group_id, semantic_key) DO UPDATE SET
+          category = excluded.category,
+          statement = excluded.statement,
+          value_json = excluded.value_json,
+          happened_at = excluded.happened_at,
+          speaker_name = excluded.speaker_name,
+          role_id = excluded.role_id,
+          active = 1,
+          updated_at = excluded.updated_at
+      `).run(
+        factId,
+        botId,
+        groupId,
+        semanticKey,
+        category,
+        statement,
+        json(mutation.value || {}),
+        new Date(happenedAt).toISOString(),
+        String(mutation.speakerName || "").trim(),
+        roleId,
+        existing?.created_at || timestamp,
+        timestamp
+      );
+      replaceGroupFactEvidence(factId, evidenceMessageIds);
+    }
+
+    for (const state of normalizedStates) {
+      const taskId = String(state?.taskId || "").trim();
+      const cycleKey = String(state?.cycleKey || "").trim();
+      if (!taskId || !cycleKey || typeof state?.achieved !== "boolean") {
+        throw new Error("invalid group automation condition state");
+      }
+      const task = getGroupAutomationTask({ botId, taskId });
+      if (!task || task.groupId !== groupId || task.deletedAt) {
+        throw new Error("group automation task not found");
+      }
+      const supportingFactKeys = [...new Set(
+        (Array.isArray(state.supportingFactKeys) ? state.supportingFactKeys : [])
+          .map((value) => String(value || "").trim()).filter(Boolean)
+      )];
+      const contradictingFactKeys = [...new Set(
+        (Array.isArray(state.contradictingFactKeys) ? state.contradictingFactKeys : [])
+          .map((value) => String(value || "").trim()).filter(Boolean)
+      )];
+      const referencedKeys = [...new Set([...supportingFactKeys, ...contradictingFactKeys])];
+      let evidenceMessageIds = [];
+      if (referencedKeys.length) {
+        const placeholders = referencedKeys.map(() => "?").join(", ");
+        const rows = db.prepare(`
+          SELECT fact.semantic_key, evidence.message_id
+          FROM managed_group_facts fact
+          LEFT JOIN managed_group_fact_evidence evidence ON evidence.fact_id = fact.id
+          WHERE fact.bot_id = ? AND fact.group_id = ?
+            AND fact.semantic_key IN (${placeholders})
+        `).all(botId, groupId, ...referencedKeys);
+        const foundKeys = new Set(rows.map((row) => row.semantic_key));
+        if (foundKeys.size !== referencedKeys.length) {
+          throw new Error("group automation condition references an unknown fact");
+        }
+        evidenceMessageIds = [...new Set(rows
+          .map((row) => Number(row.message_id))
+          .filter((value) => Number.isSafeInteger(value) && value > 0))];
+      }
+      db.prepare(`
+        INSERT INTO managed_group_automation_cycle_states (
+          task_id, bot_id, group_id, cycle_key, achieved, reason,
+          supporting_fact_keys_json, contradicting_fact_keys_json,
+          evidence_message_ids_json, evaluated_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(task_id, cycle_key) DO UPDATE SET
+          achieved = excluded.achieved,
+          reason = excluded.reason,
+          supporting_fact_keys_json = excluded.supporting_fact_keys_json,
+          contradicting_fact_keys_json = excluded.contradicting_fact_keys_json,
+          evidence_message_ids_json = excluded.evidence_message_ids_json,
+          evaluated_at = excluded.evaluated_at,
+          updated_at = excluded.updated_at
+      `).run(
+        taskId,
+        botId,
+        groupId,
+        cycleKey,
+        state.achieved ? 1 : 0,
+        String(state.reason || "").trim(),
+        json(supportingFactKeys),
+        json(contradictingFactKeys),
+        json(evidenceMessageIds),
+        timestamp,
+        timestamp
+      );
+    }
+
+    const ledgerState = getGroupLedgerState({ botId, groupId });
+    const backfillCursors = { ...ledgerState.backfillCursors };
+    let liveCursorMessageId = ledgerState.liveCursorMessageId;
+    if (job.mode === "live" || job.mode === "reindex") {
+      liveCursorMessageId = Math.max(liveCursorMessageId, processedThrough);
+    } else {
+      backfillCursors[job.task_id] = Math.max(
+        Number(backfillCursors[job.task_id] || 0),
+        processedThrough
+      );
+    }
+    db.prepare(`
+      INSERT INTO managed_group_ledger_states (
+        bot_id, group_id, live_cursor_message_id, backfill_cursors_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(bot_id, group_id) DO UPDATE SET
+        live_cursor_message_id = excluded.live_cursor_message_id,
+        backfill_cursors_json = excluded.backfill_cursors_json,
+        updated_at = excluded.updated_at
+    `).run(botId, groupId, liveCursorMessageId, json(backfillCursors), timestamp);
+
+    const hasMore = Number(job.through_message_id) > processedThrough;
+    db.prepare(`
+      UPDATE managed_group_ledger_jobs
+      SET status = ?, from_message_id = ?, lease_expires_at = NULL,
+          next_retry_at = NULL, error_message = '', updated_at = ?,
+          completed_at = ?
+      WHERE id = ?
+    `).run(
+      hasMore ? "pending" : "completed",
+      processedThrough,
+      timestamp,
+      hasMore ? null : timestamp,
+      job.id
+    );
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return getGroupLedgerState({ botId, groupId });
+}
+
+export function failGroupLedgerJob({
+  jobId,
+  botId,
+  errorMessage,
+  nextRetryAt = ""
+}) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE managed_group_ledger_jobs
+    SET status = 'failed', lease_expires_at = NULL, next_retry_at = ?,
+        error_message = ?, updated_at = ?
+    WHERE id = ? AND bot_id = ? AND status = 'processing'
+  `).run(
+    nextRetryAt || null,
+    String(errorMessage || "group ledger evaluation failed"),
+    timestamp,
+    jobId,
+    botId
+  );
+  if (Number(result.changes) !== 1) throw new Error("processing group ledger job not found");
+  return rowToGroupLedgerJob(db.prepare(`
+    SELECT * FROM managed_group_ledger_jobs WHERE id = ? AND bot_id = ?
+  `).get(jobId, botId));
+}
+
+export function listGroupLedgerProjection({ botId, groupId, includeRetracted = false }) {
+  const activeClause = includeRetracted ? "" : "AND active = 1";
+  const facts = db.prepare(`
+    SELECT *
+    FROM managed_group_facts
+    WHERE bot_id = ? AND group_id = ? ${activeClause}
+    ORDER BY happened_at ASC, created_at ASC, id ASC
+  `).all(botId, groupId).map(rowToGroupFact);
+  return { botId, groupId, facts };
+}
+
+export function getGroupAutomationCycleState({ botId, groupId, taskId, cycleKey }) {
+  return rowToGroupAutomationCycleState(db.prepare(`
+    SELECT *
+    FROM managed_group_automation_cycle_states
+    WHERE bot_id = ? AND group_id = ? AND task_id = ? AND cycle_key = ?
+  `).get(botId, groupId, taskId, cycleKey));
+}
+
+export function listGroupAutomationEvidenceMessages({
+  botId,
+  groupId,
+  messageIds = []
+}) {
+  const normalizedIds = [...new Set((Array.isArray(messageIds) ? messageIds : []).map(Number))]
+    .filter((value) => Number.isSafeInteger(value) && value > 0);
+  if (!normalizedIds.length) return [];
+  const rowsById = assertGroupLedgerEvidence({
+    botId,
+    groupId,
+    messageIds: normalizedIds
+  });
+  return normalizedIds.map((id) => rowToConversationMessage(rowsById.get(id)));
 }
 
 export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
