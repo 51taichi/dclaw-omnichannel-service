@@ -1440,9 +1440,6 @@ function rowToManagedGroupRole(row) {
     identityType: row.identity_type || "",
     description: row.description || "",
     replyPolicy: row.reply_policy,
-    desiredMarkName: row.desired_mark_name || "",
-    originalMarkName: row.original_mark_name || "",
-    syncMarkName: Boolean(row.sync_mark_name),
     aliases: listManagedGroupRoleAliases(row.id),
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -1510,9 +1507,9 @@ export function saveGroupRoles({ botId, groupId, expectedVersion, roles = [] }) 
         String(role.identityType || ""),
         String(role.description || ""),
         replyPolicy,
-        String(role.desiredMarkName || ""),
-        String(role.originalMarkName || ""),
-        role.syncMarkName ? 1 : 0,
+        "",
+        "",
+        0,
         existing?.created_at || timestamp,
         timestamp
       );
@@ -1544,49 +1541,6 @@ export function saveGroupRoles({ botId, groupId, expectedVersion, roles = [] }) 
     group: getGroupById({ botId, groupId }),
     roles: listGroupRoles({ botId, groupId })
   };
-}
-
-export function markGroupRoleRemarkSynced({ botId, groupId, roleId, markName }) {
-  const normalized = String(markName || "").trim();
-  if (!normalized) throw new Error("markName is required");
-  const existing = db.prepare(`
-    SELECT *
-    FROM managed_group_roles
-    WHERE bot_id = ? AND group_id = ? AND id = ?
-  `).get(botId, groupId, roleId);
-  if (!existing) throw new Error("managed group role not found");
-  const timestamp = now();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    if (existing.current_name !== normalized) {
-      db.prepare(`
-        INSERT OR IGNORE INTO managed_group_role_aliases (
-          role_id, group_id, bot_id, alias_value, created_at
-        )
-        VALUES (?, ?, ?, ?, ?)
-      `).run(roleId, groupId, botId, existing.current_name, timestamp);
-    }
-    db.prepare(`
-      UPDATE managed_group_roles
-      SET current_name = ?,
-          original_mark_name = ?,
-          desired_mark_name = ?,
-          sync_mark_name = 0,
-          updated_at = ?
-      WHERE bot_id = ? AND group_id = ? AND id = ?
-    `).run(normalized, normalized, normalized, timestamp, botId, groupId, roleId);
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-  return rowToManagedGroupRole(
-    db.prepare(`
-      SELECT *
-      FROM managed_group_roles
-      WHERE bot_id = ? AND group_id = ? AND id = ?
-    `).get(botId, groupId, roleId)
-  );
 }
 
 export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {

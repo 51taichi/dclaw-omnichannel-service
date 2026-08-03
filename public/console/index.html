@@ -1014,31 +1014,10 @@
           <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-search"></use></svg>邀请联系人</span><input id="createGroupContactSearch" type="search" placeholder="搜索联系人" /></label>
           <div id="createGroupContactList" class="groups-contact-list">正在加载联系人…</div>
           <div id="createGroupContactPagination" class="pagination-bar groups-contact-pagination" aria-label="邀请联系人分页"></div>
-          <label class="switch-row groups-dialog-switch"><input name="modifyRemark" type="checkbox" /><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>同时设置群备注</label>
-          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群备注</span><input name="currentRemark" /></label>
         </div>
         <div class="confirm-actions groups-dialog-actions">
           <button id="createGroupCancelButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>取消</button>
           <button class="primary" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>创建</button>
-        </div>
-      </form>
-    </div>
-    <div id="modifyGroupDialog" class="modal-backdrop" hidden>
-      <form id="modifyGroupForm" class="confirm-dialog groups-dialog" role="dialog" aria-modal="true">
-        <div class="groups-dialog-header">
-          <span class="groups-dialog-icon"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg></span>
-          <span><strong>修改群信息</strong><small>只会提交实际发生变化的字段</small></span>
-        </div>
-        <div class="confirm-copy groups-dialog-body">
-          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>群名称</span><input name="currentName" required /></label>
-          <div class="expand-field-slot groups-announcement-slot">
-            <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>群公告</span><textarea class="expand-on-focus" name="announcement" rows="1"></textarea></label>
-          </div>
-          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群备注</span><input name="currentRemark" /></label>
-        </div>
-        <div class="confirm-actions groups-dialog-actions">
-          <button id="modifyGroupCancelButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>取消</button>
-          <button class="primary" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存</button>
         </div>
       </form>
     </div>

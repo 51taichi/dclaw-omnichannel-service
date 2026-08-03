@@ -114,34 +114,6 @@ export function buildGroupAgentContext({
   };
 }
 
-export function planGroupExternalPatch({ original = {}, next = {} }) {
-  const fields = [
-    ["currentName", "newGroupName"],
-    ["announcement", "newGroupAnnouncement"],
-    ["currentRemark", "newGroupRemark"]
-  ];
-  const commandFields = {};
-  for (const [sourceField, commandField] of fields) {
-    const before = String(original[sourceField] || "").trim();
-    const after = String(next[sourceField] || "").trim();
-    if (before !== after) commandFields[commandField] = after;
-  }
-  return {
-    changed: Object.keys(commandFields).length > 0,
-    commandFields
-  };
-}
-
-export function planMemberRemarkChanges(roles = []) {
-  return (Array.isArray(roles) ? roles : []).flatMap((role) => {
-    const currentName = String(role.currentName || "").trim();
-    const originalMarkName = String(role.originalMarkName || "").trim();
-    const markName = String(role.desiredMarkName || "").trim();
-    if (!currentName || !markName || originalMarkName === markName) return [];
-    return [{ roleId: role.id, currentName, markName }];
-  });
-}
-
 export function serializeManagedGroup(group, { roles, tagGroupIds } = {}) {
   if (!group) return null;
   return {

@@ -191,7 +191,6 @@ import {
   markCockpitStageCompleted,
   markConversationResetHandledForEpoch,
   markLegacyHistoryContextSent,
-  markGroupRoleRemarkSynced,
   markTagAlertRead,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
@@ -217,7 +216,6 @@ import {
   updateFlowSessionHandoff,
   updateFlowSessionNode,
   updateLegacyHistorySync,
-  updateGroupExternalSnapshot,
   updateTagSyncRunStatus,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
@@ -245,8 +243,6 @@ import {
 import {
   buildGroupAgentContext,
   buildGroupTagContext,
-  planGroupExternalPatch,
-  planMemberRemarkChanges,
   resolveGroupReplyDecision
 } from "./groups.js";
 import {
@@ -263,8 +259,6 @@ import {
   getCallbackConfig,
   getRobotInfo,
   listWorkToolGroups,
-  modifyGroup,
-  modifyGroupMemberRemarks,
   sendGroupInviteCommand,
   sendRawCommand,
   sendMediaMessage,
@@ -4001,7 +3995,7 @@ async function processTagActivationTask(task) {
       botId: task.botId,
       conversationKey: task.conversationKey
     });
-    const target = managedGroup?.currentRemark || managedGroup?.currentName
+    const target = managedGroup?.currentName
       || privateTargetNameFromConversationKey(task.conversationKey);
     if (!target) throw new Error("missing tag activation target");
     const configuredContent = String(task.messageContent || "").trim();
@@ -5498,13 +5492,11 @@ app.post(
       robotId: botId,
       groupName,
       selectList,
-      groupAnnouncement: body.announcement || "",
-      ...(body.modifyRemark === false ? {} : { groupRemark: body.currentRemark || "" })
+      groupAnnouncement: body.announcement || ""
     });
     const group = createOrGetGroup({
       botId,
       currentName: groupName,
-      currentRemark: body.modifyRemark === false ? "" : body.currentRemark || "",
       source: "created"
     });
     res.status(201).json({
@@ -5604,42 +5596,6 @@ app.patch(
 );
 
 app.patch(
-  "/api/groups/:groupId/external",
-  asyncHandler(async (req, res) => {
-    const body = req.body || {};
-    const botId = String(body.botId || "").trim();
-    assertBotAccess(req, botId);
-    const original = getGroupById({ botId, groupId: req.params.groupId });
-    if (!original) {
-      res.status(404).json({ ok: false, message: "managed group not found" });
-      return;
-    }
-    const next = body.next || {};
-    const externalPatch = planGroupExternalPatch({ original, next });
-    let command = { skipped: true, reason: "unchanged" };
-    if (externalPatch.changed) {
-      const response = await modifyGroup({
-        robotId: botId,
-        groupName: original.currentRemark || original.currentName,
-        ...externalPatch.commandFields
-      });
-      command = { skipped: false, accepted: Number(response?.code || 0) === 0, response };
-    }
-    const group = externalPatch.changed
-      ? updateGroupExternalSnapshot({
-          botId,
-          groupId: original.id,
-          expectedVersion: body.expectedVersion,
-          currentName: next.currentName,
-          currentRemark: next.currentRemark,
-          announcement: next.announcement
-        })
-      : original;
-    res.json({ ok: true, group, command });
-  })
-);
-
-app.patch(
   "/api/groups/:groupId/roles",
   asyncHandler(async (req, res) => {
     const body = req.body || {};
@@ -5651,35 +5607,10 @@ app.patch(
       expectedVersion: body.expectedVersion,
       roles: body.roles
     });
-    const changes = planMemberRemarkChanges(saved.roles);
-    const externalResults = [];
-    for (const change of changes) {
-      try {
-        await modifyGroupMemberRemarks({
-          robotId: botId,
-          groupName: saved.group.currentRemark || saved.group.currentName,
-          changes: [change]
-        });
-        markGroupRoleRemarkSynced({
-          botId,
-          groupId: saved.group.id,
-          roleId: change.roleId,
-          markName: change.markName
-        });
-        externalResults.push({ roleId: change.roleId, status: "success", message: "" });
-      } catch (error) {
-        externalResults.push({
-          roleId: change.roleId,
-          status: "failed",
-          message: error.message
-        });
-      }
-    }
     res.json({
       ok: true,
       group: saved.group,
-      roles: listGroupRoles({ botId, groupId: saved.group.id }),
-      externalResults
+      roles: listGroupRoles({ botId, groupId: saved.group.id })
     });
   })
 );

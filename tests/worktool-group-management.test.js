@@ -2,9 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  buildCreateExternalGroupCommand,
-  buildMemberRemarkCommands,
-  buildModifyGroupCommand
+  buildCreateExternalGroupCommand
 } from "../src/worktool.js";
 
 test("create external group builds one type 206 command with unique contacts", () => {
@@ -20,43 +18,10 @@ test("create external group builds one type 206 command with unique contacts", (
   });
 });
 
-test("modify group includes only supplied changed fields", () => {
-  assert.deepEqual(buildModifyGroupCommand({
-    groupName: "A售后群",
-    newGroupName: "A项目交付群",
-    newGroupAnnouncement: ""
-  }), {
-    type: 207,
-    groupName: "A售后群",
-    newGroupName: "A项目交付群",
-    newGroupAnnouncement: "",
-    selectList: [],
-    removeList: [],
-    showMessageHistory: false
-  });
-  assert.throws(
-    () => buildModifyGroupCommand({ groupName: "A售后群" }),
-    /at least one changed field/
-  );
-});
-
-test("member remark commands use type 225 and the current recognized name", () => {
-  assert.deepEqual(buildMemberRemarkCommands({
-    groupName: "A售后群",
-    changes: [
-      { currentName: "李四", markName: "李四-助理" },
-      { currentName: "王五", markName: "王五-技术" }
-    ]
-  }), [
-    {
-      type: 225,
-      groupName: "A售后群",
-      friend: { name: "李四", markName: "李四-助理" }
-    },
-    {
-      type: 225,
-      groupName: "A售后群",
-      friend: { name: "王五", markName: "王五-技术" }
-    }
-  ]);
+test("group management client does not expose rename or member remark command helpers", async () => {
+  const worktool = await import("../src/worktool.js");
+  assert.equal("buildModifyGroupCommand" in worktool, false);
+  assert.equal("modifyGroup" in worktool, false);
+  assert.equal("buildMemberRemarkCommands" in worktool, false);
+  assert.equal("modifyGroupMemberRemarks" in worktool, false);
 });

@@ -44,9 +44,10 @@ test("group sidebar uses the standard split-label search field", () => {
   assert.doesNotMatch(css, /\.groups-search-field > \.icon/);
 });
 
-test("external create and modify use dialogs and create selects private contacts", () => {
+test("external create uses a dialog and selects private contacts without group remarks", () => {
   assert.match(html, /id="createGroupDialog"/);
-  assert.match(html, /id="modifyGroupDialog"/);
+  assert.doesNotMatch(html, /id="modifyGroupDialog"/);
+  assert.doesNotMatch(html, /同时设置群备注|name="currentRemark"|群备注/);
   assert.match(html, /id="createGroupContactList"/);
   assert.match(html, /groups-dialog-header/);
   assert.match(html, /groups-dialog-body/);
@@ -57,6 +58,9 @@ test("external create and modify use dialogs and create selects private contacts
   );
   assert.match(app, /targetType:\s*"private"/);
   assert.match(app, /\/api\/groups\/create/);
+  assert.doesNotMatch(app, /openModifyGroupButton|openModifyGroupDialog|modifyGroupForm/);
+  assert.doesNotMatch(app, /\/api\/groups\/\$\{encodeURIComponent\(state\.selectedGroupId\)\}\/external/);
+  assert.doesNotMatch(app, /modifyRemark|currentRemark:\s*form\.get\("currentRemark"\)/);
 });
 
 test("group dialogs keep pagination and footer actions inside fixed layout rows", () => {
@@ -77,6 +81,7 @@ test("group configuration includes background, reply policy, roles, and tag-grou
   assert.match(app, /群角色/);
   assert.match(app, /tagGroupIds/);
   assert.doesNotMatch(app, /data-role-field="syncMarkName"/);
+  assert.doesNotMatch(app, /data-role-field="desiredMarkName"|群成员备注|originalMarkName/);
   assert.doesNotMatch(app, />同步<\/span>/);
   assert.doesNotMatch(app, /groups-role-sync/);
   assert.match(app, /groups-list-item-main/);
@@ -93,8 +98,8 @@ test("group announcements and background use fixed-slot expanding editors", () =
     html.indexOf('id="createGroupDialog"'),
     html.indexOf('id="conversationResetLoadingDialog"')
   );
-  assert.equal((groupDialogs.match(/class="expand-field-slot groups-announcement-slot"/g) || []).length, 2);
-  assert.equal((groupDialogs.match(/textarea class="expand-on-focus" name="announcement" rows="1"/g) || []).length, 2);
+  assert.equal((groupDialogs.match(/class="expand-field-slot groups-announcement-slot"/g) || []).length, 1);
+  assert.equal((groupDialogs.match(/textarea class="expand-on-focus" name="announcement" rows="1"/g) || []).length, 1);
   assert.match(
     app,
     /expand-field-slot groups-background-slot[\s\S]*?groups-background-field[\s\S]*?textarea class="expand-on-focus" name="background" rows="1"/

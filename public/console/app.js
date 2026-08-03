@@ -87,9 +87,6 @@ const els = {
   createGroupContactSearch: document.querySelector("#createGroupContactSearch"),
   createGroupContactList: document.querySelector("#createGroupContactList"),
   createGroupContactPagination: document.querySelector("#createGroupContactPagination"),
-  modifyGroupDialog: document.querySelector("#modifyGroupDialog"),
-  modifyGroupForm: document.querySelector("#modifyGroupForm"),
-  modifyGroupCancelButton: document.querySelector("#modifyGroupCancelButton"),
   addFlowNodeButton: document.querySelector("#addFlowNodeButton"),
   applyFlowJsonButton: document.querySelector("#applyFlowJsonButton"),
   importFlowFile: document.querySelector("#importFlowFile"),
@@ -5616,7 +5613,6 @@ function renderGroupList() {
             <span class="groups-list-item-icon"><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" /></span>
             <span class="groups-list-item-copy">
               <strong>${escapeHtml(group.currentName)}</strong>
-              <small><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>${escapeHtml(group.currentRemark || "未设置群备注")}</small>
             </span>
             <span class="groups-list-date-tag" title="建立日期">
               <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
@@ -5653,7 +5649,6 @@ function groupRoleRow(role = {}) {
           <option value="mention_only" ${role.replyPolicy === "mention_only" ? "selected" : ""}>仅 @ 回复</option>
           <option value="never" ${role.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
         </select></label>
-      <label class="groups-role-field" data-role-label="群成员备注"><input data-role-field="desiredMarkName" value="${escapeHtml(role.desiredMarkName || "")}" placeholder="不修改可留空" /></label>
       <button class="secondary danger groups-role-delete" data-remove-group-role type="button"><svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>删除</button>
     </div>`;
 }
@@ -5665,7 +5660,6 @@ function renderGroupConfig() {
   els.groupConfigPane.innerHTML = `
     <div class="section-head groups-config-head">
       <div><h3><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" />${escapeHtml(group.currentName)}</h3></div>
-      <button id="openModifyGroupButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>修改群信息</button>
     </div>
     <form id="groupConfigForm" class="groups-config-form">
       <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>群回复方式</span>
@@ -5699,13 +5693,11 @@ function renderGroupConfig() {
         <span><svg class="icon"><use href="#icon-tag"></use></svg>身份</span>
         <span><svg class="icon"><use href="#icon-info"></use></svg>职责与关系</span>
         <span><svg class="icon"><use href="#icon-send"></use></svg>回复策略</span>
-        <span><svg class="icon"><use href="#icon-edit"></use></svg>群成员备注</span>
         <span><svg class="icon"><use href="#icon-reset"></use></svg>操作</span>
       </div>
       <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
     </form>
   `;
-  els.groupConfigPane.querySelector("#openModifyGroupButton").addEventListener("click", openModifyGroupDialog);
   els.groupConfigPane.querySelector("#groupConfigForm").addEventListener("submit", saveSelectedGroupConfig);
   els.groupConfigPane.querySelector("#addGroupRoleButton").addEventListener("click", () => {
     els.groupConfigPane.querySelector("#groupRoleList").insertAdjacentHTML("beforeend", groupRoleRow());
@@ -5743,15 +5735,12 @@ async function saveSelectedGroupRoles(event) {
   event.preventDefault();
   const roles = [...event.currentTarget.querySelectorAll(".groups-role-row")].map((row) => {
     const value = (name) => row.querySelector(`[data-role-field="${name}"]`);
-    const existing = state.selectedGroupDetail.roles.find((role) => role.id === row.dataset.roleId);
     return {
       ...(row.dataset.roleId ? { id: row.dataset.roleId } : {}),
       currentName: value("currentName").value,
       identityType: value("identityType").value,
       description: value("description").value,
-      replyPolicy: value("replyPolicy").value,
-      desiredMarkName: value("desiredMarkName").value,
-      originalMarkName: existing?.originalMarkName || existing?.currentName || ""
+      replyPolicy: value("replyPolicy").value
     };
   });
   const data = await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/roles`, {
@@ -5764,8 +5753,7 @@ async function saveSelectedGroupRoles(event) {
   });
   state.selectedGroupDetail = { ...state.selectedGroupDetail, group: data.group, roles: data.roles };
   renderGroupConfig();
-  const failed = (data.externalResults || []).filter((result) => result.status === "failed").length;
-  toast(failed ? `角色已保存，${failed} 个备注同步失败` : "角色已保存", failed ? "info" : "success");
+  toast("角色已保存", "success");
 }
 
 async function loadCreateGroupContacts() {
@@ -5816,14 +5804,6 @@ function renderCreateGroupContacts() {
       renderCreateGroupContacts();
     });
   });
-}
-
-function openModifyGroupDialog() {
-  const group = state.selectedGroupDetail.group;
-  els.modifyGroupForm.currentName.value = group.currentName;
-  els.modifyGroupForm.announcement.value = group.announcement || "";
-  els.modifyGroupForm.currentRemark.value = group.currentRemark || "";
-  els.modifyGroupDialog.hidden = false;
 }
 
 els.saveKeyButton?.addEventListener("click", () => {
@@ -6086,36 +6066,11 @@ els.createGroupForm?.addEventListener("submit", (event) => {
       botId: state.selectedBotId,
       groupName: form.get("groupName"),
       announcement: form.get("announcement"),
-      selectList: [...state.createGroupContactIds],
-      modifyRemark: form.get("modifyRemark") === "on",
-      currentRemark: form.get("currentRemark")
+      selectList: [...state.createGroupContactIds]
     })
   }).then(async () => {
     els.createGroupDialog.hidden = true;
     toast("建群命令已提交", "success");
-    await loadGroups();
-  }).catch(toastError);
-});
-els.modifyGroupCancelButton?.addEventListener("click", () => {
-  els.modifyGroupDialog.hidden = true;
-});
-els.modifyGroupForm?.addEventListener("submit", (event) => {
-  event.preventDefault();
-  const form = new FormData(event.currentTarget);
-  request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/external`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      botId: state.selectedBotId,
-      expectedVersion: state.selectedGroupDetail.group.version,
-      next: {
-        currentName: form.get("currentName"),
-        announcement: form.get("announcement"),
-        currentRemark: form.get("currentRemark")
-      }
-    })
-  }).then(async () => {
-    els.modifyGroupDialog.hidden = true;
-    toast("群信息已提交", "success");
     await loadGroups();
   }).catch(toastError);
 });

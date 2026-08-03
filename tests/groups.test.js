@@ -5,8 +5,6 @@ import {
   SYSTEM_DATE_TAG_GROUP_ID,
   buildGroupAgentContext,
   buildGroupTagContext,
-  planGroupExternalPatch,
-  planMemberRemarkChanges,
   resolveGroupReplyDecision
 } from "../src/groups.js";
 
@@ -109,33 +107,4 @@ test("group agent context carries the server reply authorization and matched rol
       replyPolicy: "always"
     }
   });
-});
-
-test("differential planners omit unchanged external writes", () => {
-  assert.deepEqual(planGroupExternalPatch({
-    original: { currentName: "A群", announcement: "公告", currentRemark: "" },
-    next: { currentName: "A群", announcement: "公告", currentRemark: "" }
-  }), { changed: false, commandFields: {} });
-
-  assert.deepEqual(planMemberRemarkChanges([
-    {
-      id: "a",
-      currentName: "张三",
-      originalMarkName: "张三-甲方",
-      desiredMarkName: "张三-甲方",
-      syncMarkName: false
-    },
-    {
-      id: "b",
-      currentName: "李四",
-      originalMarkName: "李四",
-      desiredMarkName: "李四-助理"
-    },
-    {
-      id: "c",
-      currentName: "王五",
-      originalMarkName: "王五",
-      desiredMarkName: ""
-    }
-  ]), [{ roleId: "b", currentName: "李四", markName: "李四-助理" }]);
 });

@@ -100,10 +100,7 @@ test("managed group roles preserve aliases and deletion does not delete the grou
       currentName: "张三",
       identityType: "customer",
       description: "甲方负责人",
-      replyPolicy: "always",
-      desiredMarkName: "张三-甲方负责人",
-      originalMarkName: "张三",
-      syncMarkName: true
+      replyPolicy: "always"
     }]
   });
   const roleId = first.roles[0].id;
@@ -117,10 +114,7 @@ test("managed group roles preserve aliases and deletion does not delete the grou
       currentName: "张三-甲方负责人",
       identityType: "customer",
       description: "甲方负责人",
-      replyPolicy: "always",
-      desiredMarkName: "张三-甲方负责人",
-      originalMarkName: "张三-甲方负责人",
-      syncMarkName: false
+      replyPolicy: "always"
     }]
   });
 
@@ -222,36 +216,6 @@ test("manual merge preserves source names as aliases and removes only the duplic
     db.resolveGroupByAddress({ botId, groupName: "项目群" }).group.id,
     target.id
   );
-});
-
-test("a successful external member remark becomes the new unchanged baseline", () => {
-  const botId = "managed_bot_remark";
-  const group = db.createOrGetGroup({ botId, currentName: "备注群", source: "callback" });
-  const saved = db.saveGroupRoles({
-    botId,
-    groupId: group.id,
-    expectedVersion: group.version,
-    roles: [{
-      currentName: "张三",
-      desiredMarkName: "张三-甲方负责人",
-      originalMarkName: "张三",
-      syncMarkName: true
-    }]
-  });
-  const role = saved.roles[0];
-
-  const synced = db.markGroupRoleRemarkSynced({
-    botId,
-    groupId: group.id,
-    roleId: role.id,
-    markName: "张三-甲方负责人"
-  });
-
-  assert.equal(synced.originalMarkName, "张三-甲方负责人");
-  assert.equal(synced.desiredMarkName, "张三-甲方负责人");
-  assert.equal(synced.currentName, "张三-甲方负责人");
-  assert.deepEqual(synced.aliases, ["张三"]);
-  assert.equal(synced.syncMarkName, false);
 });
 
 test("a managed group conversation receives the group creation date tag", () => {
