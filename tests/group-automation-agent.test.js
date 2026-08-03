@@ -252,3 +252,88 @@ test("compacts oldest unreferenced facts and builds occurrence requests without 
   assert.doesNotMatch(request.message, /告诉群成员.*群背景/);
   assert.ok(request.message.length <= 8000);
 });
+
+test("occurrence request marks cumulative and cycle template variables with distinct scopes", () => {
+  const request = buildGroupOccurrenceAgentRequest({
+    binding,
+    group,
+    task: {
+      id: "summary-task",
+      taskType: "periodic_summary",
+      summaryTemplate: "累计 {{累计上课次数（从建群至今；只输出数字）}}，本周 {{本周上课次数（本周完成；只输出数字）}}"
+    },
+    cycle: {
+      cycleKey: "2026-W32",
+      startAt: "2026-08-02T16:00:00.000Z",
+      endAt: "2026-08-09T16:00:00.000Z"
+    },
+    projection: {
+      facts: [],
+      aggregates: {
+        lesson_completed: {
+          factCount: 3,
+          numericSums: { count: 3 },
+          evidenceFactKeys: ["lesson:1"],
+          evidenceMessageIds: [41]
+        }
+      }
+    }
+  });
+
+  assert.match(request.message, /"name": "累计上课次数"[\s\S]*?"scope": "cumulative"/);
+  assert.match(request.message, /"name": "本周上课次数"[\s\S]*?"scope": "cycle"/);
+  assert.match(request.message, /只有 scope=cumulative 的变量可以使用 aggregates/);
+});
+
+test("aggregate projection keeps only bounded numeric totals and representative evidence", () => {
+  const projection = compactGroupLedgerProjection({
+    facts: [],
+    aggregates: {
+      lesson_completed: {
+        factCount: 50,
+        numericSums: Object.fromEntries(
+          Array.from({ length: 50 }, (_, index) => [`metric-${index}`, index])
+        ),
+        firstHappenedAt: "2026-01-01T00:00:00.000Z",
+        lastHappenedAt: "2026-08-04T00:00:00.000Z",
+        evidenceFactKeys: Array.from({ length: 50 }, (_, index) => `lesson:${index}`),
+        evidenceMessageIds: Array.from({ length: 50 }, (_, index) => index + 1),
+        internalText: "must not leave the server"
+      }
+    }
+  }, { maxChars: 8000 });
+
+  assert.equal(Object.keys(projection.aggregates.lesson_completed.numericSums).length, 30);
+  assert.equal(projection.aggregates.lesson_completed.evidenceFactKeys.length, 20);
+  assert.equal(projection.aggregates.lesson_completed.evidenceMessageIds.length, 20);
+  assert.equal(Object.hasOwn(projection.aggregates.lesson_completed, "internalText"), false);
+});
+
+test("cycle-scoped summary variable rejects a historical aggregate fact key", () => {
+  assert.throws(() => parseGroupOccurrenceAgentReply(JSON.stringify({
+    variables: [
+      {
+        name: "累计上课次数",
+        value: "3",
+        factKeys: ["lesson:old"],
+        fallbackUsed: false,
+        reason: "来自累计聚合"
+      },
+      {
+        name: "本周上课次数",
+        value: "3",
+        factKeys: ["lesson:old"],
+        fallbackUsed: false,
+        reason: "错误使用累计聚合"
+      }
+    ]
+  }), {
+    taskType: "periodic_summary",
+    allowedFactKeys: ["lesson:old", "lesson:current"],
+    allowedCycleFactKeys: ["lesson:current"],
+    variables: [
+      { name: "累计上课次数", instruction: "从建群至今", scope: "cumulative" },
+      { name: "本周上课次数", instruction: "本周完成", scope: "cycle" }
+    ]
+  }), /cycle variable.*historical aggregate fact/i);
+});

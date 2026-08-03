@@ -6,6 +6,7 @@ import {
 } from "./group-automation-agent.js";
 import { groupAutomationCycleWindow } from "./group-automation-schedule.js";
 import {
+  isCumulativeSummaryVariable,
   parseGroupSummaryTemplate,
   renderGroupSummaryTemplate
 } from "./group-summary-template.js";
@@ -339,6 +340,15 @@ export function createGroupAutomationWorker({
             botId: occurrence.botId,
             groupId: occurrence.groupId
           });
+          const allFactsByKey = new Map(
+            projection.facts.map((fact) => [fact.semanticKey, fact])
+          );
+          const parsedSummaryTemplate = task.taskType === "periodic_summary"
+            ? parseGroupSummaryTemplate(task.summaryTemplate)
+            : null;
+          const cumulativeSummary = parsedSummaryTemplate?.variables.some(
+            isCumulativeSummaryVariable
+          ) || false;
           const cycleStart = new Date(occurrence.cycleStartAt).getTime();
           const cycleEnd = new Date(occurrence.cycleEndAt).getTime();
           projection.facts = projection.facts.filter((fact) => {
@@ -347,9 +357,19 @@ export function createGroupAutomationWorker({
               && happenedAt >= cycleStart
               && happenedAt < cycleEnd;
           });
+          if (!cumulativeSummary) projection.aggregates = {};
           const factsByKey = new Map(
             projection.facts.map((fact) => [fact.semanticKey, fact])
           );
+          const cycleFactKeys = [...factsByKey.keys()];
+          if (cumulativeSummary) {
+            for (const aggregate of Object.values(projection.aggregates || {})) {
+              for (const key of aggregate.evidenceFactKeys || []) {
+                const fact = allFactsByKey.get(key);
+                if (fact) factsByKey.set(key, fact);
+              }
+            }
+          }
           let renderedContent = task.content;
           let conditionAchieved = null;
           let reason = task.conditionText ? "" : "无条件固定推送";
@@ -407,7 +427,7 @@ export function createGroupAutomationWorker({
               continue;
             }
           } else if (task.taskType === "periodic_summary") {
-            const parsedTemplate = parseGroupSummaryTemplate(task.summaryTemplate);
+            const parsedTemplate = parsedSummaryTemplate;
             const request = buildGroupOccurrenceAgentRequest({
               binding,
               group,
@@ -430,7 +450,11 @@ export function createGroupAutomationWorker({
             const summary = parseGroupOccurrenceAgentReply(agentText(reply), {
               taskType: task.taskType,
               allowedFactKeys: [...factsByKey.keys()],
-              variables: parsedTemplate.variables
+              allowedCycleFactKeys: cycleFactKeys,
+              variables: parsedTemplate.variables.map((variable) => ({
+                ...variable,
+                scope: isCumulativeSummaryVariable(variable) ? "cumulative" : "cycle"
+              }))
             });
             variableValues = Object.fromEntries(
               summary.variables.map((variable) => [variable.name, variable.value])

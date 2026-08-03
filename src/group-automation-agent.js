@@ -2,7 +2,10 @@ import {
   buildDclawGroupAutomationOccurrenceRequest,
   buildDclawGroupLedgerRequest
 } from "./dclaw.js";
-import { parseGroupSummaryTemplate } from "./group-summary-template.js";
+import {
+  isCumulativeSummaryVariable,
+  parseGroupSummaryTemplate
+} from "./group-summary-template.js";
 
 const MAX_SHORT_TEXT = 500;
 const MAX_LONG_TEXT = 4000;
@@ -69,6 +72,34 @@ function compactFact(fact) {
   };
 }
 
+function compactGroupFactAggregates(aggregates) {
+  if (!aggregates || typeof aggregates !== "object" || Array.isArray(aggregates)) return {};
+  return Object.fromEntries(Object.entries(aggregates).slice(0, 100).map(([category, value]) => {
+    const aggregate = value && typeof value === "object" ? value : {};
+    const numericSums = Object.fromEntries(
+      Object.entries(aggregate.numericSums || {})
+        .filter(([, number]) => typeof number === "number" && Number.isFinite(number))
+        .slice(0, 30)
+        .map(([key, number]) => [String(key).slice(0, 120), number])
+    );
+    return [String(category).slice(0, 120), {
+      factCount: Math.max(0, Number.isSafeInteger(Number(aggregate.factCount))
+        ? Number(aggregate.factCount)
+        : 0),
+      numericSums,
+      firstHappenedAt: String(aggregate.firstHappenedAt || "").slice(0, 80),
+      lastHappenedAt: String(aggregate.lastHappenedAt || "").slice(0, 80),
+      evidenceFactKeys: uniqueStrings(
+        Array.isArray(aggregate.evidenceFactKeys) ? aggregate.evidenceFactKeys : [],
+        "aggregate evidenceFactKeys"
+      ).slice(0, 20),
+      evidenceMessageIds: [...new Set((Array.isArray(aggregate.evidenceMessageIds)
+        ? aggregate.evidenceMessageIds
+        : []).map(Number).filter((id) => Number.isSafeInteger(id) && id > 0))].slice(0, 20)
+    }];
+  }));
+}
+
 export function compactGroupLedgerProjection(projection = {}, {
   maxChars = 8000,
   referencedFactKeys = []
@@ -78,9 +109,7 @@ export function compactGroupLedgerProjection(projection = {}, {
   const facts = (Array.isArray(projection.facts) ? projection.facts : []).map(compactFact);
   const result = {
     facts,
-    aggregates: projection.aggregates && typeof projection.aggregates === "object"
-      ? projection.aggregates
-      : {}
+    aggregates: compactGroupFactAggregates(projection.aggregates)
   };
   while (result.facts.length && JSON.stringify(result).length > limit) {
     const removableIndex = result.facts.findIndex(
@@ -315,7 +344,10 @@ export function buildGroupOccurrenceAgentRequest({
       : {
           id: task.id,
           taskType: task.taskType,
-          variables: parsedTemplate.variables
+          variables: parsedTemplate.variables.map((variable) => ({
+            ...variable,
+            scope: isCumulativeSummaryVariable(variable) ? "cumulative" : "cycle"
+          }))
         },
     cycle,
     ledger: compactGroupLedgerProjection(projection, {
@@ -327,6 +359,7 @@ export function buildGroupOccurrenceAgentRequest({
     : "{\"variables\":[{\"name\":\"\",\"value\":\"\",\"factKeys\":[],\"fallbackUsed\":false,\"reason\":\"\"}]}";
   const instructions = [
     "你正在根据共享群事实账本执行一次群定时任务，只能使用 ledger 中的事实。",
+    "只有 scope=cumulative 的变量可以使用 aggregates；scope=cycle 的变量只能使用当前周期 facts。",
     "没有记录不等于事情没有发生。只有变量规则明确配置兜底时才可使用兜底，并标记 fallbackUsed=true。",
     "privateContext 是私有判断材料，不得在 reason、变量值或任何客户可见文字中提及其存在、来源、配置方式或原文。",
     `只输出一个 JSON 对象：${outputShape}，不得输出 Markdown 或解释。`
@@ -344,6 +377,7 @@ export function buildGroupOccurrenceAgentRequest({
 export function parseGroupOccurrenceAgentReply(rawReply, {
   taskType,
   allowedFactKeys = [],
+  allowedCycleFactKeys = null,
   variables = []
 } = {}) {
   const parsed = parseJsonObject(rawReply);
@@ -376,6 +410,9 @@ export function parseGroupOccurrenceAgentReply(rawReply, {
     throw new Error("invalid summary occurrence reply");
   }
   const expected = new Map(variables.map((variable) => [variable.name, variable]));
+  const cycleFacts = new Set(
+    (Array.isArray(allowedCycleFactKeys) ? allowedCycleFactKeys : allowedFactKeys).map(String)
+  );
   const seen = new Set();
   const results = parsed.variables.map((variable) => {
     const name = boundedText(variable?.name, "summary variable name", 240, { required: true });
@@ -388,6 +425,9 @@ export function parseGroupOccurrenceAgentReply(rawReply, {
     const factKeys = uniqueStrings(variable.factKeys || [], "summary factKeys");
     for (const key of factKeys) {
       if (!allowedFacts.has(key)) throw new Error(`unknown fact key: ${key}`);
+      if (expected.get(name)?.scope !== "cumulative" && !cycleFacts.has(key)) {
+        throw new Error(`cycle variable cannot use a historical aggregate fact: ${key}`);
+      }
     }
     if (!factKeys.length && !variable.fallbackUsed) {
       throw new Error("summary variable requires fact evidence or an explicit fallback");

@@ -2,9 +2,25 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isCumulativeSummaryVariable,
   parseGroupSummaryTemplate,
   renderGroupSummaryTemplate
 } from "../src/group-summary-template.js";
+
+test("classifies only explicitly cumulative white-language variables", () => {
+  assert.equal(isCumulativeSummaryVariable({
+    name: "累计上课次数",
+    instruction: "从建群至今明确完成的课程"
+  }), true);
+  assert.equal(isCumulativeSummaryVariable({
+    name: "本周上课次数",
+    instruction: "本周明确完成的课程"
+  }), false);
+  assert.equal(isCumulativeSummaryVariable({
+    name: "课程总数",
+    instruction: "自建群以来明确完成的课程"
+  }), true);
+});
 
 test("parses white-language variables and renders every token", () => {
   const parsed = parseGroupSummaryTemplate(

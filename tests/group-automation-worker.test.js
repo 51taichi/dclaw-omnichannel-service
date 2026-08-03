@@ -235,7 +235,9 @@ function createOccurrenceHarness({
   initialLedgerCursor = 0,
   reindexPending = false,
   sendResponse = { code: 0, messageId: "worktool-message-1" },
-  sendError = null
+  sendError = null,
+  projectionFacts = null,
+  projectionAggregates = {}
 } = {}) {
   const sendCalls = [];
   const invocationCalls = [];
@@ -305,7 +307,7 @@ function createOccurrenceHarness({
     },
     listGroupLedgerProjection() {
       return {
-        facts: [{
+        facts: projectionFacts || [{
           id: "fact-id-1",
           semanticKey: "lesson:1",
           category: "lesson",
@@ -314,7 +316,8 @@ function createOccurrenceHarness({
           happenedAt: "2026-08-04T10:00:00.000Z",
           evidenceMessageIds: [41],
           active: true
-        }]
+        }],
+        aggregates: projectionAggregates
       };
     },
     getGroupLedgerState() {
@@ -530,6 +533,79 @@ test("periodic summary renders exact validated variables and permits explicit fa
   });
   await fallback.worker.runOccurrenceTick();
   assert.equal(fallback.sendCalls[0].content, "本周上课 0 次");
+});
+
+test("cumulative summary can cite bounded historical aggregate evidence outside the current cycle", async () => {
+  const historicalFact = {
+    id: "fact-old",
+    semanticKey: "lesson:2026-07:1",
+    category: "lesson_completed",
+    statement: "7月完成一节课",
+    value: { count: 1 },
+    happenedAt: "2026-07-10T10:00:00.000Z",
+    evidenceMessageIds: [31],
+    active: true
+  };
+  const harness = createOccurrenceHarness({
+    taskType: "periodic_summary",
+    summaryTemplate: "累计上课 {{累计上课次数（从建群至今明确完成的课程总次数；只输出数字）}} 次",
+    projectionFacts: [historicalFact],
+    projectionAggregates: {
+      lesson_completed: {
+        factCount: 1,
+        numericSums: { count: 1 },
+        firstHappenedAt: historicalFact.happenedAt,
+        lastHappenedAt: historicalFact.happenedAt,
+        evidenceFactKeys: [historicalFact.semanticKey],
+        evidenceMessageIds: [31]
+      }
+    },
+    agentReply: JSON.stringify({
+      variables: [{
+        name: "累计上课次数",
+        value: "1",
+        factKeys: [historicalFact.semanticKey],
+        fallbackUsed: false,
+        reason: "累计聚合有一节已完成课程"
+      }]
+    })
+  });
+
+  await harness.worker.runOccurrenceTick();
+
+  assert.equal(harness.sendCalls[0].content, "累计上课 1 次");
+  assert.match(harness.invocationCalls[0].request.message, /"factCount": 1/);
+  assert.doesNotMatch(harness.invocationCalls[0].request.message, /7月完成一节课/);
+  assert.deepEqual(harness.occurrence.evidenceMessageIds, [31]);
+});
+
+test("ordinary cycle summary cannot consume historical cumulative aggregates", async () => {
+  const harness = createOccurrenceHarness({
+    taskType: "periodic_summary",
+    summaryTemplate: "本周上课 {{本周上课次数（本周明确完成的课程；只输出数字）}} 次",
+    projectionAggregates: {
+      lesson_completed: {
+        factCount: 99,
+        numericSums: { count: 99 },
+        evidenceFactKeys: ["lesson:old"],
+        evidenceMessageIds: [1]
+      }
+    },
+    agentReply: JSON.stringify({
+      variables: [{
+        name: "本周上课次数",
+        value: "1",
+        factKeys: ["lesson:1"],
+        fallbackUsed: false,
+        reason: "本周有一次完成记录"
+      }]
+    })
+  });
+
+  await harness.worker.runOccurrenceTick();
+
+  assert.equal(harness.sendCalls.length, 1);
+  assert.doesNotMatch(harness.invocationCalls[0].request.message, /"factCount": 99/);
 });
 
 test("Agent failure never sends and remains safely retryable", async () => {

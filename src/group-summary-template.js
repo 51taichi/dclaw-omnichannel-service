@@ -2,6 +2,12 @@ const TEMPLATE_TOKEN = /\{\{([\s\S]*?)\}\}/g;
 const MAX_VARIABLE_VALUE_LENGTH = 4000;
 const MAX_RENDERED_TEMPLATE_LENGTH = 20000;
 
+export function isCumulativeSummaryVariable(variable = {}) {
+  return /累计|至今|从建群|自建群/u.test(
+    `${String(variable.name || "")} ${String(variable.instruction || "")}`
+  );
+}
+
 function parseVariableBody(rawBody) {
   const body = String(rawBody || "").trim();
   const ruleStart = body.indexOf("（");
