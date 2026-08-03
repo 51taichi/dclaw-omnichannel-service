@@ -690,6 +690,61 @@ export function parseConversationMemoryClearAcknowledgement(rawReply) {
   };
 }
 
+function buildDclawGroupAutomationAnalysisRequest({
+  binding,
+  conversationKey,
+  conversationEpoch = "",
+  purpose,
+  eventType,
+  message,
+  metadata = {}
+}) {
+  if (!["group-ledger", "group-automation-occurrence"].includes(purpose)) {
+    throw new Error("invalid group automation DClaw purpose");
+  }
+  const localConversationId = String(conversationKey || "").trim();
+  if (!localConversationId) throw new Error("group automation conversationKey is required");
+  const identity = buildDclawConversationIdentity({
+    botId: binding.botId,
+    conversationKey: localConversationId,
+    conversationEpoch,
+    purpose
+  });
+  return {
+    external_user_id: identity.externalUserId,
+    external_session_id: identity.externalSessionId,
+    message: String(message || ""),
+    stream: true,
+    metadata: {
+      source: "worktool",
+      eventType,
+      botId: binding.botId,
+      agentId: binding.agentId,
+      conversationId: identity.runtimeConversationId,
+      localConversationId,
+      groupId: boundedDclawText(metadata.groupId, 120),
+      taskId: boundedDclawText(metadata.taskId, 120),
+      cycleKey: boundedDclawText(metadata.cycleKey, 80)
+    }
+  };
+}
+
+export function buildDclawGroupLedgerRequest(input) {
+  return buildDclawGroupAutomationAnalysisRequest({
+    ...input,
+    purpose: "group-ledger",
+    eventType: "group_ledger_evaluation"
+  });
+}
+
+export function buildDclawGroupAutomationOccurrenceRequest(input) {
+  return buildDclawGroupAutomationAnalysisRequest({
+    ...input,
+    purpose: "group-automation-occurrence",
+    eventType: "group_automation_occurrence"
+  });
+}
+
 export function buildDclawProactiveEventRequest({
   binding,
   conversation,
