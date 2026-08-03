@@ -48,10 +48,10 @@ export function createGroupAutomationStreamHub({ heartbeatMs = 25_000 } = {}) {
       return () => remove(connection);
     },
 
-    publish({ botId, groupId, task = null, occurrence = null }) {
+    publish({ botId, groupId, task = null, occurrence = null, ledgerUpdated = false }) {
       for (const connection of subscribers.get(scopeKey(botId, groupId)) || []) {
         try {
-          writeEvent(connection.res, "task_updated", { task, occurrence });
+          writeEvent(connection.res, "task_updated", { task, occurrence, ledgerUpdated });
         } catch {
           remove(connection);
         }

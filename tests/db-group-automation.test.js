@@ -309,3 +309,89 @@ test("manual occurrence retry enforces the managed group scope", () => {
     nextRetryAt: "2026-08-06T12:01:00.000Z"
   }), /not found/);
 });
+
+test("deleting a Bot removes its managed groups, automations, occurrences and ledger data", () => {
+  const botId = "group_automation_delete_bot";
+  db.upsertBotBinding({
+    botId,
+    botName: "待删除群任务 Bot",
+    agentId: "group_automation_delete_agent",
+    enabled: true
+  });
+  const { group } = createGroupWithRoles(botId);
+  const task = createWeeklyTask({ botId, groupId: group.id });
+  db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 100,
+    leaseMs: 300000
+  });
+  db.enqueueGroupLedgerJob({
+    botId,
+    groupId: group.id,
+    mode: "reindex",
+    taskId: task.id,
+    fromMessageId: 0,
+    throughMessageId: 1
+  });
+
+  db.deleteBotData(botId);
+
+  assert.equal(db.getGroupById({ botId, groupId: group.id }), null);
+  assert.equal(db.getGroupAutomationTask({ botId, taskId: task.id }), null);
+  assert.deepEqual(db.listGroupAutomationOccurrences({ botId, taskId: task.id }).items, []);
+  assert.equal(db.listGroupsPage({ botId }).pagination.total, 0);
+});
+
+test("merging a duplicate managed group moves its scheduled tasks and history to the target", () => {
+  const botId = "group_automation_merge_bot";
+  const { group: source } = createGroupWithRoles(botId, "重复群");
+  const { group: target } = createGroupWithRoles(botId, "正式群");
+  const task = createWeeklyTask({ botId, groupId: source.id });
+  const occurrence = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 100,
+    leaseMs: 300000
+  }).find((item) => item.taskId === task.id);
+
+  db.mergeGroupAlias({ botId, sourceGroupId: source.id, targetGroupId: target.id });
+
+  const movedTask = db.getGroupAutomationTask({ botId, taskId: task.id });
+  assert.equal(movedTask.groupId, target.id);
+  assert.equal(db.listGroupAutomationTasks({ botId, groupId: source.id }).length, 0);
+  assert.equal(db.listGroupAutomationTasks({ botId, groupId: target.id }).some((item) => item.id === task.id), true);
+  assert.equal(
+    db.listGroupAutomationOccurrences({ botId, taskId: task.id }).items.find((item) => item.id === occurrence.id).groupId,
+    target.id
+  );
+});
+
+test("a failed WorkTool command callback marks the matching sent occurrence failed within its Bot", () => {
+  const botId = "group_automation_callback_bot";
+  const { group } = createGroupWithRoles(botId);
+  const task = createWeeklyTask({ botId, groupId: group.id });
+  const occurrence = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 100,
+    leaseMs: 300000
+  }).find((item) => item.taskId === task.id);
+  db.completeGroupAutomationOccurrence({
+    botId,
+    occurrenceId: occurrence.id,
+    status: "sent",
+    worktoolMessageId: "worktool-group-command-1",
+    renderedContent: "提醒内容"
+  });
+
+  assert.equal(db.updateGroupAutomationOccurrenceFromCommandCallback({
+    botId: "another-bot",
+    messageId: "worktool-group-command-1",
+    payload: { errorCode: 299999, errorReason: "发送失败" }
+  }), null);
+  const failed = db.updateGroupAutomationOccurrenceFromCommandCallback({
+    botId,
+    messageId: "worktool-group-command-1",
+    payload: { errorCode: 299999, errorReason: "发送失败" }
+  });
+  assert.equal(failed.status, "failed");
+  assert.match(failed.errorMessage, /发送失败/);
+});

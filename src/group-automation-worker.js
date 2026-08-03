@@ -100,7 +100,7 @@ export function createGroupAutomationWorker({
         currentCycle: groupAutomationCycleWindow(task.cadence, instantFrom(now).toISOString())
       }));
     if (!analysisTasks.length) {
-      return db.applyGroupLedgerEvaluation({
+      const result = db.applyGroupLedgerEvaluation({
         jobId: job.id,
         botId: job.botId,
         groupId: job.groupId,
@@ -108,6 +108,8 @@ export function createGroupAutomationWorker({
         facts: [],
         conditionStates: []
       });
+      publish({ botId: job.botId, groupId: job.groupId, ledgerUpdated: true });
+      return result;
     }
 
     const roles = db.listGroupRoles({ botId: job.botId, groupId: job.groupId });
@@ -145,7 +147,7 @@ export function createGroupAutomationWorker({
       allowedFactKeys: projection.facts.map((fact) => fact.semanticKey),
       allowedRoleIds: roles.map((role) => role.id)
     });
-    return db.applyGroupLedgerEvaluation({
+    const result = db.applyGroupLedgerEvaluation({
       jobId: job.id,
       botId: job.botId,
       groupId: job.groupId,
@@ -153,6 +155,8 @@ export function createGroupAutomationWorker({
       facts: parsed.facts,
       conditionStates: parsed.conditionStates
     });
+    publish({ botId: job.botId, groupId: job.groupId, ledgerUpdated: true });
+    return result;
   }
 
   async function runLedgerTick() {

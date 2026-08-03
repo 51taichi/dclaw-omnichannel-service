@@ -48,6 +48,9 @@ test("streams an initial task snapshot and matching group updates", () => {
   });
   assert.match(groupOne.res.output, /event: task_updated/);
   assert.match(groupOne.res.output, /"achieved":true/);
+  groupOne.res.output = "";
+  hub.publish({ botId: "bot-a", groupId: "group-1", ledgerUpdated: true });
+  assert.match(groupOne.res.output, /"ledgerUpdated":true/);
   assert.equal(otherGroup.res.output, "");
   assert.equal(otherBot.res.output, "");
   hub.close();

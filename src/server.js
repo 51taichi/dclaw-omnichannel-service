@@ -243,6 +243,7 @@ import {
   updateTagSyncRunStatus,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
+  updateGroupAutomationOccurrenceFromCommandCallback,
   upsertAgent,
   upsertAgentTagSchema,
   upsertFlowMachine,
@@ -1794,6 +1795,15 @@ const groupAutomationWorker = createGroupAutomationWorker({
   batchSize: groupAutomationWorkerConfig.batchSize,
   leaseMs: groupAutomationWorkerConfig.leaseMs
 });
+
+function publishGroupAutomationCallbackResult(occurrence) {
+  if (!occurrence) return;
+  groupAutomationStreamHub.publish({
+    botId: occurrence.botId,
+    groupId: occurrence.groupId,
+    occurrence
+  });
+}
 
 const conversationResetTimeoutMs = Math.max(
   1000,
@@ -5774,6 +5784,12 @@ app.post("/worktool/:botId/command-callback", (req, res) => {
     messageId: req.body?.messageId,
     payload: req.body || {}
   });
+  const groupAutomationOccurrence = updateGroupAutomationOccurrenceFromCommandCallback({
+    botId: req.params.botId,
+    messageId: req.body?.messageId,
+    payload: req.body || {}
+  });
+  publishGroupAutomationCallbackResult(groupAutomationOccurrence);
   logInfo("worktool.command_callback.received", commandCallbackLogFields({
     botId: req.params.botId,
     payload: req.body || {},
@@ -5814,6 +5830,12 @@ app.post("/worktool/command-callback", (req, res) => {
     messageId: req.body?.messageId,
     payload: req.body || {}
   });
+  const groupAutomationOccurrence = updateGroupAutomationOccurrenceFromCommandCallback({
+    botId,
+    messageId: req.body?.messageId,
+    payload: req.body || {}
+  });
+  publishGroupAutomationCallbackResult(groupAutomationOccurrence);
   logInfo("worktool.command_callback.received", commandCallbackLogFields({
     botId,
     payload: req.body || {},
@@ -6274,6 +6296,15 @@ app.post(
       sourceGroupId: String(body.sourceGroupId || "").trim(),
       targetGroupId: req.params.groupId
     });
+    void groupAutomationWorker.enqueueReindex({
+      botId,
+      groupId: group.id,
+      reason: "group_merged"
+    }).catch((error) => logWarn("group_automation.ledger.reindex_failed", {
+      botId,
+      groupId: group.id,
+      error: error.message
+    }));
     res.json({ ok: true, group });
   })
 );

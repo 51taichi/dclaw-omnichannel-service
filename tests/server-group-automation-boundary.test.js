@@ -39,3 +39,14 @@ test("group automation responses exclude private group background and expose evi
   assert.match(source, /serializeGroupAutomationTask\(/);
   assert.match(source, /conversationKey:[\s\S]*messageId:[\s\S]*createdAt:/);
 });
+
+test("merging a managed group reindexes the target shared ledger", () => {
+  const marker = '"/api/groups/:groupId/merge"';
+  const routeSource = source.slice(source.indexOf(marker), source.indexOf(marker) + 1200);
+  assert.match(routeSource, /enqueueReindex\(\{[\s\S]*groupId:\s*group\.id[\s\S]*group_merged/);
+});
+
+test("both WorkTool command callbacks reconcile group automation delivery and publish the result", () => {
+  assert.equal((source.match(/updateGroupAutomationOccurrenceFromCommandCallback\(\{/g) || []).length, 2);
+  assert.equal((source.match(/publishGroupAutomationCallbackResult\(/g) || []).length >= 3, true);
+});

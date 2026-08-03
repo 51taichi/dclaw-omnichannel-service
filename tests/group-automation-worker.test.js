@@ -8,6 +8,7 @@ function createLedgerHarness({ tasks, agentReply, agentError = null } = {}) {
   const applied = [];
   const failed = [];
   const invocations = [];
+  const published = [];
   const db = {
     enqueueGroupLedgerJob(input) {
       const existing = jobs.find((job) => job.status === "pending");
@@ -107,10 +108,11 @@ function createLedgerHarness({ tasks, agentReply, agentError = null } = {}) {
         }]
       });
     },
+    publish: (event) => published.push(event),
     now: () => new Date("2026-08-04T12:00:00.000Z"),
     logger: { info() {}, warn() {}, error() {} }
   });
-  return { worker, db, jobs, applied, failed, invocations };
+  return { worker, db, jobs, applied, failed, invocations, published };
 }
 
 test("coalesced live messages invoke one background ledger analysis through the latest ID", async () => {
@@ -123,6 +125,11 @@ test("coalesced live messages invoke one background ledger analysis through the 
   assert.equal(harness.invocations[0].priority, "background");
   assert.equal(harness.applied[0].throughMessageId, 55);
   assert.doesNotMatch(harness.invocations[0].request.message, /outbound/);
+  assert.deepEqual(harness.published, [{
+    botId: "bot-1",
+    groupId: "group-1",
+    ledgerUpdated: true
+  }]);
 });
 
 test("one ledger pass can update multiple condition tasks", async () => {

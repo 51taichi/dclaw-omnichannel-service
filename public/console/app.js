@@ -1135,7 +1135,8 @@ const groupAutomationClient = window.createGroupAutomationClient({
     state.groupAutomations = Array.isArray(tasks) ? tasks : [];
     renderGroupAutomationList();
   },
-  onUpdate: ({ task, occurrence } = {}) => {
+  onUpdate: ({ task, occurrence, ledgerUpdated } = {}) => {
+    if (ledgerUpdated) loadGroupAutomations({ reconnect: false }).catch(toastError);
     if (task?.deleted) {
       state.groupAutomations = state.groupAutomations.filter((item) => item.id !== task.id);
     } else if (task?.id) {
@@ -5734,7 +5735,7 @@ function connectGroupAutomations() {
   groupAutomationCountdownTimer = setInterval(updateGroupAutomationCountdowns, 1000);
 }
 
-async function loadGroupAutomations() {
+async function loadGroupAutomations({ reconnect = true } = {}) {
   const botId = state.selectedBotId;
   const groupId = state.selectedGroupId;
   if (!botId || !groupId) return;
@@ -5744,7 +5745,7 @@ async function loadGroupAutomations() {
   const serverTime = new Date(data.serverTime).getTime();
   state.groupAutomationServerOffsetMs = Number.isFinite(serverTime) ? serverTime - Date.now() : 0;
   renderGroupAutomationList();
-  connectGroupAutomations();
+  if (reconnect) connectGroupAutomations();
 }
 
 function renderGroupAutomationMentionRoles(selectedRoleIds = []) {

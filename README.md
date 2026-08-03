@@ -118,6 +118,32 @@ TAG_SYNC_REALTIME_ACTIVITY_TTL_MS=900000
 COCKPIT_WORKER_ENABLED=true
 ```
 
+## 群定时任务
+
+“群管理”中的每个群可以单独维护群定时任务，支持：
+
+- 每天、每周、每月或月底按北京时间执行；
+- 条件推送：先依据群内客观事实判断条件，达成才发送固定内容；
+- 周期汇总：用 `{{白话变量及规则}}` 编写模板，按日、周、月事实生成结果；
+- 同时原生 `@` 多个已配置群角色；
+- 在任务卡片查看“已达成 / 尚未达成”、下次执行倒计时和历史记录；
+- 从历史判断依据直接定位到“会话”中的原始群消息；
+- WorkTool 返回不明确时停止自动重试，由员工确认后人工重试。
+
+所有群任务共用该群的一套结构化事实账本。账本只增量处理已入库的群成员消息，不把整月聊天记录一次性提交给 Agent，也不使用 WorkTool 群消息轮询。Bot 自动回复、标签消息和群定时任务自身的推送不会被当成动态事实。
+
+群背景、群角色和事实账本只用于内部理解；对外生成内容不得提及或暗示这些后台配置。群定时任务与私聊任务状态机、私聊资产完全隔离。
+
+相关 Worker 默认开启，可通过以下环境变量调整本地队列处理频率和租约；这些间隔不是外部消息轮询：
+
+```bash
+GROUP_AUTOMATION_WORKER_ENABLED=true
+GROUP_AUTOMATION_LEDGER_INTERVAL_MS=2000
+GROUP_AUTOMATION_OCCURRENCE_INTERVAL_MS=2000
+GROUP_AUTOMATION_LEASE_MS=300000
+GROUP_AUTOMATION_BATCH_SIZE=10
+```
+
 ## 2. 启动服务
 
 ```bash

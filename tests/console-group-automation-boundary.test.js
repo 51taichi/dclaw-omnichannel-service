@@ -20,6 +20,7 @@ test("group management loads the authenticated automation event client before ap
   assert.match(client, /response\.body\.getReader\(\)/);
   assert.match(client, /controller\?\.abort\(\)/);
   assert.doesNotMatch(client, /setInterval|setTimeout\([^)]*fetch/);
+  assert.match(app, /if \(ledgerUpdated\) loadGroupAutomations\(\{ reconnect: false \}\)/);
 });
 
 test("group automation uses a bounded card list with local countdown and only two business states", () => {

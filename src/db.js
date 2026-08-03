@@ -2349,6 +2349,46 @@ export function listGroupAutomationOccurrences({
   };
 }
 
+export function updateGroupAutomationOccurrenceFromCommandCallback({
+  botId,
+  messageId,
+  payload = {}
+}) {
+  const normalizedBotId = String(botId || "").trim();
+  const normalizedMessageId = String(messageId || "").trim();
+  if (!normalizedBotId || !normalizedMessageId) return null;
+  const occurrence = rowToGroupAutomationOccurrence(db.prepare(`
+    SELECT *
+    FROM managed_group_automation_occurrences
+    WHERE bot_id = ? AND worktool_message_id = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).get(normalizedBotId, normalizedMessageId));
+  if (!occurrence) return null;
+  const errorCode = Number(payload.errorCode ?? 0);
+  if (errorCode === 0) return occurrence;
+  const timestamp = now();
+  db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET status = 'failed',
+        worktool_response_json = ?,
+        error_message = ?,
+        finished_at = COALESCE(finished_at, ?),
+        updated_at = ?
+    WHERE bot_id = ? AND id = ?
+  `).run(
+    json(payload),
+    String(payload.errorReason || `WorkTool command failed (${errorCode})`),
+    timestamp,
+    timestamp,
+    normalizedBotId,
+    occurrence.id
+  );
+  return rowToGroupAutomationOccurrence(db.prepare(`
+    SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
+  `).get(normalizedBotId, occurrence.id));
+}
+
 function rowToGroupLedgerJob(row) {
   if (!row) return null;
   return {
@@ -2913,6 +2953,99 @@ export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
       });
     }
     db.prepare(`
+      INSERT OR IGNORE INTO managed_group_tag_groups (
+        group_id, bot_id, tag_group_id, is_system, created_at
+      )
+      SELECT ?, bot_id, tag_group_id, is_system, created_at
+      FROM managed_group_tag_groups
+      WHERE bot_id = ? AND group_id = ?
+    `).run(targetGroupId, botId, sourceGroupId);
+
+    const sourceRoles = db.prepare(`
+      SELECT * FROM managed_group_roles
+      WHERE bot_id = ? AND group_id = ?
+    `).all(botId, sourceGroupId);
+    for (const sourceRole of sourceRoles) {
+      const targetRole = db.prepare(`
+        SELECT id FROM managed_group_roles
+        WHERE bot_id = ? AND group_id = ? AND current_name = ?
+      `).get(botId, targetGroupId, sourceRole.current_name);
+      if (!targetRole) {
+        db.prepare(`
+          UPDATE managed_group_roles SET group_id = ?, updated_at = ? WHERE id = ?
+        `).run(targetGroupId, timestamp, sourceRole.id);
+        db.prepare(`
+          UPDATE managed_group_role_aliases SET group_id = ? WHERE role_id = ?
+        `).run(targetGroupId, sourceRole.id);
+        continue;
+      }
+      db.prepare(`
+        INSERT OR IGNORE INTO managed_group_automation_mentions (task_id, role_id, ordinal)
+        SELECT task_id, ?, ordinal
+        FROM managed_group_automation_mentions
+        WHERE role_id = ?
+      `).run(targetRole.id, sourceRole.id);
+      db.prepare(`DELETE FROM managed_group_automation_mentions WHERE role_id = ?`)
+        .run(sourceRole.id);
+      db.prepare(`
+        INSERT OR IGNORE INTO managed_group_role_aliases (
+          role_id, group_id, bot_id, alias_value, created_at
+        )
+        SELECT ?, ?, bot_id, alias_value, created_at
+        FROM managed_group_role_aliases
+        WHERE role_id = ?
+      `).run(targetRole.id, targetGroupId, sourceRole.id);
+      db.prepare(`DELETE FROM managed_group_role_aliases WHERE role_id = ?`).run(sourceRole.id);
+      db.prepare(`DELETE FROM managed_group_roles WHERE id = ?`).run(sourceRole.id);
+    }
+
+    db.prepare(`
+      UPDATE managed_group_automation_tasks
+      SET group_id = ?, updated_at = ?
+      WHERE bot_id = ? AND group_id = ?
+    `).run(targetGroupId, timestamp, botId, sourceGroupId);
+    db.prepare(`
+      UPDATE managed_group_automation_occurrences
+      SET group_id = ?, updated_at = ?
+      WHERE bot_id = ? AND group_id = ?
+    `).run(targetGroupId, timestamp, botId, sourceGroupId);
+    db.prepare(`
+      UPDATE managed_group_automation_cycle_states
+      SET group_id = ?, updated_at = ?
+      WHERE bot_id = ? AND group_id = ?
+    `).run(targetGroupId, timestamp, botId, sourceGroupId);
+
+    const sourceFacts = db.prepare(`
+      SELECT id, semantic_key FROM managed_group_facts
+      WHERE bot_id = ? AND group_id = ?
+    `).all(botId, sourceGroupId);
+    for (const sourceFact of sourceFacts) {
+      const targetFact = db.prepare(`
+        SELECT id FROM managed_group_facts
+        WHERE bot_id = ? AND group_id = ? AND semantic_key = ?
+      `).get(botId, targetGroupId, sourceFact.semantic_key);
+      if (!targetFact) {
+        db.prepare(`
+          UPDATE managed_group_facts SET group_id = ?, updated_at = ? WHERE id = ?
+        `).run(targetGroupId, timestamp, sourceFact.id);
+        continue;
+      }
+      db.prepare(`
+        INSERT OR IGNORE INTO managed_group_fact_evidence (fact_id, message_id, ordinal)
+        SELECT ?, message_id, ordinal
+        FROM managed_group_fact_evidence
+        WHERE fact_id = ?
+      `).run(targetFact.id, sourceFact.id);
+      db.prepare(`DELETE FROM managed_group_fact_evidence WHERE fact_id = ?`).run(sourceFact.id);
+      db.prepare(`DELETE FROM managed_group_facts WHERE id = ?`).run(sourceFact.id);
+    }
+    db.prepare(`
+      DELETE FROM managed_group_ledger_jobs WHERE bot_id = ? AND group_id = ?
+    `).run(botId, sourceGroupId);
+    db.prepare(`
+      DELETE FROM managed_group_ledger_states WHERE bot_id = ? AND group_id = ?
+    `).run(botId, sourceGroupId);
+    db.prepare(`
       DELETE FROM managed_group_role_aliases
       WHERE bot_id = ? AND group_id = ?
     `).run(botId, sourceGroupId);
@@ -3316,6 +3449,17 @@ export function deleteBotData(botId) {
   if (!binding) return null;
 
   const tables = [
+    "managed_group_automation_cycle_states",
+    "managed_group_automation_occurrences",
+    "managed_group_ledger_jobs",
+    "managed_group_ledger_states",
+    "managed_group_facts",
+    "managed_group_automation_tasks",
+    "managed_group_role_aliases",
+    "managed_group_roles",
+    "managed_group_tag_groups",
+    "managed_group_aliases",
+    "managed_groups",
     "workspace_bots",
     "tag_sync_outbox",
     "tag_sync_runs",
@@ -3351,6 +3495,18 @@ export function deleteBotData(botId) {
   db.exec("BEGIN IMMEDIATE");
   try {
     const deleted = {};
+    deleted.managed_group_automation_mentions = db.prepare(`
+      DELETE FROM managed_group_automation_mentions
+      WHERE task_id IN (
+        SELECT id FROM managed_group_automation_tasks WHERE bot_id = ?
+      )
+    `).run(normalizedBotId).changes;
+    deleted.managed_group_fact_evidence = db.prepare(`
+      DELETE FROM managed_group_fact_evidence
+      WHERE fact_id IN (
+        SELECT id FROM managed_group_facts WHERE bot_id = ?
+      )
+    `).run(normalizedBotId).changes;
     for (const table of tables) {
       const result = db.prepare(`DELETE FROM ${table} WHERE bot_id = ?`).run(normalizedBotId);
       deleted[table] = result.changes;
