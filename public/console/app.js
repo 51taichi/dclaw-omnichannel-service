@@ -34,6 +34,9 @@ const state = {
   groups: [],
   selectedGroupId: "",
   selectedGroupDetail: null,
+  groupAutomations: [],
+  groupAutomationServerOffsetMs: 0,
+  groupAutomationHistoryTaskId: "",
   createGroupContacts: [],
   createGroupContactIds: new Set(),
   createGroupContactsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
@@ -87,6 +90,20 @@ const els = {
   createGroupContactSearch: document.querySelector("#createGroupContactSearch"),
   createGroupContactList: document.querySelector("#createGroupContactList"),
   createGroupContactPagination: document.querySelector("#createGroupContactPagination"),
+  groupAutomationDialog: document.querySelector("#groupAutomationDialog"),
+  groupAutomationForm: document.querySelector("#groupAutomationForm"),
+  groupAutomationDialogTitle: document.querySelector("#groupAutomationDialogTitle"),
+  groupAutomationCancelButton: document.querySelector("#groupAutomationCancelButton"),
+  groupAutomationWeeklyDays: document.querySelector("#groupAutomationWeeklyDays"),
+  groupAutomationMonthlyDay: document.querySelector("#groupAutomationMonthlyDay"),
+  groupAutomationConditionField: document.querySelector("#groupAutomationConditionField"),
+  groupAutomationContentField: document.querySelector("#groupAutomationContentField"),
+  groupAutomationSummaryField: document.querySelector("#groupAutomationSummaryField"),
+  groupAutomationMentionRoles: document.querySelector("#groupAutomationMentionRoles"),
+  groupAutomationHistoryDialog: document.querySelector("#groupAutomationHistoryDialog"),
+  groupAutomationHistoryTitle: document.querySelector("#groupAutomationHistoryTitle"),
+  groupAutomationHistoryList: document.querySelector("#groupAutomationHistoryList"),
+  groupAutomationHistoryCloseButton: document.querySelector("#groupAutomationHistoryCloseButton"),
   addFlowNodeButton: document.querySelector("#addFlowNodeButton"),
   applyFlowJsonButton: document.querySelector("#applyFlowJsonButton"),
   importFlowFile: document.querySelector("#importFlowFile"),
@@ -634,6 +651,9 @@ function connectTagAlerts(botId) {
 
 function clearBotScopedContent() {
   disconnectTagAlerts();
+  groupAutomationClient.disconnect();
+  clearInterval(groupAutomationCountdownTimer);
+  groupAutomationCountdownTimer = null;
   window.cockpitConsole?.clear();
   clearTimeout(proactiveSearchTimer);
   proactiveSearchTimer = null;
@@ -643,6 +663,11 @@ function clearBotScopedContent() {
   state.flowSessionsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTargetsPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
   state.proactiveTasksPagination = { page: 1, pageSize: 20, total: 0, totalPages: 1 };
+  state.groups = [];
+  state.selectedGroupId = "";
+  state.selectedGroupDetail = null;
+  state.groupAutomations = [];
+  state.groupAutomationHistoryTaskId = "";
   state.proactiveTargetTags = [];
   state.tagSyncLoadVersion += 1;
   state.tagSyncTrackVersion += 1;
@@ -1079,6 +1104,7 @@ let currentAgents = [];
 let targetFilter = "all";
 let addressBookTargets = [];
 let proactiveSearchTimer = null;
+let groupAutomationCountdownTimer = null;
 let currentFlowMachine = null;
 let currentFlowSessions = [];
 let flowDraftNodes = [];
@@ -1103,6 +1129,31 @@ const tagAlertClient = window.createTagAlertClient({
     if (state.apiKey) connectTagAlerts(botId);
   },
   onError: (error) => console.warn("Tag alert stream disconnected", error)
+});
+const groupAutomationClient = window.createGroupAutomationClient({
+  onSnapshot: (tasks) => {
+    state.groupAutomations = Array.isArray(tasks) ? tasks : [];
+    renderGroupAutomationList();
+  },
+  onUpdate: ({ task, occurrence } = {}) => {
+    if (task?.deleted) {
+      state.groupAutomations = state.groupAutomations.filter((item) => item.id !== task.id);
+    } else if (task?.id) {
+      const index = state.groupAutomations.findIndex((item) => item.id === task.id);
+      if (index >= 0) state.groupAutomations.splice(index, 1, task);
+      else state.groupAutomations.push(task);
+    }
+    if (occurrence?.taskId) {
+      const item = state.groupAutomations.find((candidate) => candidate.id === occurrence.taskId);
+      if (item) item.lastOccurrence = occurrence;
+    }
+    renderGroupAutomationList();
+  },
+  onAuthExpired: () => {
+    const botId = state.selectedBotId;
+    if (botId) expireBotSession(botId);
+  },
+  onError: (error) => console.warn("Group automation stream disconnected", error)
 });
 
 function setTagAlertInteraction(active) {
@@ -5562,6 +5613,314 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function groupAutomationNow() {
+  return Date.now() + Number(state.groupAutomationServerOffsetMs || 0);
+}
+
+function formatGroupAutomationCountdown(nextRunAt) {
+  const remaining = new Date(nextRunAt).getTime() - groupAutomationNow();
+  if (!nextRunAt || !Number.isFinite(remaining)) return "未安排";
+  if (remaining <= 0) return "即将执行";
+  const totalSeconds = Math.floor(remaining / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [
+    ...(days ? [`${days}天`] : []),
+    `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+  ].join(" ");
+}
+
+function formatGroupAutomationDateTime(value) {
+  const date = new Date(value);
+  if (!value || Number.isNaN(date.getTime())) return "-";
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: BEIJING_TIME_ZONE,
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).format(date);
+}
+
+function groupAutomationScheduleLabel(task) {
+  if (task.cadence === "daily") return `每天 ${task.timeOfDay}`;
+  if (task.cadence === "weekly") {
+    const weekNames = ["", "周一", "周二", "周三", "周四", "周五", "周六", "周日"];
+    return `每周 ${task.scheduleDays.map((day) => weekNames[Number(day)] || day).join("、")} ${task.timeOfDay}`;
+  }
+  const days = task.scheduleDays.map((day) => day === "month_end" ? "月底" : `${day}日`).join("、");
+  return `每月 ${days} ${task.timeOfDay}`;
+}
+
+function groupAutomationStatus(task) {
+  if (task.taskType !== "conditional_push") return null;
+  return task.currentState?.achieved
+    ? { label: "已达成", className: "achieved" }
+    : { label: "尚未达成", className: "unachieved" };
+}
+
+function groupAutomationLastResult(occurrence) {
+  const labels = {
+    sent: "已发送",
+    skipped: "未发送",
+    failed: "执行失败",
+    delivery_unknown: "发送结果未知",
+    retry_wait: "等待重试",
+    evaluating: "正在判断",
+    sending: "正在发送",
+    pending: "等待执行",
+    canceled: "已取消"
+  };
+  return labels[occurrence?.status] || "暂无记录";
+}
+
+function renderGroupAutomationList() {
+  const container = els.groupConfigPane?.querySelector("#groupAutomationList");
+  if (!container) return;
+  container.innerHTML = state.groupAutomations.length
+    ? state.groupAutomations.map((task) => {
+        const status = groupAutomationStatus(task);
+        const mentionNames = (state.selectedGroupDetail?.roles || [])
+          .filter((role) => task.mentionRoleIds?.includes(role.id))
+          .map((role) => role.currentName);
+        return `
+          <article class="group-automation-card ${task.enabled ? "" : "is-disabled"}" data-group-automation-id="${escapeHtml(task.id)}">
+            <div class="group-automation-card-main">
+              <div class="group-automation-card-title"><span class="group-automation-type-icon"><svg class="icon" aria-hidden="true"><use href="#icon-${task.taskType === "periodic_summary" ? "message" : "send"}"></use></svg></span><span><strong>${escapeHtml(task.name)}</strong><small>${task.taskType === "periodic_summary" ? "周期汇总" : "条件推送"}</small></span></div>
+              <div class="group-automation-card-meta">
+                <span><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>${escapeHtml(groupAutomationScheduleLabel(task))}</span>
+                ${mentionNames.length ? `<span title="${escapeHtml(mentionNames.join("、"))}"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>@ ${escapeHtml(mentionNames.join("、"))}</span>` : ""}
+              </div>
+            </div>
+            <div class="group-automation-card-state">
+              ${status ? `<span class="group-automation-status ${status.className}">${icon(status.className === "achieved" ? "check" : "clock")}${status.label}</span>` : `<span class="group-automation-status summary">${icon("history")}${escapeHtml(groupAutomationLastResult(task.lastOccurrence))}</span>`}
+              <span class="group-automation-countdown" data-next-run-at="${escapeHtml(task.nextRunAt || "")}">${escapeHtml(formatGroupAutomationCountdown(task.nextRunAt))}</span>
+              <small>下次 ${escapeHtml(formatGroupAutomationDateTime(task.nextRunAt))}</small>
+            </div>
+            <div class="group-automation-card-actions">
+              <button class="secondary" data-group-automation-action="toggle" type="button">${icon(task.enabled ? "lock" : "unlock")}${task.enabled ? "停用" : "启用"}</button>
+              <button class="secondary" data-group-automation-action="refresh" type="button">${icon("refresh")}刷新判断</button>
+              <button class="secondary" data-group-automation-action="history" type="button">${icon("history")}记录</button>
+              <button class="secondary" data-group-automation-action="duplicate" type="button">${icon("plus")}复制</button>
+              <button class="secondary" data-group-automation-action="edit" type="button">${icon("edit")}编辑</button>
+              <button class="secondary danger" data-group-automation-action="delete" type="button">${icon("reset")}删除</button>
+            </div>
+          </article>`;
+      }).join("")
+    : `<div class="empty-state group-automation-empty">暂无群定时任务。可按天、周或月自动判断并推送。</div>`;
+  bindGroupAutomationActions();
+  updateGroupAutomationCountdowns();
+}
+
+function updateGroupAutomationCountdowns() {
+  document.querySelectorAll(".group-automation-countdown[data-next-run-at]").forEach((node) => {
+    node.textContent = formatGroupAutomationCountdown(node.dataset.nextRunAt);
+  });
+}
+
+function connectGroupAutomations() {
+  groupAutomationClient.disconnect();
+  clearInterval(groupAutomationCountdownTimer);
+  groupAutomationCountdownTimer = null;
+  if (!state.selectedBotId || !state.selectedGroupId) return;
+  groupAutomationClient.connect({
+    botId: state.selectedBotId,
+    groupId: state.selectedGroupId,
+    headers: headers({}, state.selectedBotId)
+  });
+  groupAutomationCountdownTimer = setInterval(updateGroupAutomationCountdowns, 1000);
+}
+
+async function loadGroupAutomations() {
+  const botId = state.selectedBotId;
+  const groupId = state.selectedGroupId;
+  if (!botId || !groupId) return;
+  const data = await request(`/api/groups/${encodeURIComponent(groupId)}/automations?botId=${encodeURIComponent(botId)}`, { botId });
+  if (botId !== state.selectedBotId || groupId !== state.selectedGroupId) return;
+  state.groupAutomations = data.tasks || [];
+  const serverTime = new Date(data.serverTime).getTime();
+  state.groupAutomationServerOffsetMs = Number.isFinite(serverTime) ? serverTime - Date.now() : 0;
+  renderGroupAutomationList();
+  connectGroupAutomations();
+}
+
+function renderGroupAutomationMentionRoles(selectedRoleIds = []) {
+  const selected = new Set(selectedRoleIds || []);
+  const roles = state.selectedGroupDetail?.roles || [];
+  els.groupAutomationMentionRoles.innerHTML = roles.length
+    ? roles.map((role) => `<label class="group-automation-mention-card"><input name="mentionRoleId" type="checkbox" value="${escapeHtml(role.id)}" ${selected.has(role.id) ? "checked" : ""} /><span>${icon("user")}<strong>${escapeHtml(role.currentName)}</strong><small>${escapeHtml(role.identityType || "未设置身份")}</small></span></label>`).join("")
+    : `<span class="muted">请先在群角色中添加需要 @ 的成员。</span>`;
+}
+
+function syncGroupAutomationDialogFields() {
+  const form = els.groupAutomationForm;
+  const cadence = form.cadence.value;
+  const summary = form.taskType.value === "periodic_summary";
+  els.groupAutomationWeeklyDays.hidden = cadence !== "weekly";
+  els.groupAutomationMonthlyDay.hidden = cadence !== "monthly";
+  els.groupAutomationConditionField.hidden = summary;
+  els.groupAutomationContentField.hidden = summary;
+  els.groupAutomationSummaryField.hidden = !summary;
+  form.conditionText.required = !summary;
+  form.content.required = !summary;
+  form.summaryTemplate.required = summary;
+}
+
+function openGroupAutomationDialog(task = null) {
+  const form = els.groupAutomationForm;
+  form.reset();
+  form.taskId.value = task?.id || "";
+  form.expectedVersion.value = task?.version || "";
+  form.name.value = task?.name || "";
+  form.taskType.value = task?.taskType || "conditional_push";
+  form.cadence.value = task?.cadence || "daily";
+  form.timeOfDay.value = task?.timeOfDay || "09:00";
+  form.conditionText.value = task?.conditionText || "";
+  form.content.value = task?.content || "";
+  form.summaryTemplate.value = task?.summaryTemplate || "";
+  form.enabled.checked = task ? Boolean(task.enabled) : true;
+  [...form.querySelectorAll('[name="weeklyDay"]')].forEach((input) => {
+    input.checked = task?.cadence === "weekly" && task.scheduleDays.includes(Number(input.value));
+  });
+  form.monthlyDay.value = task?.cadence === "monthly" ? String(task.scheduleDays[0]) : "1";
+  renderGroupAutomationMentionRoles(task?.mentionRoleIds || []);
+  syncGroupAutomationDialogFields();
+  els.groupAutomationDialogTitle.textContent = task ? "编辑群定时任务" : "新增群定时任务";
+  els.groupAutomationDialog.hidden = false;
+}
+
+function closeGroupAutomationDialog() {
+  els.groupAutomationDialog.hidden = true;
+}
+
+function groupAutomationScheduleDays(form) {
+  if (form.cadence.value === "daily") return [];
+  if (form.cadence.value === "weekly") {
+    return [...form.querySelectorAll('[name="weeklyDay"]:checked')].map((input) => Number(input.value));
+  }
+  const day = form.monthlyDay.value;
+  return [day === "month_end" ? day : Number(day)];
+}
+
+async function saveGroupAutomation(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const taskId = form.taskId.value;
+  const payload = {
+    botId: state.selectedBotId,
+    name: form.name.value.trim(),
+    taskType: form.taskType.value,
+    cadence: form.cadence.value,
+    scheduleDays: groupAutomationScheduleDays(form),
+    timeOfDay: form.timeOfDay.value,
+    conditionText: form.conditionText.value.trim(),
+    content: form.content.value.trim(),
+    summaryTemplate: form.summaryTemplate.value.trim(),
+    mentionRoleIds: [...form.querySelectorAll('[name="mentionRoleId"]:checked')].map((input) => input.value),
+    enabled: form.enabled.checked,
+    ...(taskId ? { expectedVersion: Number(form.expectedVersion.value) } : {})
+  };
+  const path = `/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations${taskId ? `/${encodeURIComponent(taskId)}` : ""}`;
+  const data = await request(path, {
+    method: taskId ? "PATCH" : "POST",
+    body: JSON.stringify(payload)
+  });
+  const index = state.groupAutomations.findIndex((task) => task.id === data.task.id);
+  if (index >= 0) state.groupAutomations.splice(index, 1, data.task);
+  else state.groupAutomations.push(data.task);
+  closeGroupAutomationDialog();
+  renderGroupAutomationList();
+  toast(taskId ? "群定时任务已更新" : "群定时任务已创建", "success");
+}
+
+function groupAutomationOccurrenceStatus(occurrence) {
+  return groupAutomationLastResult(occurrence);
+}
+
+async function openGroupAutomationHistory(task) {
+  state.groupAutomationHistoryTaskId = task.id;
+  els.groupAutomationHistoryTitle.textContent = `${task.name} · 执行记录`;
+  els.groupAutomationHistoryList.innerHTML = `<div class="empty-state">正在加载执行记录…</div>`;
+  els.groupAutomationHistoryDialog.hidden = false;
+  const data = await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}/occurrences?botId=${encodeURIComponent(state.selectedBotId)}&page=1&pageSize=50`);
+  if (state.groupAutomationHistoryTaskId !== task.id) return;
+  els.groupAutomationHistoryList.innerHTML = data.items?.length
+    ? data.items.map((occurrence) => `
+        <article class="group-automation-history-item">
+          <div><strong>${escapeHtml(formatGroupAutomationDateTime(occurrence.scheduledFor))}</strong><span class="group-automation-history-status status-${escapeHtml(occurrence.status)}">${escapeHtml(groupAutomationOccurrenceStatus(occurrence))}</span></div>
+          ${occurrence.reason ? `<p>${escapeHtml(occurrence.reason)}</p>` : ""}
+          ${occurrence.renderedContent ? `<blockquote>${escapeHtml(occurrence.renderedContent)}</blockquote>` : ""}
+          ${occurrence.errorMessage ? `<p class="error-text">${escapeHtml(occurrence.errorMessage)}</p>` : ""}
+          <div class="group-automation-history-actions">
+            ${(occurrence.evidenceMessageIds || []).map((messageId) => `<button class="secondary" data-group-automation-evidence="${escapeHtml(messageId)}" type="button">${icon("message")}查看依据</button>`).join("")}
+            ${["failed", "delivery_unknown"].includes(occurrence.status) ? `<button class="secondary" data-group-automation-retry="${escapeHtml(occurrence.id)}" type="button">${icon("refresh")}人工重试</button>` : ""}
+          </div>
+        </article>`).join("")
+    : `<div class="empty-state">暂无执行记录</div>`;
+}
+
+async function openGroupAutomationEvidence(messageId) {
+  const data = await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/evidence/${encodeURIComponent(messageId)}?botId=${encodeURIComponent(state.selectedBotId)}`);
+  const anchor = data.anchor;
+  els.groupAutomationHistoryDialog.hidden = true;
+  switchWorkspaceTab("sessions");
+  resetFlowSessionFiltersForTagAlert(anchor.conversationKey);
+  await reloadFlowSessionsFromFirstPage();
+  await openFlowSession(anchor.conversationKey, {
+    anchorMessageId: anchor.messageId,
+    missingEvidence: false
+  });
+}
+
+function bindGroupAutomationActions() {
+  els.groupConfigPane?.querySelectorAll("[data-group-automation-action]").forEach((button) => {
+    button.onclick = async () => {
+      const card = button.closest("[data-group-automation-id]");
+      const task = state.groupAutomations.find((item) => item.id === card?.dataset.groupAutomationId);
+      if (!task) return;
+      const action = button.dataset.groupAutomationAction;
+      if (action === "edit") openGroupAutomationDialog(task);
+      if (action === "history") await openGroupAutomationHistory(task);
+      if (action === "toggle") {
+        await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}`, {
+          method: "PATCH",
+          body: JSON.stringify({ botId: state.selectedBotId, expectedVersion: task.version, enabled: !task.enabled })
+        });
+        await loadGroupAutomations();
+      }
+      if (action === "refresh") {
+        await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}/refresh`, {
+          method: "POST",
+          body: JSON.stringify({ botId: state.selectedBotId })
+        });
+        toast("已刷新群事实判断", "success");
+      }
+      if (action === "duplicate") {
+        await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}/duplicate`, {
+          method: "POST",
+          body: JSON.stringify({ botId: state.selectedBotId })
+        });
+        await loadGroupAutomations();
+        toast("任务副本已创建", "success");
+      }
+      if (action === "delete") {
+        const confirmed = await openConfirmation({ title: "删除群定时任务？", message: `确认删除“${task.name}”？历史记录仍会保留用于审计。`, acceptLabel: "确认删除", danger: true });
+        if (!confirmed) return;
+        await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}`, {
+          method: "DELETE",
+          body: JSON.stringify({ botId: state.selectedBotId, expectedVersion: task.version })
+        });
+        state.groupAutomations = state.groupAutomations.filter((item) => item.id !== task.id);
+        renderGroupAutomationList();
+        toast("群定时任务已删除", "success");
+      }
+    };
+  });
+}
+
 async function loadGroups({ refresh = false } = {}) {
   if (!state.selectedBotId) return;
   const params = new URLSearchParams({
@@ -5621,13 +5980,16 @@ function renderGroupList() {
 }
 
 async function loadGroupDetail(groupId) {
+  groupAutomationClient.disconnect();
   const data = await request(
     `/api/groups/${encodeURIComponent(groupId)}?botId=${encodeURIComponent(state.selectedBotId)}`
   );
   state.selectedGroupId = groupId;
   state.selectedGroupDetail = data;
+  state.groupAutomations = [];
   renderGroupList();
   renderGroupConfig();
+  await loadGroupAutomations();
 }
 
 function groupRoleRow(role = {}) {
@@ -5673,6 +6035,13 @@ function renderGroupConfig() {
       </fieldset>
       <button class="primary groups-save-config" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存群配置</button>
     </form>
+    <section id="groupAutomationSection" class="group-automation-section" aria-labelledby="groupAutomationTitle">
+      <div class="group-automation-head">
+        <div><h3 id="groupAutomationTitle"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群定时任务</h3><p>按群内客观事实自动判断、推送或生成周期汇总。</p></div>
+        <button id="addGroupAutomationButton" class="primary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button>
+      </div>
+      <div id="groupAutomationList" class="group-automation-list"><div class="empty-state">正在加载群定时任务…</div></div>
+    </section>
     <div class="groups-role-head">
       <h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3>
       <div class="groups-role-actions">
@@ -5692,6 +6061,7 @@ function renderGroupConfig() {
     </form>
   `;
   els.groupConfigPane.querySelector("#groupConfigForm").addEventListener("submit", saveSelectedGroupConfig);
+  els.groupConfigPane.querySelector("#addGroupAutomationButton").addEventListener("click", () => openGroupAutomationDialog());
   els.groupConfigPane.querySelector("#addGroupRoleButton").addEventListener("click", () => {
     els.groupConfigPane.querySelector("#groupRoleList").insertAdjacentHTML("beforeend", groupRoleRow());
     bindGroupRoleRemoveButtons();
@@ -6036,6 +6406,40 @@ els.workspaceTabs.forEach((button) => {
 });
 els.refreshGroupsButton?.addEventListener("click", () => loadGroups({ refresh: true }).catch(toastError));
 els.groupSearchInput?.addEventListener("input", () => loadGroups().catch(toastError));
+els.groupAutomationCancelButton?.addEventListener("click", closeGroupAutomationDialog);
+els.groupAutomationDialog?.addEventListener("click", (event) => {
+  if (event.target === els.groupAutomationDialog) closeGroupAutomationDialog();
+});
+els.groupAutomationForm?.taskType.addEventListener("change", syncGroupAutomationDialogFields);
+els.groupAutomationForm?.cadence.addEventListener("change", syncGroupAutomationDialogFields);
+els.groupAutomationForm?.addEventListener("submit", (event) => saveGroupAutomation(event).catch(toastError));
+els.groupAutomationHistoryCloseButton?.addEventListener("click", () => {
+  state.groupAutomationHistoryTaskId = "";
+  els.groupAutomationHistoryDialog.hidden = true;
+});
+els.groupAutomationHistoryDialog?.addEventListener("click", (event) => {
+  if (event.target === els.groupAutomationHistoryDialog) {
+    state.groupAutomationHistoryTaskId = "";
+    els.groupAutomationHistoryDialog.hidden = true;
+  }
+});
+els.groupAutomationHistoryList?.addEventListener("click", (event) => {
+  const evidence = event.target.closest("[data-group-automation-evidence]");
+  if (evidence) {
+    openGroupAutomationEvidence(evidence.dataset.groupAutomationEvidence).catch(toastError);
+    return;
+  }
+  const retry = event.target.closest("[data-group-automation-retry]");
+  if (!retry) return;
+  request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/occurrences/${encodeURIComponent(retry.dataset.groupAutomationRetry)}/retry`, {
+    method: "POST",
+    body: JSON.stringify({ botId: state.selectedBotId })
+  }).then(async () => {
+    toast("已提交人工重试", "success");
+    const task = state.groupAutomations.find((item) => item.id === state.groupAutomationHistoryTaskId);
+    if (task) await openGroupAutomationHistory(task);
+  }).catch(toastError);
+});
 els.createGroupButton?.addEventListener("click", () => {
   state.createGroupContactIds.clear();
   state.createGroupContactsPagination.page = 1;

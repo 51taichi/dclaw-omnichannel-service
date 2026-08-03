@@ -6174,6 +6174,327 @@ td .muted {
   width: 100%;
 }
 
+.group-automation-section {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 22px;
+}
+
+.group-automation-head,
+.group-automation-head h3,
+.group-automation-card-title,
+.group-automation-card-meta span,
+.group-automation-card-actions,
+.group-automation-history-item > div,
+.group-automation-history-actions {
+  align-items: center;
+  display: flex;
+}
+
+.group-automation-head {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.group-automation-head h3 {
+  gap: 7px;
+  margin: 0;
+}
+
+.group-automation-head p {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  margin: 5px 0 0;
+}
+
+.group-automation-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  max-height: 430px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.group-automation-card {
+  align-items: center;
+  background: linear-gradient(120deg, #fff, color-mix(in srgb, var(--accent-soft) 34%, #fff));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(220px, 1.3fr) minmax(155px, 0.65fr) minmax(280px, auto);
+  min-width: 0;
+  padding: 13px;
+}
+
+.group-automation-card.is-disabled {
+  opacity: 0.66;
+}
+
+.group-automation-card-main,
+.group-automation-card-state,
+.group-automation-card-title > span:last-child {
+  display: grid;
+  min-width: 0;
+}
+
+.group-automation-card-main {
+  gap: 8px;
+}
+
+.group-automation-card-title {
+  gap: 9px;
+  min-width: 0;
+}
+
+.group-automation-card-title strong,
+.group-automation-card-title small,
+.group-automation-card-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-automation-card-title small,
+.group-automation-card-state small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.group-automation-type-icon {
+  background: var(--accent-soft);
+  border-radius: 9px;
+  color: var(--accent);
+  display: grid;
+  flex: 0 0 36px;
+  height: 36px;
+  place-items: center;
+  width: 36px;
+}
+
+.group-automation-card-meta {
+  color: var(--muted);
+  display: grid;
+  font-size: 11px;
+  font-weight: 750;
+  gap: 4px;
+  min-width: 0;
+  padding-left: 45px;
+}
+
+.group-automation-card-meta span {
+  gap: 5px;
+}
+
+.group-automation-card-meta .icon,
+.group-automation-card-actions .icon,
+.group-automation-status .icon,
+.group-automation-history-actions .icon {
+  flex: 0 0 auto;
+  height: 14px;
+  width: 14px;
+}
+
+.group-automation-card-state {
+  gap: 3px;
+  justify-items: start;
+}
+
+.group-automation-status,
+.group-automation-countdown {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 11px;
+  font-weight: 850;
+  gap: 5px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+
+.group-automation-status.achieved {
+  background: color-mix(in srgb, var(--cyan) 15%, #fff);
+  color: color-mix(in srgb, var(--cyan) 70%, #126246);
+}
+
+.group-automation-status.unachieved,
+.group-automation-status.summary {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.group-automation-countdown {
+  color: var(--orange);
+  font-size: 13px;
+  padding-inline: 0;
+}
+
+.group-automation-card-actions {
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.group-automation-card-actions button {
+  font-size: 11px;
+  gap: 4px;
+  min-height: 32px;
+  padding: 6px 8px;
+}
+
+.confirm-dialog.group-automation-dialog,
+.confirm-dialog.group-automation-history-dialog {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  max-height: min(92vh, 880px);
+  padding: 0;
+  width: min(94vw, 760px);
+}
+
+.group-automation-dialog-body {
+  display: grid;
+  gap: 13px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px 22px;
+}
+
+.group-automation-schedule-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.group-automation-days,
+.group-automation-mentions {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px;
+}
+
+.group-automation-days[hidden],
+#groupAutomationMonthlyDay[hidden],
+#groupAutomationConditionField[hidden],
+#groupAutomationContentField[hidden],
+#groupAutomationSummaryField[hidden] {
+  display: none;
+}
+
+.group-automation-days legend,
+.group-automation-mentions legend {
+  font-size: 12px;
+  font-weight: 850;
+  padding: 0 6px;
+}
+
+.group-automation-days label {
+  align-items: center;
+  background: var(--panel-strong);
+  border-radius: 8px;
+  display: flex;
+  font-size: 12px;
+  font-weight: 750;
+  gap: 5px;
+  padding: 7px 9px;
+}
+
+.group-automation-mention-list {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+}
+
+.group-automation-mention-card {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px;
+}
+
+.group-automation-mention-card > span {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  min-width: 0;
+}
+
+.group-automation-mention-card small {
+  color: var(--muted);
+  font-size: 10px;
+  grid-column: 2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-automation-enabled {
+  justify-self: start;
+}
+
+.group-automation-history-list {
+  display: grid;
+  gap: 10px;
+  min-height: 240px;
+  overflow-y: auto;
+  padding: 18px 22px;
+}
+
+.group-automation-history-item {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  padding: 13px;
+}
+
+.group-automation-history-item > div:first-child {
+  justify-content: space-between;
+}
+
+.group-automation-history-item p,
+.group-automation-history-item blockquote {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  margin: 9px 0 0;
+}
+
+.group-automation-history-item blockquote {
+  background: var(--panel-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 9px 11px;
+}
+
+.group-automation-history-status {
+  background: var(--accent-soft);
+  border-radius: 999px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 850;
+  padding: 5px 8px;
+}
+
+.group-automation-history-actions {
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.group-automation-history-actions button {
+  font-size: 11px;
+  gap: 4px;
+  min-height: 32px;
+}
+
 .groups-role-head {
   align-items: center;
   display: flex;
@@ -6475,16 +6796,55 @@ td .muted {
     align-items: stretch;
     flex-wrap: wrap;
   }
+
+  .group-automation-card {
+    grid-template-columns: minmax(0, 1fr) minmax(140px, auto);
+  }
+
+  .group-automation-card-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
 }
 
 @media (max-width: 700px) {
   .groups-contact-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .group-automation-head,
+  .group-automation-schedule-grid {
+    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .group-automation-head {
+    display: grid;
+  }
+
+  .group-automation-mention-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 480px) {
   .groups-contact-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .group-automation-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .group-automation-card-state {
+    justify-items: start;
+  }
+
+  .group-automation-card-actions {
+    grid-column: auto;
+  }
+
+  .group-automation-mention-list {
     grid-template-columns: minmax(0, 1fr);
   }
 }

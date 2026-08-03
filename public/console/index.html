@@ -1021,6 +1021,66 @@
         </div>
       </form>
     </div>
+    <div id="groupAutomationDialog" class="modal-backdrop" hidden>
+      <form id="groupAutomationForm" class="confirm-dialog group-automation-dialog" role="dialog" aria-modal="true" aria-labelledby="groupAutomationDialogTitle">
+        <div class="groups-dialog-header">
+          <span class="groups-dialog-icon"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg></span>
+          <span><strong id="groupAutomationDialogTitle">新增群定时任务</strong><small>按北京时间执行，仅作用于当前群</small></span>
+        </div>
+        <div class="confirm-copy group-automation-dialog-body">
+          <input name="taskId" type="hidden" />
+          <input name="expectedVersion" type="hidden" />
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>任务名称</span><input name="name" required maxlength="80" placeholder="例如：每日作业提醒" /></label>
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tool"></use></svg>任务类型</span><select name="taskType">
+            <option value="conditional_push">条件推送</option>
+            <option value="periodic_summary">周期汇总</option>
+          </select></label>
+          <div class="group-automation-schedule-grid">
+            <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>执行周期</span><select name="cadence">
+              <option value="daily">每天</option>
+              <option value="weekly">每周</option>
+              <option value="monthly">每月</option>
+            </select></label>
+            <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>执行时间</span><input name="timeOfDay" type="time" required value="09:00" /></label>
+          </div>
+          <fieldset id="groupAutomationWeeklyDays" class="group-automation-days" hidden><legend>每周执行日</legend>
+            <label><input type="checkbox" name="weeklyDay" value="1" />周一</label>
+            <label><input type="checkbox" name="weeklyDay" value="2" />周二</label>
+            <label><input type="checkbox" name="weeklyDay" value="3" />周三</label>
+            <label><input type="checkbox" name="weeklyDay" value="4" />周四</label>
+            <label><input type="checkbox" name="weeklyDay" value="5" />周五</label>
+            <label><input type="checkbox" name="weeklyDay" value="6" />周六</label>
+            <label><input type="checkbox" name="weeklyDay" value="7" />周日</label>
+          </fieldset>
+          <label id="groupAutomationMonthlyDay" hidden><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>每月执行日</span><select name="monthlyDay">
+            <option value="1">1日</option><option value="2">2日</option><option value="3">3日</option><option value="4">4日</option><option value="5">5日</option><option value="6">6日</option><option value="7">7日</option>
+            <option value="8">8日</option><option value="9">9日</option><option value="10">10日</option><option value="11">11日</option><option value="12">12日</option><option value="13">13日</option><option value="14">14日</option>
+            <option value="15">15日</option><option value="16">16日</option><option value="17">17日</option><option value="18">18日</option><option value="19">19日</option><option value="20">20日</option><option value="21">21日</option>
+            <option value="22">22日</option><option value="23">23日</option><option value="24">24日</option><option value="25">25日</option><option value="26">26日</option><option value="27">27日</option><option value="28">28日</option>
+            <option value="month_end">月底</option>
+          </select></label>
+          <label id="groupAutomationConditionField"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>达成条件</span><textarea name="conditionText" rows="2" placeholder="例如：今天客户已经完成作业"></textarea></label>
+          <label id="groupAutomationContentField"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>达成后推送内容</span><textarea name="content" rows="3" placeholder="例如：今天的作业已完成，辛苦啦！"></textarea></label>
+          <label id="groupAutomationSummaryField" hidden><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-message"></use></svg>汇总模板</span><textarea name="summaryTemplate" rows="5" placeholder="本周上课 {{本周上课次数（明确已经完成的课程才计数，取消或改期不计）}} 次"></textarea><small>在 {{ }} 中用白话描述变量及判断规则。</small></label>
+          <fieldset class="group-automation-mentions"><legend><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>推送时 @ 群角色（可多选）</legend><div id="groupAutomationMentionRoles" class="group-automation-mention-list"></div></fieldset>
+          <label class="toggle switch-toggle group-automation-enabled"><input name="enabled" type="checkbox" checked /><span>启用任务</span></label>
+        </div>
+        <div class="confirm-actions groups-dialog-actions">
+          <button id="groupAutomationCancelButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>取消</button>
+          <button class="primary" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存任务</button>
+        </div>
+      </form>
+    </div>
+    <div id="groupAutomationHistoryDialog" class="modal-backdrop" hidden>
+      <div class="confirm-dialog group-automation-history-dialog" role="dialog" aria-modal="true" aria-labelledby="groupAutomationHistoryTitle">
+        <div class="groups-dialog-header">
+          <span class="groups-dialog-icon"><svg class="icon" aria-hidden="true"><use href="#icon-history"></use></svg></span>
+          <span><strong id="groupAutomationHistoryTitle">执行记录</strong><small>查看判断、推送结果及依据</small></span>
+        </div>
+        <div id="groupAutomationHistoryList" class="group-automation-history-list"></div>
+        <div class="confirm-actions groups-dialog-actions"><button id="groupAutomationHistoryCloseButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>关闭</button></div>
+      </div>
+    </div>
     <div id="conversationResetLoadingDialog" class="modal-backdrop" hidden aria-busy="true">
       <div class="conversation-reset-loading-dialog" role="status" aria-live="assertive">
         <img class="conversation-reset-loading-image" src="assets/sorry.png" alt="" aria-hidden="true" />
@@ -1033,6 +1093,7 @@
     <script src="/shared/auth-shell.js"></script>
     <script src="./workspace-entry.js"></script>
     <script src="./tag-alert-client.js"></script>
+    <script src="./group-automation-client.js"></script>
     <script src="./flow-session-list.js"></script>
     <script src="./proactive-target-selection.js"></script>
     <script src="./cockpit.js"></script>
