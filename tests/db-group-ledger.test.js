@@ -43,6 +43,46 @@ function setupLedgerGroup(botId) {
   return { group: saved.group, parentRole: saved.roles[0], task };
 }
 
+function applySingleLedgerFact({ botId, group, roleId, semanticKey, category = "lesson_completed" }) {
+  const message = db.insertConversationMessage({
+    botId,
+    conversationKey: group.conversationKey,
+    direction: "inbound",
+    senderName: "家长",
+    content: `${semanticKey} 已完成`
+  });
+  db.enqueueGroupLedgerJob({
+    botId,
+    groupId: group.id,
+    mode: "live",
+    throughMessageId: message.id
+  });
+  const job = db.claimGroupLedgerJobs({
+    nowIso: "2026-08-04T12:00:00.000Z",
+    limit: 1,
+    leaseMs: 300000
+  })[0];
+  db.applyGroupLedgerEvaluation({
+    jobId: job.id,
+    botId,
+    groupId: group.id,
+    throughMessageId: message.id,
+    facts: [{
+      operation: "upsert",
+      semanticKey,
+      category,
+      statement: `${semanticKey} 已完成`,
+      value: { count: 1 },
+      happenedAt: "2026-08-03T10:00:00.000Z",
+      speakerName: "家长",
+      roleId,
+      evidenceMessageIds: [message.id]
+    }],
+    conditionStates: []
+  });
+  return message;
+}
+
 test("coalesces live jobs and atomically applies facts, evidence, cursor, and condition state", () => {
   const botId = "ledger_apply_bot";
   const { group, parentRole, task } = setupLedgerGroup(botId);
@@ -237,6 +277,167 @@ test("a newer correction retracts a fact and can flip the same task cycle", () =
     taskId: task.id,
     cycleKey: "2026-08-04"
   }).achieved, false);
+});
+
+test("shared fact aggregates roll numeric totals back when historical evidence is retracted", () => {
+  const botId = "ledger_aggregate_bot";
+  const { group, parentRole } = setupLedgerGroup(botId);
+  const first = db.insertConversationMessage({
+    botId,
+    conversationKey: group.conversationKey,
+    direction: "inbound",
+    senderName: "家长",
+    content: "7月完成了第一节45分钟课程"
+  });
+  const second = db.insertConversationMessage({
+    botId,
+    conversationKey: group.conversationKey,
+    direction: "inbound",
+    senderName: "家长",
+    content: "8月完成了第二节45分钟课程"
+  });
+  db.enqueueGroupLedgerJob({
+    botId,
+    groupId: group.id,
+    mode: "live",
+    throughMessageId: second.id
+  });
+  const initialJob = db.claimGroupLedgerJobs({
+    nowIso: "2026-08-04T12:00:00.000Z",
+    limit: 1,
+    leaseMs: 300000
+  })[0];
+  db.applyGroupLedgerEvaluation({
+    jobId: initialJob.id,
+    botId,
+    groupId: group.id,
+    throughMessageId: second.id,
+    facts: [
+      {
+        operation: "upsert",
+        semanticKey: "lesson:2026-07:1",
+        category: "lesson_completed",
+        statement: "7月完成第一节课程",
+        value: { count: 1, durationMinutes: 45 },
+        happenedAt: "2026-07-10T10:00:00.000Z",
+        speakerName: "家长",
+        roleId: parentRole.id,
+        evidenceMessageIds: [first.id]
+      },
+      {
+        operation: "upsert",
+        semanticKey: "lesson:2026-08:1",
+        category: "lesson_completed",
+        statement: "8月完成第二节课程",
+        value: { count: 1, durationMinutes: 45 },
+        happenedAt: "2026-08-03T10:00:00.000Z",
+        speakerName: "家长",
+        roleId: parentRole.id,
+        evidenceMessageIds: [second.id]
+      }
+    ],
+    conditionStates: []
+  });
+
+  assert.deepEqual(
+    db.listGroupLedgerProjection({ botId, groupId: group.id }).aggregates.lesson_completed,
+    {
+      factCount: 2,
+      numericSums: { count: 2, durationMinutes: 90 },
+      firstHappenedAt: "2026-07-10T10:00:00.000Z",
+      lastHappenedAt: "2026-08-03T10:00:00.000Z",
+      evidenceFactKeys: ["lesson:2026-07:1", "lesson:2026-08:1"],
+      evidenceMessageIds: [first.id, second.id]
+    }
+  );
+
+  const correction = db.insertConversationMessage({
+    botId,
+    conversationKey: group.conversationKey,
+    direction: "inbound",
+    senderName: "家长",
+    content: "更正：8月那节课取消了"
+  });
+  db.enqueueGroupLedgerJob({
+    botId,
+    groupId: group.id,
+    mode: "live",
+    throughMessageId: correction.id
+  });
+  const correctionJob = db.claimGroupLedgerJobs({
+    nowIso: "2026-08-04T12:10:00.000Z",
+    limit: 1,
+    leaseMs: 300000
+  })[0];
+  db.applyGroupLedgerEvaluation({
+    jobId: correctionJob.id,
+    botId,
+    groupId: group.id,
+    throughMessageId: correction.id,
+    facts: [{
+      operation: "retract",
+      semanticKey: "lesson:2026-08:1",
+      evidenceMessageIds: [correction.id]
+    }],
+    conditionStates: []
+  });
+
+  assert.deepEqual(
+    db.listGroupLedgerProjection({ botId, groupId: group.id }).aggregates.lesson_completed,
+    {
+      factCount: 1,
+      numericSums: { count: 1, durationMinutes: 45 },
+      firstHappenedAt: "2026-07-10T10:00:00.000Z",
+      lastHappenedAt: "2026-07-10T10:00:00.000Z",
+      evidenceFactKeys: ["lesson:2026-07:1"],
+      evidenceMessageIds: [first.id]
+    }
+  );
+});
+
+test("group merge rebuilds aggregates from the deduplicated target fact ledger", () => {
+  const botId = "ledger_aggregate_merge_bot";
+  const { group: source, parentRole } = setupLedgerGroup(botId);
+  const target = db.createOrGetGroup({
+    botId,
+    currentName: "合并后的正式群",
+    source: "callback"
+  });
+  applySingleLedgerFact({
+    botId,
+    group: source,
+    roleId: parentRole.id,
+    semanticKey: "lesson:merge:1"
+  });
+
+  db.mergeGroupAlias({ botId, sourceGroupId: source.id, targetGroupId: target.id });
+
+  assert.equal(
+    db.listGroupLedgerProjection({ botId, groupId: target.id })
+      .aggregates.lesson_completed.factCount,
+    1
+  );
+});
+
+test("deleting a Bot removes its durable group fact aggregates", () => {
+  const botId = "ledger_aggregate_delete_bot";
+  db.upsertBotBinding({
+    botId,
+    botName: "待删除聚合 Bot",
+    agentId: "ledger-aggregate-delete-agent",
+    enabled: true
+  });
+  const { group, parentRole } = setupLedgerGroup(botId);
+  applySingleLedgerFact({
+    botId,
+    group,
+    roleId: parentRole.id,
+    semanticKey: "lesson:delete:1"
+  });
+
+  const result = db.deleteBotData(botId);
+
+  assert.equal(result.deleted.managed_group_fact_aggregates, 1);
 });
 
 test("rejects outbound or cross-group evidence without partially advancing the ledger", () => {

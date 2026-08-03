@@ -704,6 +704,23 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_managed_group_facts_projection
   ON managed_group_facts (bot_id, group_id, active, happened_at, updated_at);
 
+  CREATE TABLE IF NOT EXISTS managed_group_fact_aggregates (
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    fact_count INTEGER NOT NULL DEFAULT 0,
+    numeric_sums_json TEXT NOT NULL DEFAULT '{}',
+    first_happened_at TEXT NOT NULL,
+    last_happened_at TEXT NOT NULL,
+    evidence_fact_keys_json TEXT NOT NULL DEFAULT '[]',
+    evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (bot_id, group_id, category)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_managed_group_fact_aggregates_scope
+  ON managed_group_fact_aggregates (bot_id, group_id, category);
+
   CREATE TABLE IF NOT EXISTS managed_group_fact_evidence (
     fact_id TEXT NOT NULL,
     message_id INTEGER NOT NULL,
@@ -2702,6 +2719,85 @@ function appendGroupFactRevision({ factId, botId, groupId, operation, evidenceMe
   );
 }
 
+function accumulateFiniteNumbers(target, value, prefix = "") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return target;
+  for (const key of Object.keys(value).sort()) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    const item = value[key];
+    if (typeof item === "number" && Number.isFinite(item)) {
+      target[path] = (target[path] || 0) + item;
+    } else if (item && typeof item === "object" && !Array.isArray(item)) {
+      accumulateFiniteNumbers(target, item, path);
+    }
+  }
+  return target;
+}
+
+function rebuildGroupFactAggregate({ botId, groupId, category, timestamp }) {
+  const normalizedCategory = String(category || "").trim();
+  if (!normalizedCategory) return;
+  const facts = db.prepare(`
+    SELECT *
+    FROM managed_group_facts
+    WHERE bot_id = ? AND group_id = ? AND category = ? AND active = 1
+    ORDER BY happened_at ASC, created_at ASC, id ASC
+  `).all(botId, groupId, normalizedCategory).map(rowToGroupFact);
+  if (!facts.length) {
+    db.prepare(`
+      DELETE FROM managed_group_fact_aggregates
+      WHERE bot_id = ? AND group_id = ? AND category = ?
+    `).run(botId, groupId, normalizedCategory);
+    return;
+  }
+  const numericSums = {};
+  for (const fact of facts) accumulateFiniteNumbers(numericSums, fact.value);
+  const representatives = facts.slice(-20);
+  const evidenceFactKeys = representatives.map((fact) => fact.semanticKey);
+  const evidenceMessageIds = [...new Set(
+    representatives.flatMap((fact) => fact.evidenceMessageIds)
+  )].slice(-20);
+  db.prepare(`
+    INSERT INTO managed_group_fact_aggregates (
+      bot_id, group_id, category, fact_count, numeric_sums_json,
+      first_happened_at, last_happened_at, evidence_fact_keys_json,
+      evidence_message_ids_json, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(bot_id, group_id, category) DO UPDATE SET
+      fact_count = excluded.fact_count,
+      numeric_sums_json = excluded.numeric_sums_json,
+      first_happened_at = excluded.first_happened_at,
+      last_happened_at = excluded.last_happened_at,
+      evidence_fact_keys_json = excluded.evidence_fact_keys_json,
+      evidence_message_ids_json = excluded.evidence_message_ids_json,
+      updated_at = excluded.updated_at
+  `).run(
+    botId,
+    groupId,
+    normalizedCategory,
+    facts.length,
+    json(numericSums),
+    facts[0].happenedAt,
+    facts.at(-1).happenedAt,
+    json(evidenceFactKeys),
+    json(evidenceMessageIds),
+    timestamp
+  );
+}
+
+function rebuildAllGroupFactAggregates({ botId, groupId, timestamp }) {
+  const categories = db.prepare(`
+    SELECT DISTINCT category
+    FROM managed_group_facts
+    WHERE bot_id = ? AND group_id = ?
+  `).all(botId, groupId).map((row) => row.category);
+  db.prepare(`
+    DELETE FROM managed_group_fact_aggregates WHERE bot_id = ? AND group_id = ?
+  `).run(botId, groupId);
+  for (const category of categories) {
+    rebuildGroupFactAggregate({ botId, groupId, category, timestamp });
+  }
+}
+
 export function listGroupFactRevisions({ botId, groupId, factId }) {
   assertGroupAutomationScope({ botId, groupId });
   return db.prepare(`
@@ -2749,6 +2845,8 @@ export function applyGroupLedgerEvaluation({
     ));
     assertGroupLedgerEvidence({ botId, groupId, messageIds: allEvidenceIds });
 
+    const affectedAggregateCategories = new Set();
+
     for (const mutation of normalizedFacts) {
       const operation = String(mutation?.operation || "").trim();
       const semanticKey = String(mutation?.semanticKey || "").trim();
@@ -2766,6 +2864,7 @@ export function applyGroupLedgerEvaluation({
 
       if (operation === "retract") {
         if (!existing) throw new Error(`group fact not found for retraction: ${semanticKey}`);
+        affectedAggregateCategories.add(existing.category);
         db.prepare(`
           UPDATE managed_group_facts
           SET active = 0, updated_at = ?
@@ -2789,6 +2888,8 @@ export function applyGroupLedgerEvaluation({
       if (!category || !statement || Number.isNaN(new Date(happenedAt).getTime())) {
         throw new Error("invalid group fact content");
       }
+      if (existing?.category) affectedAggregateCategories.add(existing.category);
+      affectedAggregateCategories.add(category);
       const roleId = String(mutation.roleId || "").trim();
       if (roleId) {
         const role = db.prepare(`
@@ -2835,6 +2936,10 @@ export function applyGroupLedgerEvaluation({
         evidenceMessageIds,
         createdAt: timestamp
       });
+    }
+
+    for (const category of affectedAggregateCategories) {
+      rebuildGroupFactAggregate({ botId, groupId, category, timestamp });
     }
 
     for (const state of normalizedStates) {
@@ -2998,7 +3103,21 @@ export function listGroupLedgerProjection({ botId, groupId, includeRetracted = f
     WHERE bot_id = ? AND group_id = ? ${activeClause}
     ORDER BY happened_at ASC, created_at ASC, id ASC
   `).all(botId, groupId).map(rowToGroupFact);
-  return { botId, groupId, facts };
+  const aggregateRows = db.prepare(`
+    SELECT *
+    FROM managed_group_fact_aggregates
+    WHERE bot_id = ? AND group_id = ?
+    ORDER BY category ASC
+  `).all(botId, groupId);
+  const aggregates = Object.fromEntries(aggregateRows.map((row) => [row.category, {
+    factCount: Number(row.fact_count || 0),
+    numericSums: parseJson(row.numeric_sums_json) || {},
+    firstHappenedAt: row.first_happened_at,
+    lastHappenedAt: row.last_happened_at,
+    evidenceFactKeys: parseJson(row.evidence_fact_keys_json) || [],
+    evidenceMessageIds: parseJson(row.evidence_message_ids_json) || []
+  }]));
+  return { botId, groupId, facts, aggregates };
 }
 
 export function getGroupAutomationCycleState({ botId, groupId, taskId, cycleKey }) {
@@ -3189,6 +3308,14 @@ export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
       db.prepare(`DELETE FROM managed_group_fact_evidence WHERE fact_id = ?`).run(sourceFact.id);
       db.prepare(`DELETE FROM managed_group_facts WHERE id = ?`).run(sourceFact.id);
     }
+    rebuildAllGroupFactAggregates({
+      botId,
+      groupId: targetGroupId,
+      timestamp
+    });
+    db.prepare(`
+      DELETE FROM managed_group_fact_aggregates WHERE bot_id = ? AND group_id = ?
+    `).run(botId, sourceGroupId);
     db.prepare(`
       DELETE FROM managed_group_ledger_jobs WHERE bot_id = ? AND group_id = ?
     `).run(botId, sourceGroupId);
@@ -3603,6 +3730,7 @@ export function deleteBotData(botId) {
     "managed_group_automation_occurrences",
     "managed_group_ledger_jobs",
     "managed_group_ledger_states",
+    "managed_group_fact_aggregates",
     "managed_group_fact_revisions",
     "managed_group_facts",
     "managed_group_automation_tasks",
