@@ -93,9 +93,9 @@ test("task updates use optimistic versions and soft deletion retains execution h
   const task = createWeeklyTask({ botId, groupId: group.id });
   const occurrence = db.claimDueGroupAutomationOccurrences({
     nowIso: "2026-08-05T12:00:00.000Z",
-    limit: 1,
+    limit: 100,
     leaseMs: 300000
-  })[0];
+  }).find((item) => item.groupId === group.id);
   db.completeGroupAutomationOccurrence({
     botId,
     occurrenceId: occurrence.id,
@@ -201,4 +201,86 @@ test("group task identities and reads are isolated by Bot", () => {
     expectedVersion: 1,
     name: "越权修改"
   }), /not found/);
+});
+
+test("occurrence retries reuse the same identity and sending snapshots are durable", () => {
+  const botId = "group_automation_retry_bot";
+  const { group, roles } = createGroupWithRoles(botId);
+  createWeeklyTask({
+    botId,
+    groupId: group.id,
+    mentionRoleIds: roles.map((role) => role.id)
+  });
+  const occurrence = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 100,
+    leaseMs: 300000
+  }).find((item) => item.groupId === group.id);
+  db.scheduleGroupAutomationOccurrenceRetry({
+    botId,
+    occurrenceId: occurrence.id,
+    nextRetryAt: "2026-08-05T12:01:00.000Z",
+    errorMessage: "Agent 暂时失败"
+  });
+  assert.equal(db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:59.000Z",
+    limit: 1,
+    leaseMs: 300000
+  }).length, 0);
+  const retried = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:01:00.000Z",
+    limit: 1,
+    leaseMs: 300000
+  })[0];
+  assert.equal(retried.id, occurrence.id);
+  assert.equal(retried.attempts, 2);
+
+  const sending = db.markGroupAutomationOccurrenceSending({
+    botId,
+    occurrenceId: occurrence.id,
+    renderedContent: "请提交作业",
+    mentionRoleIds: roles.map((role) => role.id),
+    mentionNames: ["家长", "授课老师"],
+    conditionAchieved: true,
+    reason: "已达成",
+    variableValues: {},
+    factIds: ["fact-1"],
+    evidenceMessageIds: [12]
+  });
+  assert.equal(sending.status, "sending");
+  assert.deepEqual(sending.mentionNames, ["家长", "授课老师"]);
+  assert.equal(sending.renderedContent, "请提交作业");
+});
+
+test("delivery_unknown is never automatically reclaimed but can be manually retried", () => {
+  const botId = "group_automation_unknown_bot";
+  const { group } = createGroupWithRoles(botId);
+  createWeeklyTask({ botId, groupId: group.id });
+  const occurrence = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 1,
+    leaseMs: 300000
+  })[0];
+  db.completeGroupAutomationOccurrence({
+    botId,
+    occurrenceId: occurrence.id,
+    status: "delivery_unknown",
+    errorMessage: "网络结果未知"
+  });
+  assert.equal(db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-06T12:00:00.000Z",
+    limit: 1,
+    leaseMs: 300000
+  }).some((item) => item.id === occurrence.id), false);
+
+  db.retryGroupAutomationOccurrence({
+    botId,
+    occurrenceId: occurrence.id,
+    nextRetryAt: "2026-08-06T12:01:00.000Z"
+  });
+  assert.equal(db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-06T12:01:00.000Z",
+    limit: 10,
+    leaseMs: 300000
+  }).some((item) => item.id === occurrence.id), true);
 });

@@ -657,6 +657,7 @@ db.exec(`
     status TEXT NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
     lease_expires_at TEXT,
+    next_retry_at TEXT,
     condition_achieved INTEGER,
     reason TEXT NOT NULL DEFAULT '',
     variable_values_json TEXT NOT NULL DEFAULT '{}',
@@ -664,6 +665,7 @@ db.exec(`
     evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
     mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
     mention_names_json TEXT NOT NULL DEFAULT '[]',
+    warnings_json TEXT NOT NULL DEFAULT '[]',
     rendered_content TEXT NOT NULL DEFAULT '',
     worktool_message_id TEXT NOT NULL DEFAULT '',
     worktool_response_json TEXT,
@@ -1023,6 +1025,12 @@ ensureColumn("flow_sessions", "history_sync_error", "TEXT");
 ensureColumn("flow_sessions", "history_context_sent_at", "TEXT");
 ensureColumn("conversation_messages", "source", "TEXT NOT NULL DEFAULT 'local'");
 ensureColumn("conversation_messages", "source_key", "TEXT");
+ensureColumn("managed_group_automation_occurrences", "next_retry_at", "TEXT");
+ensureColumn(
+  "managed_group_automation_occurrences",
+  "warnings_json",
+  "TEXT NOT NULL DEFAULT '[]'"
+);
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_messages_external_source
   ON conversation_messages (bot_id, source, source_key)
@@ -1742,6 +1750,7 @@ function rowToGroupAutomationOccurrence(row) {
     status: row.status,
     attempts: Number(row.attempts || 0),
     leaseExpiresAt: row.lease_expires_at || "",
+    nextRetryAt: row.next_retry_at || "",
     conditionAchieved: row.condition_achieved == null
       ? null
       : Boolean(row.condition_achieved),
@@ -1751,6 +1760,7 @@ function rowToGroupAutomationOccurrence(row) {
     evidenceMessageIds: parseJson(row.evidence_message_ids_json) || [],
     mentionRoleIds: parseJson(row.mention_role_ids_json) || [],
     mentionNames: parseJson(row.mention_names_json) || [],
+    warnings: parseJson(row.warnings_json) || [],
     renderedContent: row.rendered_content || "",
     worktoolMessageId: row.worktool_message_id || "",
     worktoolResponse: parseJson(row.worktool_response_json),
@@ -2016,13 +2026,15 @@ function claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt }) {
   const result = db.prepare(`
     UPDATE managed_group_automation_occurrences
     SET status = 'evaluating', attempts = attempts + 1,
-        lease_expires_at = ?, started_at = COALESCE(started_at, ?), updated_at = ?
+        lease_expires_at = ?, next_retry_at = NULL,
+        started_at = COALESCE(started_at, ?), updated_at = ?
     WHERE id = ?
       AND (
         status = 'pending'
+        OR (status = 'retry_wait' AND next_retry_at <= ?)
         OR (status IN ('evaluating', 'sending') AND lease_expires_at <= ?)
       )
-  `).run(leaseExpiresAt, nowIso, nowIso, row.id, nowIso);
+  `).run(leaseExpiresAt, nowIso, nowIso, row.id, nowIso, nowIso);
   if (Number(result.changes) !== 1) return null;
   return rowToGroupAutomationOccurrence(db.prepare(`
     SELECT * FROM managed_group_automation_occurrences WHERE id = ?
@@ -2047,13 +2059,17 @@ export function claimDueGroupAutomationOccurrences({
       SELECT occurrence.*
       FROM managed_group_automation_occurrences occurrence
       JOIN managed_group_automation_tasks task ON task.id = occurrence.task_id
-      WHERE occurrence.status IN ('evaluating', 'sending')
-        AND occurrence.lease_expires_at <= ?
+      WHERE (
+          (occurrence.status IN ('evaluating', 'sending')
+            AND occurrence.lease_expires_at <= ?)
+          OR (occurrence.status = 'retry_wait'
+            AND occurrence.next_retry_at <= ?)
+        )
         AND task.enabled = 1
         AND task.deleted_at IS NULL
       ORDER BY occurrence.scheduled_for ASC, occurrence.id ASC
       LIMIT ?
-    `).all(nowIso, claimLimit);
+    `).all(nowIso, nowIso, claimLimit);
     for (const row of expiredRows) {
       const occurrence = claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt });
       if (occurrence) claimed.push(occurrence);
@@ -2128,6 +2144,101 @@ export function claimDueGroupAutomationOccurrences({
   return claimed;
 }
 
+export function scheduleGroupAutomationOccurrenceRetry({
+  botId,
+  occurrenceId,
+  nextRetryAt,
+  errorMessage = ""
+}) {
+  const retryAt = new Date(nextRetryAt);
+  if (Number.isNaN(retryAt.getTime())) throw new Error("invalid occurrence retry time");
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET status = 'retry_wait', lease_expires_at = NULL, next_retry_at = ?,
+        error_message = ?, updated_at = ?
+    WHERE bot_id = ? AND id = ? AND status = 'evaluating'
+  `).run(
+    retryAt.toISOString(),
+    String(errorMessage || ""),
+    timestamp,
+    botId,
+    occurrenceId
+  );
+  if (Number(result.changes) !== 1) {
+    throw new Error("evaluating group automation occurrence not found");
+  }
+  return rowToGroupAutomationOccurrence(db.prepare(`
+    SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
+  `).get(botId, occurrenceId));
+}
+
+export function retryGroupAutomationOccurrence({
+  botId,
+  occurrenceId,
+  nextRetryAt = now()
+}) {
+  const retryAt = new Date(nextRetryAt);
+  if (Number.isNaN(retryAt.getTime())) throw new Error("invalid occurrence retry time");
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET status = 'retry_wait', lease_expires_at = NULL, next_retry_at = ?,
+        error_message = '', finished_at = NULL, updated_at = ?
+    WHERE bot_id = ? AND id = ?
+      AND status IN ('failed', 'delivery_unknown', 'retry_wait')
+  `).run(retryAt.toISOString(), timestamp, botId, occurrenceId);
+  if (Number(result.changes) !== 1) {
+    throw new Error("retryable group automation occurrence not found");
+  }
+  return rowToGroupAutomationOccurrence(db.prepare(`
+    SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
+  `).get(botId, occurrenceId));
+}
+
+export function markGroupAutomationOccurrenceSending({
+  botId,
+  occurrenceId,
+  renderedContent,
+  mentionRoleIds = [],
+  mentionNames = [],
+  warnings = [],
+  conditionAchieved = null,
+  reason = "",
+  variableValues = {},
+  factIds = [],
+  evidenceMessageIds = []
+}) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET status = 'sending', condition_achieved = ?, reason = ?,
+        variable_values_json = ?, fact_ids_json = ?, evidence_message_ids_json = ?,
+        mention_role_ids_json = ?, mention_names_json = ?, warnings_json = ?,
+        rendered_content = ?, updated_at = ?
+    WHERE bot_id = ? AND id = ? AND status = 'evaluating'
+  `).run(
+    conditionAchieved == null ? null : conditionAchieved ? 1 : 0,
+    String(reason || ""),
+    json(variableValues || {}),
+    json(Array.isArray(factIds) ? factIds : []),
+    json(Array.isArray(evidenceMessageIds) ? evidenceMessageIds : []),
+    json(Array.isArray(mentionRoleIds) ? mentionRoleIds : []),
+    json(Array.isArray(mentionNames) ? mentionNames : []),
+    json(Array.isArray(warnings) ? warnings : []),
+    String(renderedContent || ""),
+    timestamp,
+    botId,
+    occurrenceId
+  );
+  if (Number(result.changes) !== 1) {
+    throw new Error("evaluating group automation occurrence not found");
+  }
+  return rowToGroupAutomationOccurrence(db.prepare(`
+    SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
+  `).get(botId, occurrenceId));
+}
+
 export function completeGroupAutomationOccurrence({
   botId,
   occurrenceId,
@@ -2139,6 +2250,7 @@ export function completeGroupAutomationOccurrence({
   evidenceMessageIds = [],
   mentionRoleIds,
   mentionNames = [],
+  warnings,
   renderedContent = "",
   worktoolMessageId = "",
   worktoolResponse = null,
@@ -2152,9 +2264,11 @@ export function completeGroupAutomationOccurrence({
   if (!current) throw new Error("group automation occurrence not found");
   db.prepare(`
     UPDATE managed_group_automation_occurrences
-    SET status = ?, lease_expires_at = NULL, condition_achieved = ?, reason = ?,
+    SET status = ?, lease_expires_at = NULL, next_retry_at = NULL,
+        condition_achieved = ?, reason = ?,
         variable_values_json = ?, fact_ids_json = ?, evidence_message_ids_json = ?,
-        mention_role_ids_json = ?, mention_names_json = ?, rendered_content = ?,
+        mention_role_ids_json = ?, mention_names_json = ?, warnings_json = ?,
+        rendered_content = ?,
         worktool_message_id = ?, worktool_response_json = ?, error_message = ?,
         finished_at = ?, updated_at = ?
     WHERE bot_id = ? AND id = ?
@@ -2169,6 +2283,9 @@ export function completeGroupAutomationOccurrence({
       ? parseJson(current.mention_role_ids_json) || []
       : Array.isArray(mentionRoleIds) ? mentionRoleIds : []),
     json(Array.isArray(mentionNames) ? mentionNames : []),
+    json(warnings === undefined
+      ? parseJson(current.warnings_json) || []
+      : Array.isArray(warnings) ? warnings : []),
     String(renderedContent || ""),
     String(worktoolMessageId || ""),
     worktoolResponse == null ? null : json(worktoolResponse),

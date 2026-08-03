@@ -79,6 +79,7 @@ import {
   cancelTagActivationTasks,
   claimDueFlowActivationTasks,
   claimDueTagActivationTasks,
+  claimDueGroupAutomationOccurrences,
   claimNextProactiveTarget,
   cancelProactiveTask,
   clearConversationForReset,
@@ -121,6 +122,8 @@ import {
   getFlowSessionForBot,
   getGroupByConversationKey,
   getGroupById,
+  getGroupAutomationTask,
+  getGroupLedgerState,
   getLatestInboundGroupMessageId,
   hasCachedWorktoolMessageId,
   hasRecentBotMessageProcessing,
@@ -217,6 +220,12 @@ import {
   claimGroupLedgerJobs,
   applyGroupLedgerEvaluation,
   failGroupLedgerJob,
+  resolveGroupAutomationMentionNames,
+  markGroupAutomationOccurrenceSending,
+  completeGroupAutomationOccurrence,
+  scheduleGroupAutomationOccurrenceRetry,
+  failGroupAutomationOccurrence,
+  retryGroupAutomationOccurrence,
   saveTagSyncConfig,
   setSetting,
   setBotAccessKey,
@@ -1741,8 +1750,18 @@ const groupAutomationWorker = createGroupAutomationWorker({
     listGroupLedgerProjection,
     listInboundGroupMessagesForLedger,
     getLatestInboundGroupMessageId,
+    getGroupLedgerState,
     applyGroupLedgerEvaluation,
-    failGroupLedgerJob
+    failGroupLedgerJob,
+    claimDueGroupAutomationOccurrences,
+    getGroupAutomationTask,
+    resolveGroupAutomationMentionNames,
+    markGroupAutomationOccurrenceSending,
+    completeGroupAutomationOccurrence,
+    scheduleGroupAutomationOccurrenceRetry,
+    failGroupAutomationOccurrence,
+    retryGroupAutomationOccurrence,
+    insertConversationMessage
   },
   getBinding: getBotBinding,
   invokeAgent: ({ binding, request, priority, key }) => enqueueAgentInvocation(
@@ -4332,11 +4351,19 @@ if (tagActivationWorkerConfig.enabled) {
 }
 
 if (groupAutomationWorkerConfig.enabled) {
+  void groupAutomationWorker.recover().catch((error) => {
+    logError("group_automation.recovery_failed", { error });
+  });
   setInterval(() => {
     void groupAutomationWorker.runLedgerTick().catch((error) => {
       logError("group_automation.ledger.worker_failed", { error });
     });
   }, groupAutomationWorkerConfig.ledgerIntervalMs).unref();
+  setInterval(() => {
+    void groupAutomationWorker.runOccurrenceTick().catch((error) => {
+      logError("group_automation.occurrence.worker_failed", { error });
+    });
+  }, groupAutomationWorkerConfig.occurrenceIntervalMs).unref();
 }
 
 function ingestIncomingMessage({ botId, message }) {

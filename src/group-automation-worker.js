@@ -1,10 +1,23 @@
 import {
   buildGroupLedgerAgentRequest,
+  buildGroupOccurrenceAgentRequest,
+  parseGroupOccurrenceAgentReply,
   parseGroupLedgerAgentReply
 } from "./group-automation-agent.js";
 import { groupAutomationCycleWindow } from "./group-automation-schedule.js";
+import {
+  parseGroupSummaryTemplate,
+  renderGroupSummaryTemplate
+} from "./group-summary-template.js";
 
 const LEDGER_RETRY_DELAYS_MS = [60_000, 180_000, 600_000];
+const OCCURRENCE_RETRY_DELAYS_MS = [60_000, 180_000, 600_000];
+const CUSTOMER_VISIBLE_DISCLOSURE_MARKERS = [
+  "群背景",
+  "事实账本",
+  "后台配置",
+  "privateContext"
+];
 
 function instantFrom(value) {
   const result = typeof value === "function" ? value() : value;
@@ -191,15 +204,292 @@ export function createGroupAutomationWorker({
   async function runOccurrenceTick() {
     if (occurrenceBusy) return [];
     occurrenceBusy = true;
+    const results = [];
     try {
-      return [];
+      const claimTime = instantFrom(now);
+      const occurrences = db.claimDueGroupAutomationOccurrences({
+        nowIso: claimTime.toISOString(),
+        limit: batchSize,
+        leaseMs
+      });
+      for (const occurrence of occurrences) {
+        let sendingStarted = false;
+        try {
+          const task = db.getGroupAutomationTask({
+            botId: occurrence.botId,
+            taskId: occurrence.taskId
+          });
+          const group = db.getGroupById({
+            botId: occurrence.botId,
+            groupId: occurrence.groupId
+          });
+          const binding = getBinding(occurrence.botId);
+          if (!task || task.deletedAt || !task.enabled || !group || !binding?.enabled) {
+            results.push(db.completeGroupAutomationOccurrence({
+              botId: occurrence.botId,
+              occurrenceId: occurrence.id,
+              status: "canceled",
+              reason: "任务、群或 Bot 已停用"
+            }));
+            continue;
+          }
+
+          const latestInboundMessageId = Number(
+            db.getLatestInboundGroupMessageId?.({
+              botId: occurrence.botId,
+              groupId: occurrence.groupId
+            }) || 0
+          );
+          const ledgerState = db.getGroupLedgerState?.({
+            botId: occurrence.botId,
+            groupId: occurrence.groupId
+          }) || { liveCursorMessageId: 0 };
+          if (latestInboundMessageId > Number(ledgerState.liveCursorMessageId || 0)) {
+            await enqueueLive({
+              botId: occurrence.botId,
+              groupId: occurrence.groupId,
+              throughMessageId: latestInboundMessageId
+            });
+            await runLedgerTick();
+            const refreshedState = db.getGroupLedgerState({
+              botId: occurrence.botId,
+              groupId: occurrence.groupId
+            });
+            if (Number(refreshedState.liveCursorMessageId || 0) < latestInboundMessageId) {
+              throw new Error("group ledger is not current through the latest inbound message");
+            }
+          }
+
+          const roles = db.listGroupRoles({
+            botId: occurrence.botId,
+            groupId: occurrence.groupId
+          });
+          const projection = db.listGroupLedgerProjection({
+            botId: occurrence.botId,
+            groupId: occurrence.groupId
+          });
+          const factsByKey = new Map(
+            projection.facts.map((fact) => [fact.semanticKey, fact])
+          );
+          let renderedContent = task.content;
+          let conditionAchieved = null;
+          let reason = task.conditionText ? "" : "无条件固定推送";
+          let variableValues = {};
+          let referencedFactKeys = [];
+
+          if (task.taskType === "conditional_push" && task.conditionText.trim()) {
+            const request = buildGroupOccurrenceAgentRequest({
+              binding,
+              group,
+              roles,
+              task,
+              cycle: {
+                cycleKey: occurrence.cycleKey,
+                startAt: occurrence.cycleStartAt,
+                endAt: occurrence.cycleEndAt
+              },
+              projection
+            });
+            const reply = await invokeAgent({
+              binding,
+              request,
+              priority: "background",
+              key: group.conversationKey,
+              purpose: "group-automation-occurrence"
+            });
+            const decision = parseGroupOccurrenceAgentReply(agentText(reply), {
+              taskType: task.taskType,
+              allowedFactKeys: [...factsByKey.keys()]
+            });
+            conditionAchieved = decision.achieved;
+            reason = decision.reason;
+            referencedFactKeys = [
+              ...decision.supportingFactKeys,
+              ...decision.contradictingFactKeys
+            ];
+            if (!decision.achieved) {
+              const evidence = evidenceForFactKeys(factsByKey, referencedFactKeys);
+              const completed = db.completeGroupAutomationOccurrence({
+                botId: occurrence.botId,
+                occurrenceId: occurrence.id,
+                status: "skipped",
+                conditionAchieved: false,
+                reason,
+                factIds: evidence.factIds,
+                evidenceMessageIds: evidence.messageIds
+              });
+              publish({
+                botId: occurrence.botId,
+                groupId: occurrence.groupId,
+                taskId: task.id,
+                occurrence: completed
+              });
+              results.push(completed);
+              continue;
+            }
+          } else if (task.taskType === "periodic_summary") {
+            const parsedTemplate = parseGroupSummaryTemplate(task.summaryTemplate);
+            const request = buildGroupOccurrenceAgentRequest({
+              binding,
+              group,
+              roles,
+              task,
+              cycle: {
+                cycleKey: occurrence.cycleKey,
+                startAt: occurrence.cycleStartAt,
+                endAt: occurrence.cycleEndAt
+              },
+              projection
+            });
+            const reply = await invokeAgent({
+              binding,
+              request,
+              priority: "background",
+              key: group.conversationKey,
+              purpose: "group-automation-occurrence"
+            });
+            const summary = parseGroupOccurrenceAgentReply(agentText(reply), {
+              taskType: task.taskType,
+              allowedFactKeys: [...factsByKey.keys()],
+              variables: parsedTemplate.variables
+            });
+            variableValues = Object.fromEntries(
+              summary.variables.map((variable) => [variable.name, variable.value])
+            );
+            referencedFactKeys = summary.variables.flatMap((variable) => variable.factKeys);
+            reason = summary.variables.map((variable) => (
+              `${variable.name}：${variable.reason}`
+            )).join("；");
+            renderedContent = renderGroupSummaryTemplate(parsedTemplate, variableValues);
+            assertNoPrivateContextDisclosure(renderedContent);
+          } else if (task.taskType !== "conditional_push") {
+            throw new Error("unsupported group automation task type");
+          }
+
+          const mentionResolution = db.resolveGroupAutomationMentionNames({
+            botId: occurrence.botId,
+            groupId: occurrence.groupId,
+            roleIds: task.mentionRoleIds
+          });
+          const evidence = evidenceForFactKeys(factsByKey, referencedFactKeys);
+          db.markGroupAutomationOccurrenceSending({
+            botId: occurrence.botId,
+            occurrenceId: occurrence.id,
+            renderedContent,
+            mentionRoleIds: task.mentionRoleIds,
+            mentionNames: mentionResolution.names,
+            reason,
+            conditionAchieved,
+            variableValues,
+            factIds: evidence.factIds,
+            evidenceMessageIds: evidence.messageIds,
+            warnings: mentionResolution.warnings
+          });
+          sendingStarted = true;
+          const worktoolResponse = await sendText({
+            robotId: occurrence.botId,
+            targets: [group.currentName],
+            content: renderedContent,
+            atList: mentionResolution.names
+          });
+          const worktoolMessageId = extractWorktoolMessageId(worktoolResponse);
+          db.insertConversationMessage({
+            botId: occurrence.botId,
+            conversationKey: group.conversationKey,
+            direction: "outbound",
+            senderName: binding.botName || binding.agentName || "机器人",
+            content: renderedContent,
+            rawPayload: {
+              source: "group_automation",
+              occurrenceId: occurrence.id,
+              taskId: task.id,
+              atList: mentionResolution.names,
+              messageId: worktoolMessageId,
+              worktoolResponse
+            }
+          });
+          const completed = db.completeGroupAutomationOccurrence({
+            botId: occurrence.botId,
+            occurrenceId: occurrence.id,
+            status: "sent",
+            conditionAchieved,
+            reason,
+            variableValues,
+            factIds: evidence.factIds,
+            evidenceMessageIds: evidence.messageIds,
+            mentionRoleIds: task.mentionRoleIds,
+            mentionNames: mentionResolution.names,
+            renderedContent,
+            worktoolMessageId,
+            worktoolResponse
+          });
+          publish({
+            botId: occurrence.botId,
+            groupId: occurrence.groupId,
+            taskId: task.id,
+            occurrence: completed
+          });
+          results.push(completed);
+        } catch (error) {
+          if (sendingStarted) {
+            const unknown = db.completeGroupAutomationOccurrence({
+              botId: occurrence.botId,
+              occurrenceId: occurrence.id,
+              status: "delivery_unknown",
+              errorMessage: error.message,
+              reason: "发送请求结果不明确，已停止自动重试"
+            });
+            publish({
+              botId: occurrence.botId,
+              groupId: occurrence.groupId,
+              taskId: occurrence.taskId,
+              occurrence: unknown
+            });
+            results.push(unknown);
+            continue;
+          }
+          const terminal = occurrence.attempts >= OCCURRENCE_RETRY_DELAYS_MS.length;
+          if (!terminal && typeof db.scheduleGroupAutomationOccurrenceRetry === "function") {
+            const delay = OCCURRENCE_RETRY_DELAYS_MS[Math.max(0, occurrence.attempts - 1)];
+            const retry = db.scheduleGroupAutomationOccurrenceRetry({
+              botId: occurrence.botId,
+              occurrenceId: occurrence.id,
+              nextRetryAt: new Date(claimTime.getTime() + delay).toISOString(),
+              errorMessage: error.message
+            });
+            results.push(retry);
+          } else {
+            results.push(db.failGroupAutomationOccurrence({
+              botId: occurrence.botId,
+              occurrenceId: occurrence.id,
+              errorMessage: error.message
+            }));
+          }
+          logger.warn?.("group_automation.occurrence.failed", {
+            botId: occurrence.botId,
+            groupId: occurrence.groupId,
+            occurrenceId: occurrence.id,
+            attempt: occurrence.attempts,
+            terminal,
+            error: error.message
+          });
+        }
+      }
+      return results;
     } finally {
       occurrenceBusy = false;
     }
   }
 
-  async function retryOccurrence() {
-    throw new Error("group automation occurrence retry is not implemented");
+  async function retryOccurrence({ botId, occurrenceId }) {
+    if (typeof db.retryGroupAutomationOccurrence !== "function") {
+      throw new Error("group automation occurrence retry is unavailable");
+    }
+    return db.retryGroupAutomationOccurrence({
+      botId,
+      occurrenceId,
+      nextRetryAt: instantFrom(now).toISOString()
+    });
   }
 
   async function recover() {
@@ -218,4 +508,35 @@ export function createGroupAutomationWorker({
     sendText,
     publish
   };
+}
+
+function evidenceForFactKeys(factsByKey, factKeys) {
+  const factIds = [];
+  const messageIds = [];
+  for (const key of [...new Set(factKeys || [])]) {
+    const fact = factsByKey.get(key);
+    if (!fact) continue;
+    if (fact.id) factIds.push(fact.id);
+    messageIds.push(...(fact.evidenceMessageIds || []));
+  }
+  return {
+    factIds: [...new Set(factIds)],
+    messageIds: [...new Set(messageIds.map(Number).filter(Number.isSafeInteger))]
+  };
+}
+
+function assertNoPrivateContextDisclosure(content) {
+  const text = String(content || "");
+  const marker = CUSTOMER_VISIBLE_DISCLOSURE_MARKERS.find((item) => text.includes(item));
+  if (marker) throw new Error(`summary contains private context disclosure marker: ${marker}`);
+}
+
+function extractWorktoolMessageId(response) {
+  const candidates = [
+    response?.messageId,
+    response?.data?.messageId,
+    response?.data?.msgId,
+    response?.msgId
+  ];
+  return String(candidates.find(Boolean) || "");
 }
