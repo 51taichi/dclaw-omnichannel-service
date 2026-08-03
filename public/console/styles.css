@@ -4283,8 +4283,7 @@ html.has-bot-context .action-toolbox-toggle:hover {
 }
 
 .chat-head-actions {
-  display: grid;
-  grid-template-columns: auto 112px;
+  display: flex;
   align-items: center;
   justify-content: end;
   gap: 10px;
@@ -4294,6 +4293,10 @@ html.has-bot-context .action-toolbox-toggle:hover {
 .asset-button {
   min-width: 92px;
   white-space: nowrap;
+}
+
+.asset-button[hidden] {
+  display: none;
 }
 
 .asset-button .icon {

@@ -221,6 +221,8 @@ test("group conversation details suppress private assets while private details k
   assert.match(app, /function renderConversationAssetsForSession\(session, assets\)/);
   assert.match(app, /if \(flowSessionType\(session\) === "group"\)[\s\S]*renderConversationAssets\(\{ fields: \[\], totalCount: 0, collectedCount: 0 \}\)/);
   assert.match(app, /renderConversationAssetsForSession\([\s\S]*currentFlowSession,[\s\S]*data\.assets \|\| session\?\.assets/);
+  assert.match(css, /\.asset-button\[hidden\]\s*\{[\s\S]*display:\s*none/);
+  assert.match(css, /\.chat-head-actions\s*\{[\s\S]*display:\s*flex/);
 });
 
 test("human handoff session cards have a clear pulsing highlight", () => {
