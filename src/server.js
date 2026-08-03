@@ -2664,7 +2664,8 @@ async function sendAgentFailureFallback({
     robotId: botId,
     target,
     reply,
-    allowSplit: false
+    allowSplit: false,
+    beforeSend: () => assertConversationAiControlled({ botId, conversationKey })
   });
   const worktoolMessageIds = sentParts.map((part) => part.result?.data || "").filter(Boolean);
 

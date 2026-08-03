@@ -69,6 +69,7 @@ test("group human handoff bypasses visible reply policy and uses the silent sync
 
 test("visible Agent sends recheck handoff after DClaw and before every WorkTool command", () => {
   const coalescedBody = functionBody("processCoalescedIncomingBatch");
+  const failureFallbackBody = functionBody("sendAgentFailureFallback");
   const textSendBody = functionBody("sendTextReplyParts");
   const attachmentSendBody = functionBody("sendAgentAttachments");
   const callbackText = "beforeSend: () => assertConversationAiControlled({ botId, conversationKey })";
@@ -85,6 +86,7 @@ test("visible Agent sends recheck handoff after DClaw and before every WorkTool 
     coalescedBody.indexOf('error?.code === "HUMAN_HANDOFF_BEFORE_SEND"')
       < coalescedBody.indexOf("sendAgentFailureFallback({")
   );
+  assert.match(failureFallbackBody, /beforeSend: \(\) => assertConversationAiControlled\(\{ botId, conversationKey \}\)/);
 });
 
 test("human handoff is evaluated before debug auto-reply", () => {
