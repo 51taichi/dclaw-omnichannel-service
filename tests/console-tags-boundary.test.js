@@ -188,7 +188,7 @@ test("conversation cards expose click and right-click entry points for one manua
   assert.match(js, /<strong>给\$\{escapeHtml\(sessionName\)\}打上标签：<\/strong>/);
   assert.match(js, /button\.addEventListener\("contextmenu"/);
   assert.match(js, /class="flow-session-manual-tag-trigger"[^>]*data-flow-manual-tag-trigger=/);
-  assert.match(js, /const manualTagTrigger = sessionType === "private"/);
+  assert.doesNotMatch(functionBody("renderFlowSessions"), /const manualTagTrigger = sessionType === "private"/);
   assert.match(js, /title="手工打标签"/);
   assert.match(js, /querySelectorAll\("\[data-flow-manual-tag-trigger\]"\)/);
   assert.match(js, /renderFlowSessionManualTagMenu\(\{[\s\S]*session,[\s\S]*x: rect\.left,[\s\S]*y: rect\.bottom \+ 6/);
@@ -196,7 +196,8 @@ test("conversation cards expose click and right-click entry points for one manua
   assert.match(js, /group\.enabled !== false[\s\S]*tag\.enabled !== false/);
   assert.match(js, /function applyManualConversationTag\(\{ conversationKey, groupId, tagId, action \}\)/);
   assert.match(js, /\/api\/flow-sessions\/\$\{encodeURIComponent\(conversationKey\)\}\/tags\/manual/);
-  assert.match(js, /function renderFlowSessionManualTagMenu\(\{ session, x, y \}\)[\s\S]*flowSessionType\(session\) !== "private"/);
+  assert.doesNotMatch(functionBody("renderFlowSessionManualTagMenu"), /flowSessionType\(session\) !== "private"/);
+  assert.doesNotMatch(functionBody("renderFlowSessions"), /if \(flowSessionType\(session\) !== "private"\) return/);
   assert.match(js, /hideFlowSessionManualTagMenu/);
   assert.match(css, /\.flow-session-tag-menu\s*\{[\s\S]*position:\s*fixed/);
   assert.match(css, /\.flow-session-manual-tag-trigger\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*2/);

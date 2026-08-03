@@ -3189,7 +3189,6 @@ function renderFlowSessionManualTagMenu({ session, x, y }) {
   if (
     !els.flowSessionTagMenu
     || !session?.conversationKey
-    || flowSessionType(session) !== "private"
   ) return;
   const groups = enabledManualTagGroups();
   const sessionName = flowSessionDisplayName(session);
@@ -4273,8 +4272,8 @@ async function loadFlowSessions({ contextVersion = state.botContextVersion } = {
 
 function sortFlowSessions(sessions) {
   return [...sessions].sort((a, b) => {
-    const aHuman = flowSessionType(a) === "private" && a.handoffStatus === "human" ? 1 : 0;
-    const bHuman = flowSessionType(b) === "private" && b.handoffStatus === "human" ? 1 : 0;
+    const aHuman = a.handoffStatus === "human" ? 1 : 0;
+    const bHuman = b.handoffStatus === "human" ? 1 : 0;
     if (aHuman !== bHuman) return bHuman - aHuman;
     return Date.parse(b.lastMessageAt || b.updatedAt || b.createdAt || 0)
       - Date.parse(a.lastMessageAt || a.updatedAt || a.createdAt || 0);
@@ -4488,29 +4487,25 @@ function renderFlowSessions({ animateFrom = null } = {}) {
           const isLegacyCustomer = sessionType === "private" && session?.customerOrigin === "legacy";
           const status = flowNodeName(session.currentNodeId);
           const statusLabel = compactFlowNodeName(status);
-          const isHandoff = sessionType === "private" && session.handoffStatus === "human";
-          const manualTagTrigger = sessionType === "private"
-            ? `<span
-                class="flow-session-manual-tag-trigger"
-                data-flow-manual-tag-trigger="${escapeHtml(session.conversationKey)}"
-                role="button"
-                tabindex="0"
-                title="手工打标签"
-                aria-label="给${escapeHtml(name)}手工打标签"
-              >${icon("tag")}</span>`
-            : "";
+          const isHandoff = session.handoffStatus === "human";
+          const manualTagTrigger = `<span
+              class="flow-session-manual-tag-trigger"
+              data-flow-manual-tag-trigger="${escapeHtml(session.conversationKey)}"
+              role="button"
+              tabindex="0"
+              title="手工打标签"
+              aria-label="给${escapeHtml(name)}手工打标签"
+            >${icon("tag")}</span>`;
           const privateSessionTools = sessionType === "private"
             ? `<span class="flow-session-tools">
                 <span class="flow-session-current-task" title="${escapeHtml(status)}">${escapeHtml(statusLabel)}</span>
               </span>`
             : "";
-          const handoffSwitch = sessionType === "private"
-            ? `<span class="flow-session-switch handoff-switch ${isHandoff ? "is-human" : ""}" data-flow-handoff-switch="${escapeHtml(session.conversationKey)}" role="switch" tabindex="0" aria-checked="${isHandoff ? "true" : "false"}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
-                <span class="handoff-switch-option is-ai" aria-hidden="true">${icon("robot")}</span>
-                <span class="handoff-switch-option is-human" aria-hidden="true">${icon("user")}</span>
-                <span class="handoff-switch-thumb" aria-hidden="true"></span>
-              </span>`
-            : "";
+          const handoffSwitch = `<span class="flow-session-switch handoff-switch ${isHandoff ? "is-human" : ""}" data-flow-handoff-switch="${escapeHtml(session.conversationKey)}" role="switch" tabindex="0" aria-checked="${isHandoff ? "true" : "false"}" title="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}" aria-label="${isHandoff ? "恢复 AI 接手" : "切换为人工接手"}">
+              <span class="handoff-switch-option is-ai" aria-hidden="true">${icon("robot")}</span>
+              <span class="handoff-switch-option is-human" aria-hidden="true">${icon("user")}</span>
+              <span class="handoff-switch-thumb" aria-hidden="true"></span>
+            </span>`;
           return `
             <button class="flow-session-card ${sessionType === "group" ? "is-group" : "is-private"} ${active ? "selected" : ""} ${isHandoff ? "is-handoff" : ""} ${isLegacyCustomer ? "is-legacy" : ""}" data-flow-session="${escapeHtml(session.conversationKey)}" type="button">
               <span class="flow-session-avatar-shell ${isLegacyCustomer ? "is-legacy" : ""}" title="${isLegacyCustomer ? "老客户" : ""}">
@@ -4540,7 +4535,6 @@ function renderFlowSessions({ animateFrom = null } = {}) {
     );
     button.addEventListener("contextmenu", (event) => {
       const session = currentFlowSessions.find((item) => item.conversationKey === button.dataset.flowSession);
-      if (flowSessionType(session) !== "private") return;
       event.preventDefault();
       event.stopPropagation();
       renderFlowSessionManualTagMenu({
@@ -4652,7 +4646,6 @@ function renderManualReplyComposer(session) {
   const hasSession = Boolean(
     session
     && state.selectedFlowConversationKey
-    && flowSessionType(session) === "private"
   );
   const isHuman = session?.handoffStatus === "human";
   const aiCard = els.manualReplyComposer.querySelector(".ai-takeover-card");

@@ -21,6 +21,20 @@ function cssRule(selector) {
   return css.slice(start, end + 1);
 }
 
+function functionBody(name) {
+  const start = app.indexOf(`function ${name}`);
+  assert.notEqual(start, -1, `${name} is defined`);
+  const signatureEnd = app.indexOf(") {", start);
+  const open = signatureEnd + 2;
+  let depth = 0;
+  for (let index = open; index < app.length; index += 1) {
+    if (app[index] === "{") depth += 1;
+    if (app[index] === "}") depth -= 1;
+    if (depth === 0) return app.slice(open + 1, index);
+  }
+  assert.fail(`${name} body is closed`);
+}
+
 test("console shell keeps the bot rail fixed while giving more width to content", () => {
   const layoutRule = cssRule(".layout");
   const shellRule = cssRule(".console-shell");
@@ -42,7 +56,8 @@ test("console exposes a per-session handoff switch without redundant status labe
   assert.equal(app.includes("/handoff"), true);
   assert.equal(app.includes("handoffStatus"), true);
   assert.equal(css.includes(".handoff-button"), false);
-  assert.match(app, /sessionType === "private"[\s\S]*class="flow-session-switch handoff-switch/);
+  assert.doesNotMatch(functionBody("renderFlowSessions"), /const handoffSwitch = sessionType === "private"/);
+  assert.match(functionBody("renderFlowSessions"), /class="flow-session-switch handoff-switch/);
   assert.doesNotMatch(app, /class="flow-session-status/);
   assert.doesNotMatch(app, /els\.chatStatusBadge\.innerHTML = statusBadgeHtml/);
   assert.match(css, /\.flow-session-switch\.handoff-switch\s*\{[\s\S]*position:\s*relative[\s\S]*right:\s*auto[\s\S]*bottom:\s*auto[\s\S]*grid-column:\s*4[\s\S]*grid-row:\s*1/);
@@ -65,7 +80,7 @@ test("flow session cards show the current task inline without metadata icons", (
   assert.equal(app.includes('class="flow-session-current-task" title="${escapeHtml(status)}">${escapeHtml(statusLabel)}'), true);
   assert.equal(app.includes("当前任务："), false);
   assert.match(app, /const privateSessionTools = sessionType === "private"/);
-  assert.match(app, /const manualTagTrigger = sessionType === "private"/);
+  assert.doesNotMatch(functionBody("renderFlowSessions"), /const manualTagTrigger = sessionType === "private"/);
   assert.match(app, /class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\], \{ includeDate: false \}\)/);
   assert.equal(app.includes('最近消息：${formatDisplayDateTime(lastMessageAt) || "暂无"}'), false);
   assert.doesNotMatch(app, /timeTooltip/);
@@ -551,23 +566,17 @@ test("console has manual reply composer with AI takeover prompt and emoji tools"
   assert.equal(html.includes("handoffStatusBanner"), false);
 });
 
-test("group conversations never render or inherit private handoff state", () => {
-  assert.match(
-    app,
-    /const hasSession = Boolean\([\s\S]*flowSessionType\(session\) === "private"[\s\S]*\)/
-  );
-  assert.match(
-    app,
-    /const aHuman = flowSessionType\(a\) === "private" && a\.handoffStatus === "human" \? 1 : 0/
-  );
-  assert.match(
-    app,
-    /const bHuman = flowSessionType\(b\) === "private" && b\.handoffStatus === "human" \? 1 : 0/
-  );
-  assert.match(
-    app,
-    /const isHandoff = sessionType === "private" && session\.handoffStatus === "human"/
-  );
+test("group conversations use the same handoff state and manual composer as private conversations", () => {
+  const composer = functionBody("renderManualReplyComposer");
+  const sessions = functionBody("renderFlowSessions");
+  const sorting = functionBody("sortFlowSessions");
+
+  assert.match(composer, /session[\s\S]*state\.selectedFlowConversationKey/);
+  assert.doesNotMatch(composer, /flowSessionType\(session\) === "private"/);
+  assert.match(sorting, /const aHuman = a\.handoffStatus === "human" \? 1 : 0/);
+  assert.match(sorting, /const bHuman = b\.handoffStatus === "human" \? 1 : 0/);
+  assert.match(sessions, /const isHandoff = session\.handoffStatus === "human"/);
+  assert.doesNotMatch(sessions, /sessionType === "private" && session\.handoffStatus/);
 });
 
 test("chat bubbles can show agent reply sources without sending them to customers", () => {
