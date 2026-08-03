@@ -6404,6 +6404,59 @@ td .muted {
   padding: 7px 9px;
 }
 
+.group-automation-month-days {
+  max-height: 176px;
+  overflow-y: auto;
+}
+
+.group-automation-month-days .month-end {
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+  color: var(--accent);
+}
+
+.group-automation-template-tools {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 7px;
+}
+
+.group-automation-template-tools button {
+  font-size: 11px;
+  gap: 4px;
+  min-height: 32px;
+  padding: 6px 9px;
+}
+
+.group-automation-template-tools > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.group-automation-template-preview {
+  background: var(--panel-strong);
+  border: 1px dashed var(--line-strong);
+  border-radius: 9px;
+  color: var(--muted);
+  display: block;
+  font-size: 12px;
+  line-height: 1.55;
+  margin-top: 7px;
+  min-height: 42px;
+  padding: 10px;
+  white-space: pre-wrap;
+}
+
+.group-automation-template-preview mark {
+  background: var(--accent-soft);
+  border-radius: 5px;
+  color: var(--accent);
+  font-weight: 850;
+  padding: 2px 4px;
+}
+
 .group-automation-mention-list {
   display: grid;
   gap: 8px;
@@ -6464,6 +6517,17 @@ td .muted {
   font-size: 12px;
   line-height: 1.55;
   margin: 9px 0 0;
+}
+
+.group-automation-history-meta {
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 11px;
+  font-weight: 700;
+  gap: 10px;
+  justify-content: flex-start !important;
+  margin-top: 8px;
 }
 
 .group-automation-history-item blockquote {

@@ -34,6 +34,37 @@ function agentText(result) {
   throw new Error("group automation Agent returned no text");
 }
 
+function assertWorktoolAccepted(response) {
+  if (response?.code == null) return;
+  const code = Number(response.code);
+  if (code === 0 || code === 200) return;
+  const error = new Error(`WorkTool explicitly rejected the command: ${response.code} ${response.message || ""}`.trim());
+  error.worktoolExplicitRejection = true;
+  throw error;
+}
+
+function buildBoundedLedgerRequest(input) {
+  let messages = input.messages;
+  while (messages.length) {
+    try {
+      return {
+        messages,
+        request: buildGroupLedgerAgentRequest({ ...input, messages })
+      };
+    } catch (error) {
+      if (error.message !== "group automation Agent request exceeds maxChars"
+        || messages.length === 1) {
+        throw error;
+      }
+      messages = messages.slice(0, Math.max(1, Math.floor(messages.length / 2)));
+    }
+  }
+  return {
+    messages,
+    request: buildGroupLedgerAgentRequest({ ...input, messages })
+  };
+}
+
 export function createGroupAutomationWorker({
   db,
   getBinding,
@@ -124,7 +155,7 @@ export function createGroupAutomationWorker({
       throughMessageId: job.throughMessageId,
       limit: 120
     });
-    const request = buildGroupLedgerAgentRequest({
+    const bounded = buildBoundedLedgerRequest({
       binding,
       group,
       roles,
@@ -134,24 +165,27 @@ export function createGroupAutomationWorker({
     });
     const rawReply = await invokeAgent({
       binding,
-      request,
+      request: bounded.request,
       priority: "background",
       key: group.conversationKey,
       purpose: "group-ledger"
     });
     const parsed = parseGroupLedgerAgentReply(agentText(rawReply), {
-      allowedMessageIds: messages.map((message) => message.id),
+      allowedMessageIds: bounded.messages.map((message) => message.id),
       allowedTaskIds: analysisTasks
         .filter((task) => task.taskType === "conditional_push")
         .map((task) => task.id),
       allowedFactKeys: projection.facts.map((fact) => fact.semanticKey),
       allowedRoleIds: roles.map((role) => role.id)
     });
+    const processedThroughMessageId = Number(
+      bounded.messages.at(-1)?.id || job.throughMessageId
+    );
     const result = db.applyGroupLedgerEvaluation({
       jobId: job.id,
       botId: job.botId,
       groupId: job.groupId,
-      throughMessageId: job.throughMessageId,
+      throughMessageId: processedThroughMessageId,
       facts: parsed.facts,
       conditionStates: parsed.conditionStates
     });
@@ -205,6 +239,34 @@ export function createGroupAutomationWorker({
     }
   }
 
+  async function ensureLedgerCurrent({ botId, groupId, throughMessageId }) {
+    const maximumBatches = 250;
+    for (let batch = 0; batch < maximumBatches; batch += 1) {
+      const state = db.getGroupLedgerState({ botId, groupId });
+      if (Number(state.liveCursorMessageId || 0) >= throughMessageId) return state;
+      const results = await runLedgerTick();
+      const refreshed = db.getGroupLedgerState({ botId, groupId });
+      if (Number(refreshed.liveCursorMessageId || 0) >= throughMessageId) return refreshed;
+      if (!results.length) {
+        throw new Error("group ledger could not advance through the latest inbound message");
+      }
+    }
+    throw new Error("group ledger catch-up exceeded the bounded batch limit");
+  }
+
+  async function ensureReindexComplete({ botId, groupId }) {
+    if (typeof db.hasUnfinishedGroupLedgerReindex !== "function") return;
+    const maximumBatches = 250;
+    for (let batch = 0; batch < maximumBatches; batch += 1) {
+      if (!db.hasUnfinishedGroupLedgerReindex({ botId, groupId })) return;
+      const results = await runLedgerTick();
+      if (!results.length) {
+        throw new Error("group ledger reindex could not advance");
+      }
+    }
+    throw new Error("group ledger reindex exceeded the bounded batch limit");
+  }
+
   async function runOccurrenceTick() {
     if (occurrenceBusy) return [];
     occurrenceBusy = true;
@@ -238,6 +300,11 @@ export function createGroupAutomationWorker({
             continue;
           }
 
+          await ensureReindexComplete({
+            botId: occurrence.botId,
+            groupId: occurrence.groupId
+          });
+
           const latestInboundMessageId = Number(
             db.getLatestInboundGroupMessageId?.({
               botId: occurrence.botId,
@@ -254,10 +321,10 @@ export function createGroupAutomationWorker({
               groupId: occurrence.groupId,
               throughMessageId: latestInboundMessageId
             });
-            await runLedgerTick();
-            const refreshedState = db.getGroupLedgerState({
+            const refreshedState = await ensureLedgerCurrent({
               botId: occurrence.botId,
-              groupId: occurrence.groupId
+              groupId: occurrence.groupId,
+              throughMessageId: latestInboundMessageId
             });
             if (Number(refreshedState.liveCursorMessageId || 0) < latestInboundMessageId) {
               throw new Error("group ledger is not current through the latest inbound message");
@@ -271,6 +338,14 @@ export function createGroupAutomationWorker({
           const projection = db.listGroupLedgerProjection({
             botId: occurrence.botId,
             groupId: occurrence.groupId
+          });
+          const cycleStart = new Date(occurrence.cycleStartAt).getTime();
+          const cycleEnd = new Date(occurrence.cycleEndAt).getTime();
+          projection.facts = projection.facts.filter((fact) => {
+            const happenedAt = new Date(fact.happenedAt).getTime();
+            return fact.active !== false
+              && happenedAt >= cycleStart
+              && happenedAt < cycleEnd;
           });
           const factsByKey = new Map(
             projection.facts.map((fact) => [fact.semanticKey, fact])
@@ -365,7 +440,7 @@ export function createGroupAutomationWorker({
               `${variable.name}：${variable.reason}`
             )).join("；");
             renderedContent = renderGroupSummaryTemplate(parsedTemplate, variableValues);
-            assertNoPrivateContextDisclosure(renderedContent);
+            assertNoPrivateContextDisclosure(renderedContent, { group, roles });
           } else if (task.taskType !== "conditional_push") {
             throw new Error("unsupported group automation task type");
           }
@@ -396,6 +471,7 @@ export function createGroupAutomationWorker({
             content: renderedContent,
             atList: mentionResolution.names
           });
+          assertWorktoolAccepted(worktoolResponse);
           const worktoolMessageId = extractWorktoolMessageId(worktoolResponse);
           db.insertConversationMessage({
             botId: occurrence.botId,
@@ -436,6 +512,28 @@ export function createGroupAutomationWorker({
           results.push(completed);
         } catch (error) {
           if (sendingStarted) {
+            const retrySafe = error.worktoolExplicitRejection === true
+              || (Number(error.worktoolStatus) >= 400 && Number(error.worktoolStatus) < 500);
+            if (retrySafe) {
+              const terminal = occurrence.attempts >= OCCURRENCE_RETRY_DELAYS_MS.length;
+              if (!terminal) {
+                const delay = OCCURRENCE_RETRY_DELAYS_MS[Math.max(0, occurrence.attempts - 1)];
+                const retry = db.scheduleGroupAutomationOccurrenceRetry({
+                  botId: occurrence.botId,
+                  occurrenceId: occurrence.id,
+                  nextRetryAt: new Date(claimTime.getTime() + delay).toISOString(),
+                  errorMessage: error.message
+                });
+                results.push(retry);
+              } else {
+                results.push(db.failGroupAutomationOccurrence({
+                  botId: occurrence.botId,
+                  occurrenceId: occurrence.id,
+                  errorMessage: error.message
+                }));
+              }
+              continue;
+            }
             const unknown = db.completeGroupAutomationOccurrence({
               botId: occurrence.botId,
               occurrenceId: occurrence.id,
@@ -530,15 +628,28 @@ function evidenceForFactKeys(factsByKey, factKeys) {
   };
 }
 
-function assertNoPrivateContextDisclosure(content) {
+function assertNoPrivateContextDisclosure(content, { group = null, roles = [] } = {}) {
   const text = String(content || "");
   const marker = CUSTOMER_VISIBLE_DISCLOSURE_MARKERS.find((item) => text.includes(item));
   if (marker) throw new Error(`summary contains private context disclosure marker: ${marker}`);
+  const privateTexts = [
+    group?.background,
+    ...(Array.isArray(roles) ? roles.map((role) => role.description) : [])
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+  const fragment = privateTexts
+    .flatMap((value) => value.split(/[，。！？；,.!?;\n]/u))
+    .map((value) => value.trim())
+    .filter((value) => value.length >= 6)
+    .find((value) => text.includes(value));
+  if (fragment) throw new Error("summary repeats private context text");
 }
 
 function extractWorktoolMessageId(response) {
   const candidates = [
     response?.messageId,
+    typeof response?.data === "string" || typeof response?.data === "number"
+      ? response.data
+      : "",
     response?.data?.messageId,
     response?.data?.msgId,
     response?.msgId

@@ -270,6 +270,9 @@ export function parseGroupLedgerAgentReply(rawReply, {
       state.contradictingFactKeys || [],
       "contradictingFactKeys"
     );
+    if (state.achieved && !supportingFactKeys.length) {
+      throw new Error("achieved condition requires a supporting fact");
+    }
     if (allowedFactKeys.length) {
       for (const key of [...supportingFactKeys, ...contradictingFactKeys]) {
         if (!knownFactKeys.has(key)) throw new Error(`unknown fact key: ${key}`);
@@ -355,6 +358,9 @@ export function parseGroupOccurrenceAgentReply(rawReply, {
       parsed.contradictingFactKeys || [],
       "contradictingFactKeys"
     );
+    if (parsed.achieved && !supportingFactKeys.length) {
+      throw new Error("achieved condition requires a supporting fact");
+    }
     for (const key of [...supportingFactKeys, ...contradictingFactKeys]) {
       if (!allowedFacts.has(key)) throw new Error(`unknown fact key: ${key}`);
     }

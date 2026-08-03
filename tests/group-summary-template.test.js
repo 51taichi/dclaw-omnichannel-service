@@ -32,6 +32,8 @@ test("deduplicates identical variables but rejects malformed and conflicting one
   );
   assert.throws(() => parseGroupSummaryTemplate("{{}}"), /variable name/);
   assert.throws(() => parseGroupSummaryTemplate("{{次数（规则）}"), /unclosed/);
+  assert.throws(() => parseGroupSummaryTemplate("{{次数（规则）额外）}}"), /nested|unbalanced/);
+  assert.throws(() => parseGroupSummaryTemplate("{{次数（规则（额外））}}"), /nested|unbalanced/);
   assert.throws(
     () => parseGroupSummaryTemplate("{{次数（规则A）}} {{次数（规则B）}}"),
     /conflicting/

@@ -37,7 +37,10 @@ export async function requestWorkTool(path, { robotId, timeoutMs = 0, ...options
 
   if (!response.ok) {
     const detail = typeof data === "object" ? JSON.stringify(data) : String(data);
-    throw new Error(`WorkTool request failed: ${response.status} ${detail}`);
+    const error = new Error(`WorkTool request failed: ${response.status} ${detail}`);
+    error.worktoolStatus = response.status;
+    error.worktoolResponse = data;
+    throw error;
   }
 
   return data;

@@ -3,7 +3,7 @@ import test from "node:test";
 
 import { createGroupAutomationWorker } from "../src/group-automation-worker.js";
 
-function createLedgerHarness({ tasks, agentReply, agentError = null } = {}) {
+function createLedgerHarness({ tasks, agentReply, agentError = null, messageIds = null } = {}) {
   const jobs = [];
   const applied = [];
   const failed = [];
@@ -61,7 +61,19 @@ function createLedgerHarness({ tasks, agentReply, agentError = null } = {}) {
     listGroupLedgerProjection() {
       return { facts: [] };
     },
-    listInboundGroupMessagesForLedger({ throughMessageId }) {
+    listInboundGroupMessagesForLedger({ afterMessageId = 0, throughMessageId, limit = 120 }) {
+      if (messageIds) {
+        return messageIds
+          .filter((id) => id > afterMessageId && id <= throughMessageId)
+          .slice(0, limit)
+          .map((id) => ({
+            id,
+            direction: "inbound",
+            senderName: "家长",
+            content: `第 ${id} 条群消息`,
+            createdAt: "2026-08-04T10:00:00.000Z"
+          }));
+      }
       return [
         {
           id: throughMessageId - 1,
@@ -82,7 +94,8 @@ function createLedgerHarness({ tasks, agentReply, agentError = null } = {}) {
     applyGroupLedgerEvaluation(input) {
       applied.push(input);
       const job = jobs.find((item) => item.id === input.jobId);
-      job.status = "completed";
+      job.fromMessageId = input.throughMessageId;
+      job.status = input.throughMessageId < job.throughMessageId ? "pending" : "completed";
     },
     failGroupLedgerJob(input) {
       failed.push(input);
@@ -101,8 +114,8 @@ function createLedgerHarness({ tasks, agentReply, agentError = null } = {}) {
         conditionStates: [{
           taskId: "task-condition",
           cycleKey: "2026-08-04",
-          achieved: true,
-          reason: "家长明确完成",
+          achieved: false,
+          reason: "尚无明确证据",
           supportingFactKeys: [],
           contradictingFactKeys: []
         }]
@@ -130,6 +143,24 @@ test("coalesced live messages invoke one background ledger analysis through the 
     groupId: "group-1",
     ledgerUpdated: true
   }]);
+});
+
+test("ledger analysis advances by the last message in each bounded batch without skipping messages", async () => {
+  const harness = createLedgerHarness({
+    messageIds: Array.from({ length: 250 }, (_, index) => index + 1)
+  });
+  await harness.worker.enqueueLive({ botId: "bot-1", groupId: "group-1", throughMessageId: 250 });
+
+  for (let index = 0; index < 20; index += 1) {
+    await harness.worker.runLedgerTick();
+  }
+
+  assert.deepEqual(harness.failed, []);
+  const cursors = harness.applied.map((item) => item.throughMessageId);
+  assert.equal(cursors.at(-1), 250);
+  assert.ok(cursors.length > 2);
+  assert.ok(cursors.every((cursor, index) => index === 0 || cursor > cursors[index - 1]));
+  assert.match(harness.invocations.at(-1).request.message, /第 250 条群消息/);
 });
 
 test("one ledger pass can update multiple condition tasks", async () => {
@@ -199,7 +230,12 @@ function createOccurrenceHarness({
   agentReply,
   agentError = null,
   mentionNames = ["家长", "授课老师"],
-  groupName = "最新群名"
+  groupName = "最新群名",
+  ledgerBacklogSize = 0,
+  initialLedgerCursor = 0,
+  reindexPending = false,
+  sendResponse = { code: 0, messageId: "worktool-message-1" },
+  sendError = null
 } = {}) {
   const sendCalls = [];
   const invocationCalls = [];
@@ -230,6 +266,18 @@ function createOccurrenceHarness({
     mentionRoleIds: occurrence.mentionRoleIds
   };
   let claimed = false;
+  let ledgerCursor = initialLedgerCursor;
+  const ledgerJob = {
+    id: "ledger-job-1",
+    botId: "bot-1",
+    groupId: "group-1",
+    mode: "live",
+    taskId: "",
+    fromMessageId: reindexPending ? 0 : initialLedgerCursor,
+    throughMessageId: ledgerBacklogSize,
+    attempts: 0,
+    status: reindexPending || ledgerBacklogSize > initialLedgerCursor ? "pending" : "completed"
+  };
   const db = {
     claimDueGroupAutomationOccurrences() {
       if (claimed || !["pending", "retry_wait"].includes(occurrence.status)) return [];
@@ -269,11 +317,11 @@ function createOccurrenceHarness({
         }]
       };
     },
-    getLatestInboundGroupMessageId() {
-      return 0;
-    },
     getGroupLedgerState() {
-      return { liveCursorMessageId: 0, backfillCursors: {} };
+      return { liveCursorMessageId: ledgerCursor, backfillCursors: {} };
+    },
+    hasUnfinishedGroupLedgerReindex() {
+      return reindexPending && ledgerJob.status !== "completed";
     },
     resolveGroupAutomationMentionNames() {
       return { names: mentionNames.filter(Boolean), warnings: [] };
@@ -301,13 +349,36 @@ function createOccurrenceHarness({
       outboundMessages.push(input);
       return { id: 99, ...input };
     },
-    enqueueGroupLedgerJob() {},
-    claimGroupLedgerJobs() { return []; },
-    applyGroupLedgerEvaluation() {},
+    enqueueGroupLedgerJob() {
+      ledgerJob.status = "pending";
+      ledgerJob.fromMessageId = ledgerCursor;
+      ledgerJob.throughMessageId = ledgerBacklogSize;
+      return { ...ledgerJob };
+    },
+    claimGroupLedgerJobs() {
+      if (!ledgerBacklogSize || ledgerJob.status !== "pending") return [];
+      ledgerJob.status = "processing";
+      ledgerJob.attempts += 1;
+      return [{ ...ledgerJob }];
+    },
+    applyGroupLedgerEvaluation(input) {
+      ledgerCursor = input.throughMessageId;
+      ledgerJob.fromMessageId = ledgerCursor;
+      ledgerJob.status = ledgerCursor < ledgerJob.throughMessageId ? "pending" : "completed";
+      return { liveCursorMessageId: ledgerCursor, backfillCursors: {} };
+    },
     failGroupLedgerJob() {},
-    listGroupAutomationTasks() { return []; },
-    listInboundGroupMessagesForLedger() { return []; },
-    getLatestInboundGroupMessageId() { return 0; }
+    listGroupAutomationTasks() { return [{ ...task }]; },
+    listInboundGroupMessagesForLedger({ afterMessageId, throughMessageId, limit }) {
+      return Array.from({ length: Math.min(limit, throughMessageId - afterMessageId) }, (_, index) => ({
+        id: afterMessageId + index + 1,
+        direction: "inbound",
+        senderName: "家长",
+        content: "已完成作业",
+        createdAt: "2026-08-04T10:00:00.000Z"
+      }));
+    },
+    getLatestInboundGroupMessageId() { return ledgerBacklogSize; }
   };
   const worker = createGroupAutomationWorker({
     db,
@@ -315,6 +386,9 @@ function createOccurrenceHarness({
     invokeAgent: async (input) => {
       invocationCalls.push(input);
       if (agentError) throw agentError;
+      if (input.purpose === "group-ledger") {
+        return JSON.stringify({ facts: [], conditionStates: [] });
+      }
       return agentReply || JSON.stringify({
         achieved: true,
         reason: "事实表明已完成",
@@ -324,12 +398,22 @@ function createOccurrenceHarness({
     },
     sendText: async (input) => {
       sendCalls.push(input);
-      return { code: 0, messageId: "worktool-message-1" };
+      if (sendError) throw sendError;
+      return sendResponse;
     },
     now: () => new Date("2026-08-04T12:00:00.000Z"),
     logger: { info() {}, warn() {}, error() {} }
   });
-  return { worker, db, task, occurrence, sendCalls, invocationCalls, outboundMessages };
+  return {
+    worker,
+    db,
+    task,
+    occurrence,
+    sendCalls,
+    invocationCalls,
+    outboundMessages,
+    getLedgerCursor: () => ledgerCursor
+  };
 }
 
 test("true conditional push sends fixed content once to the latest group name with latest mentions", async () => {
@@ -350,6 +434,49 @@ test("true conditional push sends fixed content once to the latest group name wi
   }]);
   assert.equal(harness.occurrence.status, "sent");
   assert.equal(harness.outboundMessages[0].rawPayload.source, "group_automation");
+});
+
+test("occurrence waits until every bounded ledger batch is current before evaluating and sending", async () => {
+  const harness = createOccurrenceHarness({ ledgerBacklogSize: 250 });
+  await harness.worker.runOccurrenceTick();
+
+  assert.equal(harness.getLedgerCursor(), 250);
+  assert.ok(
+    harness.invocationCalls.filter((call) => call.purpose === "group-ledger").length > 1
+  );
+  assert.equal(harness.invocationCalls.at(-1).purpose, "group-automation-occurrence");
+  assert.equal(harness.sendCalls.length, 1);
+});
+
+test("occurrence waits for a pending reindex even when the shared live cursor is already current", async () => {
+  const harness = createOccurrenceHarness({
+    ledgerBacklogSize: 10,
+    initialLedgerCursor: 10,
+    reindexPending: true
+  });
+  await harness.worker.runOccurrenceTick();
+  assert.ok(harness.invocationCalls.some((call) => call.purpose === "group-ledger"));
+  assert.equal(harness.sendCalls.length, 1);
+});
+
+test("scalar WorkTool response data is retained as the provider message ID", async () => {
+  const harness = createOccurrenceHarness({
+    sendResponse: { code: 0, data: "worktool-command-42" }
+  });
+  await harness.worker.runOccurrenceTick();
+  assert.equal(harness.occurrence.worktoolMessageId, "worktool-command-42");
+});
+
+test("explicit WorkTool rejection is safely retried while an ambiguous transport error is not", async () => {
+  const rejected = createOccurrenceHarness({
+    sendResponse: { code: 1001, message: "command rejected" }
+  });
+  await rejected.worker.runOccurrenceTick();
+  assert.equal(rejected.occurrence.status, "retry_wait");
+
+  const ambiguous = createOccurrenceHarness({ sendError: new Error("socket closed") });
+  await ambiguous.worker.runOccurrenceTick();
+  assert.equal(ambiguous.occurrence.status, "delivery_unknown");
 });
 
 test("fixed push without a condition bypasses Agent while false condition skips delivery", async () => {
@@ -431,4 +558,22 @@ test("summary disclosure or unsupported value is rejected before delivery", asyn
   await disclosure.worker.runOccurrenceTick();
   assert.equal(disclosure.sendCalls.length, 0);
   assert.equal(disclosure.occurrence.status, "retry_wait");
+});
+
+test("summary cannot repeat private background text even without a disclosure marker", async () => {
+  const harness = createOccurrenceHarness({
+    taskType: "periodic_summary",
+    agentReply: JSON.stringify({
+      variables: [{
+        name: "上课次数",
+        value: "小明购买了课程",
+        factKeys: ["lesson:1"],
+        fallbackUsed: false,
+        reason: "来自事实"
+      }]
+    })
+  });
+  await harness.worker.runOccurrenceTick();
+  assert.equal(harness.sendCalls.length, 0);
+  assert.equal(harness.occurrence.status, "retry_wait");
 });

@@ -156,6 +156,17 @@ test("rejects duplicate mutations, unsupported operations, and non-boolean decis
       contradictingFactKeys: []
     }]
   }), { allowedMessageIds: [41], allowedTaskIds: ["task-1"] }), /boolean/);
+  assert.throws(() => parseGroupLedgerAgentReply(JSON.stringify({
+    facts: [],
+    conditionStates: [{
+      taskId: "task-1",
+      cycleKey: "2026-08-04",
+      achieved: true,
+      reason: "缺少证据",
+      supportingFactKeys: [],
+      contradictingFactKeys: []
+    }]
+  }), { allowedMessageIds: [41], allowedTaskIds: ["task-1"] }), /supporting fact/);
 });
 
 test("validates conditional and summary occurrence output without unsupported facts", () => {
@@ -169,6 +180,15 @@ test("validates conditional and summary occurrence output without unsupported fa
     allowedFactKeys: ["lesson:1"]
   });
   assert.equal(conditional.achieved, false);
+  assert.throws(() => parseGroupOccurrenceAgentReply(JSON.stringify({
+    achieved: true,
+    reason: "缺少证据",
+    supportingFactKeys: [],
+    contradictingFactKeys: []
+  }), {
+    taskType: "conditional_push",
+    allowedFactKeys: ["lesson:1"]
+  }), /supporting fact/);
 
   const summary = parseGroupOccurrenceAgentReply(JSON.stringify({
     variables: [{

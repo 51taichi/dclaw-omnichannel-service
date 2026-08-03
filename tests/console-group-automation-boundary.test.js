@@ -56,6 +56,11 @@ test("group automation dialog supports both task types, schedules, month end, na
   assert.match(dialog, /name="summaryTemplate"/);
   assert.match(dialog, /id="groupAutomationMentionRoles"/);
   assert.match(dialog, /name="enabled"/);
+  assert.match(dialog, /id="insertGroupAutomationVariableButton"/);
+  assert.match(dialog, /id="groupAutomationVariableCount"/);
+  assert.match(dialog, /id="groupAutomationTemplatePreview"/);
+  assert.match(app, /function renderGroupAutomationTemplatePreview\(/);
+  assert.match(app, /［\$\{escapeHtml\(name\)\}］/);
 });
 
 test("task cards expose complete management actions and evidence navigation reuses conversations", () => {
@@ -78,4 +83,21 @@ test("history dialog renders occurrences, results and bounded evidence without p
   assert.match(app, /data-group-automation-evidence/);
   assert.match(app, /data-group-automation-retry/);
   assert.doesNotMatch(app, /群定时任务[\s\S]{0,300}任务状态机|群定时任务[\s\S]{0,300}资产/);
+});
+
+test("monthly scheduling supports multiple 1-28 dates plus month end", () => {
+  const dialog = html.slice(
+    html.indexOf('id="groupAutomationDialog"'),
+    html.indexOf('id="groupAutomationHistoryDialog"')
+  );
+  assert.match(dialog, /name="monthlyDay"[^>]*value="1"/);
+  assert.match(dialog, /name="monthlyDay"[^>]*value="28"/);
+  assert.match(dialog, /name="monthlyDay"[^>]*value="month_end"/);
+  assert.match(app, /querySelectorAll\('\[name="monthlyDay"\]:checked'\)/);
+});
+
+test("group automation stream and countdown follow the visible group tab lifecycle", () => {
+  assert.match(app, /if \(tabName !== "groups"\) disconnectGroupAutomations\(\)/);
+  assert.match(app, /document\.addEventListener\("visibilitychange"/);
+  assert.match(app, /if \(document\.hidden\) disconnectGroupAutomations\(\)/);
 });

@@ -216,11 +216,21 @@ test("a newer correction retracts a fact and can flip the same task cycle", () =
     }]
   });
 
-  assert.equal(db.listGroupLedgerProjection({
+  const correctedProjection = db.listGroupLedgerProjection({
     botId,
     groupId: group.id,
     includeRetracted: true
-  }).facts[0].active, false);
+  });
+  assert.equal(correctedProjection.facts[0].active, false);
+  const revisions = db.listGroupFactRevisions({
+    botId,
+    groupId: group.id,
+    factId: correctedProjection.facts[0].id
+  });
+  assert.deepEqual(revisions.map((revision) => revision.operation), ["upsert", "retract"]);
+  assert.equal(revisions[1].correctsRevisionId, revisions[0].id);
+  assert.deepEqual(revisions[0].evidenceMessageIds, [submitted.id]);
+  assert.deepEqual(revisions[1].evidenceMessageIds, [corrected.id]);
   assert.equal(db.getGroupAutomationCycleState({
     botId,
     groupId: group.id,
@@ -274,6 +284,46 @@ test("rejects outbound or cross-group evidence without partially advancing the l
     groupId: group.id
   }).liveCursorMessageId, 0);
   assert.deepEqual(db.listGroupLedgerProjection({ botId, groupId: group.id }).facts, []);
+});
+
+test("rejects an achieved condition without an active supporting fact and evidence", () => {
+  const botId = "ledger_unsupported_achievement_bot";
+  const { group, task } = setupLedgerGroup(botId);
+  const message = db.insertConversationMessage({
+    botId,
+    conversationKey: group.conversationKey,
+    direction: "inbound",
+    senderName: "家长",
+    content: "今天聊一下作业"
+  });
+  db.enqueueGroupLedgerJob({
+    botId,
+    groupId: group.id,
+    mode: "live",
+    throughMessageId: message.id
+  });
+  const job = db.claimGroupLedgerJobs({
+    nowIso: "2026-08-04T12:00:00.000Z",
+    limit: 1,
+    leaseMs: 300000
+  })[0];
+
+  assert.throws(() => db.applyGroupLedgerEvaluation({
+    jobId: job.id,
+    botId,
+    groupId: group.id,
+    throughMessageId: message.id,
+    facts: [],
+    conditionStates: [{
+      taskId: task.id,
+      cycleKey: "2026-08-04",
+      achieved: true,
+      reason: "Agent 猜测已完成",
+      supportingFactKeys: [],
+      contradictingFactKeys: []
+    }]
+  }), /supporting fact/);
+  assert.equal(db.getGroupLedgerState({ botId, groupId: group.id }).liveCursorMessageId, 0);
 });
 
 test("keeps one live cursor and independent per-task backfill cursors", () => {

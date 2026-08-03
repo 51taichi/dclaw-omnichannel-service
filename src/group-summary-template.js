@@ -16,6 +16,9 @@ function parseVariableBody(rawBody) {
   if (!body.endsWith("）")) throw new Error("unclosed summary variable rule");
   const instruction = body.slice(ruleStart + 1, -1).trim();
   if (!instruction) throw new Error("summary variable rule is required");
+  if (instruction.includes("（") || instruction.includes("）")) {
+    throw new Error("nested or unbalanced summary variable rule");
+  }
   return { name, instruction };
 }
 

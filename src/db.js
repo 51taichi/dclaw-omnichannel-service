@@ -14,6 +14,7 @@ import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags
 import { normalizeTagSyncConfig } from "./tag-sync.js";
 import { normalizeWorktoolTimestamp } from "./worktool-history.js";
 import {
+  groupAutomationCycleKey,
   groupAutomationCycleWindow,
   nextGroupAutomationRunAt,
   normalizeGroupAutomationSchedule
@@ -709,6 +710,21 @@ db.exec(`
     ordinal INTEGER NOT NULL,
     PRIMARY KEY (fact_id, message_id)
   );
+
+  CREATE TABLE IF NOT EXISTS managed_group_fact_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    fact_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    operation TEXT NOT NULL CHECK (operation IN ('upsert','retract')),
+    snapshot_json TEXT NOT NULL,
+    evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
+    corrects_revision_id INTEGER,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_managed_group_fact_revisions_fact
+  ON managed_group_fact_revisions (bot_id, group_id, fact_id, id);
 
   CREATE TABLE IF NOT EXISTS managed_group_ledger_states (
     bot_id TEXT NOT NULL,
@@ -2032,9 +2048,27 @@ function claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt }) {
       AND (
         status = 'pending'
         OR (status = 'retry_wait' AND next_retry_at <= ?)
-        OR (status IN ('evaluating', 'sending') AND lease_expires_at <= ?)
+        OR (status = 'evaluating' AND lease_expires_at <= ?)
       )
-  `).run(leaseExpiresAt, nowIso, nowIso, row.id, nowIso, nowIso);
+      AND NOT EXISTS (
+        SELECT 1
+        FROM managed_group_automation_occurrences active
+        WHERE active.bot_id = ? AND active.group_id = ? AND active.id <> ?
+          AND active.status IN ('evaluating', 'sending')
+          AND active.lease_expires_at > ?
+      )
+  `).run(
+    leaseExpiresAt,
+    nowIso,
+    nowIso,
+    row.id,
+    nowIso,
+    nowIso,
+    row.bot_id,
+    row.group_id,
+    row.id,
+    nowIso
+  );
   if (Number(result.changes) !== 1) return null;
   return rowToGroupAutomationOccurrence(db.prepare(`
     SELECT * FROM managed_group_automation_occurrences WHERE id = ?
@@ -2055,12 +2089,21 @@ export function claimDueGroupAutomationOccurrences({
 
   db.exec("BEGIN IMMEDIATE");
   try {
+    db.prepare(`
+      UPDATE managed_group_automation_occurrences
+      SET status = 'delivery_unknown', lease_expires_at = NULL,
+          reason = CASE WHEN reason = '' THEN '发送阶段租约过期，结果未知，已停止自动重试' ELSE reason END,
+          error_message = CASE WHEN error_message = '' THEN 'sending lease expired' ELSE error_message END,
+          finished_at = COALESCE(finished_at, ?), updated_at = ?
+      WHERE status = 'sending' AND lease_expires_at <= ?
+    `).run(nowIso, nowIso, nowIso);
     const expiredRows = db.prepare(`
       SELECT occurrence.*
       FROM managed_group_automation_occurrences occurrence
       JOIN managed_group_automation_tasks task ON task.id = occurrence.task_id
       WHERE (
-          (occurrence.status IN ('evaluating', 'sending')
+          (occurrence.status = 'pending' AND occurrence.scheduled_for <= ?)
+          OR (occurrence.status = 'evaluating'
             AND occurrence.lease_expires_at <= ?)
           OR (occurrence.status = 'retry_wait'
             AND occurrence.next_retry_at <= ?)
@@ -2069,7 +2112,7 @@ export function claimDueGroupAutomationOccurrences({
         AND task.deleted_at IS NULL
       ORDER BY occurrence.scheduled_for ASC, occurrence.id ASC
       LIMIT ?
-    `).all(nowIso, nowIso, claimLimit);
+    `).all(nowIso, nowIso, nowIso, claimLimit);
     for (const row of expiredRows) {
       const occurrence = claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt });
       if (occurrence) claimed.push(occurrence);
@@ -2157,7 +2200,7 @@ export function scheduleGroupAutomationOccurrenceRetry({
     UPDATE managed_group_automation_occurrences
     SET status = 'retry_wait', lease_expires_at = NULL, next_retry_at = ?,
         error_message = ?, updated_at = ?
-    WHERE bot_id = ? AND id = ? AND status = 'evaluating'
+    WHERE bot_id = ? AND id = ? AND status IN ('evaluating', 'sending')
   `).run(
     retryAt.toISOString(),
     String(errorMessage || ""),
@@ -2585,6 +2628,17 @@ export function claimGroupLedgerJobs({
   return claimed;
 }
 
+export function hasUnfinishedGroupLedgerReindex({ botId, groupId }) {
+  assertGroupAutomationScope({ botId, groupId });
+  return Boolean(db.prepare(`
+    SELECT 1
+    FROM managed_group_ledger_jobs
+    WHERE bot_id = ? AND group_id = ? AND mode = 'reindex'
+      AND status IN ('pending', 'processing', 'failed')
+    LIMIT 1
+  `).get(botId, groupId));
+}
+
 function assertGroupLedgerEvidence({ botId, groupId, messageIds }) {
   const uniqueMessageIds = [...new Set(messageIds.map(Number))];
   if (!uniqueMessageIds.length) return new Map();
@@ -2613,6 +2667,56 @@ function replaceGroupFactEvidence(factId, messageIds) {
   `);
   [...new Set(messageIds.map(Number))]
     .forEach((messageId, ordinal) => insert.run(factId, messageId, ordinal));
+}
+
+function appendGroupFactRevision({ factId, botId, groupId, operation, evidenceMessageIds, createdAt }) {
+  const fact = db.prepare(`SELECT * FROM managed_group_facts WHERE id = ?`).get(factId);
+  if (!fact) throw new Error("group fact not found for revision");
+  const previous = db.prepare(`
+    SELECT id FROM managed_group_fact_revisions
+    WHERE fact_id = ? ORDER BY id DESC LIMIT 1
+  `).get(factId);
+  db.prepare(`
+    INSERT INTO managed_group_fact_revisions (
+      fact_id, bot_id, group_id, operation, snapshot_json,
+      evidence_message_ids_json, corrects_revision_id, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    factId,
+    botId,
+    groupId,
+    operation,
+    json({
+      semanticKey: fact.semantic_key,
+      category: fact.category,
+      statement: fact.statement,
+      value: parseJson(fact.value_json) || {},
+      happenedAt: fact.happened_at,
+      speakerName: fact.speaker_name,
+      roleId: fact.role_id,
+      active: Boolean(fact.active)
+    }),
+    json(evidenceMessageIds),
+    previous?.id || null,
+    createdAt
+  );
+}
+
+export function listGroupFactRevisions({ botId, groupId, factId }) {
+  assertGroupAutomationScope({ botId, groupId });
+  return db.prepare(`
+    SELECT * FROM managed_group_fact_revisions
+    WHERE bot_id = ? AND group_id = ? AND fact_id = ?
+    ORDER BY id ASC
+  `).all(botId, groupId, factId).map((row) => ({
+    id: Number(row.id),
+    factId: row.fact_id,
+    operation: row.operation,
+    snapshot: parseJson(row.snapshot_json) || {},
+    evidenceMessageIds: parseJson(row.evidence_message_ids_json) || [],
+    correctsRevisionId: row.corrects_revision_id == null ? null : Number(row.corrects_revision_id),
+    createdAt: row.created_at
+  }));
 }
 
 export function applyGroupLedgerEvaluation({
@@ -2668,6 +2772,14 @@ export function applyGroupLedgerEvaluation({
           WHERE id = ?
         `).run(timestamp, existing.id);
         replaceGroupFactEvidence(existing.id, evidenceMessageIds);
+        appendGroupFactRevision({
+          factId: existing.id,
+          botId,
+          groupId,
+          operation,
+          evidenceMessageIds,
+          createdAt: timestamp
+        });
         continue;
       }
 
@@ -2715,6 +2827,14 @@ export function applyGroupLedgerEvaluation({
         timestamp
       );
       replaceGroupFactEvidence(factId, evidenceMessageIds);
+      appendGroupFactRevision({
+        factId,
+        botId,
+        groupId,
+        operation,
+        evidenceMessageIds,
+        createdAt: timestamp
+      });
     }
 
     for (const state of normalizedStates) {
@@ -2736,11 +2856,14 @@ export function applyGroupLedgerEvaluation({
           .map((value) => String(value || "").trim()).filter(Boolean)
       )];
       const referencedKeys = [...new Set([...supportingFactKeys, ...contradictingFactKeys])];
+      if (state.achieved && !supportingFactKeys.length) {
+        throw new Error("achieved condition requires a supporting fact");
+      }
       let evidenceMessageIds = [];
       if (referencedKeys.length) {
         const placeholders = referencedKeys.map(() => "?").join(", ");
         const rows = db.prepare(`
-          SELECT fact.semantic_key, evidence.message_id
+          SELECT fact.semantic_key, fact.active, fact.happened_at, evidence.message_id
           FROM managed_group_facts fact
           LEFT JOIN managed_group_fact_evidence evidence ON evidence.fact_id = fact.id
           WHERE fact.bot_id = ? AND fact.group_id = ?
@@ -2749,6 +2872,20 @@ export function applyGroupLedgerEvaluation({
         const foundKeys = new Set(rows.map((row) => row.semantic_key));
         if (foundKeys.size !== referencedKeys.length) {
           throw new Error("group automation condition references an unknown fact");
+        }
+        if (state.achieved) {
+          for (const key of supportingFactKeys) {
+            const supportingRows = rows.filter((row) => row.semantic_key === key);
+            const valid = supportingRows.some((row) => (
+              Boolean(row.active)
+              && Number.isSafeInteger(Number(row.message_id))
+              && Number(row.message_id) > 0
+              && groupAutomationCycleKey(task.cadence, row.happened_at) === cycleKey
+            ));
+            if (!valid) {
+              throw new Error("achieved condition requires an active in-cycle supporting fact with evidence");
+            }
+          }
         }
         evidenceMessageIds = [...new Set(rows
           .map((row) => Number(row.message_id))
@@ -3014,6 +3151,11 @@ export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
       SET group_id = ?, updated_at = ?
       WHERE bot_id = ? AND group_id = ?
     `).run(targetGroupId, timestamp, botId, sourceGroupId);
+    db.prepare(`
+      UPDATE conversation_messages
+      SET conversation_key = ?
+      WHERE bot_id = ? AND conversation_key = ?
+    `).run(target.conversationKey, botId, source.conversationKey);
 
     const sourceFacts = db.prepare(`
       SELECT id, semantic_key FROM managed_group_facts
@@ -3028,8 +3170,16 @@ export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
         db.prepare(`
           UPDATE managed_group_facts SET group_id = ?, updated_at = ? WHERE id = ?
         `).run(targetGroupId, timestamp, sourceFact.id);
+        db.prepare(`
+          UPDATE managed_group_fact_revisions SET group_id = ? WHERE fact_id = ?
+        `).run(targetGroupId, sourceFact.id);
         continue;
       }
+      db.prepare(`
+        UPDATE managed_group_fact_revisions
+        SET fact_id = ?, group_id = ?
+        WHERE fact_id = ?
+      `).run(targetFact.id, targetGroupId, sourceFact.id);
       db.prepare(`
         INSERT OR IGNORE INTO managed_group_fact_evidence (fact_id, message_id, ordinal)
         SELECT ?, message_id, ordinal
@@ -3453,6 +3603,7 @@ export function deleteBotData(botId) {
     "managed_group_automation_occurrences",
     "managed_group_ledger_jobs",
     "managed_group_ledger_states",
+    "managed_group_fact_revisions",
     "managed_group_facts",
     "managed_group_automation_tasks",
     "managed_group_role_aliases",

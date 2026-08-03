@@ -38,11 +38,11 @@ function createGroupWithRoles(botId, groupName = `${botId}群`) {
   return { group: saved.group, roles: saved.roles };
 }
 
-function createWeeklyTask({ botId, groupId, mentionRoleIds = [], enabled = true }) {
+function createWeeklyTask({ botId, groupId, mentionRoleIds = [], enabled = true, name = "作业提醒" }) {
   return db.createGroupAutomationTask({
     botId,
     groupId,
-    name: "作业提醒",
+    name,
     taskType: "conditional_push",
     cadence: "weekly",
     scheduleDays: [1, 3, 5],
@@ -85,6 +85,37 @@ test("persists group tasks and atomically claims each scheduled occurrence once"
 
   const stored = db.getGroupAutomationTask({ botId, taskId: task.id });
   assert.equal(stored.nextRunAt, "2026-08-07T12:00:00.000Z");
+});
+
+test("only one occurrence per group can hold the durable execution lease", () => {
+  const botId = "group_automation_serial_bot";
+  const { group } = createGroupWithRoles(botId);
+  const firstTask = createWeeklyTask({ botId, groupId: group.id, name: "任务一" });
+  const secondTask = createWeeklyTask({ botId, groupId: group.id, name: "任务二" });
+
+  const firstClaim = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 10,
+    leaseMs: 300000
+  });
+  assert.equal(firstClaim.filter((item) => item.groupId === group.id).length, 1);
+  db.completeGroupAutomationOccurrence({
+    botId,
+    occurrenceId: firstClaim[0].id,
+    status: "skipped",
+    reason: "测试完成"
+  });
+  const secondClaim = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:01.000Z",
+    limit: 10,
+    leaseMs: 300000
+  });
+  assert.equal(secondClaim.filter((item) => item.groupId === group.id).length, 1);
+  assert.notEqual(secondClaim[0].taskId, firstClaim[0].taskId);
+  assert.deepEqual(new Set([firstClaim[0].taskId, secondClaim[0].taskId]), new Set([
+    firstTask.id,
+    secondTask.id
+  ]));
 });
 
 test("task updates use optimistic versions and soft deletion retains execution history", () => {
@@ -250,6 +281,18 @@ test("occurrence retries reuse the same identity and sending snapshots are durab
   assert.equal(sending.status, "sending");
   assert.deepEqual(sending.mentionNames, ["家长", "授课老师"]);
   assert.equal(sending.renderedContent, "请提交作业");
+
+  const reclaimed = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:10:00.000Z",
+    limit: 10,
+    leaseMs: 300000
+  });
+  assert.equal(reclaimed.some((item) => item.id === occurrence.id), false);
+  assert.equal(
+    db.listGroupAutomationOccurrences({ botId, taskId: occurrence.taskId }).items
+      .find((item) => item.id === occurrence.id).status,
+    "delivery_unknown"
+  );
 });
 
 test("delivery_unknown is never automatically reclaimed but can be manually retried", () => {
@@ -347,6 +390,13 @@ test("merging a duplicate managed group moves its scheduled tasks and history to
   const { group: source } = createGroupWithRoles(botId, "重复群");
   const { group: target } = createGroupWithRoles(botId, "正式群");
   const task = createWeeklyTask({ botId, groupId: source.id });
+  const sourceEvidence = db.insertConversationMessage({
+    botId,
+    conversationKey: source.conversationKey,
+    direction: "inbound",
+    senderName: "客户",
+    content: "原群中的客观证据"
+  });
   const occurrence = db.claimDueGroupAutomationOccurrences({
     nowIso: "2026-08-05T12:00:00.000Z",
     limit: 100,
@@ -363,6 +413,11 @@ test("merging a duplicate managed group moves its scheduled tasks and history to
     db.listGroupAutomationOccurrences({ botId, taskId: task.id }).items.find((item) => item.id === occurrence.id).groupId,
     target.id
   );
+  assert.equal(db.listGroupAutomationEvidenceMessages({
+    botId,
+    groupId: target.id,
+    messageIds: [sourceEvidence.id]
+  })[0].content, "原群中的客观证据");
 });
 
 test("a failed WorkTool command callback marks the matching sent occurrence failed within its Bot", () => {

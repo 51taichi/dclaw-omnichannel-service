@@ -99,6 +99,9 @@ const els = {
   groupAutomationConditionField: document.querySelector("#groupAutomationConditionField"),
   groupAutomationContentField: document.querySelector("#groupAutomationContentField"),
   groupAutomationSummaryField: document.querySelector("#groupAutomationSummaryField"),
+  insertGroupAutomationVariableButton: document.querySelector("#insertGroupAutomationVariableButton"),
+  groupAutomationVariableCount: document.querySelector("#groupAutomationVariableCount"),
+  groupAutomationTemplatePreview: document.querySelector("#groupAutomationTemplatePreview"),
   groupAutomationMentionRoles: document.querySelector("#groupAutomationMentionRoles"),
   groupAutomationHistoryDialog: document.querySelector("#groupAutomationHistoryDialog"),
   groupAutomationHistoryTitle: document.querySelector("#groupAutomationHistoryTitle"),
@@ -547,6 +550,7 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
     toast("请先选择或保存一个 Bot");
     return;
   }
+  if (tabName !== "groups") disconnectGroupAutomations();
   els.workspaceTabs.forEach((button) => {
     const active = button.dataset.workspaceTab === tabName;
     button.classList.toggle("active", active);
@@ -651,9 +655,7 @@ function connectTagAlerts(botId) {
 
 function clearBotScopedContent() {
   disconnectTagAlerts();
-  groupAutomationClient.disconnect();
-  clearInterval(groupAutomationCountdownTimer);
-  groupAutomationCountdownTimer = null;
+  disconnectGroupAutomations();
   window.cockpitConsole?.clear();
   clearTimeout(proactiveSearchTimer);
   proactiveSearchTimer = null;
@@ -5722,10 +5724,16 @@ function updateGroupAutomationCountdowns() {
   });
 }
 
-function connectGroupAutomations() {
+function disconnectGroupAutomations() {
   groupAutomationClient.disconnect();
   clearInterval(groupAutomationCountdownTimer);
   groupAutomationCountdownTimer = null;
+}
+
+function connectGroupAutomations() {
+  disconnectGroupAutomations();
+  const groupsTab = document.querySelector('[data-tab-panel="groups"]');
+  if (document.hidden || !groupsTab?.classList.contains("active")) return;
   if (!state.selectedBotId || !state.selectedGroupId) return;
   groupAutomationClient.connect({
     botId: state.selectedBotId,
@@ -5756,6 +5764,40 @@ function renderGroupAutomationMentionRoles(selectedRoleIds = []) {
     : `<span class="muted">请先在群角色中添加需要 @ 的成员。</span>`;
 }
 
+function groupAutomationTemplateVariableName(body) {
+  const normalized = String(body || "").trim();
+  const ruleStart = normalized.indexOf("（");
+  return (ruleStart < 0 ? normalized : normalized.slice(0, ruleStart)).trim();
+}
+
+function renderGroupAutomationTemplatePreview() {
+  const template = els.groupAutomationForm?.summaryTemplate.value || "";
+  const tokenPattern = /\{\{([\s\S]*?)\}\}/g;
+  const variables = [];
+  let preview = "";
+  let lastIndex = 0;
+  for (const match of template.matchAll(tokenPattern)) {
+    const name = groupAutomationTemplateVariableName(match[1]);
+    if (name && !variables.includes(name)) variables.push(name);
+    preview += escapeHtml(template.slice(lastIndex, match.index));
+    preview += name ? `<mark>［${escapeHtml(name)}］</mark>` : `<mark>［未命名变量］</mark>`;
+    lastIndex = match.index + match[0].length;
+  }
+  preview += escapeHtml(template.slice(lastIndex));
+  els.groupAutomationVariableCount.textContent = `${variables.length} 个变量`;
+  els.groupAutomationTemplatePreview.innerHTML = preview || "预览会显示在这里";
+}
+
+function insertGroupAutomationTemplateVariable() {
+  const textarea = els.groupAutomationForm.summaryTemplate;
+  const token = "{{变量名称（用白话说明客观判断规则）}}";
+  const start = textarea.selectionStart ?? textarea.value.length;
+  const end = textarea.selectionEnd ?? start;
+  textarea.setRangeText(token, start, end, "end");
+  textarea.focus();
+  renderGroupAutomationTemplatePreview();
+}
+
 function syncGroupAutomationDialogFields() {
   const form = els.groupAutomationForm;
   const cadence = form.cadence.value;
@@ -5765,9 +5807,10 @@ function syncGroupAutomationDialogFields() {
   els.groupAutomationConditionField.hidden = summary;
   els.groupAutomationContentField.hidden = summary;
   els.groupAutomationSummaryField.hidden = !summary;
-  form.conditionText.required = !summary;
+  form.conditionText.required = false;
   form.content.required = !summary;
   form.summaryTemplate.required = summary;
+  renderGroupAutomationTemplatePreview();
 }
 
 function openGroupAutomationDialog(task = null) {
@@ -5786,7 +5829,12 @@ function openGroupAutomationDialog(task = null) {
   [...form.querySelectorAll('[name="weeklyDay"]')].forEach((input) => {
     input.checked = task?.cadence === "weekly" && task.scheduleDays.includes(Number(input.value));
   });
-  form.monthlyDay.value = task?.cadence === "monthly" ? String(task.scheduleDays[0]) : "1";
+  const selectedMonthDays = new Set(
+    task?.cadence === "monthly" ? task.scheduleDays.map(String) : ["1"]
+  );
+  [...form.querySelectorAll('[name="monthlyDay"]')].forEach((input) => {
+    input.checked = selectedMonthDays.has(input.value);
+  });
   renderGroupAutomationMentionRoles(task?.mentionRoleIds || []);
   syncGroupAutomationDialogFields();
   els.groupAutomationDialogTitle.textContent = task ? "编辑群定时任务" : "新增群定时任务";
@@ -5802,20 +5850,24 @@ function groupAutomationScheduleDays(form) {
   if (form.cadence.value === "weekly") {
     return [...form.querySelectorAll('[name="weeklyDay"]:checked')].map((input) => Number(input.value));
   }
-  const day = form.monthlyDay.value;
-  return [day === "month_end" ? day : Number(day)];
+  return [...form.querySelectorAll('[name="monthlyDay"]:checked')]
+    .map((input) => input.value === "month_end" ? input.value : Number(input.value));
 }
 
 async function saveGroupAutomation(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const taskId = form.taskId.value;
+  const scheduleDays = groupAutomationScheduleDays(form);
+  if (form.cadence.value !== "daily" && !scheduleDays.length) {
+    throw new Error(form.cadence.value === "weekly" ? "请至少选择一个星期" : "请至少选择一个每月执行日");
+  }
   const payload = {
     botId: state.selectedBotId,
     name: form.name.value.trim(),
     taskType: form.taskType.value,
     cadence: form.cadence.value,
-    scheduleDays: groupAutomationScheduleDays(form),
+    scheduleDays,
     timeOfDay: form.timeOfDay.value,
     conditionText: form.conditionText.value.trim(),
     content: form.content.value.trim(),
@@ -5851,7 +5903,8 @@ async function openGroupAutomationHistory(task) {
   els.groupAutomationHistoryList.innerHTML = data.items?.length
     ? data.items.map((occurrence) => `
         <article class="group-automation-history-item">
-          <div><strong>${escapeHtml(formatGroupAutomationDateTime(occurrence.scheduledFor))}</strong><span class="group-automation-history-status status-${escapeHtml(occurrence.status)}">${escapeHtml(groupAutomationOccurrenceStatus(occurrence))}</span></div>
+          <div><strong>计划 ${escapeHtml(formatGroupAutomationDateTime(occurrence.scheduledFor))}</strong><span class="group-automation-history-status status-${escapeHtml(occurrence.status)}">${escapeHtml(groupAutomationOccurrenceStatus(occurrence))}</span></div>
+          <div class="group-automation-history-meta"><span>完成 ${escapeHtml(formatGroupAutomationDateTime(occurrence.finishedAt))}</span><span>尝试 ${escapeHtml(occurrence.attempts || 0)} 次</span>${occurrence.mentionNames?.length ? `<span>@ ${escapeHtml(occurrence.mentionNames.join("、"))}</span>` : ""}</div>
           ${occurrence.reason ? `<p>${escapeHtml(occurrence.reason)}</p>` : ""}
           ${occurrence.renderedContent ? `<blockquote>${escapeHtml(occurrence.renderedContent)}</blockquote>` : ""}
           ${occurrence.errorMessage ? `<p class="error-text">${escapeHtml(occurrence.errorMessage)}</p>` : ""}
@@ -5981,7 +6034,7 @@ function renderGroupList() {
 }
 
 async function loadGroupDetail(groupId) {
-  groupAutomationClient.disconnect();
+  disconnectGroupAutomations();
   const data = await request(
     `/api/groups/${encodeURIComponent(groupId)}?botId=${encodeURIComponent(state.selectedBotId)}`
   );
@@ -6036,13 +6089,6 @@ function renderGroupConfig() {
       </fieldset>
       <button class="primary groups-save-config" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存群配置</button>
     </form>
-    <section id="groupAutomationSection" class="group-automation-section" aria-labelledby="groupAutomationTitle">
-      <div class="group-automation-head">
-        <div><h3 id="groupAutomationTitle"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群定时任务</h3><p>按群内客观事实自动判断、推送或生成周期汇总。</p></div>
-        <button id="addGroupAutomationButton" class="primary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button>
-      </div>
-      <div id="groupAutomationList" class="group-automation-list"><div class="empty-state">正在加载群定时任务…</div></div>
-    </section>
     <div class="groups-role-head">
       <h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3>
       <div class="groups-role-actions">
@@ -6060,6 +6106,13 @@ function renderGroupConfig() {
       </div>
       <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
     </form>
+    <section id="groupAutomationSection" class="group-automation-section" aria-labelledby="groupAutomationTitle">
+      <div class="group-automation-head">
+        <div><h3 id="groupAutomationTitle"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群定时任务</h3><p>按群内客观事实自动判断、推送或生成周期汇总。</p></div>
+        <button id="addGroupAutomationButton" class="primary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button>
+      </div>
+      <div id="groupAutomationList" class="group-automation-list"><div class="empty-state">正在加载群定时任务…</div></div>
+    </section>
   `;
   els.groupConfigPane.querySelector("#groupConfigForm").addEventListener("submit", saveSelectedGroupConfig);
   els.groupConfigPane.querySelector("#addGroupAutomationButton").addEventListener("click", () => openGroupAutomationDialog());
@@ -6117,6 +6170,7 @@ async function saveSelectedGroupRoles(event) {
   });
   state.selectedGroupDetail = { ...state.selectedGroupDetail, group: data.group, roles: data.roles };
   renderGroupConfig();
+  renderGroupAutomationList();
   toast("角色已保存", "success");
 }
 
@@ -6413,6 +6467,8 @@ els.groupAutomationDialog?.addEventListener("click", (event) => {
 });
 els.groupAutomationForm?.taskType.addEventListener("change", syncGroupAutomationDialogFields);
 els.groupAutomationForm?.cadence.addEventListener("change", syncGroupAutomationDialogFields);
+els.groupAutomationForm?.summaryTemplate.addEventListener("input", renderGroupAutomationTemplatePreview);
+els.insertGroupAutomationVariableButton?.addEventListener("click", insertGroupAutomationTemplateVariable);
 els.groupAutomationForm?.addEventListener("submit", (event) => saveGroupAutomation(event).catch(toastError));
 els.groupAutomationHistoryCloseButton?.addEventListener("click", () => {
   state.groupAutomationHistoryTaskId = "";
@@ -6440,6 +6496,13 @@ els.groupAutomationHistoryList?.addEventListener("click", (event) => {
     const task = state.groupAutomations.find((item) => item.id === state.groupAutomationHistoryTaskId);
     if (task) await openGroupAutomationHistory(task);
   }).catch(toastError);
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) disconnectGroupAutomations();
+  else if (document.querySelector('[data-tab-panel="groups"]')?.classList.contains("active")) {
+    connectGroupAutomations();
+    updateGroupAutomationCountdowns();
+  }
 });
 els.createGroupButton?.addEventListener("click", () => {
   state.createGroupContactIds.clear();
