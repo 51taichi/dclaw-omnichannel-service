@@ -4367,6 +4367,8 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     return;
   }
 
+  const flowSession = getFlowSession(conversationKey);
+  const isHumanHandoff = flowSession?.handoffStatus === "human";
   const coalesceKey = inboundCoalesceKey(botId, conversationKey);
   const groupPolicy = isGroupMessage(message)
     ? resolveInboundGroupPolicy({ botId, group, message })
@@ -4376,7 +4378,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     && groupPolicy.reason === "mention_required"
     && inboundCoalescer.has(coalesceKey)
   );
-  if (!groupPolicy.invokeAgent && !joinsMentionedGroupBatch) {
+  if (!isHumanHandoff && !groupPolicy.invokeAgent && !joinsMentionedGroupBatch) {
     const status = groupPolicy.reason === "policy_never"
       ? "group_policy_never"
       : "group_mention_required";
@@ -4397,7 +4399,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     return;
   }
 
-  const legacySession = getFlowSession(conversationKey);
+  const legacySession = flowSession;
   const shouldAwaitLegacySync = legacyCandidate || (
     legacySession?.customerOrigin === "legacy"
     && legacySession.historySyncStatus === "loading"
@@ -4419,8 +4421,8 @@ async function processIncomingMessage({ botId, message, intake = null }) {
   const conversation = persisted.conversation || getConversation(conversationKey);
   const flow = buildFlowContext({ botId, conversationKey, message });
   const conversationReset = getConversationResetPending(conversationKey);
-  if (isPrivateMessage(message) && flow?.session?.handoffStatus === "human") {
-    const tagContext = buildTagContext({ binding, conversationKey });
+  if (flow?.session?.handoffStatus === "human") {
+    const tagContext = buildTagContext({ binding, conversationKey, group });
     const tagEvidenceCandidates = buildTagEvidenceCandidates({
       items: [{
         message,
@@ -4651,7 +4653,7 @@ async function processCoalescedIncomingBatch(batch) {
   }
   const flow = buildFlowContext({ botId, conversationKey, message });
   const conversationReset = getConversationResetPending(conversationKey);
-  if (isPrivateMessage(message) && flow?.session?.handoffStatus === "human") {
+  if (flow?.session?.handoffStatus === "human") {
     logInfo("incoming.skipped", {
       ...logContext,
       reason: "human_handoff_after_coalesce"

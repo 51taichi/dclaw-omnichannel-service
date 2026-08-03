@@ -40,7 +40,7 @@ test("server branches human handoff before sending WorkTool replies", () => {
   assert.equal(serverSource.includes("buildDclawHandoffTranscriptRequest"), true);
   assert.equal(serverSource.includes('status: "human_handoff"'), true);
   assert.equal(serverSource.includes("flow?.session?.handoffStatus === \"human\""), true);
-  assert.match(handoffBlock, /buildTagContext\(\{ binding, conversationKey \}\)/);
+  assert.match(handoffBlock, /buildTagContext\(\{ binding, conversationKey, group \}\)/);
   assert.match(handoffBlock, /invokeStrictAgentReply\(\{/);
   assert.match(handoffBlock, /persistAgentTagAudit\(\{/);
   assert.match(handoffBlock, /applyAgentTagDecision\(\{/);
@@ -50,6 +50,26 @@ test("server branches human handoff before sending WorkTool replies", () => {
   );
   assert.doesNotMatch(handoffBlock, /sendTextReplyParts\(/);
   assert.doesNotMatch(handoffBlock, /sendAgentAttachments\(/);
+});
+
+test("group human handoff bypasses visible reply policy and uses the silent sync branch", () => {
+  const incomingBody = functionBody("processIncomingMessage");
+  const coalescedBody = functionBody("processCoalescedIncomingBatch");
+  const handoffIndex = incomingBody.indexOf("const isHumanHandoff");
+  const policyIndex = incomingBody.indexOf("if (!isHumanHandoff && !groupPolicy.invokeAgent");
+
+  assert.ok(handoffIndex >= 0);
+  assert.ok(policyIndex > handoffIndex);
+  assert.match(incomingBody, /if \(flow\?\.session\?\.handoffStatus === "human"\)/);
+  assert.doesNotMatch(
+    incomingBody,
+    /if \(isPrivateMessage\(message\) && flow\?\.session\?\.handoffStatus === "human"\)/
+  );
+  assert.match(coalescedBody, /if \(flow\?\.session\?\.handoffStatus === "human"\)/);
+  assert.doesNotMatch(
+    coalescedBody,
+    /if \(isPrivateMessage\(message\) && flow\?\.session\?\.handoffStatus === "human"\)/
+  );
 });
 
 test("human handoff is evaluated before debug auto-reply", () => {
