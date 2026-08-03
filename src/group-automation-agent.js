@@ -384,6 +384,7 @@ export function parseGroupOccurrenceAgentReply(rawReply, {
   taskType,
   allowedFactKeys = [],
   allowedCycleFactKeys = null,
+  allowedAggregateFactKeys = [],
   variables = []
 } = {}) {
   const parsed = parseJsonObject(rawReply);
@@ -419,6 +420,9 @@ export function parseGroupOccurrenceAgentReply(rawReply, {
   const cycleFacts = new Set(
     (Array.isArray(allowedCycleFactKeys) ? allowedCycleFactKeys : allowedFactKeys).map(String)
   );
+  const aggregateFacts = new Set(
+    (Array.isArray(allowedAggregateFactKeys) ? allowedAggregateFactKeys : []).map(String)
+  );
   const seen = new Set();
   const results = parsed.variables.map((variable) => {
     const name = boundedText(variable?.name, "summary variable name", 240, { required: true });
@@ -435,11 +439,19 @@ export function parseGroupOccurrenceAgentReply(rawReply, {
         throw new Error(`cycle variable cannot use a historical aggregate fact: ${key}`);
       }
     }
+    const definition = expected.get(name);
+    if (
+      definition?.scope === "cumulative"
+      && factKeys.length
+      && !variable.fallbackUsed
+      && !factKeys.some((key) => aggregateFacts.has(key))
+    ) {
+      throw new Error(`cumulative variable must use a cumulative aggregate fact: ${name}`);
+    }
     if (!factKeys.length && !variable.fallbackUsed) {
       throw new Error("summary variable requires fact evidence or an explicit fallback");
     }
     const value = boundedText(variable.value, "summary variable value", MAX_LONG_TEXT);
-    const definition = expected.get(name);
     if (
       !factKeys.length
       && variable.fallbackUsed

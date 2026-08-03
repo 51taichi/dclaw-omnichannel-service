@@ -636,6 +636,30 @@ test("summary disclosure or unsupported value is rejected before delivery", asyn
   assert.equal(disclosure.occurrence.status, "retry_wait");
 });
 
+test("summary rejects language that reveals internal role, system-record or prompt sources", async () => {
+  for (const value of [
+    "根据角色配置，该成员已完成1次课程",
+    "根据系统记录，本周已完成1次课程",
+    "按照提示词要求，本周已完成1次课程"
+  ]) {
+    const harness = createOccurrenceHarness({
+      taskType: "periodic_summary",
+      agentReply: JSON.stringify({
+        variables: [{
+          name: "上课次数",
+          value,
+          factKeys: ["lesson:1"],
+          fallbackUsed: false,
+          reason: "来自事实"
+        }]
+      })
+    });
+    await harness.worker.runOccurrenceTick();
+    assert.equal(harness.sendCalls.length, 0, value);
+    assert.equal(harness.occurrence.status, "retry_wait", value);
+  }
+});
+
 test("summary cannot repeat private background text even without a disclosure marker", async () => {
   const harness = createOccurrenceHarness({
     taskType: "periodic_summary",

@@ -17,6 +17,12 @@ const CUSTOMER_VISIBLE_DISCLOSURE_MARKERS = [
   "群背景",
   "事实账本",
   "后台配置",
+  "后台记录",
+  "内部配置",
+  "角色配置",
+  "系统记录",
+  "系统资料",
+  "提示词",
   "privateContext"
 ];
 
@@ -295,6 +301,7 @@ export function createGroupAutomationWorker({
             results.push(db.completeGroupAutomationOccurrence({
               botId: occurrence.botId,
               occurrenceId: occurrence.id,
+              executionToken: occurrence.executionToken,
               status: "canceled",
               reason: "任务、群或 Bot 已停用"
             }));
@@ -349,6 +356,11 @@ export function createGroupAutomationWorker({
           const cumulativeSummary = parsedSummaryTemplate?.variables.some(
             isCumulativeSummaryVariable
           ) || false;
+          const aggregateFactKeys = [...new Set(
+            Object.values(projection.aggregates || {})
+              .flatMap((aggregate) => aggregate.evidenceFactKeys || [])
+              .map(String)
+          )];
           const cycleStart = new Date(occurrence.cycleStartAt).getTime();
           const cycleEnd = new Date(occurrence.cycleEndAt).getTime();
           projection.facts = projection.facts.filter((fact) => {
@@ -411,6 +423,7 @@ export function createGroupAutomationWorker({
               const completed = db.completeGroupAutomationOccurrence({
                 botId: occurrence.botId,
                 occurrenceId: occurrence.id,
+                executionToken: occurrence.executionToken,
                 status: "skipped",
                 conditionAchieved: false,
                 reason,
@@ -451,6 +464,7 @@ export function createGroupAutomationWorker({
               taskType: task.taskType,
               allowedFactKeys: [...factsByKey.keys()],
               allowedCycleFactKeys: cycleFactKeys,
+              allowedAggregateFactKeys: aggregateFactKeys,
               variables: parsedTemplate.variables.map((variable) => ({
                 ...variable,
                 scope: isCumulativeSummaryVariable(variable) ? "cumulative" : "cycle"
@@ -478,6 +492,7 @@ export function createGroupAutomationWorker({
           db.markGroupAutomationOccurrenceSending({
             botId: occurrence.botId,
             occurrenceId: occurrence.id,
+            executionToken: occurrence.executionToken,
             renderedContent,
             mentionRoleIds: task.mentionRoleIds,
             mentionNames: mentionResolution.names,
@@ -515,6 +530,7 @@ export function createGroupAutomationWorker({
           const completed = db.completeGroupAutomationOccurrence({
             botId: occurrence.botId,
             occurrenceId: occurrence.id,
+            executionToken: occurrence.executionToken,
             status: "sent",
             conditionAchieved,
             reason,
@@ -545,6 +561,7 @@ export function createGroupAutomationWorker({
                 const retry = db.scheduleGroupAutomationOccurrenceRetry({
                   botId: occurrence.botId,
                   occurrenceId: occurrence.id,
+                  executionToken: occurrence.executionToken,
                   nextRetryAt: new Date(claimTime.getTime() + delay).toISOString(),
                   errorMessage: error.message
                 });
@@ -553,6 +570,7 @@ export function createGroupAutomationWorker({
                 results.push(db.failGroupAutomationOccurrence({
                   botId: occurrence.botId,
                   occurrenceId: occurrence.id,
+                  executionToken: occurrence.executionToken,
                   errorMessage: error.message
                 }));
               }
@@ -561,6 +579,7 @@ export function createGroupAutomationWorker({
             const unknown = db.completeGroupAutomationOccurrence({
               botId: occurrence.botId,
               occurrenceId: occurrence.id,
+              executionToken: occurrence.executionToken,
               status: "delivery_unknown",
               errorMessage: error.message,
               reason: "发送请求结果不明确，已停止自动重试"
@@ -580,6 +599,7 @@ export function createGroupAutomationWorker({
             const retry = db.scheduleGroupAutomationOccurrenceRetry({
               botId: occurrence.botId,
               occurrenceId: occurrence.id,
+              executionToken: occurrence.executionToken,
               nextRetryAt: new Date(claimTime.getTime() + delay).toISOString(),
               errorMessage: error.message
             });
@@ -588,6 +608,7 @@ export function createGroupAutomationWorker({
             results.push(db.failGroupAutomationOccurrence({
               botId: occurrence.botId,
               occurrenceId: occurrence.id,
+              executionToken: occurrence.executionToken,
               errorMessage: error.message
             }));
           }

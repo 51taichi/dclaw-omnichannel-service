@@ -331,6 +331,7 @@ test("cycle-scoped summary variable rejects a historical aggregate fact key", ()
     taskType: "periodic_summary",
     allowedFactKeys: ["lesson:old", "lesson:current"],
     allowedCycleFactKeys: ["lesson:current"],
+    allowedAggregateFactKeys: ["lesson:old"],
     variables: [
       { name: "累计上课次数", instruction: "从建群至今", scope: "cumulative" },
       { name: "本周上课次数", instruction: "本周完成", scope: "cycle" }
@@ -383,4 +384,26 @@ test("summary without an explicit fallback uses only the safe default empty-reco
     variables: [{ name: "上课次数", instruction: "没有明确记录时填0", scope: "cycle" }]
   });
   assert.equal(explicit.variables[0].value, "0");
+});
+
+test("cumulative summary variables must cite a fact carried by the cumulative aggregate", () => {
+  assert.throws(() => parseGroupOccurrenceAgentReply(JSON.stringify({
+    variables: [{
+      name: "累计上课次数",
+      value: "1",
+      factKeys: ["lesson:current"],
+      fallbackUsed: false,
+      reason: "错误地只使用本周一次课程"
+    }]
+  }), {
+    taskType: "periodic_summary",
+    allowedFactKeys: ["lesson:old", "lesson:current"],
+    allowedCycleFactKeys: ["lesson:current"],
+    allowedAggregateFactKeys: ["lesson:old"],
+    variables: [{
+      name: "累计上课次数",
+      instruction: "从建群至今明确完成的课程总次数",
+      scope: "cumulative"
+    }]
+  }), /cumulative aggregate fact/i);
 });

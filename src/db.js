@@ -658,6 +658,7 @@ db.exec(`
     status TEXT NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
     lease_expires_at TEXT,
+    execution_token TEXT,
     next_retry_at TEXT,
     condition_achieved INTEGER,
     reason TEXT NOT NULL DEFAULT '',
@@ -1059,6 +1060,7 @@ ensureColumn("flow_sessions", "history_context_sent_at", "TEXT");
 ensureColumn("conversation_messages", "source", "TEXT NOT NULL DEFAULT 'local'");
 ensureColumn("conversation_messages", "source_key", "TEXT");
 ensureColumn("managed_group_automation_occurrences", "next_retry_at", "TEXT");
+ensureColumn("managed_group_automation_occurrences", "execution_token", "TEXT");
 ensureColumn(
   "managed_group_automation_occurrences",
   "warnings_json",
@@ -1783,6 +1785,7 @@ function rowToGroupAutomationOccurrence(row) {
     status: row.status,
     attempts: Number(row.attempts || 0),
     leaseExpiresAt: row.lease_expires_at || "",
+    executionToken: row.execution_token || "",
     nextRetryAt: row.next_retry_at || "",
     conditionAchieved: row.condition_achieved == null
       ? null
@@ -1996,6 +1999,17 @@ export function updateGroupAutomationTask(input) {
     );
     if (Number(result.changes) !== 1) throw new Error("group automation task version conflict");
     replaceGroupAutomationMentions(taskId, values.mentionRoleIds);
+    if (current.enabled && !values.enabled) {
+      db.prepare(`
+        UPDATE managed_group_automation_occurrences
+        SET status = 'canceled', lease_expires_at = NULL, execution_token = NULL,
+            next_retry_at = NULL,
+            reason = CASE WHEN reason = '' THEN '任务已停用，旧执行已取消' ELSE reason END,
+            finished_at = COALESCE(finished_at, ?), updated_at = ?
+        WHERE bot_id = ? AND task_id = ?
+          AND status IN ('pending', 'retry_wait', 'evaluating')
+      `).run(timestamp, timestamp, botId, taskId);
+    }
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -2026,11 +2040,28 @@ export function softDeleteGroupAutomationTask({ botId, taskId, expectedVersion }
     throw error;
   }
   const timestamp = now();
-  db.prepare(`
-    UPDATE managed_group_automation_tasks
-    SET enabled = 0, deleted_at = ?, version = version + 1, updated_at = ?
-    WHERE bot_id = ? AND id = ? AND version = ? AND deleted_at IS NULL
-  `).run(timestamp, timestamp, botId, taskId, Number(expectedVersion));
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = db.prepare(`
+      UPDATE managed_group_automation_tasks
+      SET enabled = 0, deleted_at = ?, version = version + 1, updated_at = ?
+      WHERE bot_id = ? AND id = ? AND version = ? AND deleted_at IS NULL
+    `).run(timestamp, timestamp, botId, taskId, Number(expectedVersion));
+    if (Number(result.changes) !== 1) throw new Error("group automation task version conflict");
+    db.prepare(`
+      UPDATE managed_group_automation_occurrences
+      SET status = 'canceled', lease_expires_at = NULL, execution_token = NULL,
+          next_retry_at = NULL,
+          reason = CASE WHEN reason = '' THEN '任务已删除，旧执行已取消' ELSE reason END,
+          finished_at = COALESCE(finished_at, ?), updated_at = ?
+      WHERE bot_id = ? AND task_id = ?
+        AND status IN ('pending', 'retry_wait', 'evaluating')
+    `).run(timestamp, timestamp, botId, taskId);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
   return getGroupAutomationTask({ botId, taskId });
 }
 
@@ -2057,10 +2088,11 @@ export function resolveGroupAutomationMentionNames({ botId, groupId, roleIds = [
 }
 
 function claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt }) {
+  const executionToken = crypto.randomUUID();
   const result = db.prepare(`
     UPDATE managed_group_automation_occurrences
     SET status = 'evaluating', attempts = attempts + 1,
-        lease_expires_at = ?, next_retry_at = NULL,
+        lease_expires_at = ?, execution_token = ?, next_retry_at = NULL,
         started_at = COALESCE(started_at, ?), updated_at = ?
     WHERE id = ?
       AND (
@@ -2077,6 +2109,7 @@ function claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt }) {
       )
   `).run(
     leaseExpiresAt,
+    executionToken,
     nowIso,
     nowIso,
     row.id,
@@ -2110,6 +2143,7 @@ export function claimDueGroupAutomationOccurrences({
     db.prepare(`
       UPDATE managed_group_automation_occurrences
       SET status = 'delivery_unknown', lease_expires_at = NULL,
+          execution_token = NULL,
           reason = CASE WHEN reason = '' THEN '发送阶段租约过期，结果未知，已停止自动重试' ELSE reason END,
           error_message = CASE WHEN error_message = '' THEN 'sending lease expired' ELSE error_message END,
           finished_at = COALESCE(finished_at, ?), updated_at = ?
@@ -2208,26 +2242,31 @@ export function claimDueGroupAutomationOccurrences({
 export function scheduleGroupAutomationOccurrenceRetry({
   botId,
   occurrenceId,
+  executionToken,
   nextRetryAt,
   errorMessage = ""
 }) {
+  const normalizedExecutionToken = String(executionToken || "").trim();
+  if (!normalizedExecutionToken) throw new Error("group automation execution lease token is required");
   const retryAt = new Date(nextRetryAt);
   if (Number.isNaN(retryAt.getTime())) throw new Error("invalid occurrence retry time");
   const timestamp = now();
   const result = db.prepare(`
     UPDATE managed_group_automation_occurrences
-    SET status = 'retry_wait', lease_expires_at = NULL, next_retry_at = ?,
+    SET status = 'retry_wait', lease_expires_at = NULL, execution_token = NULL, next_retry_at = ?,
         error_message = ?, updated_at = ?
-    WHERE bot_id = ? AND id = ? AND status IN ('evaluating', 'sending')
+    WHERE bot_id = ? AND id = ? AND execution_token = ?
+      AND status IN ('evaluating', 'sending')
   `).run(
     retryAt.toISOString(),
     String(errorMessage || ""),
     timestamp,
     botId,
-    occurrenceId
+    occurrenceId,
+    normalizedExecutionToken
   );
   if (Number(result.changes) !== 1) {
-    throw new Error("evaluating group automation occurrence not found");
+    throw new Error("group automation execution lease token no longer owns this occurrence");
   }
   return rowToGroupAutomationOccurrence(db.prepare(`
     SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
@@ -2245,7 +2284,7 @@ export function retryGroupAutomationOccurrence({
   const timestamp = now();
   const result = db.prepare(`
     UPDATE managed_group_automation_occurrences
-    SET status = 'retry_wait', lease_expires_at = NULL, next_retry_at = ?,
+    SET status = 'retry_wait', lease_expires_at = NULL, execution_token = NULL, next_retry_at = ?,
         error_message = '', finished_at = NULL, updated_at = ?
     WHERE bot_id = ? AND id = ?
       AND (? = '' OR group_id = ?)
@@ -2269,6 +2308,7 @@ export function retryGroupAutomationOccurrence({
 export function markGroupAutomationOccurrenceSending({
   botId,
   occurrenceId,
+  executionToken,
   renderedContent,
   mentionRoleIds = [],
   mentionNames = [],
@@ -2279,6 +2319,8 @@ export function markGroupAutomationOccurrenceSending({
   factIds = [],
   evidenceMessageIds = []
 }) {
+  const normalizedExecutionToken = String(executionToken || "").trim();
+  if (!normalizedExecutionToken) throw new Error("group automation execution lease token is required");
   const timestamp = now();
   const result = db.prepare(`
     UPDATE managed_group_automation_occurrences
@@ -2286,7 +2328,7 @@ export function markGroupAutomationOccurrenceSending({
         variable_values_json = ?, fact_ids_json = ?, evidence_message_ids_json = ?,
         mention_role_ids_json = ?, mention_names_json = ?, warnings_json = ?,
         rendered_content = ?, updated_at = ?
-    WHERE bot_id = ? AND id = ? AND status = 'evaluating'
+    WHERE bot_id = ? AND id = ? AND execution_token = ? AND status = 'evaluating'
   `).run(
     conditionAchieved == null ? null : conditionAchieved ? 1 : 0,
     String(reason || ""),
@@ -2299,10 +2341,11 @@ export function markGroupAutomationOccurrenceSending({
     String(renderedContent || ""),
     timestamp,
     botId,
-    occurrenceId
+    occurrenceId,
+    normalizedExecutionToken
   );
   if (Number(result.changes) !== 1) {
-    throw new Error("evaluating group automation occurrence not found");
+    throw new Error("group automation execution lease token no longer owns this occurrence");
   }
   return rowToGroupAutomationOccurrence(db.prepare(`
     SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
@@ -2312,6 +2355,7 @@ export function markGroupAutomationOccurrenceSending({
 export function completeGroupAutomationOccurrence({
   botId,
   occurrenceId,
+  executionToken,
   status,
   conditionAchieved = null,
   reason = "",
@@ -2332,9 +2376,15 @@ export function completeGroupAutomationOccurrence({
     WHERE bot_id = ? AND id = ?
   `).get(botId, occurrenceId);
   if (!current) throw new Error("group automation occurrence not found");
-  db.prepare(`
+  const normalizedExecutionToken = String(executionToken || "").trim();
+  const requiresExecutionToken = ["evaluating", "sending"].includes(current.status);
+  if (requiresExecutionToken
+    && (!normalizedExecutionToken || normalizedExecutionToken !== current.execution_token)) {
+    throw new Error("group automation execution lease token no longer owns this occurrence");
+  }
+  const result = db.prepare(`
     UPDATE managed_group_automation_occurrences
-    SET status = ?, lease_expires_at = NULL, next_retry_at = NULL,
+    SET status = ?, lease_expires_at = NULL, execution_token = NULL, next_retry_at = NULL,
         condition_achieved = ?, reason = ?,
         variable_values_json = ?, fact_ids_json = ?, evidence_message_ids_json = ?,
         mention_role_ids_json = ?, mention_names_json = ?, warnings_json = ?,
@@ -2342,6 +2392,7 @@ export function completeGroupAutomationOccurrence({
         worktool_message_id = ?, worktool_response_json = ?, error_message = ?,
         finished_at = ?, updated_at = ?
     WHERE bot_id = ? AND id = ?
+      AND (? = 0 OR execution_token = ?)
   `).run(
     String(status || "completed"),
     conditionAchieved == null ? null : conditionAchieved ? 1 : 0,
@@ -2363,17 +2414,23 @@ export function completeGroupAutomationOccurrence({
     finishedAt,
     finishedAt,
     botId,
-    occurrenceId
+    occurrenceId,
+    requiresExecutionToken ? 1 : 0,
+    normalizedExecutionToken
   );
+  if (Number(result.changes) !== 1) {
+    throw new Error("group automation execution lease token no longer owns this occurrence");
+  }
   return rowToGroupAutomationOccurrence(db.prepare(`
     SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
   `).get(botId, occurrenceId));
 }
 
-export function failGroupAutomationOccurrence({ botId, occurrenceId, errorMessage }) {
+export function failGroupAutomationOccurrence({ botId, occurrenceId, executionToken, errorMessage }) {
   return completeGroupAutomationOccurrence({
     botId,
     occurrenceId,
+    executionToken,
     status: "failed",
     errorMessage: String(errorMessage || "group automation occurrence failed")
   });

@@ -102,6 +102,7 @@ test("only one occurrence per group can hold the durable execution lease", () =>
   db.completeGroupAutomationOccurrence({
     botId,
     occurrenceId: firstClaim[0].id,
+    executionToken: firstClaim[0].executionToken,
     status: "skipped",
     reason: "测试完成"
   });
@@ -130,6 +131,7 @@ test("task updates use optimistic versions and soft deletion retains execution h
   db.completeGroupAutomationOccurrence({
     botId,
     occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
     status: "skipped",
     conditionAchieved: false,
     reason: "尚未发现提交记录",
@@ -185,6 +187,31 @@ test("disabled tasks are not claimed and duplicated tasks get independent identi
   assert.equal(duplicate.enabled, false);
 });
 
+test("deleting a task cancels and fences an already claimed unsent occurrence", () => {
+  const botId = "group_automation_delete_fence_bot";
+  const { group } = createGroupWithRoles(botId);
+  const task = createWeeklyTask({ botId, groupId: group.id });
+  const occurrence = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 100,
+    leaseMs: 300000
+  }).find((item) => item.taskId === task.id);
+
+  db.softDeleteGroupAutomationTask({
+    botId,
+    taskId: task.id,
+    expectedVersion: task.version
+  });
+
+  assert.equal(db.listGroupAutomationOccurrences({ botId, taskId: task.id }).items[0].status, "canceled");
+  assert.throws(() => db.markGroupAutomationOccurrenceSending({
+    botId,
+    occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
+    renderedContent: "删除后不得发送"
+  }), /lease|token|owner/i);
+});
+
 test("re-enabling a task discards stale disabled schedules instead of backfilling old sends", () => {
   const botId = "group_automation_reenable_bot";
   const { group } = createGroupWithRoles(botId);
@@ -223,6 +250,110 @@ test("re-enabling a task discards stale disabled schedules instead of backfillin
     taskId: enabled.id,
     expectedVersion: enabled.version,
     enabled: false
+  });
+});
+
+test("re-enabling a task cancels retry occurrences created before it was disabled", () => {
+  const botId = "group_automation_reenable_retry_bot";
+  const { group } = createGroupWithRoles(botId);
+  const task = db.createGroupAutomationTask({
+    botId,
+    groupId: group.id,
+    name: "旧重试不补发",
+    taskType: "conditional_push",
+    cadence: "daily",
+    scheduleDays: [],
+    timeOfDay: "20:00",
+    conditionText: "",
+    content: "测试提醒",
+    summaryTemplate: "",
+    mentionRoleIds: [],
+    enabled: true,
+    nextRunAt: "2020-01-01T12:00:00.000Z"
+  });
+  const occurrence = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2020-01-01T12:00:00.000Z",
+    limit: 100,
+    leaseMs: 1000
+  }).find((item) => item.taskId === task.id);
+  db.scheduleGroupAutomationOccurrenceRetry({
+    botId,
+    occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
+    nextRetryAt: "2020-01-01T12:01:00.000Z",
+    errorMessage: "等待重试"
+  });
+  const disabled = db.updateGroupAutomationTask({
+    botId,
+    taskId: task.id,
+    expectedVersion: task.version,
+    enabled: false
+  });
+  const enabled = db.updateGroupAutomationTask({
+    botId,
+    taskId: task.id,
+    expectedVersion: disabled.version,
+    enabled: true
+  });
+
+  const nowIso = new Date().toISOString();
+  assert.ok(new Date(enabled.nextRunAt).getTime() > new Date(nowIso).getTime());
+  assert.equal(db.claimDueGroupAutomationOccurrences({
+    nowIso,
+    limit: 100,
+    leaseMs: 1000
+  }).some((item) => item.id === occurrence.id), false);
+  assert.equal(db.listGroupAutomationOccurrences({ botId, taskId: task.id }).items[0].status, "canceled");
+  db.updateGroupAutomationTask({
+    botId,
+    taskId: enabled.id,
+    expectedVersion: enabled.version,
+    enabled: false
+  });
+});
+
+test("expired occurrence workers are fenced from mutating a newer lease owner", () => {
+  const botId = "group_automation_fencing_bot";
+  const { group } = createGroupWithRoles(botId);
+  const task = createWeeklyTask({ botId, groupId: group.id });
+  const first = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 100,
+    leaseMs: 1000
+  }).find((item) => item.taskId === task.id);
+  const second = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:02.000Z",
+    limit: 100,
+    leaseMs: 1000
+  }).find((item) => item.id === first.id);
+
+  assert.ok(first.executionToken);
+  assert.ok(second.executionToken);
+  assert.notEqual(first.executionToken, second.executionToken);
+  assert.throws(() => db.markGroupAutomationOccurrenceSending({
+    botId,
+    occurrenceId: first.id,
+    executionToken: first.executionToken,
+    renderedContent: "旧 Worker 不得发送"
+  }), /lease|token|owner/i);
+  const sending = db.markGroupAutomationOccurrenceSending({
+    botId,
+    occurrenceId: second.id,
+    executionToken: second.executionToken,
+    renderedContent: "新 Worker 可以发送"
+  });
+  assert.equal(sending.status, "sending");
+  assert.throws(() => db.completeGroupAutomationOccurrence({
+    botId,
+    occurrenceId: first.id,
+    executionToken: first.executionToken,
+    status: "sent"
+  }), /lease|token|owner/i);
+  db.completeGroupAutomationOccurrence({
+    botId,
+    occurrenceId: second.id,
+    executionToken: second.executionToken,
+    status: "delivery_unknown"
   });
 });
 
@@ -291,6 +422,7 @@ test("occurrence retries reuse the same identity and sending snapshots are durab
   db.scheduleGroupAutomationOccurrenceRetry({
     botId,
     occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
     nextRetryAt: "2026-08-05T12:01:00.000Z",
     errorMessage: "Agent 暂时失败"
   });
@@ -310,6 +442,7 @@ test("occurrence retries reuse the same identity and sending snapshots are durab
   const sending = db.markGroupAutomationOccurrenceSending({
     botId,
     occurrenceId: occurrence.id,
+    executionToken: retried.executionToken,
     renderedContent: "请提交作业",
     mentionRoleIds: roles.map((role) => role.id),
     mentionNames: ["家长", "授课老师"],
@@ -348,6 +481,7 @@ test("delivery_unknown is never automatically reclaimed but can be manually retr
   db.completeGroupAutomationOccurrence({
     botId,
     occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
     status: "delivery_unknown",
     errorMessage: "网络结果未知"
   });
@@ -382,6 +516,7 @@ test("manual occurrence retry enforces the managed group scope", () => {
   db.completeGroupAutomationOccurrence({
     botId,
     occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
     status: "delivery_unknown",
     errorMessage: "未知"
   });
@@ -473,6 +608,7 @@ test("a failed WorkTool command callback marks the matching sent occurrence fail
   db.completeGroupAutomationOccurrence({
     botId,
     occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
     status: "sent",
     worktoolMessageId: "worktool-group-command-1",
     renderedContent: "提醒内容"
