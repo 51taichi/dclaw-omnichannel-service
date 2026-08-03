@@ -1828,11 +1828,12 @@ function normalizeGroupAutomationTaskValues(input, current = null) {
     timeOfDay: input.timeOfDay === undefined ? current?.timeOfDay : input.timeOfDay
   });
   const enabled = input.enabled === undefined ? current?.enabled ?? true : Boolean(input.enabled);
+  const reenabled = Boolean(current && !current.enabled && enabled);
   let nextRunAt = input.nextRunAt === undefined ? current?.nextRunAt || "" : String(input.nextRunAt || "");
   if (nextRunAt && Number.isNaN(new Date(nextRunAt).getTime())) {
     throw new Error("invalid group automation nextRunAt");
   }
-  if (scheduleChanged && input.nextRunAt === undefined) {
+  if ((scheduleChanged || reenabled) && input.nextRunAt === undefined) {
     nextRunAt = nextGroupAutomationRunAt(schedule, now());
   } else if (enabled && !nextRunAt) {
     nextRunAt = nextGroupAutomationRunAt(schedule, now());

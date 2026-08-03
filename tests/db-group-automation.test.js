@@ -185,6 +185,47 @@ test("disabled tasks are not claimed and duplicated tasks get independent identi
   assert.equal(duplicate.enabled, false);
 });
 
+test("re-enabling a task discards stale disabled schedules instead of backfilling old sends", () => {
+  const botId = "group_automation_reenable_bot";
+  const { group } = createGroupWithRoles(botId);
+  const disabled = db.createGroupAutomationTask({
+    botId,
+    groupId: group.id,
+    name: "重新启用提醒",
+    taskType: "conditional_push",
+    cadence: "daily",
+    scheduleDays: [],
+    timeOfDay: "20:00",
+    conditionText: "",
+    content: "测试提醒",
+    summaryTemplate: "",
+    mentionRoleIds: [],
+    enabled: false,
+    nextRunAt: "2020-01-01T12:00:00.000Z"
+  });
+
+  const beforeEnable = Date.now();
+  const enabled = db.updateGroupAutomationTask({
+    botId,
+    taskId: disabled.id,
+    expectedVersion: disabled.version,
+    enabled: true
+  });
+
+  assert.ok(new Date(enabled.nextRunAt).getTime() > beforeEnable);
+  assert.deepEqual(db.claimDueGroupAutomationOccurrences({
+    nowIso: new Date(beforeEnable).toISOString(),
+    limit: 10,
+    leaseMs: 300000
+  }), []);
+  db.updateGroupAutomationTask({
+    botId,
+    taskId: enabled.id,
+    expectedVersion: enabled.version,
+    enabled: false
+  });
+});
+
 test("mention resolution uses latest role names and warns when a role was removed", () => {
   const botId = "group_automation_mentions_bot";
   const { group, roles } = createGroupWithRoles(botId);
