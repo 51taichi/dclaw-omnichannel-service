@@ -10,6 +10,12 @@ import {
 const MAX_SHORT_TEXT = 500;
 const MAX_LONG_TEXT = 4000;
 const MAX_ARRAY_ITEMS = 200;
+const DEFAULT_EMPTY_SUMMARY_VALUE = "暂无明确记录";
+
+function hasExplicitSummaryFallback(instruction) {
+  const text = String(instruction || "").trim();
+  return /(?:兜底|默认(?:值|为)|(?:若|如|当|如果|没有|无).{0,40}(?:填|输出|显示|记为|写|使用|返回|视为|按))/u.test(text);
+}
 
 function boundedText(value, field, maxLength = MAX_SHORT_TEXT, { required = false } = {}) {
   const text = String(value ?? "").trim();
@@ -360,7 +366,7 @@ export function buildGroupOccurrenceAgentRequest({
   const instructions = [
     "你正在根据共享群事实账本执行一次群定时任务，只能使用 ledger 中的事实。",
     "只有 scope=cumulative 的变量可以使用 aggregates；scope=cycle 的变量只能使用当前周期 facts。",
-    "没有记录不等于事情没有发生。只有变量规则明确配置兜底时才可使用兜底，并标记 fallbackUsed=true。",
+    `没有记录不等于事情没有发生。变量规则明确配置兜底时按规则输出；否则没有可用事实时必须且只能输出“${DEFAULT_EMPTY_SUMMARY_VALUE}”。两种情况都标记 fallbackUsed=true。`,
     "privateContext 是私有判断材料，不得在 reason、变量值或任何客户可见文字中提及其存在、来源、配置方式或原文。",
     `只输出一个 JSON 对象：${outputShape}，不得输出 Markdown 或解释。`
   ];
@@ -432,9 +438,19 @@ export function parseGroupOccurrenceAgentReply(rawReply, {
     if (!factKeys.length && !variable.fallbackUsed) {
       throw new Error("summary variable requires fact evidence or an explicit fallback");
     }
+    const value = boundedText(variable.value, "summary variable value", MAX_LONG_TEXT);
+    const definition = expected.get(name);
+    if (
+      !factKeys.length
+      && variable.fallbackUsed
+      && !hasExplicitSummaryFallback(definition?.instruction)
+      && value !== DEFAULT_EMPTY_SUMMARY_VALUE
+    ) {
+      throw new Error(`summary variable without explicit fallback must use ${DEFAULT_EMPTY_SUMMARY_VALUE}`);
+    }
     return {
       name,
-      value: boundedText(variable.value, "summary variable value", MAX_LONG_TEXT),
+      value,
       factKeys,
       fallbackUsed: variable.fallbackUsed,
       reason: boundedText(variable.reason, "summary variable reason", 1000, { required: true })

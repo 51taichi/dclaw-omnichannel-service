@@ -6321,9 +6321,16 @@ td .muted {
 }
 
 .group-automation-status.unachieved,
-.group-automation-status.summary {
+.group-automation-status.summary,
+.group-automation-status.fixed,
+.group-automation-status.loading {
   background: var(--accent-soft);
   color: var(--accent);
+}
+
+.group-automation-status.error {
+  background: color-mix(in srgb, var(--orange) 14%, #fff);
+  color: var(--orange);
 }
 
 .group-automation-countdown {

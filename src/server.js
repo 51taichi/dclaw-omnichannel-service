@@ -260,6 +260,7 @@ import {
   upsertWorktoolApiMessageCache
 } from "./db.js";
 import { createGroupAutomationWorker } from "./group-automation-worker.js";
+import { serializeGroupAutomationCurrentState } from "./group-automation-task-state.js";
 import {
   groupAutomationCycleKey,
   nextGroupAutomationRunAt,
@@ -5564,23 +5565,12 @@ function serializeGroupAutomationTask({ botId, groupId, task }) {
     mentionRoleIds: task.mentionRoleIds,
     nextRunAt: task.nextRunAt,
     version: task.version,
-    currentState: cycleState
-      ? {
-          achieved: cycleState.achieved,
-          reason: cycleState.reason,
-          evaluatedAt: cycleState.evaluatedAt,
-          stale: false,
-          lastError: lastOccurrence?.errorMessage || ""
-        }
-      : task.taskType === "conditional_push" && task.conditionText
-        ? {
-            achieved: false,
-            reason: "尚未发现达成条件的明确事实",
-            evaluatedAt: "",
-            stale: true,
-            lastError: lastOccurrence?.errorMessage || ""
-          }
-        : null,
+    currentState: serializeGroupAutomationCurrentState({
+      task,
+      cycleState,
+      lastOccurrence
+    }),
+    evaluationError: lastOccurrence?.errorMessage || "",
     lastOccurrence,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt

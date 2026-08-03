@@ -7,6 +7,10 @@ const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url)
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 const clientUrl = new URL("../public/console/group-automation-client.js", import.meta.url);
 const client = fs.existsSync(clientUrl) ? fs.readFileSync(clientUrl, "utf8") : "";
+const statusSource = fs.readFileSync(
+  new URL("../public/console/group-automation-status.js", import.meta.url),
+  "utf8"
+);
 
 test("group management loads the authenticated automation event client before app.js", () => {
   assert.ok(
@@ -29,9 +33,9 @@ test("group automation uses a bounded card list with local countdown and only tw
   assert.match(app, /id="groupAutomationList"/);
   assert.match(app, /function formatGroupAutomationCountdown\(/);
   assert.match(app, /setInterval\([^,]+,\s*1000\)/s);
-  assert.match(app, /已达成/);
-  assert.match(app, /尚未达成/);
-  assert.doesNotMatch(app, />待判断<|>判断异常</);
+  assert.match(statusSource, /已达成/);
+  assert.match(statusSource, /尚未达成/);
+  assert.doesNotMatch(statusSource, />待判断<|>判断异常</);
   assert.match(css, /\.group-automation-list\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s);
 });
 

@@ -337,3 +337,50 @@ test("cycle-scoped summary variable rejects a historical aggregate fact key", ()
     ]
   }), /cycle variable.*historical aggregate fact/i);
 });
+
+test("summary without an explicit fallback uses only the safe default empty-record text", () => {
+  const options = {
+    taskType: "periodic_summary",
+    allowedFactKeys: [],
+    variables: [{
+      name: "本周情况摘要",
+      instruction: "结合本周有效事实总结学习表现",
+      scope: "cycle"
+    }]
+  };
+  assert.throws(() => parseGroupOccurrenceAgentReply(JSON.stringify({
+    variables: [{
+      name: "本周情况摘要",
+      value: "学习表现优秀",
+      factKeys: [],
+      fallbackUsed: true,
+      reason: "无事实时猜测"
+    }]
+  }), options), /暂无明确记录/);
+
+  const safeDefault = parseGroupOccurrenceAgentReply(JSON.stringify({
+    variables: [{
+      name: "本周情况摘要",
+      value: "暂无明确记录",
+      factKeys: [],
+      fallbackUsed: true,
+      reason: "本周没有相关客观事实"
+    }]
+  }), options);
+  assert.equal(safeDefault.variables[0].value, "暂无明确记录");
+
+  const explicit = parseGroupOccurrenceAgentReply(JSON.stringify({
+    variables: [{
+      name: "上课次数",
+      value: "0",
+      factKeys: [],
+      fallbackUsed: true,
+      reason: "模板明确无记录填0"
+    }]
+  }), {
+    taskType: "periodic_summary",
+    allowedFactKeys: [],
+    variables: [{ name: "上课次数", instruction: "没有明确记录时填0", scope: "cycle" }]
+  });
+  assert.equal(explicit.variables[0].value, "0");
+});

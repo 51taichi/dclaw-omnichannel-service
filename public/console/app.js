@@ -5659,10 +5659,7 @@ function groupAutomationScheduleLabel(task) {
 }
 
 function groupAutomationStatus(task) {
-  if (task.taskType !== "conditional_push") return null;
-  return task.currentState?.achieved
-    ? { label: "已达成", className: "achieved" }
-    : { label: "尚未达成", className: "unachieved" };
+  return window.resolveGroupAutomationDisplayStatus(task);
 }
 
 function groupAutomationLastResult(occurrence) {
@@ -5699,7 +5696,7 @@ function renderGroupAutomationList() {
               </div>
             </div>
             <div class="group-automation-card-state">
-              ${status ? `<span class="group-automation-status ${status.className}">${icon(status.className === "achieved" ? "check" : "clock")}${status.label}</span>` : `<span class="group-automation-status summary">${icon("history")}${escapeHtml(groupAutomationLastResult(task.lastOccurrence))}</span>`}
+              ${status ? `<span class="group-automation-status ${status.className}">${icon(status.iconName)}${status.label}</span>` : `<span class="group-automation-status summary">${icon("history")}${escapeHtml(groupAutomationLastResult(task.lastOccurrence))}</span>`}
               <span class="group-automation-countdown" data-next-run-at="${escapeHtml(task.nextRunAt || "")}">${escapeHtml(formatGroupAutomationCountdown(task.nextRunAt))}</span>
               <small>下次 ${escapeHtml(formatGroupAutomationDateTime(task.nextRunAt))}</small>
             </div>
