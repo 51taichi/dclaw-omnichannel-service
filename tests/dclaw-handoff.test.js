@@ -105,6 +105,51 @@ test("tag-enabled handoff transcripts request decisions with an empty customer r
   assert.doesNotMatch(request.message, /最终请输出空字符串/);
 });
 
+test("group handoff transcripts remain sync-only and carry group identity", () => {
+  const request = buildDclawHandoffTranscriptRequest({
+    binding: {
+      botId: "bot_1",
+      agentId: "agent_1"
+    },
+    conversation: {
+      conversationKey: "bot_1:group:学习群"
+    },
+    message: {
+      messageId: "msg_group_1",
+      spoken: "我想了解课程",
+      rawSpoken: "我想了解课程",
+      roomType: 1,
+      receivedName: "群成员甲",
+      groupName: "学习群",
+      atMe: "false",
+      textType: 1
+    },
+    flow: null,
+    tagContext: {
+      groups: [{
+        id: "intent",
+        name: "意向",
+        tags: [{ id: "a", name: "A类", condition: "明确咨询课程" }]
+      }],
+      currentTags: []
+    },
+    tagEvidenceCandidates: [{
+      id: "88",
+      conversationMessageId: 88,
+      text: "我想了解课程"
+    }]
+  });
+
+  assert.equal(request.metadata.roomType, 1);
+  assert.equal(request.metadata.groupName, "学习群");
+  assert.equal(request.metadata.userId, "群成员甲");
+  assert.equal(request.metadata.flow, null);
+  assert.equal(request.metadata.tagRules.groups[0].id, "intent");
+  assert.match(request.message, /不要生成客户可见回复/);
+  assert.match(request.message, /不要推进状态机/);
+  assert.match(request.message, /"reply":""/);
+});
+
 test("conversation reset request uses a bounded event and exact acknowledgement", () => {
   const conversationEpoch = "epoch-reset-old";
   const request = buildDclawConversationResetRequest({

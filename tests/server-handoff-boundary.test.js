@@ -33,13 +33,13 @@ test("server exposes a bot-scoped handoff route", () => {
 
 test("server branches human handoff before sending WorkTool replies", () => {
   const body = processIncomingBody();
-  const handoffStart = body.indexOf('flow?.session?.handoffStatus === "human"');
+  const handoffStart = body.indexOf("if (isHumanHandoff)");
   const handoffEnd = body.indexOf("finishMessageProcessing({ messageKey, status: \"human_handoff\" })");
   const handoffBlock = body.slice(handoffStart, handoffEnd);
 
   assert.equal(serverSource.includes("buildDclawHandoffTranscriptRequest"), true);
   assert.equal(serverSource.includes('status: "human_handoff"'), true);
-  assert.equal(serverSource.includes("flow?.session?.handoffStatus === \"human\""), true);
+  assert.equal(serverSource.includes("if (isHumanHandoff)"), true);
   assert.match(handoffBlock, /buildTagContext\(\{ binding, conversationKey, group \}\)/);
   assert.match(handoffBlock, /invokeStrictAgentReply\(\{/);
   assert.match(handoffBlock, /persistAgentTagAudit\(\{/);
@@ -60,16 +60,11 @@ test("group human handoff bypasses visible reply policy and uses the silent sync
 
   assert.ok(handoffIndex >= 0);
   assert.ok(policyIndex > handoffIndex);
-  assert.match(incomingBody, /if \(flow\?\.session\?\.handoffStatus === "human"\)/);
-  assert.doesNotMatch(
-    incomingBody,
-    /if \(isPrivateMessage\(message\) && flow\?\.session\?\.handoffStatus === "human"\)/
-  );
-  assert.match(coalescedBody, /if \(flow\?\.session\?\.handoffStatus === "human"\)/);
-  assert.doesNotMatch(
-    coalescedBody,
-    /if \(isPrivateMessage\(message\) && flow\?\.session\?\.handoffStatus === "human"\)/
-  );
+  assert.match(incomingBody, /if \(isHumanHandoff\)/);
+  assert.doesNotMatch(incomingBody, /flow\?\.session\?\.handoffStatus === "human"/);
+  assert.match(coalescedBody, /const coalescedHandoffSession = getFlowSession\(conversationKey\)/);
+  assert.match(coalescedBody, /if \(coalescedHandoffSession\?\.handoffStatus === "human"\)/);
+  assert.doesNotMatch(coalescedBody, /flow\?\.session\?\.handoffStatus === "human"/);
 });
 
 test("human handoff is evaluated before debug auto-reply", () => {

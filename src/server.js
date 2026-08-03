@@ -4421,7 +4421,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
   const conversation = persisted.conversation || getConversation(conversationKey);
   const flow = buildFlowContext({ botId, conversationKey, message });
   const conversationReset = getConversationResetPending(conversationKey);
-  if (flow?.session?.handoffStatus === "human") {
+  if (isHumanHandoff) {
     const tagContext = buildTagContext({ binding, conversationKey, group });
     const tagEvidenceCandidates = buildTagEvidenceCandidates({
       items: [{
@@ -4651,9 +4651,8 @@ async function processCoalescedIncomingBatch(batch) {
     finishCoalescedMessageProcessing({ batch, status: "conversation_removed" });
     return;
   }
-  const flow = buildFlowContext({ botId, conversationKey, message });
-  const conversationReset = getConversationResetPending(conversationKey);
-  if (flow?.session?.handoffStatus === "human") {
+  const coalescedHandoffSession = getFlowSession(conversationKey);
+  if (coalescedHandoffSession?.handoffStatus === "human") {
     logInfo("incoming.skipped", {
       ...logContext,
       reason: "human_handoff_after_coalesce"
@@ -4661,6 +4660,8 @@ async function processCoalescedIncomingBatch(batch) {
     finishCoalescedMessageProcessing({ batch, status: "human_handoff" });
     return;
   }
+  const flow = buildFlowContext({ botId, conversationKey, message });
+  const conversationReset = getConversationResetPending(conversationKey);
 
   const shouldScheduleLegacyHistoryAnalysis = shouldAnalyzeLegacyHistoryForSession(
     flow?.session
