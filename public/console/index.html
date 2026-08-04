@@ -652,6 +652,10 @@
                   <svg class="icon" aria-hidden="true"><use href="#icon-briefcase"></use></svg>
                   资产 <span id="assetsCount">0</span>
                 </button>
+                <button id="groupTasksButton" class="secondary asset-button group-tasks-button" type="button" hidden aria-expanded="false">
+                  <svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>
+                  任务 <span id="groupTasksCount">--</span>
+                </button>
                 <button id="resetConversationButton" class="danger" type="button">
                   <svg class="icon" aria-hidden="true"><use href="#icon-reset"></use></svg>
                   删除会话
@@ -659,6 +663,7 @@
               </div>
             </div>
             <div id="assetsPanel" class="assets-panel" hidden></div>
+            <div id="groupTasksPanel" class="assets-panel group-tasks-panel" hidden></div>
             <div id="chatMessages" class="chat-messages"></div>
             <form id="manualReplyComposer" class="manual-reply-composer is-ai" hidden>
               <div class="ai-takeover-card">

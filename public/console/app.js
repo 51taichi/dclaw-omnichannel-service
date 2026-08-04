@@ -141,6 +141,9 @@ const els = {
   assetsButton: document.querySelector("#assetsButton"),
   assetsCount: document.querySelector("#assetsCount"),
   assetsPanel: document.querySelector("#assetsPanel"),
+  groupTasksButton: document.querySelector("#groupTasksButton"),
+  groupTasksCount: document.querySelector("#groupTasksCount"),
+  groupTasksPanel: document.querySelector("#groupTasksPanel"),
   manualReplyComposer: document.querySelector("#manualReplyComposer"),
   manualReplyInput: document.querySelector("#manualReplyInput"),
   manualReplyEmojiBar: document.querySelector("#manualReplyEmojiBar"),
@@ -551,6 +554,7 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
     return;
   }
   if (tabName !== "groups") disconnectGroupAutomations();
+  if (tabName !== "sessions") disconnectConversationGroupTasks();
   els.workspaceTabs.forEach((button) => {
     const active = button.dataset.workspaceTab === tabName;
     button.classList.toggle("active", active);
@@ -567,6 +571,9 @@ function switchWorkspaceTab(tabName, { scrollTo = null, force = false } = {}) {
   }
   if (tabName === "groups") {
     loadGroups().catch(toastError);
+  }
+  if (tabName === "sessions") {
+    requestAnimationFrame(connectConversationGroupTasks);
   }
   if (scrollTo) {
     requestAnimationFrame(() => scrollTo.scrollIntoView({ behavior: "smooth", block: "start" }));
@@ -656,6 +663,7 @@ function connectTagAlerts(botId) {
 function clearBotScopedContent() {
   disconnectTagAlerts();
   disconnectGroupAutomations();
+  hideConversationGroupTasks({ reset: true });
   window.cockpitConsole?.clear();
   clearTimeout(proactiveSearchTimer);
   proactiveSearchTimer = null;
@@ -1107,6 +1115,7 @@ let targetFilter = "all";
 let addressBookTargets = [];
 let proactiveSearchTimer = null;
 let groupAutomationCountdownTimer = null;
+let conversationGroupTaskCountdownTimer = null;
 let currentFlowMachine = null;
 let currentFlowSessions = [];
 let flowDraftNodes = [];
@@ -1114,6 +1123,14 @@ let flowNodeDragState = null;
 let focusedActionTarget = null;
 let actionToolboxOpen = false;
 let currentConversationAssets = { fields: [], totalCount: 0, collectedCount: 0 };
+let currentConversationGroupTasks = {
+  botId: "",
+  groupId: "",
+  conversationKey: "",
+  phase: "idle",
+  tasks: [],
+  error: ""
+};
 let currentFlowSession = null;
 let currentTagAlerts = [];
 const collapsedFlowNodes = new Set();
@@ -1157,6 +1174,47 @@ const groupAutomationClient = window.createGroupAutomationClient({
     if (botId) expireBotSession(botId);
   },
   onError: (error) => console.warn("Group automation stream disconnected", error)
+});
+const conversationGroupAutomationClient = window.createGroupAutomationClient({
+  onSnapshot: (tasks) => {
+    if (!currentConversationGroupTasks.groupId) return;
+    currentConversationGroupTasks = {
+      ...currentConversationGroupTasks,
+      phase: "ready",
+      tasks: Array.isArray(tasks) ? tasks : [],
+      error: ""
+    };
+    renderConversationGroupTasks();
+  },
+  onUpdate: ({ task, occurrence, ledgerUpdated } = {}) => {
+    if (!currentConversationGroupTasks.groupId) return;
+    if (ledgerUpdated) {
+      loadConversationGroupTasks({ reconnect: false }).catch(() => {});
+      return;
+    }
+    const tasks = [...currentConversationGroupTasks.tasks];
+    if (task?.deleted) {
+      currentConversationGroupTasks.tasks = tasks.filter((item) => item.id !== task.id);
+    } else if (task?.id) {
+      const index = tasks.findIndex((item) => item.id === task.id);
+      if (index >= 0) tasks.splice(index, 1, task);
+      else tasks.push(task);
+      currentConversationGroupTasks.tasks = tasks;
+    }
+    if (occurrence?.taskId) {
+      const item = currentConversationGroupTasks.tasks.find(
+        (candidate) => candidate.id === occurrence.taskId
+      );
+      if (item) item.lastOccurrence = occurrence;
+    }
+    currentConversationGroupTasks.phase = "ready";
+    renderConversationGroupTasks();
+  },
+  onAuthExpired: () => {
+    const botId = state.selectedBotId;
+    if (botId) expireBotSession(botId);
+  },
+  onError: (error) => console.warn("Conversation group automation stream disconnected", error)
 });
 
 function setTagAlertInteraction(active) {
@@ -4395,6 +4453,7 @@ function syncFlowSessionTypeUi() {
 }
 
 function clearSelectedFlowConversation() {
+  hideConversationGroupTasks({ reset: true });
   state.selectedFlowConversationKey = "";
   state.loadingFlowConversationKey = "";
   currentFlowSession = null;
@@ -4679,6 +4738,199 @@ function renderConversationAssetsForSession(session, assets) {
   renderConversationAssets(assets || { fields: [], totalCount: 0, collectedCount: 0 });
 }
 
+function conversationGroupTaskState(task) {
+  if (!task.enabled) return { label: "已停用", className: "is-disabled", iconName: "lock" };
+  if (task.taskType === "periodic_summary") {
+    return { label: "周期汇总", className: "is-summary", iconName: "message" };
+  }
+  return groupAutomationStatus(task)
+    || { label: "尚未达成", className: "unachieved", iconName: "clock" };
+}
+
+function renderConversationGroupTaskRows(tasks) {
+  return tasks.map((task) => {
+    const taskState = conversationGroupTaskState(task);
+    const nextRunAt = task.enabled ? String(task.nextRunAt || "") : "";
+    return `
+      <article class="group-conversation-task-card ${task.enabled ? "" : "is-disabled"}">
+        <span class="group-conversation-task-icon">${icon(task.taskType === "periodic_summary" ? "message" : "send")}</span>
+        <span class="group-conversation-task-copy">
+          <strong class="group-conversation-task-name" title="${escapeHtml(task.name || "未命名任务")}">${escapeHtml(task.name || "未命名任务")}</strong>
+          <small>${task.taskType === "periodic_summary" ? "周期汇总" : "条件推送"}</small>
+        </span>
+        <span class="group-conversation-task-state ${escapeHtml(taskState.className || "")}">${icon(taskState.iconName || "clock")}${escapeHtml(taskState.label)}</span>
+        <span class="group-conversation-task-time">
+          ${nextRunAt
+            ? `<time datetime="${escapeHtml(nextRunAt)}">${escapeHtml(formatGroupAutomationDateTime(nextRunAt))}</time><small class="conversation-group-task-countdown" data-next-run-at="${escapeHtml(nextRunAt)}">${escapeHtml(formatGroupAutomationCountdown(nextRunAt))}</small>`
+            : `<small>不参与执行</small>`}
+        </span>
+      </article>
+    `;
+  }).join("");
+}
+
+function renderConversationGroupTasks(nextState = null) {
+  if (nextState) {
+    currentConversationGroupTasks = {
+      ...currentConversationGroupTasks,
+      ...nextState,
+      tasks: Array.isArray(nextState.tasks)
+        ? nextState.tasks
+        : currentConversationGroupTasks.tasks
+    };
+  }
+  const isGroup = flowSessionType({
+    conversationKey: currentConversationGroupTasks.conversationKey
+  }) === "group" && currentConversationGroupTasks.phase !== "idle";
+  if (!isGroup) {
+    els.groupTasksButton.hidden = true;
+    els.groupTasksButton.setAttribute("aria-expanded", "false");
+    els.groupTasksPanel.hidden = true;
+    return;
+  }
+
+  const { phase, tasks, error } = currentConversationGroupTasks;
+  els.assetsButton.hidden = true;
+  els.assetsPanel.hidden = true;
+  els.groupTasksButton.hidden = false;
+  els.groupTasksButton.disabled = false;
+  els.groupTasksButton.setAttribute("aria-busy", String(phase === "loading"));
+  els.groupTasksCount.textContent = phase === "ready" || phase === "unmanaged"
+    ? String(tasks.length)
+    : "--";
+
+  let body = "";
+  if (phase === "loading") {
+    body = `<div class="group-conversation-task-empty" role="status">${icon("refresh")}<span>正在加载任务信息…</span></div>`;
+  } else if (phase === "error") {
+    body = `<div class="group-conversation-task-empty is-error" role="alert">${icon("alert")}<span>任务信息加载失败</span><small>${escapeHtml(error || "请稍后重试")}</small><button class="secondary" data-group-tasks-retry type="button">${icon("refresh")}重试</button></div>`;
+  } else if (phase === "unmanaged") {
+    body = `<div class="group-conversation-task-empty">${icon("info")}<span>该群尚未配置</span></div>`;
+  } else if (!tasks.length) {
+    body = `<div class="group-conversation-task-empty">${icon("clock")}<span>暂无群定时任务</span></div>`;
+  } else {
+    body = `<div class="group-conversation-task-list">${renderConversationGroupTaskRows(tasks)}</div>`;
+  }
+
+  els.groupTasksPanel.innerHTML = `
+    <div class="assets-panel-head">
+      <strong>${icon("clock")}群定时任务</strong>
+      <span>${phase === "ready" ? `共 ${tasks.length} 项` : "只读概览"}</span>
+    </div>
+    ${body}
+    <div class="group-conversation-task-footer">
+      <button class="secondary" data-open-conversation-group-management type="button">${icon("tool")}前往群管理</button>
+    </div>
+  `;
+  updateConversationGroupTaskCountdowns();
+}
+
+function disconnectConversationGroupTasks() {
+  conversationGroupAutomationClient.disconnect();
+  clearInterval(conversationGroupTaskCountdownTimer);
+  conversationGroupTaskCountdownTimer = null;
+}
+
+function hideConversationGroupTasks({ reset = false } = {}) {
+  disconnectConversationGroupTasks();
+  if (reset) {
+    currentConversationGroupTasks = {
+      botId: "",
+      groupId: "",
+      conversationKey: "",
+      phase: "idle",
+      tasks: [],
+      error: ""
+    };
+  }
+  els.groupTasksButton.hidden = true;
+  els.groupTasksButton.setAttribute("aria-expanded", "false");
+  els.groupTasksPanel.hidden = true;
+  if (reset) els.groupTasksPanel.innerHTML = "";
+}
+
+function updateConversationGroupTaskCountdowns() {
+  els.groupTasksPanel?.querySelectorAll(".conversation-group-task-countdown[data-next-run-at]").forEach((node) => {
+    node.textContent = formatGroupAutomationCountdown(node.dataset.nextRunAt);
+  });
+}
+
+function connectConversationGroupTasks() {
+  disconnectConversationGroupTasks();
+  const sessionsTab = document.querySelector('[data-tab-panel="sessions"]');
+  if (document.hidden || !sessionsTab?.classList.contains("active")) return;
+  const { botId, groupId, conversationKey, phase } = currentConversationGroupTasks;
+  if (!botId || !groupId || !conversationKey || phase !== "ready") return;
+  if (state.selectedBotId !== botId || state.selectedFlowConversationKey !== conversationKey) return;
+  conversationGroupAutomationClient.connect({
+    botId,
+    groupId,
+    headers: headers({}, botId)
+  });
+  conversationGroupTaskCountdownTimer = setInterval(updateConversationGroupTaskCountdowns, 1000);
+}
+
+async function loadConversationGroupTasks({
+  botId = currentConversationGroupTasks.botId,
+  groupId = currentConversationGroupTasks.groupId,
+  conversationKey = currentConversationGroupTasks.conversationKey,
+  reconnect = true
+} = {}) {
+  if (!botId || !groupId || !conversationKey) return;
+  currentConversationGroupTasks = {
+    botId,
+    groupId,
+    conversationKey,
+    phase: "loading",
+    tasks: currentConversationGroupTasks.groupId === groupId
+      ? currentConversationGroupTasks.tasks
+      : [],
+    error: ""
+  };
+  renderConversationGroupTasks();
+  try {
+    const data = await request(
+      `/api/groups/${encodeURIComponent(groupId)}/automations?botId=${encodeURIComponent(botId)}`,
+      { botId }
+    );
+    if (
+      state.selectedBotId !== botId
+      || state.selectedFlowConversationKey !== conversationKey
+      || currentConversationGroupTasks.groupId !== groupId
+    ) return;
+    const serverTime = new Date(data.serverTime).getTime();
+    state.groupAutomationServerOffsetMs = Number.isFinite(serverTime)
+      ? serverTime - Date.now()
+      : 0;
+    currentConversationGroupTasks = {
+      botId,
+      groupId,
+      conversationKey,
+      phase: "ready",
+      tasks: Array.isArray(data.tasks) ? data.tasks : [],
+      error: ""
+    };
+    renderConversationGroupTasks();
+    if (reconnect) connectConversationGroupTasks();
+  } catch (error) {
+    if (
+      state.selectedBotId !== botId
+      || state.selectedFlowConversationKey !== conversationKey
+      || currentConversationGroupTasks.groupId !== groupId
+    ) return;
+    disconnectConversationGroupTasks();
+    currentConversationGroupTasks = {
+      botId,
+      groupId,
+      conversationKey,
+      phase: "error",
+      tasks: [],
+      error: error?.message || "请稍后重试"
+    };
+    renderConversationGroupTasks();
+  }
+}
+
 function renderManualReplyEmojiBar() {
   if (!els.manualReplyEmojiBar || els.manualReplyEmojiBar.dataset.rendered === "true") return;
   els.manualReplyEmojiBar.innerHTML = manualReplyEmojis
@@ -4940,6 +5192,27 @@ async function openFlowSession(conversationKey, {
       currentFlowSession,
       data.assets || session?.assets || { fields: [], totalCount: 0, collectedCount: 0 }
     );
+    if (flowSessionType(currentFlowSession) === "group") {
+      if (data.managedGroup?.id) {
+        void loadConversationGroupTasks({
+          botId,
+          groupId: data.managedGroup.id,
+          conversationKey
+        });
+      } else {
+        disconnectConversationGroupTasks();
+        renderConversationGroupTasks({
+          botId,
+          groupId: "",
+          conversationKey,
+          phase: "unmanaged",
+          tasks: [],
+          error: ""
+        });
+      }
+    } else {
+      hideConversationGroupTasks({ reset: true });
+    }
     renderChatMessages(data.messages || [], {
       anchorMessageId,
       alertTagName,
@@ -4949,6 +5222,17 @@ async function openFlowSession(conversationKey, {
     return true;
   } catch (error) {
     if (isCurrentBotContext(botId, contextVersion) && state.selectedFlowConversationKey === conversationKey) {
+      if (flowSessionType(session || { conversationKey }) === "group") {
+        disconnectConversationGroupTasks();
+        renderConversationGroupTasks({
+          botId,
+          groupId: "",
+          conversationKey,
+          phase: "error",
+          tasks: [],
+          error: error?.message || "会话信息加载失败"
+        });
+      }
       renderChatLoadError(error);
     }
     throw error;
@@ -5052,9 +5336,20 @@ function renderChatMessages(messages, {
 }
 
 function renderChatLoadingState(session) {
+  hideConversationGroupTasks({ reset: true });
   currentFlowSession = null;
   if (els.chatTagList) els.chatTagList.innerHTML = "";
   renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
+  if (flowSessionType(session || {}) === "group") {
+    renderConversationGroupTasks({
+      botId: state.selectedBotId,
+      groupId: "",
+      conversationKey: session?.conversationKey || state.selectedFlowConversationKey,
+      phase: "loading",
+      tasks: [],
+      error: ""
+    });
+  }
   renderManualReplyComposer(null);
   els.flowEventsOutput.textContent = "";
   els.chatMessages.innerHTML = `
@@ -5137,6 +5432,7 @@ async function resetSelectedConversation() {
     toast("会话已删除");
     state.selectedFlowConversationKey = "";
     currentFlowSession = null;
+    hideConversationGroupTasks({ reset: true });
     syncHandoffButton(null);
     renderConversationAssets({ fields: [], totalCount: 0, collectedCount: 0 });
     renderManualReplyComposer(null);
@@ -5205,7 +5501,40 @@ function openConfirmation({ title, message, acceptLabel = "确认", danger = fal
 
 function toggleAssetsPanel() {
   if (!currentConversationAssets.totalCount) return;
+  closeConversationGroupTasksPanel();
   els.assetsPanel.hidden = !els.assetsPanel.hidden;
+}
+
+function closeConversationGroupTasksPanel() {
+  els.groupTasksPanel.hidden = true;
+  els.groupTasksButton.setAttribute("aria-expanded", "false");
+}
+
+function toggleConversationGroupTasksPanel() {
+  els.assetsPanel.hidden = true;
+  const nextHidden = !els.groupTasksPanel.hidden;
+  els.groupTasksPanel.hidden = nextHidden;
+  els.groupTasksButton.setAttribute("aria-expanded", String(!nextHidden));
+}
+
+async function openSelectedConversationGroupManagement() {
+  const groupId = currentConversationGroupTasks.groupId;
+  closeConversationGroupTasksPanel();
+  switchWorkspaceTab("groups");
+  if (!state.selectedBotId) return;
+  if (!groupId) {
+    await loadGroups();
+    return;
+  }
+  state.selectedGroupId = groupId;
+  await loadGroups();
+  if (!state.groups.some((group) => group.id === groupId)) {
+    toast("未找到当前群配置");
+    return;
+  }
+  if (state.selectedGroupDetail?.group?.id !== groupId) {
+    await loadGroupDetail(groupId);
+  }
 }
 
 async function saveReplyWait(event) {
@@ -6344,6 +6673,9 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest(".selected-targets-summary")) {
     closeSelectedTargetsPopover();
   }
+  if (!event.target.closest("#groupTasksPanel") && !event.target.closest("#groupTasksButton")) {
+    closeConversationGroupTasksPanel();
+  }
   if (event.target.closest(".flow-session-tag-menu")) return;
   if (event.target.closest(".tag-multi-select")) return;
   hideFlowSessionManualTagMenu();
@@ -6368,6 +6700,7 @@ window.addEventListener("scroll", closeTagMultiSelectMenusOnExternalScroll, true
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     closeSelectedTargetsPopover();
+    closeConversationGroupTasksPanel();
     hideFlowSessionManualTagMenu();
     closeTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
     closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
@@ -6402,6 +6735,20 @@ els.confirmDialog.addEventListener("click", (event) => {
 });
 els.confirmAcceptButton.addEventListener("click", () => settleConfirmation(true));
 els.assetsButton.addEventListener("click", toggleAssetsPanel);
+els.groupTasksButton.addEventListener("click", (event) => {
+  event.stopPropagation();
+  toggleConversationGroupTasksPanel();
+});
+els.groupTasksPanel.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (event.target.closest("[data-group-tasks-retry]")) {
+    loadConversationGroupTasks().catch(() => {});
+    return;
+  }
+  if (event.target.closest("[data-open-conversation-group-management]")) {
+    openSelectedConversationGroupManagement().catch(toastError);
+  }
+});
 els.manualReplyComposer.addEventListener("submit", (event) =>
   sendManualReply(event).catch(toastError)
 );
@@ -6502,9 +6849,16 @@ els.groupAutomationHistoryList?.addEventListener("click", (event) => {
 });
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) disconnectGroupAutomations();
-  else if (document.querySelector('[data-tab-panel="groups"]')?.classList.contains("active")) {
+  if (document.hidden) {
+    disconnectConversationGroupTasks();
+    return;
+  }
+  if (document.querySelector('[data-tab-panel="groups"]')?.classList.contains("active")) {
     connectGroupAutomations();
     updateGroupAutomationCountdowns();
+  } else if (document.querySelector('[data-tab-panel="sessions"]')?.classList.contains("active")) {
+    connectConversationGroupTasks();
+    updateConversationGroupTaskCountdowns();
   }
 });
 els.createGroupButton?.addEventListener("click", () => {

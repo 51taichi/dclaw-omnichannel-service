@@ -45,6 +45,28 @@ test("empty chat title follows the selected session type tab", () => {
   assert.match(app, /请选择一个群聊会话/);
 });
 
+test("group conversations use an independent read-only task summary", () => {
+  assert.match(html, /id="groupTasksButton"[^>]*hidden/);
+  assert.match(html, /id="groupTasksCount">--<\/span>/);
+  assert.match(html, /id="groupTasksPanel"[^>]*hidden/);
+  assert.match(app, /function renderConversationGroupTasks\(/);
+  assert.match(app, /function loadConversationGroupTasks\(/);
+  assert.match(app, /els\.assetsButton\.hidden = true/);
+  assert.match(app, /els\.groupTasksButton\.hidden = false/);
+  assert.match(app, /\/api\/groups\/\$\{encodeURIComponent\(groupId\)\}\/automations/);
+  assert.match(app, /任务信息加载失败/);
+  assert.match(app, /暂无群定时任务/);
+  assert.match(app, /该群尚未配置/);
+});
+
+test("conversation task summary owns a separate automation stream and stale request fence", () => {
+  assert.match(app, /const conversationGroupAutomationClient = window\.createGroupAutomationClient/);
+  assert.match(app, /function disconnectConversationGroupTasks\(\)/);
+  assert.match(app, /state\.selectedFlowConversationKey !== conversationKey/);
+  assert.match(app, /currentConversationGroupTasks\.groupId !== groupId/);
+  assert.doesNotMatch(app, /currentConversationGroupTasks\.tasks\s*=\s*state\.groupAutomations/);
+});
+
 test("chat message timestamps render as compact date time text", () => {
   assert.match(app, /const BEIJING_TIME_ZONE = "Asia\/Shanghai"/);
   assert.match(app, /function formatDisplayDateTime\(value\)/);
