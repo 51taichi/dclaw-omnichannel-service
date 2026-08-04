@@ -79,6 +79,10 @@ test("group detail tabs and header action stay fixed across long names and narro
     css,
     /\.groups-config-head #addGroupAutomationButton\s*\{[^}]*flex:\s*0 0 auto[^}]*min-width:\s*156px[^}]*white-space:\s*nowrap/s
   );
+  assert.match(
+    css,
+    /\.groups-config-head #addGroupAutomationButton\[hidden\]\s*\{[^}]*display:\s*none/s
+  );
   assert.match(css, /\.groups-detail-panel\[hidden\]\s*\{[^}]*display:\s*none/s);
   assert.match(
     css,
