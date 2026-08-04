@@ -217,7 +217,7 @@ test("monthly scheduling exposes three fixed horizontal pages and event-driven n
   assert.match(dialog, /id="groupAutomationMonthPrev"[^>]*aria-label="上一组执行日期"/);
   assert.match(dialog, /id="groupAutomationMonthNext"[^>]*aria-label="下一组执行日期"/);
   assert.match(dialog, /id="groupAutomationMonthViewport"/);
-  assert.match(dialog, /id="groupAutomationMonthPageStatus"[^>]*aria-live="polite"/);
+  assert.match(dialog, /id="groupAutomationMonthPageStatus"[^>]*aria-live="polite"[^>]*aria-atomic="true"/);
   assert.match(firstPage, /name="monthlyDay"[^>]*value="1"/);
   assert.match(firstPage, /name="monthlyDay"[^>]*value="10"/);
   assert.doesNotMatch(firstPage, /name="monthlyDay"[^>]*value="11"/);
@@ -230,6 +230,14 @@ test("monthly scheduling exposes three fixed horizontal pages and event-driven n
   assert.match(app, /function syncGroupAutomationMonthPage\(/);
   assert.match(app, /requestAnimationFrame\(/);
   assert.match(app, /Math\.round\(viewport\.scrollLeft \/ viewport\.clientWidth\)/);
+  assert.match(
+    app,
+    /function setGroupAutomationMonthPage\(pageIndex,\s*\{ behavior = "auto" \} = \{\}\)/
+  );
+  assert.match(
+    app,
+    /if \(els\.groupAutomationForm\.cadence\.value === "monthly"\) \{[\s\S]*?if \(!els\.groupAutomationForm\.taskId\.value\) state\.groupAutomationMonthPage = 0;/
+  );
 });
 
 test("weekly and monthly schedule choices keep fixed equal-width rows", () => {

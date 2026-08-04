@@ -6141,7 +6141,7 @@ function insertGroupAutomationTemplateVariable() {
 
 let groupAutomationMonthScrollFrame = 0;
 
-function syncGroupAutomationMonthPage({ scroll = false, behavior = "smooth" } = {}) {
+function syncGroupAutomationMonthPage({ scroll = false, behavior = "auto" } = {}) {
   const viewport = els.groupAutomationMonthViewport;
   if (!viewport) return;
   state.groupAutomationMonthPage = clampMonthPage(state.groupAutomationMonthPage);
@@ -6160,7 +6160,7 @@ function syncGroupAutomationMonthPage({ scroll = false, behavior = "smooth" } = 
   }
 }
 
-function setGroupAutomationMonthPage(pageIndex, { behavior = "smooth" } = {}) {
+function setGroupAutomationMonthPage(pageIndex, { behavior = "auto" } = {}) {
   state.groupAutomationMonthPage = clampMonthPage(pageIndex);
   syncGroupAutomationMonthPage({ scroll: true, behavior });
 }
@@ -6917,6 +6917,7 @@ els.groupAutomationForm?.taskType.addEventListener("change", syncGroupAutomation
 els.groupAutomationForm?.cadence.addEventListener("change", () => {
   syncGroupAutomationDialogFields();
   if (els.groupAutomationForm.cadence.value === "monthly") {
+    if (!els.groupAutomationForm.taskId.value) state.groupAutomationMonthPage = 0;
     requestAnimationFrame(() => syncGroupAutomationMonthPage({ scroll: true, behavior: "auto" }));
   }
 });
