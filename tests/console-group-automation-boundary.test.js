@@ -176,6 +176,30 @@ test("group automation dialog supports both task types, schedules, month end, na
   assert.match(app, /［\$\{escapeHtml\(name\)\}］/);
 });
 
+test("group automation summary tools stay in one bounded editor column", () => {
+  const dialog = html.slice(
+    html.indexOf('id="groupAutomationDialog"'),
+    html.indexOf('id="groupAutomationHistoryDialog"')
+  );
+  const summaryField = dialog.slice(
+    dialog.indexOf('id="groupAutomationSummaryField"'),
+    dialog.indexOf("</label>", dialog.indexOf('id="groupAutomationSummaryField"')) + 8
+  );
+
+  assert.match(
+    summaryField,
+    /class="group-automation-template-editor"[\s\S]*?name="summaryTemplate"[\s\S]*?class="group-automation-template-tools"[\s\S]*?id="groupAutomationTemplatePreview"/
+  );
+  assert.match(
+    css,
+    /\.group-automation-template-editor\s*\{[^}]*display:\s*grid[^}]*min-width:\s*0/s
+  );
+  assert.match(
+    css,
+    /\.group-automation-template-preview\s*\{[^}]*max-height:\s*120px[^}]*overflow-y:\s*auto/s
+  );
+});
+
 test("group automation mention roles use conversation mascot avatars without people icons", () => {
   const dialog = html.slice(
     html.indexOf('id="groupAutomationDialog"'),

@@ -6832,12 +6832,23 @@ td .muted {
   color: var(--accent);
 }
 
+.group-automation-template-editor {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+
+.group-automation-template-editor > textarea {
+  min-height: 126px;
+}
+
 .group-automation-template-tools {
   align-items: center;
   display: flex;
   gap: 10px;
-  justify-content: space-between;
-  margin-top: 7px;
+  justify-content: flex-start;
+  margin: 0 12px;
 }
 
 .group-automation-template-tools button {
@@ -6853,6 +6864,10 @@ td .muted {
   font-weight: 800;
 }
 
+.group-automation-template-editor > small {
+  margin: 0 12px;
+}
+
 .group-automation-template-preview {
   background: var(--panel-strong);
   border: 1px dashed var(--line-strong);
@@ -6861,8 +6876,10 @@ td .muted {
   display: block;
   font-size: 12px;
   line-height: 1.55;
-  margin-top: 7px;
+  margin: 0 12px;
+  max-height: 120px;
   min-height: 42px;
+  overflow-y: auto;
   padding: 10px;
   white-space: pre-wrap;
 }
