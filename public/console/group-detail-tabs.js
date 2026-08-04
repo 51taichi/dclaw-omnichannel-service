@@ -1,8 +1,8 @@
 (function exposeGroupDetailTabs(global) {
-  const tabOrder = ["config", "tasks"];
+  const tabOrder = ["config", "roles", "tasks"];
 
   function normalizeGroupDetailTab(value) {
-    return value === "tasks" ? "tasks" : "config";
+    return tabOrder.includes(value) ? value : "config";
   }
 
   function nextGroupDetailTab(currentTab, key) {

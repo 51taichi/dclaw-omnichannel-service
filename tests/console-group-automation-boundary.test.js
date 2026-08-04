@@ -46,65 +46,62 @@ test("group automation uses a bounded card list with local countdown and only tw
   assert.match(css, /\.group-automation-list\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s);
 });
 
-test("selected group details keep config and task tabs mounted with one header task action", () => {
+test("selected group details keep base roles and task tabs mounted in business order", () => {
   const renderStart = app.indexOf("function renderGroupConfig()");
   const renderEnd = app.indexOf("function bindGroupRoleRemoveButtons()", renderStart);
   const renderSource = app.slice(renderStart, renderEnd);
   const headStart = renderSource.indexOf('class="section-head groups-config-head"');
   const tabsStart = renderSource.indexOf('class="segmented groups-detail-tabs"');
   const configPanelStart = renderSource.indexOf('data-group-detail-panel="config"');
+  const rolesPanelStart = renderSource.indexOf('data-group-detail-panel="roles"');
   const taskPanelStart = renderSource.indexOf('data-group-detail-panel="tasks"');
-  const taskHeadStart = renderSource.indexOf('class="group-automation-head"');
   const taskListStart = renderSource.indexOf('id="groupAutomationList"');
 
   assert.notEqual(renderStart, -1);
   assert.notEqual(renderEnd, -1);
   assert.match(app, /groupDetailTab:\s*"config"/);
   assert.match(renderSource, /data-group-detail-tab="config"/);
+  assert.match(renderSource, /data-group-detail-tab="roles"/);
   assert.match(renderSource, /data-group-detail-tab="tasks"/);
   assert.match(renderSource, /id="groupDetailConfigTab"[^>]*aria-controls="groupDetailConfigPanel"/);
+  assert.match(renderSource, /id="groupDetailRolesTab"[^>]*aria-controls="groupDetailRolesPanel"/);
   assert.match(renderSource, /id="groupDetailTasksTab"[^>]*aria-controls="groupAutomationSection"/);
   assert.match(renderSource, /id="groupDetailConfigPanel"[^>]*role="tabpanel"[^>]*aria-labelledby="groupDetailConfigTab"/);
+  assert.match(renderSource, /id="groupDetailRolesPanel"[^>]*role="tabpanel"[^>]*aria-labelledby="groupDetailRolesTab"/);
   assert.match(renderSource, /id="groupAutomationSection"[^>]*role="tabpanel"[^>]*aria-labelledby="groupDetailTasksTab"/);
   assert.ok(headStart < tabsStart);
   assert.ok(tabsStart < configPanelStart);
-  assert.ok(configPanelStart < taskPanelStart);
-  assert.match(renderSource.slice(headStart, tabsStart), /id="addGroupAutomationButton"/);
-  assert.doesNotMatch(renderSource.slice(taskHeadStart, taskListStart), /id="addGroupAutomationButton"/);
+  assert.ok(configPanelStart < rolesPanelStart);
+  assert.ok(rolesPanelStart < taskPanelStart);
+  assert.doesNotMatch(renderSource.slice(headStart, tabsStart), /id="addGroupAutomationButton"/);
+  assert.match(renderSource.slice(taskPanelStart, taskListStart), /id="addGroupAutomationButton"/);
+  assert.match(renderSource.slice(configPanelStart, rolesPanelStart), />保存配置<\/button>/);
+  assert.doesNotMatch(renderSource.slice(configPanelStart, rolesPanelStart), /保存群配置|群角色/);
+  assert.doesNotMatch(renderSource.slice(taskPanelStart, taskListStart), /按群内客观事实自动判断|<h3[^>]*>群定时任务/);
   assert.match(app, /function syncGroupDetailTabs\(\)/);
   assert.match(app, /panel\.hidden\s*=\s*panel\.dataset\.groupDetailPanel\s*!==\s*activeTab/);
-  assert.match(app, /addButton\.hidden\s*=\s*activeTab\s*!==\s*"tasks"/);
+  assert.doesNotMatch(app, /addButton\.hidden\s*=\s*activeTab\s*!==\s*"tasks"/);
   assert.match(renderSource, /button\.addEventListener\("keydown"/);
   assert.match(renderSource, /nextGroupDetailTab\(state\.groupDetailTab,\s*event\.key\)/);
   assert.match(renderSource, /event\.preventDefault\(\)/);
   assert.match(renderSource, /activateGroupDetailTab\(nextTab,\s*\{\s*focus:\s*true\s*\}\)/);
 });
 
-test("group detail tabs and header action stay fixed across long names and narrow screens", () => {
+test("group detail tabs and panel-local actions stay fixed across long names and narrow screens", () => {
   assert.match(
     css,
-    /\.groups-detail-tabs\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)[^}]*width:\s*100%/s
+    /\.groups-detail-tabs\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)[^}]*width:\s*100%/s
   );
   assert.match(
     css,
     /\.groups-config-title\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
   );
-  assert.match(
-    css,
-    /\.groups-config-head #addGroupAutomationButton\s*\{[^}]*flex:\s*0 0 auto[^}]*min-width:\s*156px[^}]*white-space:\s*nowrap/s
-  );
-  assert.match(
-    css,
-    /\.groups-config-head #addGroupAutomationButton\[hidden\]\s*\{[^}]*display:\s*none/s
-  );
+  assert.match(css, /\.group-automation-toolbar\s*\{[^}]*justify-content:\s*flex-end/s);
+  assert.match(css, /\.groups-panel-footer\s*\{[^}]*position:\s*sticky[^}]*bottom:\s*0/s);
   assert.match(css, /\.groups-detail-panel\[hidden\]\s*\{[^}]*display:\s*none/s);
   assert.match(
     css,
     /\.group-automation-section\.groups-detail-panel\s*\{[^}]*border-top:\s*0[^}]*margin-top:\s*0[^}]*padding-top:\s*0/s
-  );
-  assert.match(
-    css,
-    /@media\s*\(max-width:\s*480px\)[\s\S]*?\.groups-config-head #addGroupAutomationButton\s*\{[^}]*width:\s*100%/s
   );
 });
 
@@ -202,13 +199,20 @@ test("group automation enabled switch sits beside the task name and defaults on"
   );
 });
 
-test("task cards expose complete management actions and evidence navigation reuses conversations", () => {
+test("task cards expose compact controls and evidence navigation reuses conversations", () => {
+  const renderer = app.slice(
+    app.indexOf("function renderGroupAutomationList()"),
+    app.indexOf("function updateGroupAutomationCountdowns()")
+  );
+  assert.match(renderer, /class="group-automation-type-tag"/);
+  assert.match(renderer, /class="group-automation-schedule-row"/);
+  assert.match(renderer, /class="group-automation-state-row"/);
   assert.match(app, /data-group-automation-action="edit"/);
-  assert.match(app, /data-group-automation-action="duplicate"/);
   assert.match(app, /data-group-automation-action="history"/);
   assert.match(app, /data-group-automation-action="delete"/);
-  assert.match(app, /data-group-automation-action="toggle"/);
-  assert.match(app, /data-group-automation-action="refresh"/);
+  assert.match(renderer, /type="checkbox"[^>]*data-group-automation-action="toggle"/);
+  assert.doesNotMatch(renderer, /data-group-automation-action="refresh"|data-group-automation-action="duplicate"/);
+  assert.match(css, /\.group-automation-card-actions button\s*\{[^}]*min-width:\s*72px/s);
   assert.match(app, /async function openGroupAutomationEvidence\(/);
   assert.match(app, /switchWorkspaceTab\("sessions"\)/);
   assert.match(app, /await openFlowSession\(anchor\.conversationKey,\s*\{/);

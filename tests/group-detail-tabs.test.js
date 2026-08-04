@@ -13,15 +13,18 @@ const { normalizeGroupDetailTab, nextGroupDetailTab } = context.GroupDetailTabs;
 
 test("group detail tabs normalize unknown values to the base config tab", () => {
   assert.equal(normalizeGroupDetailTab("config"), "config");
+  assert.equal(normalizeGroupDetailTab("roles"), "roles");
   assert.equal(normalizeGroupDetailTab("tasks"), "tasks");
   assert.equal(normalizeGroupDetailTab("unknown"), "config");
   assert.equal(normalizeGroupDetailTab(), "config");
 });
 
 test("group detail tabs support standard roving-tab keyboard navigation", () => {
-  assert.equal(nextGroupDetailTab("config", "ArrowRight"), "tasks");
+  assert.equal(nextGroupDetailTab("config", "ArrowRight"), "roles");
+  assert.equal(nextGroupDetailTab("roles", "ArrowRight"), "tasks");
   assert.equal(nextGroupDetailTab("tasks", "ArrowRight"), "config");
   assert.equal(nextGroupDetailTab("config", "ArrowLeft"), "tasks");
+  assert.equal(nextGroupDetailTab("tasks", "ArrowLeft"), "roles");
   assert.equal(nextGroupDetailTab("tasks", "ArrowDown"), "config");
   assert.equal(nextGroupDetailTab("config", "ArrowUp"), "tasks");
   assert.equal(nextGroupDetailTab("tasks", "Home"), "config");

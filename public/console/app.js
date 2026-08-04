@@ -6033,22 +6033,28 @@ function renderGroupAutomationList() {
         return `
           <article class="group-automation-card ${task.enabled ? "" : "is-disabled"}" data-group-automation-id="${escapeHtml(task.id)}">
             <div class="group-automation-card-main">
-              <div class="group-automation-card-title"><span class="group-automation-type-icon"><svg class="icon" aria-hidden="true"><use href="#icon-${task.taskType === "periodic_summary" ? "message" : "send"}"></use></svg></span><span><strong>${escapeHtml(task.name)}</strong><small>${task.taskType === "periodic_summary" ? "周期汇总" : "条件推送"}</small></span></div>
-              <div class="group-automation-card-meta">
+              <div class="group-automation-card-title">
+                <span class="group-automation-type-icon"><svg class="icon" aria-hidden="true"><use href="#icon-${task.taskType === "periodic_summary" ? "message" : "send"}"></use></svg></span>
+                <strong>${escapeHtml(task.name)}</strong>
+                <span class="group-automation-type-tag">${task.taskType === "periodic_summary" ? "周期汇总" : "条件推送"}</span>
+              </div>
+              <div class="group-automation-schedule-row">
                 <span><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>${escapeHtml(groupAutomationScheduleLabel(task))}</span>
                 ${mentionNames.length ? `<span title="${escapeHtml(mentionNames.join("、"))}"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>@ ${escapeHtml(mentionNames.join("、"))}</span>` : ""}
               </div>
-            </div>
-            <div class="group-automation-card-state">
-              ${status ? `<span class="group-automation-status ${status.className}">${icon(status.iconName)}${status.label}</span>` : `<span class="group-automation-status summary">${icon("history")}${escapeHtml(groupAutomationLastResult(task.lastOccurrence))}</span>`}
-              <span class="group-automation-countdown" data-next-run-at="${escapeHtml(task.nextRunAt || "")}">${escapeHtml(formatGroupAutomationCountdown(task.nextRunAt))}</span>
-              <small>下次 ${escapeHtml(formatGroupAutomationDateTime(task.nextRunAt))}</small>
+              <div class="group-automation-state-row">
+                ${status ? `<span class="group-automation-status ${status.className}">${icon(status.iconName)}${status.label}</span>` : `<span class="group-automation-status summary">${icon("history")}${escapeHtml(groupAutomationLastResult(task.lastOccurrence))}</span>`}
+                <span class="group-automation-countdown" data-next-run-at="${escapeHtml(task.nextRunAt || "")}">${escapeHtml(formatGroupAutomationCountdown(task.nextRunAt))}</span>
+                <small>下次 ${escapeHtml(formatGroupAutomationDateTime(task.nextRunAt))}</small>
+              </div>
             </div>
             <div class="group-automation-card-actions">
-              <button class="secondary" data-group-automation-action="toggle" type="button">${icon(task.enabled ? "lock" : "unlock")}${task.enabled ? "停用" : "启用"}</button>
-              <button class="secondary" data-group-automation-action="refresh" type="button">${icon("refresh")}刷新判断</button>
+              <label class="toggle switch-toggle group-automation-enabled-toggle" title="${task.enabled ? "停用任务" : "启动任务"}">
+                <input type="checkbox" data-group-automation-action="toggle" ${task.enabled ? "checked" : ""} aria-label="${task.enabled ? "停用任务" : "启动任务"}" />
+                <span class="switch-slider" aria-hidden="true"></span>
+                <span class="switch-label">${task.enabled ? "启用" : "停用"}</span>
+              </label>
               <button class="secondary" data-group-automation-action="history" type="button">${icon("history")}记录</button>
-              <button class="secondary" data-group-automation-action="duplicate" type="button">${icon("plus")}复制</button>
               <button class="secondary" data-group-automation-action="edit" type="button">${icon("edit")}编辑</button>
               <button class="secondary danger" data-group-automation-action="delete" type="button">${icon("reset")}删除</button>
             </div>
@@ -6312,35 +6318,28 @@ async function openGroupAutomationEvidence(messageId) {
 }
 
 function bindGroupAutomationActions() {
-  els.groupConfigPane?.querySelectorAll("[data-group-automation-action]").forEach((button) => {
-    button.onclick = async () => {
-      const card = button.closest("[data-group-automation-id]");
+  els.groupConfigPane?.querySelectorAll("[data-group-automation-action]").forEach((control) => {
+    const action = control.dataset.groupAutomationAction;
+    const runAction = async () => {
+      const card = control.closest("[data-group-automation-id]");
       const task = state.groupAutomations.find((item) => item.id === card?.dataset.groupAutomationId);
       if (!task) return;
-      const action = button.dataset.groupAutomationAction;
       if (action === "edit") openGroupAutomationDialog(task);
       if (action === "history") await openGroupAutomationHistory(task);
       if (action === "toggle") {
-        await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}`, {
-          method: "PATCH",
-          body: JSON.stringify({ botId: state.selectedBotId, expectedVersion: task.version, enabled: !task.enabled })
-        });
-        await loadGroupAutomations();
-      }
-      if (action === "refresh") {
-        await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}/refresh`, {
-          method: "POST",
-          body: JSON.stringify({ botId: state.selectedBotId })
-        });
-        toast("已刷新群事实判断", "success");
-      }
-      if (action === "duplicate") {
-        await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}/duplicate`, {
-          method: "POST",
-          body: JSON.stringify({ botId: state.selectedBotId })
-        });
-        await loadGroupAutomations();
-        toast("任务副本已创建", "success");
+        control.disabled = true;
+        try {
+          await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}`, {
+            method: "PATCH",
+            body: JSON.stringify({ botId: state.selectedBotId, expectedVersion: task.version, enabled: !task.enabled })
+          });
+          await loadGroupAutomations();
+        } catch (error) {
+          control.checked = Boolean(task.enabled);
+          toastError(error);
+        } finally {
+          control.disabled = false;
+        }
       }
       if (action === "delete") {
         const confirmed = await openConfirmation({ title: "删除群定时任务？", message: `确认删除“${task.name}”？历史记录仍会保留用于审计。`, acceptLabel: "确认删除", danger: true });
@@ -6354,6 +6353,8 @@ function bindGroupAutomationActions() {
         toast("群定时任务已删除", "success");
       }
     };
+    if (action === "toggle") control.onchange = runAction;
+    else control.onclick = runAction;
   });
 }
 
@@ -6457,8 +6458,6 @@ function syncGroupDetailTabs() {
   els.groupConfigPane.querySelectorAll("[data-group-detail-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.groupDetailPanel !== activeTab;
   });
-  const addButton = els.groupConfigPane.querySelector("#addGroupAutomationButton");
-  if (addButton) addButton.hidden = activeTab !== "tasks";
 }
 
 function activateGroupDetailTab(tab, { focus = false } = {}) {
@@ -6477,54 +6476,58 @@ function renderGroupConfig() {
   els.groupConfigPane.innerHTML = `
     <div class="section-head groups-config-head">
       <div><h3><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" /><span class="groups-config-title">${escapeHtml(group.currentName)}</span></h3></div>
-      <button id="addGroupAutomationButton" class="primary" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button>
     </div>
     <div class="segmented groups-detail-tabs" role="tablist" aria-label="群详情配置">
       <button id="groupDetailConfigTab" data-group-detail-tab="config" role="tab" aria-controls="groupDetailConfigPanel" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-tool"></use></svg>基础配置</button>
+      <button id="groupDetailRolesTab" data-group-detail-tab="roles" role="tab" aria-controls="groupDetailRolesPanel" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</button>
       <button id="groupDetailTasksTab" data-group-detail-tab="tasks" role="tab" aria-controls="groupAutomationSection" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群任务</button>
     </div>
     <div id="groupDetailConfigPanel" class="groups-detail-panel" data-group-detail-panel="config" role="tabpanel" aria-labelledby="groupDetailConfigTab">
-    <form id="groupConfigForm" class="groups-config-form">
-      <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>群回复方式</span>
-        <select name="replyPolicy">
-          <option value="always" ${group.replyPolicy === "always" ? "selected" : ""}>始终回复（重要客户群）</option>
-          <option value="mention_only" ${group.replyPolicy === "mention_only" ? "selected" : ""}>仅 @ 回复</option>
-          <option value="never" ${group.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
-        </select>
-      </label>
-      <div class="expand-field-slot groups-background-slot">
-        <label class="groups-background-field"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>群背景</span><textarea class="expand-on-focus" name="background" rows="1" placeholder="例如：客户购买时间、产品和服务背景">${escapeHtml(group.background || "")}</textarea></label>
-      </div>
-      <fieldset class="groups-tags-fieldset"><legend><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群标签组</legend>
-        <label class="groups-tag-card is-system is-selected"><input type="checkbox" checked disabled /><span class="groups-tag-card-icon"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg></span><span>建立日期<small>系统默认</small></span><svg class="icon groups-tag-lock" aria-label="不可移除"><use href="#icon-lock"></use></svg></label>
-        ${availableTagGroups.map((tagGroup) => `
-          <label class="groups-tag-card ${group.tagGroupIds?.includes(tagGroup.id) ? "is-selected" : ""}"><input name="tagGroupIds" type="checkbox" value="${escapeHtml(tagGroup.id)}" ${group.tagGroupIds?.includes(tagGroup.id) ? "checked" : ""} /><span class="groups-tag-card-icon"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg></span><span>${escapeHtml(tagGroup.name)}</span></label>
-        `).join("")}
-      </fieldset>
-      <button class="primary groups-save-config" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存群配置</button>
-    </form>
-    <div class="groups-role-head">
-      <h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3>
-      <div class="groups-role-actions">
-        <button id="addGroupRoleButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>添加角色</button>
-        <button class="primary groups-save-roles" form="groupRolesForm" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存角色</button>
-      </div>
+      <form id="groupConfigForm" class="groups-config-form">
+        <div class="groups-panel-content">
+          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>群回复方式</span>
+            <select name="replyPolicy">
+              <option value="always" ${group.replyPolicy === "always" ? "selected" : ""}>始终回复（重要客户群）</option>
+              <option value="mention_only" ${group.replyPolicy === "mention_only" ? "selected" : ""}>仅 @ 回复</option>
+              <option value="never" ${group.replyPolicy === "never" ? "selected" : ""}>从不回复</option>
+            </select>
+          </label>
+          <div class="expand-field-slot groups-background-slot">
+            <label class="groups-background-field"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-info"></use></svg>群背景</span><textarea class="expand-on-focus" name="background" rows="1" placeholder="例如：客户购买时间、产品和服务背景">${escapeHtml(group.background || "")}</textarea></label>
+          </div>
+          <fieldset class="groups-tags-fieldset"><legend><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg>群标签组</legend>
+            <label class="groups-tag-card is-system is-selected"><input type="checkbox" checked disabled /><span class="groups-tag-card-icon"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg></span><span>建立日期<small>系统默认</small></span><svg class="icon groups-tag-lock" aria-label="不可移除"><use href="#icon-lock"></use></svg></label>
+            ${availableTagGroups.map((tagGroup) => `
+              <label class="groups-tag-card ${group.tagGroupIds?.includes(tagGroup.id) ? "is-selected" : ""}"><input name="tagGroupIds" type="checkbox" value="${escapeHtml(tagGroup.id)}" ${group.tagGroupIds?.includes(tagGroup.id) ? "checked" : ""} /><span class="groups-tag-card-icon"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg></span><span>${escapeHtml(tagGroup.name)}</span></label>
+            `).join("")}
+          </fieldset>
+        </div>
+        <div class="groups-panel-footer"><button class="primary groups-save-config" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存配置</button></div>
+      </form>
     </div>
-    <form id="groupRolesForm" class="groups-roles-form">
-      <div class="groups-role-columns" aria-hidden="true">
-        <span><svg class="icon"><use href="#icon-user"></use></svg>成员名称</span>
-        <span><svg class="icon"><use href="#icon-tag"></use></svg>身份</span>
-        <span><svg class="icon"><use href="#icon-info"></use></svg>职责与关系</span>
-        <span><svg class="icon"><use href="#icon-send"></use></svg>回复策略</span>
-        <span><svg class="icon"><use href="#icon-reset"></use></svg>操作</span>
+    <div id="groupDetailRolesPanel" class="groups-detail-panel groups-role-panel" data-group-detail-panel="roles" role="tabpanel" aria-labelledby="groupDetailRolesTab">
+      <div class="groups-role-head">
+        <h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3>
+        <div class="groups-role-actions">
+          <button id="addGroupRoleButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>添加角色</button>
+        </div>
       </div>
-      <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
-    </form>
+      <form id="groupRolesForm" class="groups-roles-form">
+        <div class="groups-panel-content">
+          <div class="groups-role-columns" aria-hidden="true">
+            <span><svg class="icon"><use href="#icon-user"></use></svg>成员名称</span>
+            <span><svg class="icon"><use href="#icon-tag"></use></svg>身份</span>
+            <span><svg class="icon"><use href="#icon-info"></use></svg>职责与关系</span>
+            <span><svg class="icon"><use href="#icon-send"></use></svg>回复策略</span>
+            <span><svg class="icon"><use href="#icon-reset"></use></svg>操作</span>
+          </div>
+          <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
+        </div>
+        <div class="groups-panel-footer"><button class="primary groups-save-roles" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存角色</button></div>
+      </form>
     </div>
     <section id="groupAutomationSection" class="group-automation-section groups-detail-panel" data-group-detail-panel="tasks" role="tabpanel" aria-labelledby="groupDetailTasksTab">
-      <div class="group-automation-head">
-        <div><h3><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群定时任务</h3><p>按群内客观事实自动判断、推送或生成周期汇总。</p></div>
-      </div>
+      <div class="group-automation-toolbar"><button id="addGroupAutomationButton" class="primary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button></div>
       <div id="groupAutomationList" class="group-automation-list"><div class="empty-state">正在加载群定时任务…</div></div>
     </section>
   `;

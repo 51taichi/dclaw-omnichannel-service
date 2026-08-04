@@ -6224,19 +6224,9 @@ td .muted {
   white-space: nowrap;
 }
 
-.groups-config-head #addGroupAutomationButton {
-  flex: 0 0 auto;
-  min-width: 156px;
-  white-space: nowrap;
-}
-
-.groups-config-head #addGroupAutomationButton[hidden] {
-  display: none;
-}
-
 .groups-detail-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   margin: 0 0 18px;
   width: 100%;
 }
@@ -6306,6 +6296,25 @@ td .muted {
 .groups-config-form {
   display: grid;
   gap: 16px;
+  min-height: 100%;
+}
+
+.groups-panel-content {
+  display: grid;
+  gap: 16px;
+  min-height: 0;
+}
+
+.groups-panel-footer {
+  align-items: center;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), #ffffff 28%);
+  border-top: 1px solid var(--line);
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 0 0;
+  z-index: 2;
 }
 
 .groups-background-field {
@@ -6395,7 +6404,7 @@ td .muted {
 }
 
 .groups-save-config {
-  width: 100%;
+  min-width: 156px;
 }
 
 .group-automation-section {
@@ -6411,10 +6420,23 @@ td .muted {
   padding-top: 0;
 }
 
+.group-automation-toolbar {
+  align-items: center;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.group-automation-toolbar #addGroupAutomationButton {
+  min-width: 156px;
+  white-space: nowrap;
+}
+
 .group-automation-head,
 .group-automation-head h3,
 .group-automation-card-title,
-.group-automation-card-meta span,
+.group-automation-schedule-row,
+.group-automation-schedule-row span,
+.group-automation-state-row,
 .group-automation-card-actions,
 .group-automation-history-item > div,
 .group-automation-history-actions {
@@ -6455,7 +6477,7 @@ td .muted {
   border-radius: 12px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(220px, 1.3fr) minmax(155px, 0.65fr) minmax(280px, auto);
+  grid-template-columns: minmax(0, 1fr) auto;
   min-width: 0;
   padding: 13px;
 }
@@ -6465,8 +6487,7 @@ td .muted {
 }
 
 .group-automation-card-main,
-.group-automation-card-state,
-.group-automation-card-title > span:last-child {
+.group-automation-card-state {
   display: grid;
   min-width: 0;
 }
@@ -6481,18 +6502,32 @@ td .muted {
 }
 
 .group-automation-card-title strong,
-.group-automation-card-title small,
-.group-automation-card-meta span {
+.group-automation-schedule-row span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.group-automation-card-title small,
-.group-automation-card-state small {
+.group-automation-state-row small {
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
+}
+
+.group-automation-card-title strong {
+  min-width: 0;
+}
+
+.group-automation-type-tag {
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--line));
+  border-radius: 999px;
+  color: var(--accent);
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 850;
+  padding: 4px 8px;
+  white-space: nowrap;
 }
 
 .group-automation-type-icon {
@@ -6506,32 +6541,35 @@ td .muted {
   width: 36px;
 }
 
-.group-automation-card-meta {
+.group-automation-schedule-row,
+.group-automation-state-row {
   color: var(--muted);
-  display: grid;
   font-size: 11px;
   font-weight: 750;
-  gap: 4px;
+  gap: 10px;
   min-width: 0;
+}
+
+.group-automation-schedule-row {
   padding-left: 45px;
 }
 
-.group-automation-card-meta span {
+.group-automation-schedule-row span {
   gap: 5px;
+  max-width: min(44%, 360px);
 }
 
-.group-automation-card-meta .icon,
+.group-automation-state-row {
+  padding-left: 45px;
+}
+
+.group-automation-schedule-row .icon,
 .group-automation-card-actions .icon,
 .group-automation-status .icon,
 .group-automation-history-actions .icon {
   flex: 0 0 auto;
   height: 14px;
   width: 14px;
-}
-
-.group-automation-card-state {
-  gap: 3px;
-  justify-items: start;
 }
 
 .group-automation-status,
@@ -6576,10 +6614,15 @@ td .muted {
   justify-content: flex-end;
 }
 
+.group-automation-enabled-toggle {
+  min-width: 104px;
+}
+
 .group-automation-card-actions button {
   font-size: 11px;
   gap: 4px;
   min-height: 32px;
+  min-width: 72px;
   padding: 6px 8px;
 }
 
@@ -6983,7 +7026,7 @@ td .muted {
   align-items: center;
   display: flex;
   justify-content: space-between;
-  margin-top: 28px;
+  margin: 0 0 14px;
 }
 
 .groups-role-actions {
@@ -6993,7 +7036,10 @@ td .muted {
 }
 
 .groups-roles-form {
+  display: grid;
+  gap: 16px;
   max-width: 100%;
+  min-height: 100%;
   min-width: 0;
   width: 100%;
 }
@@ -7334,11 +7380,6 @@ td .muted {
 @media (max-width: 480px) {
   .groups-config-head {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .groups-config-head #addGroupAutomationButton {
-    justify-self: stretch;
-    width: 100%;
   }
 
   .groups-contact-grid {
