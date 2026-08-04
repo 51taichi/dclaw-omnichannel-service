@@ -39,6 +39,29 @@ test("group automation uses a bounded card list with local countdown and only tw
   assert.match(css, /\.group-automation-list\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s);
 });
 
+test("group automation cards respond to their actual container and protect long text", () => {
+  assert.match(
+    css,
+    /\.group-automation-section\s*\{[^}]*container-type:\s*inline-size/s
+  );
+  assert.match(
+    css,
+    /@container\s*\(max-width:\s*760px\)[\s\S]*?\.group-automation-card\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(140px,\s*auto\)/s
+  );
+  assert.match(
+    css,
+    /@container\s*\(max-width:\s*520px\)[\s\S]*?\.group-automation-card\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s
+  );
+  assert.match(
+    css,
+    /\.group-automation-mention-card strong\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
+  );
+  assert.match(
+    css,
+    /\.group-automation-history-item > div:first-child strong\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
+  );
+});
+
 test("group automation dialog supports both task types, schedules, month end, native mentions and templates", () => {
   const dialog = html.slice(
     html.indexOf('id="groupAutomationDialog"'),
