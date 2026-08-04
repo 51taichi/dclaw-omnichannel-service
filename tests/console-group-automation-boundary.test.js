@@ -107,7 +107,10 @@ test("group detail tabs and panel-local actions reuse the task and tag footer la
   assert.match(css, /\.groups-panel-footer\s*\{[^}]*justify-content:\s*flex-end/s);
   assert.match(css, /\.groups-panel-footer\s*\{[^}]*padding:\s*12px 0 0/s);
   assert.match(css, /\.groups-panel-footer\s*\{[^}]*background:\s*#ffffff/s);
-  assert.match(css, /\.groups-detail-panel\[hidden\]\s*\{[^}]*display:\s*none/s);
+  assert.match(
+    css,
+    /\.groups-config\s+\.groups-detail-panel\[hidden\]\s*\{[^}]*display:\s*none/s
+  );
   assert.match(
     css,
     /\.group-automation-section\.groups-detail-panel\s*\{[^}]*border-top:\s*0[^}]*margin-top:\s*0[^}]*padding-top:\s*0/s

@@ -6259,7 +6259,7 @@ td .muted {
   overflow: hidden;
 }
 
-.groups-detail-panel[hidden] {
+.groups-config .groups-detail-panel[hidden] {
   display: none;
 }
 
