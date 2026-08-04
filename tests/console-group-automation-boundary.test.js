@@ -124,14 +124,14 @@ test("group automation cards respond to their actual container and protect long 
   );
   assert.match(
     css,
-    /\.group-automation-card\s*\{[^}]*grid-template-columns:\s*minmax\(210px,\s*0\.9fr\)\s+minmax\(260px,\s*1\.35fr\)\s+minmax\(300px,\s*auto\)/s
+    /\.group-automation-card\s*\{[^}]*grid-template-columns:\s*minmax\(210px,\s*0\.9fr\)\s+minmax\(260px,\s*1\.35fr\)\s+minmax\(180px,\s*auto\)/s
   );
   assert.match(
     css,
     /\.group-automation-card-identity\s*\{[^}]*grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)/s
   );
   assert.match(css, /\.group-automation-card-meta\s*\{[^}]*grid-template-rows:\s*repeat\(2,\s*minmax\(24px,\s*auto\)\)/s);
-  assert.match(css, /\.group-automation-card-actions\s*\{[^}]*grid-template-columns:\s*104px\s+repeat\(3,\s*72px\)/s);
+  assert.match(css, /\.group-automation-card-actions\s*\{[^}]*grid-template-columns:\s*48px\s+repeat\(3,\s*36px\)/s);
   assert.match(css, /\.group-automation-card-title strong,[\s\S]*?text-overflow:\s*ellipsis[\s\S]*?white-space:\s*nowrap/s);
   assert.match(css, /\.group-automation-schedule-row span\s*\{[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s);
   assert.match(app, /<strong title="\$\{escapeHtml\(task\.name\)\}">/);
@@ -259,7 +259,14 @@ test("task cards expose compact controls and evidence navigation reuses conversa
   assert.match(app, /data-group-automation-action="delete"/);
   assert.match(renderer, /type="checkbox"[^>]*data-group-automation-action="toggle"/);
   assert.doesNotMatch(renderer, /data-group-automation-action="refresh"|data-group-automation-action="duplicate"/);
-  assert.match(css, /\.group-automation-card-actions button\s*\{[^}]*min-width:\s*72px/s);
+  assert.match(renderer, /resolveGroupAutomationTypeLabel\(task\)/);
+  assert.doesNotMatch(renderer, /class="switch-label"/);
+  assert.match(renderer, /data-group-automation-action="history"[^>]*aria-label="查看记录"[^>]*title="查看记录"/);
+  assert.match(renderer, /data-group-automation-action="edit"[^>]*aria-label="编辑任务"[^>]*title="编辑任务"/);
+  assert.match(renderer, /data-group-automation-action="delete"[^>]*aria-label="删除任务"[^>]*title="删除任务"/);
+  assert.doesNotMatch(renderer, /\$\{icon\("history"\)\}记录|\$\{icon\("edit"\)\}编辑|\$\{icon\("reset"\)\}删除/);
+  assert.match(css, /\.group-automation-card-actions\s*\{[^}]*grid-template-columns:\s*48px\s+repeat\(3,\s*36px\)/s);
+  assert.match(css, /\.group-automation-card-actions button\s*\{[^}]*width:\s*36px[^}]*min-width:\s*36px[^}]*height:\s*36px/s);
   assert.match(app, /async function openGroupAutomationEvidence\(/);
   assert.match(app, /switchWorkspaceTab\("sessions"\)/);
   assert.match(app, /await openFlowSession\(anchor\.conversationKey,\s*\{/);

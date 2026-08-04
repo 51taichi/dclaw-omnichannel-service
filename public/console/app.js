@@ -6027,6 +6027,7 @@ function renderGroupAutomationList() {
   container.innerHTML = state.groupAutomations.length
     ? state.groupAutomations.map((task) => {
         const status = groupAutomationStatus(task);
+        const typeLabel = window.resolveGroupAutomationTypeLabel(task);
         const mentionNames = (state.selectedGroupDetail?.roles || [])
           .filter((role) => task.mentionRoleIds?.includes(role.id))
           .map((role) => role.currentName);
@@ -6036,7 +6037,7 @@ function renderGroupAutomationList() {
               <span class="group-automation-type-icon"><svg class="icon" aria-hidden="true"><use href="#icon-${task.taskType === "periodic_summary" ? "message" : "send"}"></use></svg></span>
               <div class="group-automation-card-title">
                 <strong title="${escapeHtml(task.name)}">${escapeHtml(task.name)}</strong>
-                <span class="group-automation-type-tag">${task.taskType === "periodic_summary" ? "周期汇总" : "条件推送"}</span>
+                <span class="group-automation-type-tag">${escapeHtml(typeLabel)}</span>
               </div>
             </div>
             <div class="group-automation-card-meta">
@@ -6054,11 +6055,10 @@ function renderGroupAutomationList() {
               <label class="toggle switch-toggle group-automation-enabled-toggle" title="${task.enabled ? "停用任务" : "启动任务"}">
                 <input type="checkbox" data-group-automation-action="toggle" ${task.enabled ? "checked" : ""} aria-label="${task.enabled ? "停用任务" : "启动任务"}" />
                 <span class="switch-slider" aria-hidden="true"></span>
-                <span class="switch-label">${task.enabled ? "启用" : "停用"}</span>
               </label>
-              <button class="secondary" data-group-automation-action="history" type="button">${icon("history")}记录</button>
-              <button class="secondary" data-group-automation-action="edit" type="button">${icon("edit")}编辑</button>
-              <button class="secondary danger" data-group-automation-action="delete" type="button">${icon("reset")}删除</button>
+              <button class="secondary icon-button" data-group-automation-action="history" type="button" aria-label="查看记录" title="查看记录">${icon("history")}</button>
+              <button class="secondary icon-button" data-group-automation-action="edit" type="button" aria-label="编辑任务" title="编辑任务">${icon("edit")}</button>
+              <button class="secondary danger icon-button" data-group-automation-action="delete" type="button" aria-label="删除任务" title="删除任务">${icon("reset")}</button>
             </div>
           </article>`;
       }).join("")

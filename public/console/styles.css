@@ -6485,7 +6485,7 @@ td .muted {
   border-radius: 12px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(210px, 0.9fr) minmax(260px, 1.35fr) minmax(300px, auto);
+  grid-template-columns: minmax(210px, 0.9fr) minmax(260px, 1.35fr) minmax(180px, auto);
   min-height: 104px;
   min-width: 0;
   padding: 13px;
@@ -6637,22 +6637,35 @@ td .muted {
 }
 
 .group-automation-card-actions {
+  align-items: center;
   align-content: center;
   display: grid;
-  gap: 6px;
-  grid-template-columns: 104px repeat(3, 72px);
+  gap: 8px;
+  grid-template-columns: 48px repeat(3, 36px);
   justify-content: flex-end;
 }
 
 .group-automation-enabled-toggle {
-  min-width: 104px;
+  height: 36px;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 48px;
+  padding: 0 5px;
+  width: 48px;
 }
 
 .group-automation-card-actions button {
-  gap: 4px;
-  min-height: 32px;
-  min-width: 72px;
-  padding: 6px 8px;
+  gap: 0;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+}
+
+.group-automation-card-actions button .icon {
+  height: 16px;
+  width: 16px;
 }
 
 .confirm-dialog.group-automation-dialog,

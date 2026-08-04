@@ -1,14 +1,12 @@
 (function exposeGroupAutomationStatus(global) {
+  function resolveGroupAutomationTypeLabel(task = {}) {
+    if (task.taskType === "periodic_summary") return "周期汇总";
+    return String(task.conditionText || "").trim() ? "条件推送" : "固定推送";
+  }
+
   function resolveGroupAutomationDisplayStatus(task = {}) {
     if (task.taskType !== "conditional_push") return null;
-    if (!String(task.conditionText || "").trim()) {
-      return {
-        label: "固定推送",
-        className: "fixed",
-        iconName: "send",
-        business: false
-      };
-    }
+    if (!String(task.conditionText || "").trim()) return null;
     if (!task.currentState) {
       return task.evaluationError
         ? {
@@ -39,5 +37,6 @@
         };
   }
 
+  global.resolveGroupAutomationTypeLabel = resolveGroupAutomationTypeLabel;
   global.resolveGroupAutomationDisplayStatus = resolveGroupAutomationDisplayStatus;
 })(typeof window !== "undefined" ? window : globalThis);

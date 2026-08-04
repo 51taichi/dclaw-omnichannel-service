@@ -10,6 +10,7 @@ const source = fs.readFileSync(
 const context = vm.createContext({});
 vm.runInContext(source, context);
 const resolveStatus = context.resolveGroupAutomationDisplayStatus;
+const resolveTypeLabel = context.resolveGroupAutomationTypeLabel;
 
 test("first condition evaluation is operational loading rather than a false business state", () => {
   assert.deepEqual({ ...resolveStatus({
@@ -25,12 +26,27 @@ test("first condition evaluation is operational loading rather than a false busi
   });
 });
 
-test("unconditional push and evaluated conditions have distinct accurate labels", () => {
+test("task type owns the fixed or conditional push label without duplicating status", () => {
+  assert.equal(resolveTypeLabel({
+    taskType: "conditional_push",
+    conditionText: "",
+    currentState: null
+  }), "固定推送");
   assert.equal(resolveStatus({
     taskType: "conditional_push",
     conditionText: "",
     currentState: null
-  }).label, "固定推送");
+  }), null);
+  assert.equal(resolveTypeLabel({
+    taskType: "conditional_push",
+    conditionText: "今天是否交作业"
+  }), "条件推送");
+  assert.equal(resolveTypeLabel({
+    taskType: "periodic_summary"
+  }), "周期汇总");
+});
+
+test("evaluated conditions retain their business states", () => {
   assert.equal(resolveStatus({
     taskType: "conditional_push",
     conditionText: "今天是否交作业",
