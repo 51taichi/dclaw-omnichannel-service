@@ -34,6 +34,7 @@ const state = {
   groups: [],
   selectedGroupId: "",
   selectedGroupDetail: null,
+  groupDetailTab: "config",
   groupAutomations: [],
   groupAutomationServerOffsetMs: 0,
   groupAutomationHistoryTaskId: "",
@@ -6391,14 +6392,37 @@ function groupRoleRow(role = {}) {
     </div>`;
 }
 
+function syncGroupDetailTabs() {
+  if (!els.groupConfigPane) return;
+  const activeTab = state.groupDetailTab === "tasks" ? "tasks" : "config";
+  state.groupDetailTab = activeTab;
+  els.groupConfigPane.querySelectorAll("[data-group-detail-tab]").forEach((button) => {
+    const active = button.dataset.groupDetailTab === activeTab;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-selected", String(active));
+    button.tabIndex = active ? 0 : -1;
+  });
+  els.groupConfigPane.querySelectorAll("[data-group-detail-panel]").forEach((panel) => {
+    panel.hidden = panel.dataset.groupDetailPanel !== activeTab;
+  });
+  const addButton = els.groupConfigPane.querySelector("#addGroupAutomationButton");
+  if (addButton) addButton.hidden = activeTab !== "tasks";
+}
+
 function renderGroupConfig() {
   const detail = state.selectedGroupDetail;
   if (!detail || !els.groupConfigPane) return;
   const { group, roles = [], availableTagGroups = [] } = detail;
   els.groupConfigPane.innerHTML = `
     <div class="section-head groups-config-head">
-      <div><h3><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" />${escapeHtml(group.currentName)}</h3></div>
+      <div><h3><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" /><span class="groups-config-title">${escapeHtml(group.currentName)}</span></h3></div>
+      <button id="addGroupAutomationButton" class="primary" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button>
     </div>
+    <div class="segmented groups-detail-tabs" role="tablist" aria-label="群详情配置">
+      <button data-group-detail-tab="config" role="tab" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-tool"></use></svg>基础配置</button>
+      <button data-group-detail-tab="tasks" role="tab" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群任务</button>
+    </div>
+    <div class="groups-detail-panel" data-group-detail-panel="config">
     <form id="groupConfigForm" class="groups-config-form">
       <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>群回复方式</span>
         <select name="replyPolicy">
@@ -6435,22 +6459,29 @@ function renderGroupConfig() {
       </div>
       <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
     </form>
-    <section id="groupAutomationSection" class="group-automation-section" aria-labelledby="groupAutomationTitle">
+    </div>
+    <section id="groupAutomationSection" class="group-automation-section groups-detail-panel" data-group-detail-panel="tasks" aria-labelledby="groupAutomationTitle">
       <div class="group-automation-head">
         <div><h3 id="groupAutomationTitle"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群定时任务</h3><p>按群内客观事实自动判断、推送或生成周期汇总。</p></div>
-        <button id="addGroupAutomationButton" class="primary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button>
       </div>
       <div id="groupAutomationList" class="group-automation-list"><div class="empty-state">正在加载群定时任务…</div></div>
     </section>
   `;
   els.groupConfigPane.querySelector("#groupConfigForm").addEventListener("submit", saveSelectedGroupConfig);
   els.groupConfigPane.querySelector("#addGroupAutomationButton").addEventListener("click", () => openGroupAutomationDialog());
+  els.groupConfigPane.querySelectorAll("[data-group-detail-tab]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.groupDetailTab = button.dataset.groupDetailTab;
+      syncGroupDetailTabs();
+    });
+  });
   els.groupConfigPane.querySelector("#addGroupRoleButton").addEventListener("click", () => {
     els.groupConfigPane.querySelector("#groupRoleList").insertAdjacentHTML("beforeend", groupRoleRow());
     bindGroupRoleRemoveButtons();
   });
   els.groupConfigPane.querySelector("#groupRolesForm").addEventListener("submit", saveSelectedGroupRoles);
   bindGroupRoleRemoveButtons();
+  syncGroupDetailTabs();
 }
 
 function bindGroupRoleRemoveButtons() {

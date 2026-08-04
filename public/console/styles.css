@@ -6207,8 +6207,54 @@ td .muted {
 }
 
 .groups-config-head .group-asset-icon {
+  flex: 0 0 auto;
   height: 22px;
   width: 22px;
+}
+
+.groups-config-head > div,
+.groups-config-head h3,
+.groups-config-title {
+  min-width: 0;
+}
+
+.groups-config-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.groups-config-head #addGroupAutomationButton {
+  flex: 0 0 auto;
+  min-width: 156px;
+  white-space: nowrap;
+}
+
+.groups-detail-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0 0 18px;
+  width: 100%;
+}
+
+.groups-detail-tabs button {
+  align-items: center;
+  display: inline-flex;
+  gap: 7px;
+  justify-content: center;
+}
+
+.groups-detail-tabs button .icon {
+  height: 15px;
+  width: 15px;
+}
+
+.groups-detail-panel {
+  min-width: 0;
+}
+
+.groups-detail-panel[hidden] {
+  display: none;
 }
 
 .groups-list-item-copy {
@@ -6353,6 +6399,12 @@ td .muted {
   container-type: inline-size;
   margin-top: 24px;
   padding-top: 22px;
+}
+
+.group-automation-section.groups-detail-panel {
+  border-top: 0;
+  margin-top: 0;
+  padding-top: 0;
 }
 
 .group-automation-head,
@@ -7087,12 +7139,26 @@ td .muted {
     display: grid;
   }
 
+  .groups-config-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
   .group-automation-mention-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 480px) {
+  .groups-config-head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .groups-config-head #addGroupAutomationButton {
+    justify-self: stretch;
+    width: 100%;
+  }
+
   .groups-contact-grid {
     grid-template-columns: minmax(0, 1fr);
   }

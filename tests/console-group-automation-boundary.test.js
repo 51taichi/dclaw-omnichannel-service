@@ -39,6 +39,57 @@ test("group automation uses a bounded card list with local countdown and only tw
   assert.match(css, /\.group-automation-list\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s);
 });
 
+test("selected group details keep config and task tabs mounted with one header task action", () => {
+  const renderStart = app.indexOf("function renderGroupConfig()");
+  const renderEnd = app.indexOf("function bindGroupRoleRemoveButtons()", renderStart);
+  const renderSource = app.slice(renderStart, renderEnd);
+  const headStart = renderSource.indexOf('class="section-head groups-config-head"');
+  const tabsStart = renderSource.indexOf('class="segmented groups-detail-tabs"');
+  const configPanelStart = renderSource.indexOf('data-group-detail-panel="config"');
+  const taskPanelStart = renderSource.indexOf('data-group-detail-panel="tasks"');
+  const taskHeadStart = renderSource.indexOf('class="group-automation-head"');
+  const taskListStart = renderSource.indexOf('id="groupAutomationList"');
+
+  assert.notEqual(renderStart, -1);
+  assert.notEqual(renderEnd, -1);
+  assert.match(app, /groupDetailTab:\s*"config"/);
+  assert.match(renderSource, /data-group-detail-tab="config"/);
+  assert.match(renderSource, /data-group-detail-tab="tasks"/);
+  assert.ok(headStart < tabsStart);
+  assert.ok(tabsStart < configPanelStart);
+  assert.ok(configPanelStart < taskPanelStart);
+  assert.match(renderSource.slice(headStart, tabsStart), /id="addGroupAutomationButton"/);
+  assert.doesNotMatch(renderSource.slice(taskHeadStart, taskListStart), /id="addGroupAutomationButton"/);
+  assert.match(app, /function syncGroupDetailTabs\(\)/);
+  assert.match(app, /panel\.hidden\s*=\s*panel\.dataset\.groupDetailPanel\s*!==\s*activeTab/);
+  assert.match(app, /addButton\.hidden\s*=\s*activeTab\s*!==\s*"tasks"/);
+  assert.match(renderSource, /state\.groupDetailTab\s*=\s*button\.dataset\.groupDetailTab;\s*syncGroupDetailTabs\(\);/s);
+});
+
+test("group detail tabs and header action stay fixed across long names and narrow screens", () => {
+  assert.match(
+    css,
+    /\.groups-detail-tabs\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)[^}]*width:\s*100%/s
+  );
+  assert.match(
+    css,
+    /\.groups-config-title\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
+  );
+  assert.match(
+    css,
+    /\.groups-config-head #addGroupAutomationButton\s*\{[^}]*flex:\s*0 0 auto[^}]*min-width:\s*156px[^}]*white-space:\s*nowrap/s
+  );
+  assert.match(css, /\.groups-detail-panel\[hidden\]\s*\{[^}]*display:\s*none/s);
+  assert.match(
+    css,
+    /\.group-automation-section\.groups-detail-panel\s*\{[^}]*border-top:\s*0[^}]*margin-top:\s*0[^}]*padding-top:\s*0/s
+  );
+  assert.match(
+    css,
+    /@media\s*\(max-width:\s*480px\)[\s\S]*?\.groups-config-head #addGroupAutomationButton\s*\{[^}]*width:\s*100%/s
+  );
+});
+
 test("group automation cards respond to their actual container and protect long text", () => {
   assert.match(
     css,
