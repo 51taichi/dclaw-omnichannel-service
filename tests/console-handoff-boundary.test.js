@@ -159,7 +159,8 @@ test("flow session status labels do not change card or chat header layout", () =
     app,
     /class="conversation-metadata-flow"[\s\S]*renderConversationDateTag\(session\.tags \|\| \[\]\)[\s\S]*class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\], \{ includeDate: false \}\)[\s\S]*privateSessionTools/
   );
-  assert.match(css, /\.conversation-metadata-flow\s*\{[\s\S]*grid-column:\s*2 \/ -1[\s\S]*grid-row:\s*2[\s\S]*display:\s*flex[\s\S]*flex-flow:\s*row wrap/);
+  assert.match(css, /\.conversation-metadata-flow\s*\{[\s\S]*display:\s*flex[\s\S]*flex-flow:\s*row wrap/);
+  assert.match(css, /\.flow-session-card \.conversation-metadata-flow\s*\{[\s\S]*grid-column:\s*2 \/ -1[\s\S]*grid-row:\s*2/);
   assert.match(css, /\.flow-session-date-tag\s*\{[\s\S]*min-width:\s*max-content[\s\S]*overflow:\s*visible/);
   assert.match(css, /\.flow-session-date-tag \.tag-chip\s*\{[\s\S]*max-width:\s*none/);
   assert.match(css, /\.flow-session-card \.tag-chip,\n\.flow-session-card \.tag-chip span\s*\{[\s\S]*overflow:\s*visible[\s\S]*text-overflow:\s*clip/);
@@ -174,9 +175,10 @@ test("flow session status labels do not change card or chat header layout", () =
   assert.match(css, /\.chat-status-slot\s*\{[\s\S]*display:\s*flex[\s\S]*justify-content:\s*center/);
   assert.match(css, /\.chat-status-badge\s*\{[\s\S]*min-width:\s*48px/);
   assert.match(css, /\.chat-title-wrap\s*\{[\s\S]*grid-template-columns:\s*34px minmax\(0,\s*max-content\) minmax\(0,\s*1fr\)/);
-  assert.match(css, /\.chat-tag-list\s*\{[\s\S]*display:\s*block[\s\S]*width:\s*100%/);
-  assert.match(css, /\.chat-tag-list \.conversation-tags\s*\{[\s\S]*display:\s*flex[\s\S]*flex-flow:\s*row wrap[\s\S]*width:\s*100%[\s\S]*max-width:\s*none/);
-  assert.match(css, /\.chat-tag-list \.tag-chip\s*\{[\s\S]*flex:\s*0 0 auto[\s\S]*max-width:\s*none/);
+  assert.match(html, /id="chatTagList" class="chat-tag-list conversation-metadata-flow"/);
+  assert.match(css, /\.chat-tag-list\.conversation-metadata-flow\s*\{[\s\S]*width:\s*100%[\s\S]*max-width:\s*none/);
+  assert.match(css, /\.chat-tag-list\.conversation-metadata-flow \.conversation-tags\s*\{[\s\S]*display:\s*contents/);
+  assert.match(css, /\.chat-tag-list\.conversation-metadata-flow \.tag-chip\s*\{[\s\S]*flex:\s*0 0 auto[\s\S]*max-width:\s*none/);
   assert.match(html, /class="chat-title-wrap"[\s\S]*id="chatStatusSlot" class="chat-status-slot"[\s\S]*class="chat-head-actions"/);
 });
 

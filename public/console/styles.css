@@ -3426,22 +3426,16 @@ textarea[data-action-target-activation].is-action-target-focused {
   background: rgba(255, 86, 34, 0.08);
 }
 
-.chat-tag-list {
-  display: block;
-  width: 100%;
-  min-width: 0;
-}
-
-.chat-tag-list .conversation-tags {
-  display: flex;
-  flex-flow: row wrap;
-  align-items: center;
-  align-content: flex-start;
+.chat-tag-list.conversation-metadata-flow {
   width: 100%;
   max-width: none;
 }
 
-.chat-tag-list .tag-chip {
+.chat-tag-list.conversation-metadata-flow .conversation-tags {
+  display: contents;
+}
+
+.chat-tag-list.conversation-metadata-flow .tag-chip {
   flex: 0 0 auto;
   max-width: none;
 }
@@ -4052,15 +4046,18 @@ html.has-bot-context .action-toolbox-toggle:hover {
 }
 
 .conversation-metadata-flow {
-  grid-column: 2 / -1;
-  grid-row: 2;
   display: flex;
   flex-flow: row wrap;
   align-items: center;
   align-content: flex-start;
-  align-self: center;
   gap: 5px;
   min-width: 0;
+}
+
+.flow-session-card .conversation-metadata-flow {
+  grid-column: 2 / -1;
+  grid-row: 2;
+  align-self: center;
   min-height: 30px;
 }
 
