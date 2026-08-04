@@ -7355,6 +7355,7 @@ app.get(
     const conversationKey = decodeURIComponent(req.params.conversationKey);
     const binding = getBotBinding(botId);
     const session = getFlowSessionForBot({ botId, conversationKey });
+    const managedGroup = getGroupByConversationKey({ botId, conversationKey });
     const { historySyncError: _historySyncError, ...publicSession } = session || {};
     publicSession.manualTagGroupIds = manualTagGroupIdsForConversation({
       botId,
@@ -7383,6 +7384,9 @@ app.get(
     res.json({
       ok: true,
       session: session ? publicSession : null,
+      managedGroup: managedGroup
+        ? { id: managedGroup.id, currentName: managedGroup.currentName }
+        : null,
       ...(binding
         ? { tags: listConversationTags({ botId, agentId: binding.agentId, conversationKey }) }
         : { tags: [] }),
