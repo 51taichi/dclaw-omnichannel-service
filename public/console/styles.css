@@ -6648,6 +6648,7 @@ td .muted {
 }
 
 .group-automation-week-days label {
+  border: 1px solid transparent;
   justify-content: center;
   min-width: 0;
   white-space: nowrap;
@@ -6723,33 +6724,10 @@ td .muted {
 
 .group-automation-month-page label {
   border: 1px solid transparent;
-  cursor: pointer;
   justify-content: center;
   min-width: 0;
   padding: 7px 4px;
-  position: relative;
-  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
   white-space: nowrap;
-}
-
-.group-automation-month-page label > input[type="checkbox"] {
-  position: absolute;
-  inline-size: 1px;
-  block-size: 1px;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.group-automation-month-page label:has(input:checked) {
-  border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
-}
-
-.group-automation-month-page label:has(input:focus-visible) {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
 }
 
 .group-automation-month-spacer {
@@ -6828,6 +6806,48 @@ td .muted {
   gap: 8px;
   min-width: 0;
   padding: 9px;
+}
+
+:is(
+  .group-automation-week-days label,
+  .group-automation-month-page label,
+  .group-automation-mention-card
+) {
+  cursor: pointer;
+  position: relative;
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease, color 160ms ease;
+}
+
+:is(
+  .group-automation-week-days label,
+  .group-automation-month-page label,
+  .group-automation-mention-card
+) > input[type="checkbox"] {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+:is(
+  .group-automation-week-days label,
+  .group-automation-month-page label,
+  .group-automation-mention-card
+):has(> input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+:is(
+  .group-automation-week-days label,
+  .group-automation-month-page label,
+  .group-automation-mention-card
+):has(> input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .group-automation-mention-card > span {
