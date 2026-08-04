@@ -134,7 +134,6 @@ const els = {
   tagAlertList: document.querySelector("#tagAlertList"),
   tagAlertAudio: document.querySelector("#tagAlertAudio"),
   chatTitle: document.querySelector("#chatTitle"),
-  chatStatusBadge: document.querySelector("#chatStatusBadge"),
   chatTagList: document.querySelector("#chatTagList"),
   chatMessages: document.querySelector("#chatMessages"),
   flowEventsOutput: document.querySelector("#flowEventsOutput"),
@@ -4986,17 +4985,10 @@ function syncHandoffButton(session = currentFlowSession) {
   currentFlowSession = session || null;
   const hasSession = Boolean(currentFlowSession && state.selectedFlowConversationKey);
   if (!hasSession) {
-    if (els.chatStatusBadge) els.chatStatusBadge.hidden = true;
     renderManualReplyComposer(null);
     return;
   }
 
-  const isHandoff = currentFlowSession.handoffStatus === "human";
-  if (els.chatStatusBadge) {
-    els.chatStatusBadge.hidden = true;
-    els.chatStatusBadge.innerHTML = "";
-    els.chatStatusBadge.classList.remove("is-ai", "is-human");
-  }
   renderManualReplyComposer(currentFlowSession);
 }
 
