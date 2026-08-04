@@ -4634,14 +4634,12 @@ function renderFlowSessions({ animateFrom = null } = {}) {
                 <span class="flow-session-name-row">
                   <strong class="flow-session-name" title="${escapeHtml(name)}">${escapeHtml(name)}</strong>
                 </span>
-                <span class="conversation-metadata-flow">
-                  ${renderConversationDateTag(session.tags || [])}
-                  <span class="flow-session-tag-zone">
-                    ${renderConversationTags(session.tags || [], { includeDate: false })}
-                  </span>
-                  ${privateSessionTools}
-                </span>
+                ${renderConversationDateTag(session.tags || [])}
                 ${manualTagTrigger}
+                <span class="flow-session-tag-zone">
+                  ${renderConversationTags(session.tags || [], { includeDate: false })}
+                </span>
+                ${privateSessionTools}
               </span>
               ${handoffSwitch}
             </button>

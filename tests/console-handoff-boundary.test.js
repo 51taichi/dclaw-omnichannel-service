@@ -155,19 +155,16 @@ test("flow session status labels do not change card or chat header layout", () =
   assert.match(css, /\.flow-session-main\s*\{[\s\S]*display:\s*contents/);
   assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*grid-column:\s*2[\s\S]*width:\s*auto[\s\S]*align-self:\s*center/);
   assert.match(app, /class="flow-session-name" title="\$\{escapeHtml\(name\)\}"/);
-  assert.match(
-    app,
-    /class="conversation-metadata-flow"[\s\S]*renderConversationDateTag\(session\.tags \|\| \[\]\)[\s\S]*class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\], \{ includeDate: false \}\)[\s\S]*privateSessionTools/
-  );
+  assert.match(app, /renderConversationDateTag\(session\.tags \|\| \[\]\)[\s\S]*class="flow-session-tag-zone"[\s\S]*renderConversationTags\(session\.tags \|\| \[\], \{ includeDate: false \}\)[\s\S]*privateSessionTools/);
+  assert.doesNotMatch(app, /class="conversation-metadata-flow"/);
   assert.match(css, /\.conversation-metadata-flow\s*\{[\s\S]*display:\s*flex[\s\S]*flex-flow:\s*row wrap/);
-  assert.match(css, /\.flow-session-card \.conversation-metadata-flow\s*\{[\s\S]*grid-column:\s*2 \/ -1[\s\S]*grid-row:\s*2/);
-  assert.match(css, /\.flow-session-date-tag\s*\{[\s\S]*min-width:\s*max-content[\s\S]*overflow:\s*visible/);
+  assert.doesNotMatch(css, /\.flow-session-card \.conversation-metadata-flow/);
+  assert.match(css, /\.flow-session-date-tag\s*\{[\s\S]*grid-column:\s*3[\s\S]*grid-row:\s*1[\s\S]*min-width:\s*max-content[\s\S]*overflow:\s*visible/);
   assert.match(css, /\.flow-session-date-tag \.tag-chip\s*\{[\s\S]*max-width:\s*none/);
   assert.match(css, /\.flow-session-card \.tag-chip,\n\.flow-session-card \.tag-chip span\s*\{[\s\S]*overflow:\s*visible[\s\S]*text-overflow:\s*clip/);
-  assert.match(css, /\.conversation-metadata-flow \.flow-session-date-tag,[\s\S]*\.conversation-metadata-flow \.flow-session-tag-zone,[\s\S]*\.conversation-metadata-flow \.flow-session-tools\s*\{[\s\S]*display:\s*contents/);
-  assert.match(css, /\.conversation-metadata-flow \.conversation-tags\s*\{[\s\S]*display:\s*contents/);
-  assert.doesNotMatch(css, /\.flow-session-tools\s*\{[^}]*grid-column:/);
-  assert.doesNotMatch(css, /\.flow-session-card\.is-group \.flow-session-tag-zone/);
+  assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*grid-column:\s*2 \/ 4[\s\S]*grid-row:\s*2/);
+  assert.match(css, /\.flow-session-card\.is-group \.flow-session-tag-zone\s*\{[^}]*grid-column:\s*2 \/ -1/);
+  assert.match(css, /\.flow-session-tools\s*\{[\s\S]*grid-column:\s*4[\s\S]*grid-row:\s*2/);
   assert.match(css, /\.flow-session-switch\.handoff-switch\s*\{[\s\S]*grid-column:\s*4[\s\S]*grid-row:\s*1/);
   assert.doesNotMatch(css, /\.flow-session-status\s*\{/);
   assert.match(css, /\.flow-session-name-row\s*\{[\s\S]*padding-right:\s*0/);
