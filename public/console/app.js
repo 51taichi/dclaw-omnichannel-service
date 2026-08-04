@@ -5,6 +5,11 @@ const PAGE_SIZE_OPTIONS = [20, 50, 100];
 const DEFAULT_REPLY_WAIT_FALLBACK_REPLY = "刚刚这边有点忙，我稍后回复你哈";
 const { createInteractionLock, intersectTargetMaps } = window.ProactiveTargetSelection;
 const { normalizeGroupDetailTab, nextGroupDetailTab } = window.GroupDetailTabs;
+const {
+  MONTH_DAY_PAGES,
+  clampMonthPage,
+  monthPageForScheduleDays
+} = window.GroupAutomationSchedulePicker;
 
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
@@ -39,6 +44,7 @@ const state = {
   groupAutomations: [],
   groupAutomationServerOffsetMs: 0,
   groupAutomationHistoryTaskId: "",
+  groupAutomationMonthPage: 0,
   createGroupContacts: [],
   createGroupContactIds: new Set(),
   createGroupContactsPagination: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
@@ -98,6 +104,10 @@ const els = {
   groupAutomationCancelButton: document.querySelector("#groupAutomationCancelButton"),
   groupAutomationWeeklyDays: document.querySelector("#groupAutomationWeeklyDays"),
   groupAutomationMonthlyDay: document.querySelector("#groupAutomationMonthlyDay"),
+  groupAutomationMonthPrev: document.querySelector("#groupAutomationMonthPrev"),
+  groupAutomationMonthNext: document.querySelector("#groupAutomationMonthNext"),
+  groupAutomationMonthViewport: document.querySelector("#groupAutomationMonthViewport"),
+  groupAutomationMonthPageStatus: document.querySelector("#groupAutomationMonthPageStatus"),
   groupAutomationConditionField: document.querySelector("#groupAutomationConditionField"),
   groupAutomationContentField: document.querySelector("#groupAutomationContentField"),
   groupAutomationSummaryField: document.querySelector("#groupAutomationSummaryField"),
@@ -6129,6 +6139,45 @@ function insertGroupAutomationTemplateVariable() {
   renderGroupAutomationTemplatePreview();
 }
 
+let groupAutomationMonthScrollFrame = 0;
+
+function syncGroupAutomationMonthPage({ scroll = false, behavior = "smooth" } = {}) {
+  const viewport = els.groupAutomationMonthViewport;
+  if (!viewport) return;
+  state.groupAutomationMonthPage = clampMonthPage(state.groupAutomationMonthPage);
+  els.groupAutomationMonthPrev.disabled = state.groupAutomationMonthPage === 0;
+  els.groupAutomationMonthNext.disabled = state.groupAutomationMonthPage === MONTH_DAY_PAGES.length - 1;
+  els.groupAutomationMonthPageStatus.textContent = `${state.groupAutomationMonthPage + 1} / ${MONTH_DAY_PAGES.length}`;
+  viewport.setAttribute(
+    "aria-label",
+    `每月执行日期选择，第 ${state.groupAutomationMonthPage + 1} 组，共 ${MONTH_DAY_PAGES.length} 组`
+  );
+  if (scroll && viewport.clientWidth) {
+    viewport.scrollTo({
+      left: state.groupAutomationMonthPage * viewport.clientWidth,
+      behavior
+    });
+  }
+}
+
+function setGroupAutomationMonthPage(pageIndex, { behavior = "smooth" } = {}) {
+  state.groupAutomationMonthPage = clampMonthPage(pageIndex);
+  syncGroupAutomationMonthPage({ scroll: true, behavior });
+}
+
+function syncGroupAutomationMonthPageFromScroll() {
+  if (groupAutomationMonthScrollFrame) return;
+  groupAutomationMonthScrollFrame = requestAnimationFrame(() => {
+    groupAutomationMonthScrollFrame = 0;
+    const viewport = els.groupAutomationMonthViewport;
+    if (!viewport?.clientWidth) return;
+    state.groupAutomationMonthPage = clampMonthPage(
+      Math.round(viewport.scrollLeft / viewport.clientWidth)
+    );
+    syncGroupAutomationMonthPage();
+  });
+}
+
 function syncGroupAutomationDialogFields() {
   const form = els.groupAutomationForm;
   const cadence = form.cadence.value;
@@ -6166,10 +6215,12 @@ function openGroupAutomationDialog(task = null) {
   [...form.querySelectorAll('[name="monthlyDay"]')].forEach((input) => {
     input.checked = selectedMonthDays.has(input.value);
   });
+  state.groupAutomationMonthPage = monthPageForScheduleDays(task?.cadence === "monthly" ? task.scheduleDays : []);
   renderGroupAutomationMentionRoles(task?.mentionRoleIds || []);
   syncGroupAutomationDialogFields();
   els.groupAutomationDialogTitle.textContent = task ? "编辑群定时任务" : "新增群定时任务";
   els.groupAutomationDialog.hidden = false;
+  requestAnimationFrame(() => syncGroupAutomationMonthPage({ scroll: true, behavior: "auto" }));
 }
 
 function closeGroupAutomationDialog() {
@@ -6726,6 +6777,12 @@ document.addEventListener("click", (event) => {
 window.addEventListener("resize", () => {
   closeTagMultiSelectMenu(els.flowSessionTagFilterButton, els.flowSessionTagFilterMenu);
   closeTagMultiSelectMenu(els.targetTagSelectButton, els.targetTagSelectMenu);
+  if (
+    !els.groupAutomationDialog?.hidden &&
+    els.groupAutomationForm?.cadence.value === "monthly"
+  ) {
+    syncGroupAutomationMonthPage({ scroll: true, behavior: "auto" });
+  }
 });
 function closeTagMultiSelectMenusOnExternalScroll(event) {
   if (
@@ -6857,7 +6914,26 @@ els.groupAutomationDialog?.addEventListener("click", (event) => {
   if (event.target === els.groupAutomationDialog) closeGroupAutomationDialog();
 });
 els.groupAutomationForm?.taskType.addEventListener("change", syncGroupAutomationDialogFields);
-els.groupAutomationForm?.cadence.addEventListener("change", syncGroupAutomationDialogFields);
+els.groupAutomationForm?.cadence.addEventListener("change", () => {
+  syncGroupAutomationDialogFields();
+  if (els.groupAutomationForm.cadence.value === "monthly") {
+    requestAnimationFrame(() => syncGroupAutomationMonthPage({ scroll: true, behavior: "auto" }));
+  }
+});
+els.groupAutomationMonthPrev?.addEventListener("click", () => {
+  setGroupAutomationMonthPage(state.groupAutomationMonthPage - 1);
+});
+els.groupAutomationMonthNext?.addEventListener("click", () => {
+  setGroupAutomationMonthPage(state.groupAutomationMonthPage + 1);
+});
+els.groupAutomationMonthViewport?.addEventListener("scroll", syncGroupAutomationMonthPageFromScroll);
+els.groupAutomationMonthViewport?.addEventListener("keydown", (event) => {
+  if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+  event.preventDefault();
+  setGroupAutomationMonthPage(
+    state.groupAutomationMonthPage + (event.key === "ArrowRight" ? 1 : -1)
+  );
+});
 els.groupAutomationForm?.summaryTemplate.addEventListener("input", renderGroupAutomationTemplatePreview);
 els.insertGroupAutomationVariableButton?.addEventListener("click", insertGroupAutomationTemplateVariable);
 els.groupAutomationForm?.addEventListener("submit", (event) => saveGroupAutomation(event).catch(toastError));

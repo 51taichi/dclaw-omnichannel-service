@@ -192,6 +192,46 @@ test("monthly scheduling supports multiple 1-28 dates plus month end", () => {
   assert.match(app, /querySelectorAll\('\[name="monthlyDay"\]:checked'\)/);
 });
 
+test("weekly scheduling uses one dedicated seven-column row", () => {
+  assert.match(
+    html,
+    /id="groupAutomationWeeklyDays"[^>]*class="[^"]*group-automation-week-days[^"]*"/
+  );
+});
+
+test("monthly scheduling exposes three fixed horizontal pages and event-driven navigation", () => {
+  const dialog = html.slice(
+    html.indexOf('id="groupAutomationDialog"'),
+    html.indexOf('id="groupAutomationHistoryDialog"')
+  );
+  const firstPage = dialog.slice(
+    dialog.indexOf('data-month-page="0"'),
+    dialog.indexOf('data-month-page="1"')
+  );
+  const secondPage = dialog.slice(
+    dialog.indexOf('data-month-page="1"'),
+    dialog.indexOf('data-month-page="2"')
+  );
+  const thirdPage = dialog.slice(dialog.indexOf('data-month-page="2"'));
+
+  assert.match(dialog, /id="groupAutomationMonthPrev"[^>]*aria-label="上一组执行日期"/);
+  assert.match(dialog, /id="groupAutomationMonthNext"[^>]*aria-label="下一组执行日期"/);
+  assert.match(dialog, /id="groupAutomationMonthViewport"/);
+  assert.match(dialog, /id="groupAutomationMonthPageStatus"[^>]*aria-live="polite"/);
+  assert.match(firstPage, /name="monthlyDay"[^>]*value="1"/);
+  assert.match(firstPage, /name="monthlyDay"[^>]*value="10"/);
+  assert.doesNotMatch(firstPage, /name="monthlyDay"[^>]*value="11"/);
+  assert.match(secondPage, /name="monthlyDay"[^>]*value="11"/);
+  assert.match(secondPage, /name="monthlyDay"[^>]*value="20"/);
+  assert.match(thirdPage, /name="monthlyDay"[^>]*value="21"/);
+  assert.match(thirdPage, /name="monthlyDay"[^>]*value="28"/);
+  assert.match(thirdPage, /name="monthlyDay"[^>]*value="month_end"/);
+  assert.match(app, /monthPageForScheduleDays\(task\?\.cadence === "monthly" \? task\.scheduleDays : \[\]\)/);
+  assert.match(app, /function syncGroupAutomationMonthPage\(/);
+  assert.match(app, /requestAnimationFrame\(/);
+  assert.match(app, /Math\.round\(viewport\.scrollLeft \/ viewport\.clientWidth\)/);
+});
+
 test("group automation stream and countdown follow the visible group tab lifecycle", () => {
   assert.match(app, /if \(tabName !== "groups"\) disconnectGroupAutomations\(\)/);
   assert.match(app, /document\.addEventListener\("visibilitychange"/);
