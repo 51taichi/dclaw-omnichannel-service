@@ -204,9 +204,8 @@ test("conversation cards expose click and right-click entry points for one manua
   assert.match(js, /hideFlowSessionManualTagMenu/);
   assert.match(css, /\.flow-session-tag-menu\s*\{[\s\S]*position:\s*fixed/);
   assert.match(css, /\.flow-session-manual-tag-trigger\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*2/);
-  assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*grid-column:\s*2 \/ 4/);
-  assert.match(css, /\.flow-session-card\.is-group \.flow-session-tag-zone\s*\{[^}]*grid-column:\s*2 \/ -1/);
-  assert.doesNotMatch(css, /\.flow-session-card\.is-group \.flow-session-tag-zone\s*\{[^}]*grid-column:\s*1 \/ -1/);
+  assert.match(css, /\.conversation-metadata-flow\s*\{[\s\S]*grid-column:\s*2 \/ -1[\s\S]*flex-flow:\s*row wrap/);
+  assert.doesNotMatch(css, /\.flow-session-card\.is-group \.flow-session-tag-zone/);
   assert.match(css, /\.flow-session-manual-tag-option\s*\{[\s\S]*grid-template-columns:\s*18px minmax\(0,\s*1fr\)/);
 });
 

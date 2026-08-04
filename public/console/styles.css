@@ -4025,9 +4025,6 @@ html.has-bot-context .action-toolbox-toggle:hover {
 }
 
 .flow-session-date-tag {
-  grid-column: 3;
-  grid-row: 1;
-  align-self: center;
   min-width: max-content;
   overflow: visible;
 }
@@ -4054,17 +4051,27 @@ html.has-bot-context .action-toolbox-toggle:hover {
   font-weight: 800;
 }
 
-.flow-session-tag-zone {
-  grid-column: 2 / 4;
+.conversation-metadata-flow {
+  grid-column: 2 / -1;
   grid-row: 2;
-  display: block;
-  min-height: 28px;
-  padding-right: 4px;
-  overflow: hidden;
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  align-content: flex-start;
+  align-self: center;
+  gap: 5px;
+  min-width: 0;
+  min-height: 30px;
 }
 
-.flow-session-card.is-group .flow-session-tag-zone {
-  grid-column: 2 / -1;
+.conversation-metadata-flow .flow-session-date-tag,
+.conversation-metadata-flow .flow-session-tag-zone,
+.conversation-metadata-flow .flow-session-tools {
+  display: contents;
+}
+
+.conversation-metadata-flow .conversation-tags {
+  display: contents;
 }
 
 .flow-session-manual-tag-trigger {
@@ -4115,8 +4122,6 @@ html.has-bot-context .action-toolbox-toggle:hover {
 }
 
 .flow-session-tools {
-  grid-column: 4;
-  grid-row: 2;
   display: grid;
   grid-template-columns: auto;
   align-items: center;
