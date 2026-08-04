@@ -267,6 +267,25 @@ test("weekly and monthly schedule choices keep fixed equal-width rows", () => {
   );
 });
 
+test("monthly dates use the whole card for selection without visible checkbox boxes", () => {
+  assert.match(
+    css,
+    /\.group-automation-month-page\s+label\s*>\s*input\[type="checkbox"\]\s*\{[^}]*position:\s*absolute;[^}]*opacity:\s*0;[^}]*pointer-events:\s*none;/s
+  );
+  assert.match(
+    css,
+    /\.group-automation-month-page\s+label:has\(input:checked\)\s*\{[^}]*border-color:\s*var\(--accent\);[^}]*background:\s*var\(--accent-soft\);[^}]*color:\s*var\(--accent\);/s
+  );
+  assert.match(
+    css,
+    /\.group-automation-month-page\s+label:has\(input:focus-visible\)\s*\{[^}]*outline:\s*2px solid var\(--accent\);/s
+  );
+  assert.doesNotMatch(
+    css,
+    /\.group-automation-week-days\s+label\s*>\s*input\[type="checkbox"\]\s*\{[^}]*opacity:\s*0;/s
+  );
+});
+
 test("group automation stream and countdown follow the visible group tab lifecycle", () => {
   assert.match(app, /if \(tabName !== "groups"\) disconnectGroupAutomations\(\)/);
   assert.match(app, /document\.addEventListener\("visibilitychange"/);
