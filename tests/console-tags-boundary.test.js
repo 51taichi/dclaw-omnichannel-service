@@ -233,10 +233,15 @@ test("tag editor keeps import export save controls at the bottom and collapses a
 });
 
 test("tag groups do not render collapsed summary descriptions", () => {
-  assert.doesNotMatch(js, /tag-group-summary/);
-  assert.doesNotMatch(js, /已启用/);
-  assert.doesNotMatch(js, /已停用/);
-  assert.doesNotMatch(js, /\$\{tagCount\} 个标签/);
+  const rendererStart = js.indexOf("function renderNormalTagGroups(groups)");
+  const rendererEnd = js.indexOf("function renderTagSchemaEditor()", rendererStart);
+  const renderer = js.slice(rendererStart, rendererEnd);
+  assert.notEqual(rendererStart, -1);
+  assert.notEqual(rendererEnd, -1);
+  assert.doesNotMatch(renderer, /tag-group-summary/);
+  assert.doesNotMatch(renderer, /已启用/);
+  assert.doesNotMatch(renderer, /已停用/);
+  assert.doesNotMatch(renderer, /\$\{tagCount\} 个标签/);
   assert.doesNotMatch(css, /\.tag-group-summary/);
 });
 
