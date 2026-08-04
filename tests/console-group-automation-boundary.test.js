@@ -232,6 +232,33 @@ test("monthly scheduling exposes three fixed horizontal pages and event-driven n
   assert.match(app, /Math\.round\(viewport\.scrollLeft \/ viewport\.clientWidth\)/);
 });
 
+test("weekly and monthly schedule choices keep fixed equal-width rows", () => {
+  assert.match(
+    css,
+    /\.group-automation-week-days\s*\{[^}]*grid-template-columns:\s*repeat\(7,\s*minmax\(0,\s*1fr\)\)/s
+  );
+  assert.match(
+    css,
+    /\.group-automation-month-picker\s*\{[^}]*grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/s
+  );
+  assert.match(
+    css,
+    /\.group-automation-month-viewport\s*\{[^}]*overflow-x:\s*auto[^}]*scroll-snap-type:\s*x mandatory/s
+  );
+  assert.match(
+    css,
+    /\.group-automation-month-track\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(3,\s*100%\)/s
+  );
+  assert.match(
+    css,
+    /\.group-automation-month-page\s*\{[^}]*grid-template-columns:\s*repeat\(10,\s*minmax\(0,\s*1fr\)\)[^}]*scroll-snap-align:\s*start/s
+  );
+  assert.doesNotMatch(
+    css,
+    /\.group-automation-month-days\s*\{[^}]*overflow-y:\s*auto/s
+  );
+});
+
 test("group automation stream and countdown follow the visible group tab lifecycle", () => {
   assert.match(app, /if \(tabName !== "groups"\) disconnectGroupAutomations\(\)/);
   assert.match(app, /document\.addEventListener\("visibilitychange"/);

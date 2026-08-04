@@ -6642,9 +6642,103 @@ td .muted {
   padding: 7px 9px;
 }
 
+.group-automation-week-days {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+}
+
+.group-automation-week-days label {
+  justify-content: center;
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .group-automation-month-days {
-  max-height: 176px;
-  overflow-y: auto;
+  display: block;
+  height: 96px;
+  overflow: hidden;
+}
+
+.group-automation-month-picker {
+  align-items: center;
+  display: grid;
+  gap: 8px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.group-automation-month-nav {
+  height: 38px;
+  min-height: 38px;
+  min-width: 34px;
+  padding: 0;
+  width: 34px;
+}
+
+.group-automation-month-nav .icon {
+  height: 16px;
+  width: 16px;
+}
+
+.group-automation-month-nav.is-prev .icon {
+  transform: rotate(90deg);
+}
+
+.group-automation-month-nav.is-next .icon {
+  transform: rotate(-90deg);
+}
+
+.group-automation-month-nav:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+.group-automation-month-viewport {
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-inline: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.group-automation-month-viewport::-webkit-scrollbar {
+  display: none;
+}
+
+.group-automation-month-track {
+  display: grid;
+  grid-template-columns: repeat(3, 100%);
+  width: 100%;
+}
+
+.group-automation-month-page {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(10, minmax(0, 1fr));
+  min-width: 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.group-automation-month-page label {
+  justify-content: center;
+  min-width: 0;
+  padding: 7px 4px;
+  white-space: nowrap;
+}
+
+.group-automation-month-spacer {
+  min-width: 0;
+}
+
+.group-automation-month-page-status {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  margin-top: 5px;
+  text-align: center;
 }
 
 .group-automation-month-days .month-end {
@@ -7151,6 +7245,21 @@ td .muted {
   .group-automation-mention-list {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .group-automation-week-days,
+  .group-automation-month-page {
+    gap: 4px;
+  }
+
+  .group-automation-week-days label,
+  .group-automation-month-page label {
+    font-size: 11px;
+    padding-inline: 3px;
+  }
+
+  .group-automation-month-picker {
+    gap: 5px;
+  }
 }
 
 @media (max-width: 480px) {
@@ -7189,6 +7298,18 @@ td .muted {
 
   .group-automation-history-status {
     justify-self: start;
+  }
+
+  .group-automation-week-days label,
+  .group-automation-month-page label {
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 1px;
+  }
+
+  .group-automation-month-nav {
+    min-width: 30px;
+    width: 30px;
   }
 }
 
