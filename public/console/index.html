@@ -1032,7 +1032,14 @@
         <div class="confirm-copy group-automation-dialog-body">
           <input name="taskId" type="hidden" />
           <input name="expectedVersion" type="hidden" />
-          <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>任务名称</span><input name="name" required maxlength="80" placeholder="例如：每日作业提醒" /></label>
+          <div class="group-automation-name-row">
+            <label class="group-automation-name-field"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-edit"></use></svg>任务名称</span><input name="name" required maxlength="80" placeholder="例如：每日作业提醒" /></label>
+            <label class="toggle switch-toggle group-automation-enabled">
+              <input name="enabled" type="checkbox" checked />
+              <span class="switch-slider" aria-hidden="true"></span>
+              <span class="switch-label">启用任务</span>
+            </label>
+          </div>
           <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-tool"></use></svg>任务类型</span><select name="taskType">
             <option value="conditional_push">条件推送</option>
             <option value="periodic_summary">周期汇总</option>
@@ -1078,7 +1085,6 @@
           <label id="groupAutomationContentField"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>达成后推送内容</span><textarea name="content" rows="3" placeholder="例如：今天的作业已完成，辛苦啦！"></textarea></label>
           <label id="groupAutomationSummaryField" hidden><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-message"></use></svg>汇总模板</span><textarea name="summaryTemplate" rows="5" placeholder="本周上课 {{本周上课次数（明确已经完成的课程才计数，取消或改期不计）}} 次"></textarea><span class="group-automation-template-tools"><button id="insertGroupAutomationVariableButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>插入变量</button><span id="groupAutomationVariableCount">0 个变量</span></span><small>在 {{ }} 中用白话描述变量及判断规则。</small><span id="groupAutomationTemplatePreview" class="group-automation-template-preview">预览会显示在这里</span></label>
           <fieldset class="group-automation-mentions"><legend>推送时 @ 群角色（可多选）</legend><div id="groupAutomationMentionRoles" class="group-automation-mention-list"></div></fieldset>
-          <label class="toggle switch-toggle group-automation-enabled"><input name="enabled" type="checkbox" checked /><span>启用任务</span></label>
         </div>
         <div class="confirm-actions groups-dialog-actions">
           <button id="groupAutomationCancelButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-chevron"></use></svg>取消</button>

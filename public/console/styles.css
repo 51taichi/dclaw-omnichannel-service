@@ -6600,6 +6600,18 @@ td .muted {
   padding: 18px 22px;
 }
 
+.group-automation-name-row {
+  align-items: stretch;
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+}
+
+.group-automation-name-field {
+  min-width: 0;
+}
+
 .group-automation-schedule-grid {
   display: grid;
   gap: 12px;
@@ -6883,7 +6895,10 @@ td .muted {
 }
 
 .group-automation-enabled {
-  justify-self: start;
+  align-self: stretch;
+  justify-self: end;
+  white-space: nowrap;
+  width: auto;
 }
 
 .group-automation-history-list {

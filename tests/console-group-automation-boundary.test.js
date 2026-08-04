@@ -164,10 +164,8 @@ test("group automation mention roles use conversation mascot avatars without peo
     html.indexOf('id="groupAutomationDialog"'),
     html.indexOf('id="groupAutomationHistoryDialog"')
   );
-  const mentionFieldset = dialog.slice(
-    dialog.indexOf('class="group-automation-mentions"'),
-    dialog.indexOf('class="toggle switch-toggle group-automation-enabled"')
-  );
+  const mentionStart = dialog.indexOf('class="group-automation-mentions"');
+  const mentionFieldset = dialog.slice(mentionStart, dialog.indexOf("</fieldset>", mentionStart) + 12);
 
   assert.match(mentionFieldset, /<legend>推送时 @ 群角色（可多选）<\/legend>/);
   assert.doesNotMatch(mentionFieldset, /icon-users/);
@@ -176,6 +174,31 @@ test("group automation mention roles use conversation mascot avatars without peo
   assert.match(
     css,
     /\.group-automation-mention-avatar\s*\{[^}]*width:\s*32px;[^}]*height:\s*32px;[^}]*object-fit:\s*cover;/s
+  );
+});
+
+test("group automation enabled switch sits beside the task name and defaults on", () => {
+  const dialog = html.slice(
+    html.indexOf('id="groupAutomationDialog"'),
+    html.indexOf('id="groupAutomationHistoryDialog"')
+  );
+
+  assert.match(dialog, /class="group-automation-name-row"/);
+  const nameRow = dialog.slice(
+    dialog.indexOf('class="group-automation-name-row"'),
+    dialog.indexOf('name="taskType"')
+  );
+
+  assert.ok(nameRow.indexOf('name="name"') < nameRow.indexOf('name="enabled"'));
+  assert.match(nameRow, /name="enabled" type="checkbox" checked/);
+  assert.match(nameRow, /class="switch-slider"/);
+  assert.match(nameRow, /class="switch-label">启用任务<\/span>/);
+  assert.equal((dialog.match(/name="enabled"/g) || []).length, 1);
+  assert.match(app, /form\.enabled\.checked = task \? Boolean\(task\.enabled\) : true;/);
+  assert.match(app, /enabled: form\.enabled\.checked/);
+  assert.match(
+    css,
+    /\.group-automation-name-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\) auto;/s
   );
 });
 
