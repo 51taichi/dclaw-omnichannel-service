@@ -27,6 +27,13 @@ test("group management loads the authenticated automation event client before ap
   assert.match(app, /if \(ledgerUpdated\) loadGroupAutomations\(\{ reconnect: false \}\)/);
 });
 
+test("group detail tab keyboard helper loads before app.js", () => {
+  const helperScript = '<script src="./group-detail-tabs.js"></script>';
+  assert.ok(html.indexOf(helperScript) > 0);
+  assert.ok(html.indexOf(helperScript) < html.indexOf('<script src="./app.js"></script>'));
+  assert.match(app, /GroupDetailTabs/);
+});
+
 test("group automation uses a bounded card list with local countdown and only two business states", () => {
   assert.match(app, /id="groupAutomationSection"/);
   assert.match(app, /id="addGroupAutomationButton"/);
@@ -55,6 +62,10 @@ test("selected group details keep config and task tabs mounted with one header t
   assert.match(app, /groupDetailTab:\s*"config"/);
   assert.match(renderSource, /data-group-detail-tab="config"/);
   assert.match(renderSource, /data-group-detail-tab="tasks"/);
+  assert.match(renderSource, /id="groupDetailConfigTab"[^>]*aria-controls="groupDetailConfigPanel"/);
+  assert.match(renderSource, /id="groupDetailTasksTab"[^>]*aria-controls="groupAutomationSection"/);
+  assert.match(renderSource, /id="groupDetailConfigPanel"[^>]*role="tabpanel"[^>]*aria-labelledby="groupDetailConfigTab"/);
+  assert.match(renderSource, /id="groupAutomationSection"[^>]*role="tabpanel"[^>]*aria-labelledby="groupDetailTasksTab"/);
   assert.ok(headStart < tabsStart);
   assert.ok(tabsStart < configPanelStart);
   assert.ok(configPanelStart < taskPanelStart);
@@ -63,7 +74,10 @@ test("selected group details keep config and task tabs mounted with one header t
   assert.match(app, /function syncGroupDetailTabs\(\)/);
   assert.match(app, /panel\.hidden\s*=\s*panel\.dataset\.groupDetailPanel\s*!==\s*activeTab/);
   assert.match(app, /addButton\.hidden\s*=\s*activeTab\s*!==\s*"tasks"/);
-  assert.match(renderSource, /state\.groupDetailTab\s*=\s*button\.dataset\.groupDetailTab;\s*syncGroupDetailTabs\(\);/s);
+  assert.match(renderSource, /button\.addEventListener\("keydown"/);
+  assert.match(renderSource, /nextGroupDetailTab\(state\.groupDetailTab,\s*event\.key\)/);
+  assert.match(renderSource, /event\.preventDefault\(\)/);
+  assert.match(renderSource, /activateGroupDetailTab\(nextTab,\s*\{\s*focus:\s*true\s*\}\)/);
 });
 
 test("group detail tabs and header action stay fixed across long names and narrow screens", () => {

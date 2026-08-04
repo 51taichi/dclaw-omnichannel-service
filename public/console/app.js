@@ -4,6 +4,7 @@ const BEIJING_TIME_ZONE = "Asia/Shanghai";
 const PAGE_SIZE_OPTIONS = [20, 50, 100];
 const DEFAULT_REPLY_WAIT_FALLBACK_REPLY = "刚刚这边有点忙，我稍后回复你哈";
 const { createInteractionLock, intersectTargetMaps } = window.ProactiveTargetSelection;
+const { normalizeGroupDetailTab, nextGroupDetailTab } = window.GroupDetailTabs;
 
 const state = {
   apiKey: localStorage.getItem("worktool_console_api_key") || "",
@@ -6394,7 +6395,7 @@ function groupRoleRow(role = {}) {
 
 function syncGroupDetailTabs() {
   if (!els.groupConfigPane) return;
-  const activeTab = state.groupDetailTab === "tasks" ? "tasks" : "config";
+  const activeTab = normalizeGroupDetailTab(state.groupDetailTab);
   state.groupDetailTab = activeTab;
   els.groupConfigPane.querySelectorAll("[data-group-detail-tab]").forEach((button) => {
     const active = button.dataset.groupDetailTab === activeTab;
@@ -6409,6 +6410,15 @@ function syncGroupDetailTabs() {
   if (addButton) addButton.hidden = activeTab !== "tasks";
 }
 
+function activateGroupDetailTab(tab, { focus = false } = {}) {
+  state.groupDetailTab = normalizeGroupDetailTab(tab);
+  syncGroupDetailTabs();
+  if (!focus || !els.groupConfigPane) return;
+  els.groupConfigPane
+    .querySelector(`[data-group-detail-tab="${state.groupDetailTab}"]`)
+    ?.focus();
+}
+
 function renderGroupConfig() {
   const detail = state.selectedGroupDetail;
   if (!detail || !els.groupConfigPane) return;
@@ -6419,10 +6429,10 @@ function renderGroupConfig() {
       <button id="addGroupAutomationButton" class="primary" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button>
     </div>
     <div class="segmented groups-detail-tabs" role="tablist" aria-label="群详情配置">
-      <button data-group-detail-tab="config" role="tab" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-tool"></use></svg>基础配置</button>
-      <button data-group-detail-tab="tasks" role="tab" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群任务</button>
+      <button id="groupDetailConfigTab" data-group-detail-tab="config" role="tab" aria-controls="groupDetailConfigPanel" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-tool"></use></svg>基础配置</button>
+      <button id="groupDetailTasksTab" data-group-detail-tab="tasks" role="tab" aria-controls="groupAutomationSection" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群任务</button>
     </div>
-    <div class="groups-detail-panel" data-group-detail-panel="config">
+    <div id="groupDetailConfigPanel" class="groups-detail-panel" data-group-detail-panel="config" role="tabpanel" aria-labelledby="groupDetailConfigTab">
     <form id="groupConfigForm" class="groups-config-form">
       <label><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>群回复方式</span>
         <select name="replyPolicy">
@@ -6460,9 +6470,9 @@ function renderGroupConfig() {
       <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
     </form>
     </div>
-    <section id="groupAutomationSection" class="group-automation-section groups-detail-panel" data-group-detail-panel="tasks" aria-labelledby="groupAutomationTitle">
+    <section id="groupAutomationSection" class="group-automation-section groups-detail-panel" data-group-detail-panel="tasks" role="tabpanel" aria-labelledby="groupDetailTasksTab">
       <div class="group-automation-head">
-        <div><h3 id="groupAutomationTitle"><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群定时任务</h3><p>按群内客观事实自动判断、推送或生成周期汇总。</p></div>
+        <div><h3><svg class="icon" aria-hidden="true"><use href="#icon-clock"></use></svg>群定时任务</h3><p>按群内客观事实自动判断、推送或生成周期汇总。</p></div>
       </div>
       <div id="groupAutomationList" class="group-automation-list"><div class="empty-state">正在加载群定时任务…</div></div>
     </section>
@@ -6470,9 +6480,12 @@ function renderGroupConfig() {
   els.groupConfigPane.querySelector("#groupConfigForm").addEventListener("submit", saveSelectedGroupConfig);
   els.groupConfigPane.querySelector("#addGroupAutomationButton").addEventListener("click", () => openGroupAutomationDialog());
   els.groupConfigPane.querySelectorAll("[data-group-detail-tab]").forEach((button) => {
-    button.addEventListener("click", () => {
-      state.groupDetailTab = button.dataset.groupDetailTab;
-      syncGroupDetailTabs();
+    button.addEventListener("click", () => activateGroupDetailTab(button.dataset.groupDetailTab));
+    button.addEventListener("keydown", (event) => {
+      const nextTab = nextGroupDetailTab(state.groupDetailTab, event.key);
+      if (!nextTab) return;
+      event.preventDefault();
+      activateGroupDetailTab(nextTab, { focus: true });
     });
   });
   els.groupConfigPane.querySelector("#addGroupRoleButton").addEventListener("click", () => {
