@@ -126,6 +126,22 @@ test("manual tag route accepts private and group conversations", () => {
   assert.doesNotMatch(route, /\[1,\s*3\]\.includes\(Number\(conversation\?\.roomType\)\)/);
 });
 
+test("group manual tags are limited to tag groups bound to that managed group", () => {
+  const applyBody = functionBody("applyManualConversationTagChange");
+  const listStart = source.indexOf('"/api/flow-sessions"');
+  const listEnd = source.indexOf('"/api/flow-sessions/:conversationKey"', listStart);
+  const listRoute = source.slice(listStart, listEnd);
+  const detailStart = listEnd;
+  const detailEnd = source.indexOf('"/api/flow-sessions/:conversationKey/tags/manual"', detailStart);
+  const detailRoute = source.slice(detailStart, detailEnd);
+
+  assert.match(applyBody, /getGroupByConversationKey\(\{ botId, conversationKey \}\)/);
+  assert.match(applyBody, /managedGroup[\s\S]*!managedGroup\.tagGroupIds\.includes\(groupId\)/);
+  assert.match(applyBody, /manual tag group is not enabled for this conversation/);
+  assert.match(listRoute, /publicSession\.manualTagGroupIds = manualTagGroupIdsForConversation\(\{/);
+  assert.match(detailRoute, /publicSession\.manualTagGroupIds = manualTagGroupIdsForConversation\(\{/);
+});
+
 test("friend-added event can create date tags", () => {
   assert.match(source, /applySystemDateTag/);
   assert.match(source, /friend_added\.date_tag\.applied/);

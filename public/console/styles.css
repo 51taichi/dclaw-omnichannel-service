@@ -4064,7 +4064,7 @@ html.has-bot-context .action-toolbox-toggle:hover {
 }
 
 .flow-session-card.is-group .flow-session-tag-zone {
-  grid-column: 1 / -1;
+  grid-column: 2 / -1;
 }
 
 .flow-session-manual-tag-trigger {

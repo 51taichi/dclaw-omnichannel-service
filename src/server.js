@@ -5458,8 +5458,25 @@ async function processCoalescedIncomingBatch(batch) {
   }
 }
 
+function manualTagGroupIdsForConversation({ botId, conversationKey }) {
+  if (isPrivateConversationKey(conversationKey)) return null;
+  const managedGroup = getGroupByConversationKey({ botId, conversationKey });
+  return Array.isArray(managedGroup?.tagGroupIds)
+    ? [...new Set(managedGroup.tagGroupIds.filter(Boolean))]
+    : [];
+}
+
 function applyManualConversationTagChange({ botId, binding, conversationKey, groupId, tagId, action = "set" }) {
   if (!binding?.agentId) throw new Error("no enabled bot binding");
+  const managedGroup = getGroupByConversationKey({ botId, conversationKey });
+  if (
+    !isPrivateConversationKey(conversationKey)
+    && (!managedGroup || !managedGroup.tagGroupIds.includes(groupId))
+  ) {
+    const error = new Error("manual tag group is not enabled for this conversation");
+    error.status = 400;
+    throw error;
+  }
   const schema = normalizeTagSchema(getAgentTagSchema(binding.agentId)?.config || {});
   const group = schema.groups.find((item) => item.id === groupId);
   const tag = group?.tags.find((item) => item.id === tagId);
@@ -7316,6 +7333,10 @@ app.get(
             conversationKey: session.conversationKey
           })
         : [];
+      publicSession.manualTagGroupIds = manualTagGroupIdsForConversation({
+        botId,
+        conversationKey: session.conversationKey
+      });
       return publicSession;
     });
     res.json({
@@ -7335,6 +7356,10 @@ app.get(
     const binding = getBotBinding(botId);
     const session = getFlowSessionForBot({ botId, conversationKey });
     const { historySyncError: _historySyncError, ...publicSession } = session || {};
+    publicSession.manualTagGroupIds = manualTagGroupIdsForConversation({
+      botId,
+      conversationKey
+    });
     const anchorMessageId = Number(req.query.anchorMessageId || 0);
     const anchoredMessages = Number.isInteger(anchorMessageId) && anchorMessageId > 0
       ? listConversationMessagesAround({

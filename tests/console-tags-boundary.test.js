@@ -192,8 +192,11 @@ test("conversation cards expose click and right-click entry points for one manua
   assert.match(js, /title="手工打标签"/);
   assert.match(js, /querySelectorAll\("\[data-flow-manual-tag-trigger\]"\)/);
   assert.match(js, /renderFlowSessionManualTagMenu\(\{[\s\S]*session,[\s\S]*x: rect\.left,[\s\S]*y: rect\.bottom \+ 6/);
-  assert.match(js, /function enabledManualTagGroups\(\)/);
+  assert.match(js, /function enabledManualTagGroups\(session = null\)/);
   assert.match(js, /group\.enabled !== false[\s\S]*tag\.enabled !== false/);
+  assert.match(functionBody("enabledManualTagGroups"), /flowSessionType\(session\) === "group"/);
+  assert.match(functionBody("enabledManualTagGroups"), /new Set\(session\?\.manualTagGroupIds \|\| \[\]\)/);
+  assert.match(functionBody("renderFlowSessionManualTagMenu"), /enabledManualTagGroups\(session\)/);
   assert.match(js, /function applyManualConversationTag\(\{ conversationKey, groupId, tagId, action \}\)/);
   assert.match(js, /\/api\/flow-sessions\/\$\{encodeURIComponent\(conversationKey\)\}\/tags\/manual/);
   assert.doesNotMatch(functionBody("renderFlowSessionManualTagMenu"), /flowSessionType\(session\) !== "private"/);
@@ -202,6 +205,8 @@ test("conversation cards expose click and right-click entry points for one manua
   assert.match(css, /\.flow-session-tag-menu\s*\{[\s\S]*position:\s*fixed/);
   assert.match(css, /\.flow-session-manual-tag-trigger\s*\{[\s\S]*grid-column:\s*1[\s\S]*grid-row:\s*2/);
   assert.match(css, /\.flow-session-tag-zone\s*\{[\s\S]*grid-column:\s*2 \/ 4/);
+  assert.match(css, /\.flow-session-card\.is-group \.flow-session-tag-zone\s*\{[^}]*grid-column:\s*2 \/ -1/);
+  assert.doesNotMatch(css, /\.flow-session-card\.is-group \.flow-session-tag-zone\s*\{[^}]*grid-column:\s*1 \/ -1/);
   assert.match(css, /\.flow-session-manual-tag-option\s*\{[\s\S]*grid-template-columns:\s*18px minmax\(0,\s*1fr\)/);
 });
 

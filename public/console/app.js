@@ -3173,9 +3173,15 @@ function renderConversationDateTag(tags = []) {
   return `<span class="flow-session-date-tag"><span class="tag-chip is-date" title="${escapeHtml(title)}">${icon("tag")}<span>${escapeHtml(dateTag.tagName || "-")}</span></span></span>`;
 }
 
-function enabledManualTagGroups() {
+function enabledManualTagGroups(session = null) {
+  const allowedGroupIds = flowSessionType(session) === "group"
+    ? new Set(session?.manualTagGroupIds || [])
+    : null;
   return (state.tagSchema?.groups || [])
-    .filter((group) => group.enabled !== false)
+    .filter((group) => (
+      group.enabled !== false
+      && (!allowedGroupIds || allowedGroupIds.has(group.id))
+    ))
     .map((group) => ({
       ...group,
       tags: (group.tags || []).filter((tag) => tag.enabled !== false)
@@ -3244,7 +3250,7 @@ function renderFlowSessionManualTagMenu({ session, x, y }) {
     !els.flowSessionTagMenu
     || !session?.conversationKey
   ) return;
-  const groups = enabledManualTagGroups();
+  const groups = enabledManualTagGroups(session);
   const sessionName = flowSessionDisplayName(session);
   els.flowSessionTagMenu.innerHTML = groups.length
     ? `
