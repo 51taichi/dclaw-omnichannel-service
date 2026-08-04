@@ -43,7 +43,8 @@ test("group automation uses a bounded card list with local countdown and only tw
   assert.match(statusSource, /已达成/);
   assert.match(statusSource, /尚未达成/);
   assert.doesNotMatch(statusSource, />待判断<|>判断异常</);
-  assert.match(css, /\.group-automation-list\s*\{[^}]*max-height:[^}]*overflow-y:\s*auto/s);
+  assert.match(css, /\.groups-panel-content,\s*\.group-automation-list\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(css, /\.group-automation-list\s*\{[^}]*max-height:\s*none/s);
 });
 
 test("selected group details keep base roles and task tabs mounted in business order", () => {
@@ -56,6 +57,7 @@ test("selected group details keep base roles and task tabs mounted in business o
   const rolesPanelStart = renderSource.indexOf('data-group-detail-panel="roles"');
   const taskPanelStart = renderSource.indexOf('data-group-detail-panel="tasks"');
   const taskListStart = renderSource.indexOf('id="groupAutomationList"');
+  const taskPanelEnd = renderSource.indexOf("</section>", taskPanelStart);
 
   assert.notEqual(renderStart, -1);
   assert.notEqual(renderEnd, -1);
@@ -74,7 +76,11 @@ test("selected group details keep base roles and task tabs mounted in business o
   assert.ok(configPanelStart < rolesPanelStart);
   assert.ok(rolesPanelStart < taskPanelStart);
   assert.doesNotMatch(renderSource.slice(headStart, tabsStart), /id="addGroupAutomationButton"/);
-  assert.match(renderSource.slice(taskPanelStart, taskListStart), /id="addGroupAutomationButton"/);
+  assert.doesNotMatch(renderSource.slice(taskPanelStart, taskListStart), /id="addGroupAutomationButton"/);
+  assert.match(
+    renderSource.slice(taskListStart, taskPanelEnd),
+    /class="groups-panel-footer"[\s\S]*?id="addGroupAutomationButton"/
+  );
   assert.match(renderSource.slice(configPanelStart, rolesPanelStart), />保存配置<\/button>/);
   assert.doesNotMatch(renderSource.slice(configPanelStart, rolesPanelStart), /保存群配置|群角色/);
   assert.doesNotMatch(renderSource.slice(taskPanelStart, taskListStart), /按群内客观事实自动判断|<h3[^>]*>群定时任务/);
@@ -87,7 +93,7 @@ test("selected group details keep base roles and task tabs mounted in business o
   assert.match(renderSource, /activateGroupDetailTab\(nextTab,\s*\{\s*focus:\s*true\s*\}\)/);
 });
 
-test("group detail tabs and panel-local actions stay fixed across long names and narrow screens", () => {
+test("group detail tabs and panel-local actions reuse the task and tag footer layout", () => {
   assert.match(
     css,
     /\.groups-detail-tabs\s*\{[^}]*display:\s*grid[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)[^}]*width:\s*100%/s
@@ -96,8 +102,11 @@ test("group detail tabs and panel-local actions stay fixed across long names and
     css,
     /\.groups-config-title\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
   );
-  assert.match(css, /\.group-automation-toolbar\s*\{[^}]*justify-content:\s*flex-end/s);
-  assert.match(css, /\.groups-panel-footer\s*\{[^}]*position:\s*sticky[^}]*bottom:\s*0/s);
+  assert.doesNotMatch(app, /class="group-automation-toolbar"/);
+  assert.match(css, /\.groups-panel-footer\s*\{[^}]*position:\s*relative/s);
+  assert.match(css, /\.groups-panel-footer\s*\{[^}]*justify-content:\s*flex-end/s);
+  assert.match(css, /\.groups-panel-footer\s*\{[^}]*padding:\s*12px 0 0/s);
+  assert.match(css, /\.groups-panel-footer\s*\{[^}]*background:\s*#ffffff/s);
   assert.match(css, /\.groups-detail-panel\[hidden\]\s*\{[^}]*display:\s*none/s);
   assert.match(
     css,
@@ -112,12 +121,17 @@ test("group automation cards respond to their actual container and protect long 
   );
   assert.match(
     css,
-    /@container\s*\(max-width:\s*760px\)[\s\S]*?\.group-automation-card\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+minmax\(140px,\s*auto\)/s
+    /\.group-automation-card\s*\{[^}]*grid-template-columns:\s*minmax\(210px,\s*0\.9fr\)\s+minmax\(260px,\s*1\.35fr\)\s+minmax\(300px,\s*auto\)/s
   );
   assert.match(
     css,
-    /@container\s*\(max-width:\s*520px\)[\s\S]*?\.group-automation-card\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s
+    /\.group-automation-card-identity\s*\{[^}]*grid-template-columns:\s*36px\s+minmax\(0,\s*1fr\)/s
   );
+  assert.match(css, /\.group-automation-card-meta\s*\{[^}]*grid-template-rows:\s*repeat\(2,\s*minmax\(24px,\s*auto\)\)/s);
+  assert.match(css, /\.group-automation-card-actions\s*\{[^}]*grid-template-columns:\s*104px\s+repeat\(3,\s*72px\)/s);
+  assert.match(css, /\.group-automation-card-title strong,[\s\S]*?text-overflow:\s*ellipsis[\s\S]*?white-space:\s*nowrap/s);
+  assert.match(css, /\.group-automation-schedule-row span\s*\{[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s);
+  assert.match(app, /<strong title="\$\{escapeHtml\(task\.name\)\}">/);
   assert.match(
     css,
     /\.group-automation-mention-card strong\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
@@ -126,6 +140,12 @@ test("group automation cards respond to their actual container and protect long 
     css,
     /\.group-automation-history-item > div:first-child strong\s*\{[^}]*overflow:\s*hidden[^}]*text-overflow:\s*ellipsis[^}]*white-space:\s*nowrap/s
   );
+});
+
+test("group management inherits the console type scale instead of defining a separate base size", () => {
+  assert.doesNotMatch(css, /\.groups-config\s*\{[^}]*font-size:/s);
+  assert.doesNotMatch(css, /\.group-automation-card-actions button\s*\{[^}]*font-size:\s*11px/s);
+  assert.doesNotMatch(css, /\.group-automation-schedule-row,\s*\.group-automation-state-row\s*\{[^}]*font-size:\s*11px/s);
 });
 
 test("group automation dialog supports both task types, schedules, month end, native mentions and templates", () => {

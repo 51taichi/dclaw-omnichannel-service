@@ -6032,14 +6032,16 @@ function renderGroupAutomationList() {
           .map((role) => role.currentName);
         return `
           <article class="group-automation-card ${task.enabled ? "" : "is-disabled"}" data-group-automation-id="${escapeHtml(task.id)}">
-            <div class="group-automation-card-main">
+            <div class="group-automation-card-identity">
+              <span class="group-automation-type-icon"><svg class="icon" aria-hidden="true"><use href="#icon-${task.taskType === "periodic_summary" ? "message" : "send"}"></use></svg></span>
               <div class="group-automation-card-title">
-                <span class="group-automation-type-icon"><svg class="icon" aria-hidden="true"><use href="#icon-${task.taskType === "periodic_summary" ? "message" : "send"}"></use></svg></span>
-                <strong>${escapeHtml(task.name)}</strong>
+                <strong title="${escapeHtml(task.name)}">${escapeHtml(task.name)}</strong>
                 <span class="group-automation-type-tag">${task.taskType === "periodic_summary" ? "周期汇总" : "条件推送"}</span>
               </div>
+            </div>
+            <div class="group-automation-card-meta">
               <div class="group-automation-schedule-row">
-                <span><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>${escapeHtml(groupAutomationScheduleLabel(task))}</span>
+                <span title="${escapeHtml(groupAutomationScheduleLabel(task))}"><svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>${escapeHtml(groupAutomationScheduleLabel(task))}</span>
                 ${mentionNames.length ? `<span title="${escapeHtml(mentionNames.join("、"))}"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>@ ${escapeHtml(mentionNames.join("、"))}</span>` : ""}
               </div>
               <div class="group-automation-state-row">
@@ -6506,12 +6508,6 @@ function renderGroupConfig() {
       </form>
     </div>
     <div id="groupDetailRolesPanel" class="groups-detail-panel groups-role-panel" data-group-detail-panel="roles" role="tabpanel" aria-labelledby="groupDetailRolesTab">
-      <div class="groups-role-head">
-        <h3><svg class="icon" aria-hidden="true"><use href="#icon-user"></use></svg>群角色</h3>
-        <div class="groups-role-actions">
-          <button id="addGroupRoleButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>添加角色</button>
-        </div>
-      </div>
       <form id="groupRolesForm" class="groups-roles-form">
         <div class="groups-panel-content">
           <div class="groups-role-columns" aria-hidden="true">
@@ -6523,12 +6519,15 @@ function renderGroupConfig() {
           </div>
           <div id="groupRoleList" class="groups-role-list">${roles.map(groupRoleRow).join("")}</div>
         </div>
-        <div class="groups-panel-footer"><button class="primary groups-save-roles" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存角色</button></div>
+        <div class="groups-panel-footer">
+          <button id="addGroupRoleButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>添加角色</button>
+          <button class="primary groups-save-roles" type="submit"><svg class="icon" aria-hidden="true"><use href="#icon-save"></use></svg>保存角色</button>
+        </div>
       </form>
     </div>
     <section id="groupAutomationSection" class="group-automation-section groups-detail-panel" data-group-detail-panel="tasks" role="tabpanel" aria-labelledby="groupDetailTasksTab">
-      <div class="group-automation-toolbar"><button id="addGroupAutomationButton" class="primary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button></div>
       <div id="groupAutomationList" class="group-automation-list"><div class="empty-state">正在加载群定时任务…</div></div>
+      <div class="groups-panel-footer"><button id="addGroupAutomationButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>新增定时任务</button></div>
     </section>
   `;
   els.groupConfigPane.querySelector("#groupConfigForm").addEventListener("submit", saveSelectedGroupConfig);

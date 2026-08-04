@@ -165,16 +165,21 @@ test("group workbench and role rows stay bounded inside the available viewport",
   assert.match(css, /\.groups-role-row\s*\{[^}]*width:\s*100%/s);
 });
 
-test("role actions keep add in the panel header and save in the fixed footer", () => {
+test("role actions share the standard fixed footer without a redundant heading", () => {
+  assert.doesNotMatch(app, /class="groups-role-head"/);
   assert.match(
     app,
-    /groups-role-actions[\s\S]*?id="addGroupRoleButton"/
+    /id="groupRolesForm"[\s\S]*?class="groups-panel-footer"[\s\S]*?id="addGroupRoleButton"[\s\S]*?groups-save-roles[\s\S]*?保存角色/
   );
   assert.match(
-    app,
-    /id="groupRolesForm"[\s\S]*?class="groups-panel-footer"[\s\S]*?groups-save-roles[\s\S]*?保存角色/
+    css,
+    /\.groups-config-form,\s*\.groups-roles-form,\s*\.group-automation-section\.groups-detail-panel\s*\{[^}]*grid-template-rows:\s*minmax\(0,\s*1fr\)\s+auto[^}]*overflow:\s*hidden/s
   );
-  assert.doesNotMatch(app, /groups-role-actions[\s\S]{0,400}?groups-save-roles/);
+  assert.match(css, /\.groups-panel-content,\s*\.group-automation-list\s*\{[^}]*overflow-y:\s*auto/s);
+  assert.match(
+    css,
+    /\.groups-panel-footer\s*\{[^}]*background:\s*#ffffff[^}]*border-top:\s*1px solid var\(--line\)[^}]*position:\s*relative/s
+  );
 });
 
 test("external group contacts reuse push-style selectable cards", () => {

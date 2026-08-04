@@ -6122,9 +6122,18 @@ td .muted {
   border-radius: 16px;
   min-height: 0;
   min-width: 0;
+  padding: 16px;
+}
+
+.groups-sidebar {
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 16px;
+}
+
+.groups-config {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  overflow: hidden;
 }
 
 .groups-search-field {
@@ -6244,7 +6253,10 @@ td .muted {
 }
 
 .groups-detail-panel {
+  height: 100%;
+  min-height: 0;
   min-width: 0;
+  overflow: hidden;
 }
 
 .groups-detail-panel[hidden] {
@@ -6293,27 +6305,38 @@ td .muted {
   white-space: nowrap;
 }
 
-.groups-config-form {
+.groups-config-form,
+.groups-roles-form,
+.group-automation-section.groups-detail-panel {
   display: grid;
-  gap: 16px;
-  min-height: 100%;
+  gap: 0;
+  grid-template-rows: minmax(0, 1fr) auto;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.groups-panel-content {
+.groups-panel-content,
+.group-automation-list {
+  align-content: start;
   display: grid;
   gap: 16px;
   min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 2px 4px 12px 2px;
 }
 
 .groups-panel-footer {
   align-items: center;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), #ffffff 28%);
+  background: #ffffff;
   border-top: 1px solid var(--line);
-  position: sticky;
-  bottom: 0;
   display: flex;
+  gap: 10px;
   justify-content: flex-end;
-  padding: 14px 0 0;
+  min-height: 53px;
+  padding: 12px 0 0;
+  position: relative;
   z-index: 2;
 }
 
@@ -6338,7 +6361,6 @@ td .muted {
 
 .groups-config-head h3,
 .groups-config-head p,
-.groups-role-head h3,
 .groups-tags-fieldset legend {
   align-items: center;
   display: flex;
@@ -6420,17 +6442,6 @@ td .muted {
   padding-top: 0;
 }
 
-.group-automation-toolbar {
-  align-items: center;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.group-automation-toolbar #addGroupAutomationButton {
-  min-width: 156px;
-  white-space: nowrap;
-}
-
 .group-automation-head,
 .group-automation-head h3,
 .group-automation-card-title,
@@ -6462,22 +6473,20 @@ td .muted {
 }
 
 .group-automation-list {
-  display: grid;
   gap: 10px;
-  margin-top: 14px;
-  max-height: 430px;
-  overflow-y: auto;
-  padding-right: 4px;
+  margin-top: 0;
+  max-height: none;
 }
 
 .group-automation-card {
-  align-items: center;
+  align-items: stretch;
   background: linear-gradient(120deg, #fff, color-mix(in srgb, var(--accent-soft) 34%, #fff));
   border: 1px solid var(--line);
   border-radius: 12px;
   display: grid;
   gap: 12px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(210px, 0.9fr) minmax(260px, 1.35fr) minmax(300px, auto);
+  min-height: 104px;
   min-width: 0;
   padding: 13px;
 }
@@ -6486,17 +6495,28 @@ td .muted {
   opacity: 0.66;
 }
 
-.group-automation-card-main,
+.group-automation-card-identity,
+.group-automation-card-meta,
 .group-automation-card-state {
   display: grid;
   min-width: 0;
 }
 
-.group-automation-card-main {
+.group-automation-card-identity {
+  align-items: center;
+  gap: 10px;
+  grid-template-columns: 36px minmax(0, 1fr);
+}
+
+.group-automation-card-meta {
+  align-content: center;
   gap: 8px;
+  grid-template-rows: repeat(2, minmax(24px, auto));
 }
 
 .group-automation-card-title {
+  align-items: flex-start;
+  flex-direction: column;
   gap: 9px;
   min-width: 0;
 }
@@ -6510,8 +6530,11 @@ td .muted {
 
 .group-automation-state-row small {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .group-automation-card-title strong {
@@ -6524,7 +6547,7 @@ td .muted {
   border-radius: 999px;
   color: var(--accent);
   flex: 0 0 auto;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   padding: 4px 8px;
   white-space: nowrap;
@@ -6544,23 +6567,28 @@ td .muted {
 .group-automation-schedule-row,
 .group-automation-state-row {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 750;
   gap: 10px;
   min-width: 0;
 }
 
 .group-automation-schedule-row {
-  padding-left: 45px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .group-automation-schedule-row span {
   gap: 5px;
-  max-width: min(44%, 360px);
+  max-width: none;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .group-automation-state-row {
-  padding-left: 45px;
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
 }
 
 .group-automation-schedule-row .icon,
@@ -6577,7 +6605,7 @@ td .muted {
   align-items: center;
   border-radius: 999px;
   display: inline-flex;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 850;
   gap: 5px;
   padding: 5px 8px;
@@ -6609,8 +6637,10 @@ td .muted {
 }
 
 .group-automation-card-actions {
-  flex-wrap: wrap;
+  align-content: center;
+  display: grid;
   gap: 6px;
+  grid-template-columns: 104px repeat(3, 72px);
   justify-content: flex-end;
 }
 
@@ -6619,7 +6649,6 @@ td .muted {
 }
 
 .group-automation-card-actions button {
-  font-size: 11px;
   gap: 4px;
   min-height: 32px;
   min-width: 72px;
@@ -7022,24 +7051,8 @@ td .muted {
   min-height: 32px;
 }
 
-.groups-role-head {
-  align-items: center;
-  display: flex;
-  justify-content: space-between;
-  margin: 0 0 14px;
-}
-
-.groups-role-actions {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-}
-
 .groups-roles-form {
-  display: grid;
-  gap: 16px;
   max-width: 100%;
-  min-height: 100%;
   min-width: 0;
   width: 100%;
 }
@@ -7321,18 +7334,12 @@ td .muted {
     width: auto;
   }
 
-  .groups-role-head,
-  .groups-role-actions {
-    align-items: stretch;
-    flex-wrap: wrap;
-  }
-
   .group-automation-card {
-    grid-template-columns: minmax(0, 1fr) minmax(140px, auto);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .group-automation-card-actions {
-    grid-column: 1 / -1;
+    grid-column: auto;
     justify-content: flex-start;
   }
 }
@@ -7423,9 +7430,9 @@ td .muted {
   }
 }
 
-@container (max-width: 760px) {
+@container (max-width: 900px) {
   .group-automation-card {
-    grid-template-columns: minmax(0, 1fr) minmax(140px, auto);
+    grid-template-columns: minmax(210px, 0.9fr) minmax(260px, 1.35fr);
   }
 
   .group-automation-card-actions {
@@ -7434,8 +7441,13 @@ td .muted {
   }
 }
 
-@container (max-width: 520px) {
+@container (max-width: 620px) {
   .group-automation-card {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .group-automation-schedule-row,
+  .group-automation-state-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
