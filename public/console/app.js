@@ -6101,7 +6101,7 @@ function renderGroupAutomationMentionRoles(selectedRoleIds = []) {
   const selected = new Set(selectedRoleIds || []);
   const roles = state.selectedGroupDetail?.roles || [];
   els.groupAutomationMentionRoles.innerHTML = roles.length
-    ? roles.map((role) => `<label class="group-automation-mention-card"><input name="mentionRoleId" type="checkbox" value="${escapeHtml(role.id)}" ${selected.has(role.id) ? "checked" : ""} /><span>${icon("user")}<strong>${escapeHtml(role.currentName)}</strong><small>${escapeHtml(role.identityType || "未设置身份")}</small></span></label>`).join("")
+    ? roles.map((role) => `<label class="group-automation-mention-card"><input name="mentionRoleId" type="checkbox" value="${escapeHtml(role.id)}" ${selected.has(role.id) ? "checked" : ""} /><span><img class="group-automation-mention-avatar" src="./assets/ddeer.png" alt="" aria-hidden="true" /><strong>${escapeHtml(role.currentName)}</strong><small>${escapeHtml(role.identityType || "未设置身份")}</small></span></label>`).join("")
     : `<span class="muted">请先在群角色中添加需要 @ 的成员。</span>`;
 }
 

@@ -159,6 +159,26 @@ test("group automation dialog supports both task types, schedules, month end, na
   assert.match(app, /［\$\{escapeHtml\(name\)\}］/);
 });
 
+test("group automation mention roles use conversation mascot avatars without people icons", () => {
+  const dialog = html.slice(
+    html.indexOf('id="groupAutomationDialog"'),
+    html.indexOf('id="groupAutomationHistoryDialog"')
+  );
+  const mentionFieldset = dialog.slice(
+    dialog.indexOf('class="group-automation-mentions"'),
+    dialog.indexOf('class="toggle switch-toggle group-automation-enabled"')
+  );
+
+  assert.match(mentionFieldset, /<legend>推送时 @ 群角色（可多选）<\/legend>/);
+  assert.doesNotMatch(mentionFieldset, /icon-users/);
+  assert.match(app, /class="group-automation-mention-avatar" src="\.\/assets\/ddeer\.png"/);
+  assert.doesNotMatch(app, /group-automation-mention-card[^\n]*\$\{icon\("user"\)\}/);
+  assert.match(
+    css,
+    /\.group-automation-mention-avatar\s*\{[^}]*width:\s*32px;[^}]*height:\s*32px;[^}]*object-fit:\s*cover;/s
+  );
+});
+
 test("task cards expose complete management actions and evidence navigation reuses conversations", () => {
   assert.match(app, /data-group-automation-action="edit"/);
   assert.match(app, /data-group-automation-action="duplicate"/);
