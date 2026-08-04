@@ -519,6 +519,43 @@ test("delivery_unknown is never automatically reclaimed but can be manually retr
   }).some((item) => item.id === occurrence.id), true);
 });
 
+test("delivery failure preserves a condition decision made before sending", () => {
+  const botId = "group_automation_delivery_state_bot";
+  const { group } = createGroupWithRoles(botId);
+  const task = createWeeklyTask({ botId, groupId: group.id });
+  const occurrence = db.claimDueGroupAutomationOccurrences({
+    nowIso: "2026-08-05T12:00:00.000Z",
+    limit: 1,
+    leaseMs: 300000
+  })[0];
+
+  db.markGroupAutomationOccurrenceSending({
+    botId,
+    occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
+    renderedContent: "作业已完成",
+    conditionAchieved: true,
+    reason: "客户已经提交作业",
+    evidenceMessageIds: [12]
+  });
+  db.completeGroupAutomationOccurrence({
+    botId,
+    occurrenceId: occurrence.id,
+    executionToken: occurrence.executionToken,
+    status: "delivery_unknown",
+    errorMessage: "WorkTool 发送结果未知"
+  });
+
+  const stored = db.listGroupAutomationOccurrences({
+    botId,
+    taskId: task.id
+  }).items[0];
+  assert.equal(stored.conditionAchieved, true);
+  assert.equal(stored.reason, "客户已经提交作业");
+  assert.equal(stored.renderedContent, "作业已完成");
+  assert.deepEqual(stored.evidenceMessageIds, [12]);
+});
+
 test("manual occurrence retry enforces the managed group scope", () => {
   const botId = "group_automation_retry_scope_bot";
   const { group } = createGroupWithRoles(botId, "原群");

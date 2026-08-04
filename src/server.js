@@ -5584,6 +5584,7 @@ function serializeGroupAutomationTask({ botId, groupId, task }) {
     version: task.version,
     currentState: serializeGroupAutomationCurrentState({
       task,
+      currentCycleKey: cycleKey,
       cycleState,
       lastOccurrence
     }),

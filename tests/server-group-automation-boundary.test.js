@@ -37,6 +37,7 @@ test("create and update validate recurrence, summary templates, and group role m
 
 test("group automation responses exclude private group background and expose evidence anchors", () => {
   assert.match(source, /serializeGroupAutomationTask\(/);
+  assert.match(source, /serializeGroupAutomationCurrentState\(\{[\s\S]*currentCycleKey:\s*cycleKey/);
   assert.match(source, /conversationKey:[\s\S]*messageId:[\s\S]*createdAt:/);
 });
 

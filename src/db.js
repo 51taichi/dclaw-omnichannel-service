@@ -2364,17 +2364,17 @@ export function completeGroupAutomationOccurrence({
   occurrenceId,
   executionToken,
   status,
-  conditionAchieved = null,
-  reason = "",
-  variableValues = {},
-  factIds = [],
-  evidenceMessageIds = [],
+  conditionAchieved,
+  reason,
+  variableValues,
+  factIds,
+  evidenceMessageIds,
   mentionRoleIds,
-  mentionNames = [],
+  mentionNames,
   warnings,
-  renderedContent = "",
-  worktoolMessageId = "",
-  worktoolResponse = null,
+  renderedContent,
+  worktoolMessageId,
+  worktoolResponse,
   errorMessage = "",
   finishedAt = now()
 }) {
@@ -2400,21 +2400,37 @@ export function completeGroupAutomationOccurrence({
       AND execution_token = ?
   `).run(
     String(status || "completed"),
-    conditionAchieved == null ? null : conditionAchieved ? 1 : 0,
-    String(reason || ""),
-    json(variableValues || {}),
-    json(Array.isArray(factIds) ? factIds : []),
-    json(Array.isArray(evidenceMessageIds) ? evidenceMessageIds : []),
+    conditionAchieved === undefined
+      ? current.condition_achieved
+      : conditionAchieved == null ? null : conditionAchieved ? 1 : 0,
+    String(reason === undefined ? current.reason || "" : reason || ""),
+    json(variableValues === undefined
+      ? parseJson(current.variable_values_json) || {}
+      : variableValues || {}),
+    json(factIds === undefined
+      ? parseJson(current.fact_ids_json) || []
+      : Array.isArray(factIds) ? factIds : []),
+    json(evidenceMessageIds === undefined
+      ? parseJson(current.evidence_message_ids_json) || []
+      : Array.isArray(evidenceMessageIds) ? evidenceMessageIds : []),
     json(mentionRoleIds === undefined
       ? parseJson(current.mention_role_ids_json) || []
       : Array.isArray(mentionRoleIds) ? mentionRoleIds : []),
-    json(Array.isArray(mentionNames) ? mentionNames : []),
+    json(mentionNames === undefined
+      ? parseJson(current.mention_names_json) || []
+      : Array.isArray(mentionNames) ? mentionNames : []),
     json(warnings === undefined
       ? parseJson(current.warnings_json) || []
       : Array.isArray(warnings) ? warnings : []),
-    String(renderedContent || ""),
-    String(worktoolMessageId || ""),
-    worktoolResponse == null ? null : json(worktoolResponse),
+    String(renderedContent === undefined
+      ? current.rendered_content || ""
+      : renderedContent || ""),
+    String(worktoolMessageId === undefined
+      ? current.worktool_message_id || ""
+      : worktoolMessageId || ""),
+    worktoolResponse === undefined
+      ? current.worktool_response_json
+      : worktoolResponse == null ? null : json(worktoolResponse),
     String(errorMessage || ""),
     finishedAt,
     finishedAt,
