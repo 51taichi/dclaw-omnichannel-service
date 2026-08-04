@@ -4290,8 +4290,11 @@ html.has-bot-context .action-toolbox-toggle:hover {
   min-width: 0;
 }
 
-.asset-button {
-  min-width: 92px;
+.asset-button,
+.group-tasks-button {
+  width: 112px;
+  min-width: 112px;
+  min-height: 38px;
   white-space: nowrap;
 }
 
@@ -4674,6 +4677,208 @@ html.has-bot-context .action-toolbox-toggle:hover {
 .asset-row.is-empty strong {
   color: #b6aaa3;
   font-weight: 700;
+}
+
+.group-tasks-panel {
+  width: min(620px, calc(100% - 24px));
+  max-height: min(520px, calc(100% - 96px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  container-type: inline-size;
+}
+
+.group-tasks-panel[hidden] {
+  display: none;
+}
+
+.group-tasks-panel .assets-panel-head strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.group-tasks-panel .assets-panel-head .icon {
+  width: 15px;
+  height: 15px;
+  color: var(--accent);
+}
+
+.group-conversation-task-list {
+  max-height: 320px;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.group-conversation-task-card {
+  display: grid;
+  grid-template-columns: 32px minmax(140px, 1fr) minmax(96px, auto) minmax(126px, auto);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  min-height: 64px;
+  padding: 10px 12px;
+  border-bottom: 1px solid rgba(231, 221, 214, 0.72);
+  background: #fffdfb;
+}
+
+.group-conversation-task-card:last-child {
+  border-bottom: 0;
+}
+
+.group-conversation-task-card.is-disabled {
+  background: #f7f7fa;
+  opacity: 0.76;
+}
+
+.group-conversation-task-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, #ffffff);
+}
+
+.group-conversation-task-icon .icon {
+  width: 16px;
+  height: 16px;
+}
+
+.group-conversation-task-copy,
+.group-conversation-task-time {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.group-conversation-task-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.group-conversation-task-copy small,
+.group-conversation-task-time small,
+.group-conversation-task-time time {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.group-conversation-task-state {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 96px;
+  min-height: 28px;
+  padding: 0 9px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line));
+  border-radius: 999px;
+  color: var(--accent-dark);
+  background: color-mix(in srgb, var(--accent) 7%, #ffffff);
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.group-conversation-task-state .icon {
+  width: 13px;
+  height: 13px;
+}
+
+.group-conversation-task-state.achieved {
+  color: #08775c;
+  border-color: #9bddc8;
+  background: #eafaf4;
+}
+
+.group-conversation-task-state.unachieved {
+  color: #a44114;
+  border-color: #ffc7a7;
+  background: #fff3e9;
+}
+
+.group-conversation-task-state.is-disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  background: #f1f2f7;
+}
+
+.group-conversation-task-empty {
+  display: grid;
+  place-items: center;
+  gap: 7px;
+  min-height: 126px;
+  padding: 18px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.group-conversation-task-empty > .icon {
+  width: 24px;
+  height: 24px;
+  color: var(--accent);
+}
+
+.group-conversation-task-empty small {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.group-conversation-task-empty.is-error > .icon {
+  color: var(--danger);
+}
+
+.group-conversation-task-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+  background: #f8f9ff;
+}
+
+.group-conversation-task-footer button {
+  min-width: 132px;
+}
+
+@container (max-width: 520px) {
+  .group-conversation-task-card {
+    grid-template-columns: 32px minmax(0, 1fr) auto;
+  }
+
+  .group-conversation-task-time {
+    grid-column: 2 / -1;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+}
+
+@container (max-width: 390px) {
+  .group-conversation-task-card {
+    grid-template-columns: 32px minmax(0, 1fr);
+  }
+
+  .group-conversation-task-state,
+  .group-conversation-task-time {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .group-conversation-task-time {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 #resetConversationButton {

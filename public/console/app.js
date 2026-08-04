@@ -4743,6 +4743,11 @@ function conversationGroupTaskState(task) {
   if (task.taskType === "periodic_summary") {
     return { label: "周期汇总", className: "is-summary", iconName: "message" };
   }
+  if (task.taskType === "conditional_push" && String(task.conditionText || "").trim()) {
+    return task.currentState?.achieved
+      ? { label: "已达成", className: "achieved", iconName: "check" }
+      : { label: "尚未达成", className: "unachieved", iconName: "clock" };
+  }
   return groupAutomationStatus(task)
     || { label: "尚未达成", className: "unachieved", iconName: "clock" };
 }

@@ -67,6 +67,39 @@ test("conversation task summary owns a separate automation stream and stale requ
   assert.doesNotMatch(app, /currentConversationGroupTasks\.tasks\s*=\s*state\.groupAutomations/);
 });
 
+test("group task summary matches the asset control and bounds long task content", () => {
+  assert.match(
+    css,
+    /\.asset-button,\s*\.group-tasks-button\s*\{[^}]*width:\s*112px;[^}]*min-width:\s*112px/s
+  );
+  assert.match(
+    css,
+    /\.group-conversation-task-list\s*\{[^}]*max-height:\s*320px;[^}]*overflow-y:\s*auto/s
+  );
+  assert.match(
+    css,
+    /\.group-conversation-task-name\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap/s
+  );
+  assert.match(css, /@container\s*\(max-width:\s*520px\)[\s\S]*\.group-conversation-task-card/);
+  assert.match(app, /function openSelectedConversationGroupManagement\(\)/);
+  assert.match(app, /state\.selectedGroupId = groupId/);
+  assert.match(app, /switchWorkspaceTab\("groups"\)/);
+  assert.match(app, /loadGroupDetail\(groupId\)/);
+});
+
+test("group conversation conditional tasks expose only achieved or unachieved business states", () => {
+  const marker = "function conversationGroupTaskState(task)";
+  const start = app.indexOf(marker);
+  const helper = app.slice(start, start + 1100);
+  assert.notEqual(start, -1);
+  assert.match(helper, /task\.taskType === "conditional_push"/);
+  assert.match(helper, /String\(task\.conditionText \|\| ""\)\.trim\(\)/);
+  assert.match(helper, /task\.currentState\?\.achieved/);
+  assert.match(helper, /label: "已达成"/);
+  assert.match(helper, /label: "尚未达成"/);
+  assert.doesNotMatch(helper, /label: "正在判断"|label: "待判断"/);
+});
+
 test("chat message timestamps render as compact date time text", () => {
   assert.match(app, /const BEIJING_TIME_ZONE = "Asia\/Shanghai"/);
   assert.match(app, /function formatDisplayDateTime\(value\)/);
