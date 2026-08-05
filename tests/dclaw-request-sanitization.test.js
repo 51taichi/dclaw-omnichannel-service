@@ -399,6 +399,34 @@ test("private requests do not include group-context confidentiality instructions
   );
 });
 
+test("realtime private requests require reply content while background analysis may stay silent", () => {
+  const message = {
+    messageId: "private-empty-guard",
+    spoken: "[微笑]",
+    rawSpoken: "[微笑]",
+    roomType: 2,
+    textType: 1,
+    receivedName: "L"
+  };
+  const conversation = {
+    conversationKey: "bot_1:private:L",
+    conversationEpoch: "epoch-1"
+  };
+
+  const livePrivate = buildDclawRequest({ binding, conversation, message });
+  const backgroundPrivate = buildDclawRequest({
+    binding,
+    conversation,
+    message,
+    dclawPurpose: "legacy-history-analysis"
+  });
+
+  assert.equal(livePrivate.metadata.requireReplyContent, true);
+  assert.match(livePrivate.message, /reply 和 attachments 不得同时为空/);
+  assert.equal(backgroundPrivate.metadata.requireReplyContent, false);
+  assert.match(backgroundPrivate.message, /不需要回复时使用/);
+});
+
 test("historical wording questions do not request local experience sources", () => {
   const request = buildDclawRequest({
     binding,

@@ -314,6 +314,27 @@ test("authorized group requests retry an empty reply instead of accepting silenc
   }]);
 });
 
+test("required replies reject three consecutive empty responses", async () => {
+  const failures = [];
+  const result = await validateAndRetryAgentResponse({
+    request: { message: "客户：[微笑]" },
+    validationOptions: { requireReplyContent: true },
+    invoke: async ({ attemptNumber }) => ({
+      reply: JSON.stringify({ reply: "", attachments: [], sources: [] }),
+      response: { attemptNumber }
+    }),
+    onValidationFailure: (failure) => failures.push(failure)
+  });
+
+  assert.equal(result.valid, false);
+  assert.equal(result.attempts.length, 3);
+  assert.equal(failures.length, 3);
+  assert.ok(failures.every((failure) => failure.errors.some((error) =>
+    error.type === "semantic"
+    && error.path === "reply"
+  )));
+});
+
 test("authorized group requests may use an attachment-only reply", () => {
   const result = validateAgentResponseText(JSON.stringify({
     reply: "",

@@ -247,6 +247,10 @@ export function buildDclawRequest({
     ? compactTagEvidenceCandidates(tagEvidenceCandidates)
     : [];
   const agentGroupContext = isGroup ? compactGroupContext(groupContext) : null;
+  const requireReplyContent = Boolean(
+    agentGroupContext?.replyDecision?.authorized
+    || (!isGroup && dclawPurpose === "conversation")
+  );
   const normalizedGeneralRule = normalizeGeneralRule(generalRule || resolveGeneralRule(flow));
   const responseSchema = responseSchemaForRequest({
     hasFlow: Boolean(agentFlow),
@@ -318,8 +322,8 @@ export function buildDclawRequest({
   } else {
     instructions.push(
       "最终请只输出一个 JSON 对象，不要输出 Markdown、分析过程、规则解释、处理步骤或任何对象外文字。",
-      isGroup && agentGroupContext?.replyDecision?.authorized
-        ? `JSON 格式：${responseSchema}。没有附件或来源时使用空数组；本请求已获服务器授权，reply 和 attachments 不得同时为空。`
+      requireReplyContent
+        ? `JSON 格式：${responseSchema}。没有附件或来源时使用空数组；本请求必须回复，reply 和 attachments 不得同时为空。`
         : `JSON 格式：${responseSchema}。没有附件或来源时使用空数组；不需要回复时使用 {"reply":"","attachments":[],"sources":[]}。`
     );
   }
@@ -367,7 +371,7 @@ export function buildDclawRequest({
       worktool: worktoolMessage,
       flow: agentFlow,
       ...(agentGroupContext ? { groupContext: agentGroupContext } : {}),
-      requireReplyContent: Boolean(agentGroupContext?.replyDecision?.authorized),
+      requireReplyContent,
       ...(agentTagRules ? { tagRules: agentTagRules } : {}),
       ...(agentTagEvidenceCandidates.length
         ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
