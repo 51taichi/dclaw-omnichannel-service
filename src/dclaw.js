@@ -704,7 +704,7 @@ function buildDclawGroupAutomationAnalysisRequest({
   metadata = {},
   analysisKey = ""
 }) {
-  if (!["group-ledger", "group-automation-occurrence", "group-history-analysis"].includes(purpose)) {
+  if (purpose !== "group-history-analysis") {
     throw new Error("invalid group automation DClaw purpose");
   }
   const localConversationId = String(conversationKey || "").trim();
@@ -743,22 +743,6 @@ function buildDclawGroupAutomationAnalysisRequest({
       analysisKey: isolatedAnalysisKey
     }
   };
-}
-
-export function buildDclawGroupLedgerRequest(input) {
-  return buildDclawGroupAutomationAnalysisRequest({
-    ...input,
-    purpose: "group-ledger",
-    eventType: "group_ledger_evaluation"
-  });
-}
-
-export function buildDclawGroupAutomationOccurrenceRequest(input) {
-  return buildDclawGroupAutomationAnalysisRequest({
-    ...input,
-    purpose: "group-automation-occurrence",
-    eventType: "group_automation_occurrence"
-  });
 }
 
 export function buildDclawGroupHistoryAnalysisRequest(input) {

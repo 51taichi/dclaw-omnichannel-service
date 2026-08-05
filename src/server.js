@@ -224,6 +224,9 @@ import {
   listCanonicalGroupMessagesForHistory,
   completeGroupHistorySyncBatch,
   failGroupHistorySyncJob,
+  allManagedGroupHistoryBackfillsReady,
+  finalizeLegacyGroupLedgerRemoval,
+  disableLegacyConditionalTasksWithoutCondition,
   getGroupAutomationChunkCheckpoint,
   saveGroupAutomationChunkCheckpoint,
   cleanupGroupAutomationChunkCheckpoints,
@@ -1620,10 +1623,6 @@ const tagActivationWorkerConfig = {
 };
 const groupAutomationWorkerConfig = {
   enabled: process.env.GROUP_AUTOMATION_WORKER_ENABLED !== "false",
-  ledgerIntervalMs: Math.max(
-    500,
-    Number(process.env.GROUP_AUTOMATION_LEDGER_INTERVAL_MS || 2000)
-  ),
   occurrenceIntervalMs: Math.max(
     500,
     Number(process.env.GROUP_AUTOMATION_OCCURRENCE_INTERVAL_MS || 2000)
@@ -1917,6 +1916,26 @@ async function enqueueAllManagedGroupsForHistorySync() {
   }
   logInfo("group_history.sync.backfill_enqueued", { groupCount: enqueued });
   return enqueued;
+}
+
+function maybeFinalizeLegacyGroupLedgerRemoval() {
+  const capabilityReady = listBotBindings().every((binding) => {
+    const managedGroupCount = listGroupsPage({
+      botId: binding.botId,
+      page: 1,
+      pageSize: 1
+    }).pagination.total;
+    return managedGroupCount === 0
+      || groupHistoryCapabilityByBot.get(binding.botId)?.ready === true;
+  });
+  const result = finalizeLegacyGroupLedgerRemoval({
+    capabilityReady,
+    allManagedGroupsBackfilled: allManagedGroupHistoryBackfillsReady()
+  });
+  if (result.removed) {
+    logInfo("group_history.legacy_business_state_removed", {});
+  }
+  return result;
 }
 
 const groupAutomationWorker = createGroupAutomationWorker({
@@ -4562,18 +4581,30 @@ if (tagActivationWorkerConfig.enabled) {
   }, tagActivationWorkerConfig.intervalMs).unref();
 }
 
+const disabledLegacyConditionalTaskCount = disableLegacyConditionalTasksWithoutCondition();
+if (disabledLegacyConditionalTaskCount > 0) {
+  logWarn("group_automation.legacy_conditional_tasks_disabled", {
+    taskCount: disabledLegacyConditionalTaskCount,
+    reason: "needs_condition"
+  });
+}
+
 if (groupHistorySyncWorkerConfig.enabled) {
   const groupHistorySyncOwner = `group-history:${process.pid}:${crypto.randomUUID()}`;
-  void enqueueAllManagedGroupsForHistorySync().catch((error) => {
-    logError("group_history.sync.backfill_failed", { error });
-  });
+  void enqueueAllManagedGroupsForHistorySync()
+    .then(() => maybeFinalizeLegacyGroupLedgerRemoval())
+    .catch((error) => {
+      logError("group_history.sync.backfill_failed", { error });
+    });
   setInterval(() => {
     void groupHistorySyncWorker.runTick({
       owner: groupHistorySyncOwner,
       limit: groupHistorySyncWorkerConfig.claimLimit
-    }).catch((error) => {
-      logError("group_history.sync.worker_failed", { error });
-    });
+    })
+      .then(() => maybeFinalizeLegacyGroupLedgerRemoval())
+      .catch((error) => {
+        logError("group_history.sync.worker_failed", { error });
+      });
   }, groupHistorySyncWorkerConfig.intervalMs).unref();
 }
 

@@ -3,6 +3,13 @@ import fs from "node:fs";
 import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
+const productionSources = [
+  "../src/db.js",
+  "../src/server.js",
+  "../src/group-automation-worker.js",
+  "../src/group-automation-agent.js",
+  "../src/dclaw.js"
+].map((file) => fs.readFileSync(new URL(file, import.meta.url), "utf8")).join("\n");
 
 const routes = [
   ["get", "/api/groups/:groupId/automations"],
@@ -88,4 +95,16 @@ test("group history sync is startup-backed and wakes only from persisted group c
   assert.match(source, /function insertConversationMessageAndWakeGroupHistory\(/);
   assert.match(source, /getGroupByConversationKey\(\{[\s\S]*groupHistorySyncWorker\.wake\(\{/);
   assert.doesNotMatch(source, /groupHistorySyncWorker[\s\S]{0,300}listWorkToolGroups/);
+});
+
+test("production no longer contains the legacy group business ledger runtime or schema", () => {
+  assert.doesNotMatch(productionSources, /group-ledger/);
+  assert.doesNotMatch(productionSources, /enqueueLive|enqueueReindex|runLedgerTick/);
+  assert.doesNotMatch(
+    productionSources,
+    /managed_group_(?:facts|fact_aggregates|fact_evidence|fact_revisions|ledger_states|ledger_jobs|automation_cycle_states)/
+  );
+  assert.doesNotMatch(productionSources, /variable_values_json|fact_ids_json/);
+  assert.match(source, /finalizeLegacyGroupLedgerRemoval\(\{/);
+  assert.match(source, /allManagedGroupHistoryBackfillsReady\(\)/);
 });

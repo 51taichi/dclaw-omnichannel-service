@@ -14,7 +14,6 @@ import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags
 import { normalizeTagSyncConfig } from "./tag-sync.js";
 import { normalizeWorktoolTimestamp } from "./worktool-history.js";
 import {
-  groupAutomationCycleKey,
   groupAutomationCycleWindow,
   nextGroupAutomationRunAt,
   normalizeGroupAutomationSchedule
@@ -28,6 +27,11 @@ const db = new DatabaseSync(dbPath);
 
 db.exec(`
   PRAGMA journal_mode = WAL;
+
+  CREATE TABLE IF NOT EXISTS schema_migrations (
+    migration_key TEXT PRIMARY KEY,
+    applied_at TEXT NOT NULL
+  );
 
   CREATE TABLE IF NOT EXISTS bot_agent_bindings (
     bot_id TEXT PRIMARY KEY,
@@ -649,6 +653,7 @@ db.exec(`
     content TEXT NOT NULL DEFAULT '',
     summary_template TEXT NOT NULL DEFAULT '',
     enabled INTEGER NOT NULL DEFAULT 1,
+    validation_reason TEXT NOT NULL DEFAULT '',
     next_run_at TEXT,
     version INTEGER NOT NULL DEFAULT 1,
     deleted_at TEXT,
@@ -685,8 +690,6 @@ db.exec(`
     next_retry_at TEXT,
     condition_achieved INTEGER,
     reason TEXT NOT NULL DEFAULT '',
-    variable_values_json TEXT NOT NULL DEFAULT '{}',
-    fact_ids_json TEXT NOT NULL DEFAULT '[]',
     evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
     mention_role_ids_json TEXT NOT NULL DEFAULT '[]',
     mention_names_json TEXT NOT NULL DEFAULT '[]',
@@ -758,114 +761,6 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_group_automation_attempts_occurrence
   ON managed_group_automation_attempts (bot_id, group_id, occurrence_id, id);
-
-  CREATE TABLE IF NOT EXISTS managed_group_facts (
-    id TEXT PRIMARY KEY,
-    bot_id TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    semantic_key TEXT NOT NULL,
-    category TEXT NOT NULL,
-    statement TEXT NOT NULL,
-    value_json TEXT NOT NULL DEFAULT '{}',
-    happened_at TEXT NOT NULL,
-    speaker_name TEXT NOT NULL DEFAULT '',
-    role_id TEXT NOT NULL DEFAULT '',
-    active INTEGER NOT NULL DEFAULT 1,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    UNIQUE (bot_id, group_id, semantic_key)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_managed_group_facts_projection
-  ON managed_group_facts (bot_id, group_id, active, happened_at, updated_at);
-
-  CREATE TABLE IF NOT EXISTS managed_group_fact_aggregates (
-    bot_id TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    category TEXT NOT NULL,
-    fact_count INTEGER NOT NULL DEFAULT 0,
-    numeric_sums_json TEXT NOT NULL DEFAULT '{}',
-    first_happened_at TEXT NOT NULL,
-    last_happened_at TEXT NOT NULL,
-    evidence_fact_keys_json TEXT NOT NULL DEFAULT '[]',
-    evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (bot_id, group_id, category)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_managed_group_fact_aggregates_scope
-  ON managed_group_fact_aggregates (bot_id, group_id, category);
-
-  CREATE TABLE IF NOT EXISTS managed_group_fact_evidence (
-    fact_id TEXT NOT NULL,
-    message_id INTEGER NOT NULL,
-    ordinal INTEGER NOT NULL,
-    PRIMARY KEY (fact_id, message_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS managed_group_fact_revisions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    fact_id TEXT NOT NULL,
-    bot_id TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    operation TEXT NOT NULL CHECK (operation IN ('upsert','retract')),
-    snapshot_json TEXT NOT NULL,
-    evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
-    corrects_revision_id INTEGER,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_managed_group_fact_revisions_fact
-  ON managed_group_fact_revisions (bot_id, group_id, fact_id, id);
-
-  CREATE TABLE IF NOT EXISTS managed_group_ledger_states (
-    bot_id TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    live_cursor_message_id INTEGER NOT NULL DEFAULT 0,
-    backfill_cursors_json TEXT NOT NULL DEFAULT '{}',
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (bot_id, group_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS managed_group_ledger_jobs (
-    id TEXT PRIMARY KEY,
-    bot_id TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    mode TEXT NOT NULL CHECK (mode IN ('live','backfill','reindex')),
-    task_id TEXT NOT NULL DEFAULT '',
-    from_message_id INTEGER NOT NULL DEFAULT 0,
-    through_message_id INTEGER NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    attempts INTEGER NOT NULL DEFAULT 0,
-    lease_expires_at TEXT,
-    next_retry_at TEXT,
-    error_message TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    completed_at TEXT,
-    UNIQUE (bot_id, group_id, mode, task_id)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_managed_group_ledger_jobs_claim
-  ON managed_group_ledger_jobs (status, next_retry_at, lease_expires_at, created_at);
-
-  CREATE TABLE IF NOT EXISTS managed_group_automation_cycle_states (
-    task_id TEXT NOT NULL,
-    bot_id TEXT NOT NULL,
-    group_id TEXT NOT NULL,
-    cycle_key TEXT NOT NULL,
-    achieved INTEGER NOT NULL DEFAULT 0,
-    reason TEXT NOT NULL DEFAULT '',
-    supporting_fact_keys_json TEXT NOT NULL DEFAULT '[]',
-    contradicting_fact_keys_json TEXT NOT NULL DEFAULT '[]',
-    evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
-    evaluated_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    PRIMARY KEY (task_id, cycle_key)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_group_automation_cycle_scope
-  ON managed_group_automation_cycle_states (bot_id, group_id, task_id, cycle_key);
 
   CREATE TABLE IF NOT EXISTS cockpit_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1133,6 +1028,7 @@ ensureColumn("flow_sessions", "history_sync_error", "TEXT");
 ensureColumn("flow_sessions", "history_context_sent_at", "TEXT");
 ensureColumn("conversation_messages", "source", "TEXT NOT NULL DEFAULT 'local'");
 ensureColumn("conversation_messages", "source_key", "TEXT");
+ensureColumn("managed_group_automation_tasks", "validation_reason", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("managed_group_automation_occurrences", "next_retry_at", "TEXT");
 ensureColumn("managed_group_automation_occurrences", "execution_token", "TEXT");
 ensureColumn(
@@ -1853,6 +1749,7 @@ function rowToGroupAutomationTask(row) {
     summaryTemplate: row.summary_template || "",
     mentionRoleIds: listGroupAutomationMentionRoleIds(row.id),
     enabled: Boolean(row.enabled),
+    validationReason: row.validation_reason || "",
     nextRunAt: row.next_run_at || "",
     version: Number(row.version || 1),
     deletedAt: row.deleted_at || "",
@@ -1881,8 +1778,6 @@ function rowToGroupAutomationOccurrence(row) {
       ? null
       : Boolean(row.condition_achieved),
     reason: row.reason || "",
-    variableValues: parseJson(row.variable_values_json) || {},
-    factIds: parseJson(row.fact_ids_json) || [],
     evidenceMessageIds: parseJson(row.evidence_message_ids_json) || [],
     mentionRoleIds: parseJson(row.mention_role_ids_json) || [],
     mentionNames: parseJson(row.mention_names_json) || [],
@@ -2021,6 +1916,27 @@ export function listGroupAutomationTasks({ botId, groupId, includeDeleted = fals
   `).all(botId, groupId).map(rowToGroupAutomationTask);
 }
 
+export function disableLegacyConditionalTasksWithoutCondition() {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE managed_group_automation_tasks
+    SET enabled = 0,
+        validation_reason = 'needs_condition',
+        next_run_at = NULL,
+        version = version + 1,
+        updated_at = ?
+    WHERE task_type = 'conditional_push'
+      AND TRIM(condition_text) = ''
+      AND deleted_at IS NULL
+      AND (
+        enabled != 0
+        OR next_run_at IS NOT NULL
+        OR validation_reason != 'needs_condition'
+      )
+  `).run(timestamp);
+  return Number(result.changes || 0);
+}
+
 export function createGroupAutomationTask(input) {
   const botId = String(input?.botId || "").trim();
   const groupId = String(input?.groupId || "").trim();
@@ -2035,9 +1951,9 @@ export function createGroupAutomationTask(input) {
     db.prepare(`
       INSERT INTO managed_group_automation_tasks (
         id, bot_id, group_id, name, task_type, cadence, schedule_days_json,
-        time_of_day, condition_text, content, summary_template, enabled,
+        time_of_day, condition_text, content, summary_template, enabled, validation_reason,
         next_run_at, version, deleted_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NULL, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, 1, NULL, ?, ?)
     `).run(
       taskId,
       botId,
@@ -2088,7 +2004,8 @@ export function updateGroupAutomationTask(input) {
       UPDATE managed_group_automation_tasks
       SET name = ?, task_type = ?, cadence = ?, schedule_days_json = ?,
           time_of_day = ?, condition_text = ?, content = ?, summary_template = ?,
-          enabled = ?, next_run_at = ?, version = version + 1, updated_at = ?
+          enabled = ?, validation_reason = '', next_run_at = ?,
+          version = version + 1, updated_at = ?
       WHERE bot_id = ? AND id = ? AND version = ? AND deleted_at IS NULL
     `).run(
       values.name,
@@ -2755,368 +2672,6 @@ export function heartbeatGroupAutomationOccurrence({
   return getGroupAutomationOccurrence({ occurrenceId });
 }
 
-function claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt }) {
-  const executionToken = crypto.randomUUID();
-  const result = db.prepare(`
-    UPDATE managed_group_automation_occurrences
-    SET status = 'evaluating', attempts = attempts + 1,
-        lease_expires_at = ?, execution_token = ?, next_retry_at = NULL,
-        started_at = COALESCE(started_at, ?), updated_at = ?
-    WHERE id = ?
-      AND (
-        status = 'pending'
-        OR (status = 'retry_wait' AND next_retry_at <= ?)
-        OR (status = 'evaluating' AND lease_expires_at <= ?)
-      )
-      AND NOT EXISTS (
-        SELECT 1
-        FROM managed_group_automation_occurrences active
-        WHERE active.bot_id = ? AND active.group_id = ? AND active.id <> ?
-          AND active.status IN ('evaluating', 'sending')
-          AND active.lease_expires_at > ?
-      )
-  `).run(
-    leaseExpiresAt,
-    executionToken,
-    nowIso,
-    nowIso,
-    row.id,
-    nowIso,
-    nowIso,
-    row.bot_id,
-    row.group_id,
-    row.id,
-    nowIso
-  );
-  if (Number(result.changes) !== 1) return null;
-  return rowToGroupAutomationOccurrence(db.prepare(`
-    SELECT * FROM managed_group_automation_occurrences WHERE id = ?
-  `).get(row.id));
-}
-
-export function claimDueGroupAutomationOccurrences({
-  nowIso = now(),
-  limit = 10,
-  leaseMs = 300000
-} = {}) {
-  const claimLimit = Math.max(1, Math.min(100, Number(limit) || 10));
-  const nowInstant = new Date(nowIso);
-  if (Number.isNaN(nowInstant.getTime())) throw new Error("invalid claim time");
-  const leaseExpiresAt = new Date(nowInstant.getTime() + Math.max(1000, Number(leaseMs) || 0))
-    .toISOString();
-  const claimed = [];
-
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    db.prepare(`
-      UPDATE managed_group_automation_occurrences
-      SET status = 'delivery_unknown', lease_expires_at = NULL,
-          execution_token = NULL,
-          reason = CASE WHEN reason = '' THEN '发送阶段租约过期，结果未知，已停止自动重试' ELSE reason END,
-          error_message = CASE WHEN error_message = '' THEN 'sending lease expired' ELSE error_message END,
-          finished_at = COALESCE(finished_at, ?), updated_at = ?
-      WHERE status = 'sending' AND lease_expires_at <= ?
-    `).run(nowIso, nowIso, nowIso);
-    const expiredRows = db.prepare(`
-      SELECT occurrence.*
-      FROM managed_group_automation_occurrences occurrence
-      JOIN managed_group_automation_tasks task ON task.id = occurrence.task_id
-      WHERE (
-          (occurrence.status = 'pending' AND occurrence.scheduled_for <= ?)
-          OR (occurrence.status = 'evaluating'
-            AND occurrence.lease_expires_at <= ?)
-          OR (occurrence.status = 'retry_wait'
-            AND occurrence.next_retry_at <= ?)
-        )
-        AND task.enabled = 1
-        AND task.deleted_at IS NULL
-      ORDER BY occurrence.scheduled_for ASC, occurrence.id ASC
-      LIMIT ?
-    `).all(nowIso, nowIso, nowIso, claimLimit);
-    for (const row of expiredRows) {
-      const occurrence = claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt });
-      if (occurrence) claimed.push(occurrence);
-    }
-
-    const remaining = claimLimit - claimed.length;
-    if (remaining > 0) {
-      const dueTasks = db.prepare(`
-        SELECT *
-        FROM managed_group_automation_tasks
-        WHERE enabled = 1 AND deleted_at IS NULL
-          AND next_run_at IS NOT NULL AND next_run_at <= ?
-        ORDER BY next_run_at ASC, created_at ASC, id ASC
-        LIMIT ?
-      `).all(nowIso, remaining);
-      for (const taskRow of dueTasks) {
-        const scheduledFor = taskRow.next_run_at;
-        const cycle = groupAutomationCycleWindow(taskRow.cadence, scheduledFor);
-        const occurrenceId = crypto.randomUUID();
-        db.prepare(`
-          INSERT OR IGNORE INTO managed_group_automation_occurrences (
-            id, task_id, bot_id, group_id, scheduled_for, cycle_key,
-            cycle_start_at, cycle_end_at, status, attempts, lease_expires_at,
-            mention_role_ids_json, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, ?, ?, ?)
-        `).run(
-          occurrenceId,
-          taskRow.id,
-          taskRow.bot_id,
-          taskRow.group_id,
-          scheduledFor,
-          cycle.cycleKey,
-          cycle.startAt,
-          cycle.endAt,
-          json(listGroupAutomationMentionRoleIds(taskRow.id)),
-          nowIso,
-          nowIso
-        );
-        const schedule = {
-          cadence: taskRow.cadence,
-          scheduleDays: parseJson(taskRow.schedule_days_json) || [],
-          timeOfDay: taskRow.time_of_day
-        };
-        db.prepare(`
-          UPDATE managed_group_automation_tasks
-          SET next_run_at = ?, updated_at = ?
-          WHERE id = ? AND next_run_at = ?
-        `).run(
-          nextGroupAutomationRunAt(schedule, scheduledFor),
-          nowIso,
-          taskRow.id,
-          scheduledFor
-        );
-        const occurrenceRow = db.prepare(`
-          SELECT *
-          FROM managed_group_automation_occurrences
-          WHERE task_id = ? AND scheduled_for = ?
-        `).get(taskRow.id, scheduledFor);
-        const occurrence = claimGroupAutomationOccurrenceRow({
-          row: occurrenceRow,
-          nowIso,
-          leaseExpiresAt
-        });
-        if (occurrence) claimed.push(occurrence);
-      }
-    }
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-  return claimed;
-}
-
-export function scheduleGroupAutomationOccurrenceRetry({
-  botId,
-  occurrenceId,
-  executionToken,
-  nextRetryAt,
-  errorMessage = ""
-}) {
-  const normalizedExecutionToken = String(executionToken || "").trim();
-  if (!normalizedExecutionToken) throw new Error("group automation execution lease token is required");
-  const retryAt = new Date(nextRetryAt);
-  if (Number.isNaN(retryAt.getTime())) throw new Error("invalid occurrence retry time");
-  const timestamp = now();
-  const result = db.prepare(`
-    UPDATE managed_group_automation_occurrences
-    SET status = 'retry_wait', lease_expires_at = NULL, execution_token = NULL, next_retry_at = ?,
-        error_message = ?, updated_at = ?
-    WHERE bot_id = ? AND id = ? AND execution_token = ?
-      AND status IN ('evaluating', 'sending')
-  `).run(
-    retryAt.toISOString(),
-    String(errorMessage || ""),
-    timestamp,
-    botId,
-    occurrenceId,
-    normalizedExecutionToken
-  );
-  if (Number(result.changes) !== 1) {
-    throw new Error("group automation execution lease token no longer owns this occurrence");
-  }
-  return rowToGroupAutomationOccurrence(db.prepare(`
-    SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
-  `).get(botId, occurrenceId));
-}
-
-export function retryGroupAutomationOccurrence({
-  botId,
-  groupId = "",
-  occurrenceId,
-  nextRetryAt = now()
-}) {
-  const retryAt = new Date(nextRetryAt);
-  if (Number.isNaN(retryAt.getTime())) throw new Error("invalid occurrence retry time");
-  const timestamp = now();
-  const result = db.prepare(`
-    UPDATE managed_group_automation_occurrences
-    SET status = 'retry_wait', lease_expires_at = NULL, execution_token = NULL, next_retry_at = ?,
-        error_message = '', finished_at = NULL, updated_at = ?
-    WHERE bot_id = ? AND id = ?
-      AND (? = '' OR group_id = ?)
-      AND status IN ('failed', 'delivery_unknown', 'retry_wait')
-  `).run(
-    retryAt.toISOString(),
-    timestamp,
-    botId,
-    occurrenceId,
-    String(groupId || ""),
-    String(groupId || "")
-  );
-  if (Number(result.changes) !== 1) {
-    throw new Error("retryable group automation occurrence not found");
-  }
-  return rowToGroupAutomationOccurrence(db.prepare(`
-    SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
-  `).get(botId, occurrenceId));
-}
-
-export function markGroupAutomationOccurrenceSending({
-  botId,
-  occurrenceId,
-  executionToken,
-  renderedContent,
-  mentionRoleIds = [],
-  mentionNames = [],
-  warnings = [],
-  conditionAchieved = null,
-  reason = "",
-  variableValues = {},
-  factIds = [],
-  evidenceMessageIds = []
-}) {
-  const normalizedExecutionToken = String(executionToken || "").trim();
-  if (!normalizedExecutionToken) throw new Error("group automation execution lease token is required");
-  const timestamp = now();
-  const result = db.prepare(`
-    UPDATE managed_group_automation_occurrences
-    SET status = 'sending', condition_achieved = ?, reason = ?,
-        variable_values_json = ?, fact_ids_json = ?, evidence_message_ids_json = ?,
-        mention_role_ids_json = ?, mention_names_json = ?, warnings_json = ?,
-        rendered_content = ?, updated_at = ?
-    WHERE bot_id = ? AND id = ? AND execution_token = ? AND status = 'evaluating'
-  `).run(
-    conditionAchieved == null ? null : conditionAchieved ? 1 : 0,
-    String(reason || ""),
-    json(variableValues || {}),
-    json(Array.isArray(factIds) ? factIds : []),
-    json(Array.isArray(evidenceMessageIds) ? evidenceMessageIds : []),
-    json(Array.isArray(mentionRoleIds) ? mentionRoleIds : []),
-    json(Array.isArray(mentionNames) ? mentionNames : []),
-    json(Array.isArray(warnings) ? warnings : []),
-    String(renderedContent || ""),
-    timestamp,
-    botId,
-    occurrenceId,
-    normalizedExecutionToken
-  );
-  if (Number(result.changes) !== 1) {
-    throw new Error("group automation execution lease token no longer owns this occurrence");
-  }
-  return rowToGroupAutomationOccurrence(db.prepare(`
-    SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
-  `).get(botId, occurrenceId));
-}
-
-export function completeGroupAutomationOccurrence({
-  botId,
-  occurrenceId,
-  executionToken,
-  status,
-  conditionAchieved,
-  reason,
-  variableValues,
-  factIds,
-  evidenceMessageIds,
-  mentionRoleIds,
-  mentionNames,
-  warnings,
-  renderedContent,
-  worktoolMessageId,
-  worktoolResponse,
-  errorMessage = "",
-  finishedAt = now()
-}) {
-  const current = db.prepare(`
-    SELECT * FROM managed_group_automation_occurrences
-    WHERE bot_id = ? AND id = ?
-  `).get(botId, occurrenceId);
-  if (!current) throw new Error("group automation occurrence not found");
-  const normalizedExecutionToken = String(executionToken || "").trim();
-  if (!normalizedExecutionToken || normalizedExecutionToken !== current.execution_token) {
-    throw new Error("group automation execution lease token no longer owns this occurrence");
-  }
-  const result = db.prepare(`
-    UPDATE managed_group_automation_occurrences
-    SET status = ?, lease_expires_at = NULL, execution_token = NULL, next_retry_at = NULL,
-        condition_achieved = ?, reason = ?,
-        variable_values_json = ?, fact_ids_json = ?, evidence_message_ids_json = ?,
-        mention_role_ids_json = ?, mention_names_json = ?, warnings_json = ?,
-        rendered_content = ?,
-        worktool_message_id = ?, worktool_response_json = ?, error_message = ?,
-        finished_at = ?, updated_at = ?
-    WHERE bot_id = ? AND id = ?
-      AND execution_token = ?
-  `).run(
-    String(status || "completed"),
-    conditionAchieved === undefined
-      ? current.condition_achieved
-      : conditionAchieved == null ? null : conditionAchieved ? 1 : 0,
-    String(reason === undefined ? current.reason || "" : reason || ""),
-    json(variableValues === undefined
-      ? parseJson(current.variable_values_json) || {}
-      : variableValues || {}),
-    json(factIds === undefined
-      ? parseJson(current.fact_ids_json) || []
-      : Array.isArray(factIds) ? factIds : []),
-    json(evidenceMessageIds === undefined
-      ? parseJson(current.evidence_message_ids_json) || []
-      : Array.isArray(evidenceMessageIds) ? evidenceMessageIds : []),
-    json(mentionRoleIds === undefined
-      ? parseJson(current.mention_role_ids_json) || []
-      : Array.isArray(mentionRoleIds) ? mentionRoleIds : []),
-    json(mentionNames === undefined
-      ? parseJson(current.mention_names_json) || []
-      : Array.isArray(mentionNames) ? mentionNames : []),
-    json(warnings === undefined
-      ? parseJson(current.warnings_json) || []
-      : Array.isArray(warnings) ? warnings : []),
-    String(renderedContent === undefined
-      ? current.rendered_content || ""
-      : renderedContent || ""),
-    String(worktoolMessageId === undefined
-      ? current.worktool_message_id || ""
-      : worktoolMessageId || ""),
-    worktoolResponse === undefined
-      ? current.worktool_response_json
-      : worktoolResponse == null ? null : json(worktoolResponse),
-    String(errorMessage || ""),
-    finishedAt,
-    finishedAt,
-    botId,
-    occurrenceId,
-    normalizedExecutionToken
-  );
-  if (Number(result.changes) !== 1) {
-    throw new Error("group automation execution lease token no longer owns this occurrence");
-  }
-  return rowToGroupAutomationOccurrence(db.prepare(`
-    SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
-  `).get(botId, occurrenceId));
-}
-
-export function failGroupAutomationOccurrence({ botId, occurrenceId, executionToken, errorMessage }) {
-  return completeGroupAutomationOccurrence({
-    botId,
-    occurrenceId,
-    executionToken,
-    status: "failed",
-    errorMessage: String(errorMessage || "group automation occurrence failed")
-  });
-}
-
 export function listGroupAutomationOccurrences({
   botId,
   taskId,
@@ -3363,73 +2918,6 @@ function rowToGroupHistorySyncState(row) {
     heartbeatAt: row.heartbeat_at || "",
     lastError: row.last_error || "",
     createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
-function rowToGroupLedgerJob(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    botId: row.bot_id,
-    groupId: row.group_id,
-    mode: row.mode,
-    taskId: row.task_id || "",
-    fromMessageId: Number(row.from_message_id || 0),
-    throughMessageId: Number(row.through_message_id || 0),
-    status: row.status,
-    attempts: Number(row.attempts || 0),
-    leaseExpiresAt: row.lease_expires_at || "",
-    nextRetryAt: row.next_retry_at || "",
-    errorMessage: row.error_message || "",
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    completedAt: row.completed_at || ""
-  };
-}
-
-function listGroupFactEvidenceIds(factId) {
-  return db.prepare(`
-    SELECT message_id
-    FROM managed_group_fact_evidence
-    WHERE fact_id = ?
-    ORDER BY ordinal ASC, message_id ASC
-  `).all(factId).map((row) => Number(row.message_id));
-}
-
-function rowToGroupFact(row) {
-  if (!row) return null;
-  return {
-    id: row.id,
-    botId: row.bot_id,
-    groupId: row.group_id,
-    semanticKey: row.semantic_key,
-    category: row.category,
-    statement: row.statement,
-    value: parseJson(row.value_json) || {},
-    happenedAt: row.happened_at,
-    speakerName: row.speaker_name || "",
-    roleId: row.role_id || "",
-    active: Boolean(row.active),
-    evidenceMessageIds: listGroupFactEvidenceIds(row.id),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
-function rowToGroupAutomationCycleState(row) {
-  if (!row) return null;
-  return {
-    taskId: row.task_id,
-    botId: row.bot_id,
-    groupId: row.group_id,
-    cycleKey: row.cycle_key,
-    achieved: Boolean(row.achieved),
-    reason: row.reason || "",
-    supportingFactKeys: parseJson(row.supporting_fact_keys_json) || [],
-    contradictingFactKeys: parseJson(row.contradicting_fact_keys_json) || [],
-    evidenceMessageIds: parseJson(row.evidence_message_ids_json) || [],
-    evaluatedAt: row.evaluated_at,
     updatedAt: row.updated_at
   };
 }
@@ -3718,668 +3206,75 @@ export function failGroupHistorySyncJob({
   return getGroupHistorySyncState({ botId, groupId });
 }
 
-export function getGroupLedgerState({ botId, groupId }) {
-  const row = db.prepare(`
-    SELECT *
-    FROM managed_group_ledger_states
-    WHERE bot_id = ? AND group_id = ?
-  `).get(botId, groupId);
-  return {
-    botId,
-    groupId,
-    liveCursorMessageId: Number(row?.live_cursor_message_id || 0),
-    backfillCursors: parseJson(row?.backfill_cursors_json) || {},
-    updatedAt: row?.updated_at || ""
-  };
-}
-
-export function enqueueGroupLedgerJob({
-  botId,
-  groupId,
-  mode = "live",
-  taskId = "",
-  fromMessageId,
-  throughMessageId
-}) {
-  assertGroupAutomationScope({ botId, groupId });
-  if (!["live", "backfill", "reindex"].includes(mode)) {
-    throw new Error("invalid group ledger job mode");
-  }
-  const normalizedTaskId = mode === "live" ? "" : String(taskId || "").trim();
-  if (mode === "backfill") {
-    const task = getGroupAutomationTask({ botId, taskId: normalizedTaskId });
-    if (!task || task.groupId !== groupId || task.deletedAt) {
-      throw new Error("group automation task not found");
-    }
-  }
-  const through = Number(throughMessageId);
-  if (!Number.isSafeInteger(through) || through <= 0) {
-    throw new Error("invalid group ledger throughMessageId");
-  }
-  const state = getGroupLedgerState({ botId, groupId });
-  const cursor = mode === "live"
-    ? state.liveCursorMessageId
-    : Number(state.backfillCursors[normalizedTaskId] || 0);
-  const from = fromMessageId == null ? cursor : Number(fromMessageId);
-  const timestamp = now();
-  const jobId = crypto.randomUUID();
-  db.prepare(`
-    INSERT INTO managed_group_ledger_jobs (
-      id, bot_id, group_id, mode, task_id, from_message_id,
-      through_message_id, status, attempts, lease_expires_at,
-      next_retry_at, error_message, created_at, updated_at, completed_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, NULL, '', ?, ?, NULL)
-    ON CONFLICT(bot_id, group_id, mode, task_id) DO UPDATE SET
-      from_message_id = MIN(managed_group_ledger_jobs.from_message_id, excluded.from_message_id),
-      through_message_id = MAX(managed_group_ledger_jobs.through_message_id, excluded.through_message_id),
-      status = CASE
-        WHEN managed_group_ledger_jobs.status = 'processing' THEN 'processing'
-        ELSE 'pending'
-      END,
-      next_retry_at = NULL,
-      error_message = '',
-      completed_at = NULL,
-      updated_at = excluded.updated_at
-  `).run(
-    jobId,
-    botId,
-    groupId,
-    mode,
-    normalizedTaskId,
-    Math.max(0, Number.isSafeInteger(from) ? from : 0),
-    through,
-    timestamp,
-    timestamp
-  );
-  return rowToGroupLedgerJob(db.prepare(`
-    SELECT *
-    FROM managed_group_ledger_jobs
-    WHERE bot_id = ? AND group_id = ? AND mode = ? AND task_id = ?
-  `).get(botId, groupId, mode, normalizedTaskId));
-}
-
-export function claimGroupLedgerJobs({
-  nowIso = now(),
-  limit = 10,
-  leaseMs = 300000
-} = {}) {
-  const claimLimit = Math.max(1, Math.min(100, Number(limit) || 10));
-  const instant = new Date(nowIso);
-  if (Number.isNaN(instant.getTime())) throw new Error("invalid group ledger claim time");
-  const leaseExpiresAt = new Date(
-    instant.getTime() + Math.max(1000, Number(leaseMs) || 0)
-  ).toISOString();
-  const claimed = [];
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const rows = db.prepare(`
-      SELECT *
-      FROM managed_group_ledger_jobs
-      WHERE status = 'pending'
-        OR (status = 'failed' AND (next_retry_at IS NULL OR next_retry_at <= ?))
-        OR (status = 'processing' AND lease_expires_at <= ?)
-      ORDER BY created_at ASC, id ASC
-      LIMIT ?
-    `).all(nowIso, nowIso, claimLimit);
-    const claim = db.prepare(`
-      UPDATE managed_group_ledger_jobs
-      SET status = 'processing', attempts = attempts + 1,
-          lease_expires_at = ?, error_message = '', updated_at = ?
-      WHERE id = ?
-        AND (
-          status = 'pending'
-          OR (status = 'failed' AND (next_retry_at IS NULL OR next_retry_at <= ?))
-          OR (status = 'processing' AND lease_expires_at <= ?)
-        )
-    `);
-    for (const row of rows) {
-      const result = claim.run(leaseExpiresAt, nowIso, row.id, nowIso, nowIso);
-      if (Number(result.changes) !== 1) continue;
-      claimed.push(rowToGroupLedgerJob(db.prepare(`
-        SELECT * FROM managed_group_ledger_jobs WHERE id = ?
-      `).get(row.id)));
-    }
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-  return claimed;
-}
-
-export function hasUnfinishedGroupLedgerReindex({ botId, groupId }) {
-  assertGroupAutomationScope({ botId, groupId });
-  return Boolean(db.prepare(`
-    SELECT 1
-    FROM managed_group_ledger_jobs
-    WHERE bot_id = ? AND group_id = ? AND mode = 'reindex'
-      AND status IN ('pending', 'processing', 'failed')
-    LIMIT 1
-  `).get(botId, groupId));
-}
-
-function assertGroupLedgerEvidence({ botId, groupId, messageIds }) {
-  const uniqueMessageIds = [...new Set(messageIds.map(Number))];
-  if (!uniqueMessageIds.length) return new Map();
-  if (uniqueMessageIds.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
-    throw new Error("invalid group ledger evidence message ID");
-  }
-  const group = assertGroupAutomationScope({ botId, groupId });
-  const placeholders = uniqueMessageIds.map(() => "?").join(", ");
+export function allManagedGroupHistoryBackfillsReady() {
   const rows = db.prepare(`
-    SELECT *
-    FROM conversation_messages
-    WHERE id IN (${placeholders})
-      AND bot_id = ? AND conversation_key = ? AND direction = 'inbound'
-  `).all(...uniqueMessageIds, botId, group.conversationKey);
-  if (rows.length !== uniqueMessageIds.length) {
-    throw new Error("ledger evidence must be an inbound group message in the same Bot and group");
+    SELECT groups.bot_id,
+           groups.id AS group_id,
+           bindings.bot_id AS binding_bot_id,
+           sync.status,
+           sync.synced_through_message_id,
+           sync.requested_through_message_id,
+           COALESCE(MAX(messages.id), 0) AS latest_message_id
+    FROM managed_groups groups
+    LEFT JOIN bot_agent_bindings bindings
+      ON bindings.bot_id = groups.bot_id
+    LEFT JOIN managed_group_history_sync_states sync
+      ON sync.bot_id = groups.bot_id AND sync.group_id = groups.id
+    LEFT JOIN conversation_messages messages
+      ON messages.bot_id = groups.bot_id
+     AND messages.conversation_key = groups.conversation_key
+    GROUP BY groups.bot_id, groups.id
+  `).all();
+  return rows.every((row) => {
+    const synchronized = Number(row.synced_through_message_id || 0);
+    const required = Math.max(
+      Number(row.requested_through_message_id || 0),
+      Number(row.latest_message_id || 0)
+    );
+    return Boolean(row.binding_bot_id)
+      && row.status === "idle"
+      && synchronized >= required;
+  });
+}
+
+export function finalizeLegacyGroupLedgerRemoval({
+  capabilityReady = false,
+  allManagedGroupsBackfilled = false
+} = {}) {
+  if (!capabilityReady || !allManagedGroupsBackfilled) {
+    return { removed: false, reason: "history_not_ready" };
   }
-  return new Map(rows.map((row) => [Number(row.id), row]));
-}
+  const migrationKey = "remove_legacy_group_business_state_v1";
+  const applied = db.prepare(`
+    SELECT migration_key FROM schema_migrations WHERE migration_key = ?
+  `).get(migrationKey);
+  if (applied) return { removed: false, reason: "already_removed" };
 
-function replaceGroupFactEvidence(factId, messageIds) {
-  db.prepare(`DELETE FROM managed_group_fact_evidence WHERE fact_id = ?`).run(factId);
-  const insert = db.prepare(`
-    INSERT INTO managed_group_fact_evidence (fact_id, message_id, ordinal)
-    VALUES (?, ?, ?)
-  `);
-  [...new Set(messageIds.map(Number))]
-    .forEach((messageId, ordinal) => insert.run(factId, messageId, ordinal));
-}
-
-function appendGroupFactRevision({ factId, botId, groupId, operation, evidenceMessageIds, createdAt }) {
-  const fact = db.prepare(`SELECT * FROM managed_group_facts WHERE id = ?`).get(factId);
-  if (!fact) throw new Error("group fact not found for revision");
-  const previous = db.prepare(`
-    SELECT id FROM managed_group_fact_revisions
-    WHERE fact_id = ? ORDER BY id DESC LIMIT 1
-  `).get(factId);
-  db.prepare(`
-    INSERT INTO managed_group_fact_revisions (
-      fact_id, bot_id, group_id, operation, snapshot_json,
-      evidence_message_ids_json, corrects_revision_id, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    factId,
-    botId,
-    groupId,
-    operation,
-    json({
-      semanticKey: fact.semantic_key,
-      category: fact.category,
-      statement: fact.statement,
-      value: parseJson(fact.value_json) || {},
-      happenedAt: fact.happened_at,
-      speakerName: fact.speaker_name,
-      roleId: fact.role_id,
-      active: Boolean(fact.active)
-    }),
-    json(evidenceMessageIds),
-    previous?.id || null,
-    createdAt
-  );
-}
-
-function accumulateFiniteNumbers(target, value, prefix = "") {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return target;
-  for (const key of Object.keys(value).sort()) {
-    const path = prefix ? `${prefix}.${key}` : key;
-    const item = value[key];
-    if (typeof item === "number" && Number.isFinite(item)) {
-      target[path] = (target[path] || 0) + item;
-    } else if (item && typeof item === "object" && !Array.isArray(item)) {
-      accumulateFiniteNumbers(target, item, path);
-    }
-  }
-  return target;
-}
-
-function rebuildGroupFactAggregate({ botId, groupId, category, timestamp }) {
-  const normalizedCategory = String(category || "").trim();
-  if (!normalizedCategory) return;
-  const facts = db.prepare(`
-    SELECT *
-    FROM managed_group_facts
-    WHERE bot_id = ? AND group_id = ? AND category = ? AND active = 1
-    ORDER BY happened_at ASC, created_at ASC, id ASC
-  `).all(botId, groupId, normalizedCategory).map(rowToGroupFact);
-  if (!facts.length) {
-    db.prepare(`
-      DELETE FROM managed_group_fact_aggregates
-      WHERE bot_id = ? AND group_id = ? AND category = ?
-    `).run(botId, groupId, normalizedCategory);
-    return;
-  }
-  const numericSums = {};
-  for (const fact of facts) accumulateFiniteNumbers(numericSums, fact.value);
-  const representatives = facts.slice(-20);
-  const evidenceFactKeys = representatives.map((fact) => fact.semanticKey);
-  const evidenceMessageIds = [...new Set(
-    representatives.flatMap((fact) => fact.evidenceMessageIds)
-  )].slice(-20);
-  db.prepare(`
-    INSERT INTO managed_group_fact_aggregates (
-      bot_id, group_id, category, fact_count, numeric_sums_json,
-      first_happened_at, last_happened_at, evidence_fact_keys_json,
-      evidence_message_ids_json, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    ON CONFLICT(bot_id, group_id, category) DO UPDATE SET
-      fact_count = excluded.fact_count,
-      numeric_sums_json = excluded.numeric_sums_json,
-      first_happened_at = excluded.first_happened_at,
-      last_happened_at = excluded.last_happened_at,
-      evidence_fact_keys_json = excluded.evidence_fact_keys_json,
-      evidence_message_ids_json = excluded.evidence_message_ids_json,
-      updated_at = excluded.updated_at
-  `).run(
-    botId,
-    groupId,
-    normalizedCategory,
-    facts.length,
-    json(numericSums),
-    facts[0].happenedAt,
-    facts.at(-1).happenedAt,
-    json(evidenceFactKeys),
-    json(evidenceMessageIds),
-    timestamp
-  );
-}
-
-function rebuildAllGroupFactAggregates({ botId, groupId, timestamp }) {
-  const categories = db.prepare(`
-    SELECT DISTINCT category
-    FROM managed_group_facts
-    WHERE bot_id = ? AND group_id = ?
-  `).all(botId, groupId).map((row) => row.category);
-  db.prepare(`
-    DELETE FROM managed_group_fact_aggregates WHERE bot_id = ? AND group_id = ?
-  `).run(botId, groupId);
-  for (const category of categories) {
-    rebuildGroupFactAggregate({ botId, groupId, category, timestamp });
-  }
-}
-
-export function listGroupFactRevisions({ botId, groupId, factId }) {
-  assertGroupAutomationScope({ botId, groupId });
-  return db.prepare(`
-    SELECT * FROM managed_group_fact_revisions
-    WHERE bot_id = ? AND group_id = ? AND fact_id = ?
-    ORDER BY id ASC
-  `).all(botId, groupId, factId).map((row) => ({
-    id: Number(row.id),
-    factId: row.fact_id,
-    operation: row.operation,
-    snapshot: parseJson(row.snapshot_json) || {},
-    evidenceMessageIds: parseJson(row.evidence_message_ids_json) || [],
-    correctsRevisionId: row.corrects_revision_id == null ? null : Number(row.corrects_revision_id),
-    createdAt: row.created_at
-  }));
-}
-
-export function applyGroupLedgerEvaluation({
-  jobId,
-  botId,
-  groupId,
-  throughMessageId,
-  facts = [],
-  conditionStates = []
-}) {
-  const processedThrough = Number(throughMessageId);
-  const timestamp = now();
+  const prefix = `${["managed", "group"].join("_")}_`;
+  const legacyTables = [
+    `${prefix}fact_${"evidence"}`,
+    `${prefix}fact_${"revisions"}`,
+    `${prefix}${"facts"}`,
+    `${prefix}fact_${"aggregates"}`,
+    `${prefix}ledger_${"states"}`,
+    `${prefix}ledger_${"jobs"}`,
+    `${prefix}automation_cycle_${"states"}`
+  ];
   db.exec("BEGIN IMMEDIATE");
   try {
-    const job = db.prepare(`
-      SELECT *
-      FROM managed_group_ledger_jobs
-      WHERE id = ? AND bot_id = ? AND group_id = ? AND status = 'processing'
-    `).get(jobId, botId, groupId);
-    if (!job) throw new Error("processing group ledger job not found");
-    if (!Number.isSafeInteger(processedThrough) || processedThrough <= 0
-      || processedThrough > Number(job.through_message_id)) {
-      throw new Error("invalid processed group ledger cursor");
-    }
-
-    const normalizedFacts = Array.isArray(facts) ? facts : [];
-    const normalizedStates = Array.isArray(conditionStates) ? conditionStates : [];
-    const allEvidenceIds = normalizedFacts.flatMap((fact) => (
-      Array.isArray(fact?.evidenceMessageIds) ? fact.evidenceMessageIds : []
-    ));
-    assertGroupLedgerEvidence({ botId, groupId, messageIds: allEvidenceIds });
-
-    const affectedAggregateCategories = new Set();
-
-    for (const mutation of normalizedFacts) {
-      const operation = String(mutation?.operation || "").trim();
-      const semanticKey = String(mutation?.semanticKey || "").trim();
-      const evidenceMessageIds = [...new Set(
-        (Array.isArray(mutation?.evidenceMessageIds) ? mutation.evidenceMessageIds : []).map(Number)
-      )];
-      if (!semanticKey || !["upsert", "retract"].includes(operation)) {
-        throw new Error("invalid group fact mutation");
-      }
-      if (!evidenceMessageIds.length) throw new Error("group fact evidence is required");
-      const existing = db.prepare(`
-        SELECT * FROM managed_group_facts
-        WHERE bot_id = ? AND group_id = ? AND semantic_key = ?
-      `).get(botId, groupId, semanticKey);
-
-      if (operation === "retract") {
-        if (!existing) throw new Error(`group fact not found for retraction: ${semanticKey}`);
-        affectedAggregateCategories.add(existing.category);
-        db.prepare(`
-          UPDATE managed_group_facts
-          SET active = 0, updated_at = ?
-          WHERE id = ?
-        `).run(timestamp, existing.id);
-        replaceGroupFactEvidence(existing.id, evidenceMessageIds);
-        appendGroupFactRevision({
-          factId: existing.id,
-          botId,
-          groupId,
-          operation,
-          evidenceMessageIds,
-          createdAt: timestamp
-        });
-        continue;
-      }
-
-      const category = String(mutation.category || "").trim();
-      const statement = String(mutation.statement || "").trim();
-      const happenedAt = String(mutation.happenedAt || "").trim();
-      if (!category || !statement || Number.isNaN(new Date(happenedAt).getTime())) {
-        throw new Error("invalid group fact content");
-      }
-      if (existing?.category) affectedAggregateCategories.add(existing.category);
-      affectedAggregateCategories.add(category);
-      const roleId = String(mutation.roleId || "").trim();
-      if (roleId) {
-        const role = db.prepare(`
-          SELECT id FROM managed_group_roles
-          WHERE id = ? AND bot_id = ? AND group_id = ?
-        `).get(roleId, botId, groupId);
-        if (!role) throw new Error("group fact role not found");
-      }
-      const factId = existing?.id || crypto.randomUUID();
-      db.prepare(`
-        INSERT INTO managed_group_facts (
-          id, bot_id, group_id, semantic_key, category, statement, value_json,
-          happened_at, speaker_name, role_id, active, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-        ON CONFLICT(bot_id, group_id, semantic_key) DO UPDATE SET
-          category = excluded.category,
-          statement = excluded.statement,
-          value_json = excluded.value_json,
-          happened_at = excluded.happened_at,
-          speaker_name = excluded.speaker_name,
-          role_id = excluded.role_id,
-          active = 1,
-          updated_at = excluded.updated_at
-      `).run(
-        factId,
-        botId,
-        groupId,
-        semanticKey,
-        category,
-        statement,
-        json(mutation.value || {}),
-        new Date(happenedAt).toISOString(),
-        String(mutation.speakerName || "").trim(),
-        roleId,
-        existing?.created_at || timestamp,
-        timestamp
-      );
-      replaceGroupFactEvidence(factId, evidenceMessageIds);
-      appendGroupFactRevision({
-        factId,
-        botId,
-        groupId,
-        operation,
-        evidenceMessageIds,
-        createdAt: timestamp
-      });
-    }
-
-    for (const category of affectedAggregateCategories) {
-      rebuildGroupFactAggregate({ botId, groupId, category, timestamp });
-    }
-
-    for (const state of normalizedStates) {
-      const taskId = String(state?.taskId || "").trim();
-      const cycleKey = String(state?.cycleKey || "").trim();
-      if (!taskId || !cycleKey || typeof state?.achieved !== "boolean") {
-        throw new Error("invalid group automation condition state");
-      }
-      const task = getGroupAutomationTask({ botId, taskId });
-      if (!task || task.groupId !== groupId || task.deletedAt) {
-        throw new Error("group automation task not found");
-      }
-      const supportingFactKeys = [...new Set(
-        (Array.isArray(state.supportingFactKeys) ? state.supportingFactKeys : [])
-          .map((value) => String(value || "").trim()).filter(Boolean)
-      )];
-      const contradictingFactKeys = [...new Set(
-        (Array.isArray(state.contradictingFactKeys) ? state.contradictingFactKeys : [])
-          .map((value) => String(value || "").trim()).filter(Boolean)
-      )];
-      const referencedKeys = [...new Set([...supportingFactKeys, ...contradictingFactKeys])];
-      if (state.achieved && !supportingFactKeys.length) {
-        throw new Error("achieved condition requires a supporting fact");
-      }
-      let evidenceMessageIds = [];
-      if (referencedKeys.length) {
-        const placeholders = referencedKeys.map(() => "?").join(", ");
-        const rows = db.prepare(`
-          SELECT fact.semantic_key, fact.active, fact.happened_at, evidence.message_id
-          FROM managed_group_facts fact
-          LEFT JOIN managed_group_fact_evidence evidence ON evidence.fact_id = fact.id
-          WHERE fact.bot_id = ? AND fact.group_id = ?
-            AND fact.semantic_key IN (${placeholders})
-        `).all(botId, groupId, ...referencedKeys);
-        const foundKeys = new Set(rows.map((row) => row.semantic_key));
-        if (foundKeys.size !== referencedKeys.length) {
-          throw new Error("group automation condition references an unknown fact");
-        }
-        if (state.achieved) {
-          for (const key of supportingFactKeys) {
-            const supportingRows = rows.filter((row) => row.semantic_key === key);
-            const valid = supportingRows.some((row) => (
-              Boolean(row.active)
-              && Number.isSafeInteger(Number(row.message_id))
-              && Number(row.message_id) > 0
-              && groupAutomationCycleKey(task.cadence, row.happened_at) === cycleKey
-            ));
-            if (!valid) {
-              throw new Error("achieved condition requires an active in-cycle supporting fact with evidence");
-            }
-          }
-        }
-        evidenceMessageIds = [...new Set(rows
-          .map((row) => Number(row.message_id))
-          .filter((value) => Number.isSafeInteger(value) && value > 0))];
-      }
-      db.prepare(`
-        INSERT INTO managed_group_automation_cycle_states (
-          task_id, bot_id, group_id, cycle_key, achieved, reason,
-          supporting_fact_keys_json, contradicting_fact_keys_json,
-          evidence_message_ids_json, evaluated_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(task_id, cycle_key) DO UPDATE SET
-          achieved = excluded.achieved,
-          reason = excluded.reason,
-          supporting_fact_keys_json = excluded.supporting_fact_keys_json,
-          contradicting_fact_keys_json = excluded.contradicting_fact_keys_json,
-          evidence_message_ids_json = excluded.evidence_message_ids_json,
-          evaluated_at = excluded.evaluated_at,
-          updated_at = excluded.updated_at
-      `).run(
-        taskId,
-        botId,
-        groupId,
-        cycleKey,
-        state.achieved ? 1 : 0,
-        String(state.reason || "").trim(),
-        json(supportingFactKeys),
-        json(contradictingFactKeys),
-        json(evidenceMessageIds),
-        timestamp,
-        timestamp
-      );
-    }
-
-    const ledgerState = getGroupLedgerState({ botId, groupId });
-    const backfillCursors = { ...ledgerState.backfillCursors };
-    let liveCursorMessageId = ledgerState.liveCursorMessageId;
-    if (job.mode === "live" || job.mode === "reindex") {
-      liveCursorMessageId = Math.max(liveCursorMessageId, processedThrough);
-    } else {
-      backfillCursors[job.task_id] = Math.max(
-        Number(backfillCursors[job.task_id] || 0),
-        processedThrough
-      );
+    for (const table of legacyTables) {
+      db.exec(`DROP TABLE IF EXISTS ${table}`);
     }
     db.prepare(`
-      INSERT INTO managed_group_ledger_states (
-        bot_id, group_id, live_cursor_message_id, backfill_cursors_json, updated_at
-      ) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(bot_id, group_id) DO UPDATE SET
-        live_cursor_message_id = excluded.live_cursor_message_id,
-        backfill_cursors_json = excluded.backfill_cursors_json,
-        updated_at = excluded.updated_at
-    `).run(botId, groupId, liveCursorMessageId, json(backfillCursors), timestamp);
-
-    const hasMore = Number(job.through_message_id) > processedThrough;
-    db.prepare(`
-      UPDATE managed_group_ledger_jobs
-      SET status = ?, from_message_id = ?, lease_expires_at = NULL,
-          next_retry_at = NULL, error_message = '', updated_at = ?,
-          completed_at = ?
-      WHERE id = ?
-    `).run(
-      hasMore ? "pending" : "completed",
-      processedThrough,
-      timestamp,
-      hasMore ? null : timestamp,
-      job.id
-    );
+      INSERT INTO schema_migrations (migration_key, applied_at)
+      VALUES (?, ?)
+    `).run(migrationKey, now());
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
   }
-  return getGroupLedgerState({ botId, groupId });
-}
-
-export function failGroupLedgerJob({
-  jobId,
-  botId,
-  errorMessage,
-  nextRetryAt = "",
-  terminal = false
-}) {
-  const timestamp = now();
-  const result = db.prepare(`
-    UPDATE managed_group_ledger_jobs
-    SET status = ?, lease_expires_at = NULL, next_retry_at = ?,
-        error_message = ?, updated_at = ?
-    WHERE id = ? AND bot_id = ? AND status = 'processing'
-  `).run(
-    terminal ? "dead" : "failed",
-    nextRetryAt || null,
-    String(errorMessage || "group ledger evaluation failed"),
-    timestamp,
-    jobId,
-    botId
-  );
-  if (Number(result.changes) !== 1) throw new Error("processing group ledger job not found");
-  return rowToGroupLedgerJob(db.prepare(`
-    SELECT * FROM managed_group_ledger_jobs WHERE id = ? AND bot_id = ?
-  `).get(jobId, botId));
-}
-
-export function listGroupLedgerProjection({ botId, groupId, includeRetracted = false }) {
-  const activeClause = includeRetracted ? "" : "AND active = 1";
-  const facts = db.prepare(`
-    SELECT *
-    FROM managed_group_facts
-    WHERE bot_id = ? AND group_id = ? ${activeClause}
-    ORDER BY happened_at ASC, created_at ASC, id ASC
-  `).all(botId, groupId).map(rowToGroupFact);
-  const aggregateRows = db.prepare(`
-    SELECT *
-    FROM managed_group_fact_aggregates
-    WHERE bot_id = ? AND group_id = ?
-    ORDER BY category ASC
-  `).all(botId, groupId);
-  const aggregates = Object.fromEntries(aggregateRows.map((row) => [row.category, {
-    factCount: Number(row.fact_count || 0),
-    numericSums: parseJson(row.numeric_sums_json) || {},
-    firstHappenedAt: row.first_happened_at,
-    lastHappenedAt: row.last_happened_at,
-    evidenceFactKeys: parseJson(row.evidence_fact_keys_json) || [],
-    evidenceMessageIds: parseJson(row.evidence_message_ids_json) || []
-  }]));
-  return { botId, groupId, facts, aggregates };
-}
-
-export function getGroupAutomationCycleState({ botId, groupId, taskId, cycleKey }) {
-  return rowToGroupAutomationCycleState(db.prepare(`
-    SELECT *
-    FROM managed_group_automation_cycle_states
-    WHERE bot_id = ? AND group_id = ? AND task_id = ? AND cycle_key = ?
-  `).get(botId, groupId, taskId, cycleKey));
-}
-
-export function listGroupAutomationEvidenceMessages({
-  botId,
-  groupId,
-  messageIds = []
-}) {
-  const normalizedIds = [...new Set((Array.isArray(messageIds) ? messageIds : []).map(Number))]
-    .filter((value) => Number.isSafeInteger(value) && value > 0);
-  if (!normalizedIds.length) return [];
-  const rowsById = assertGroupLedgerEvidence({
-    botId,
-    groupId,
-    messageIds: normalizedIds
-  });
-  return normalizedIds.map((id) => rowToConversationMessage(rowsById.get(id)));
-}
-
-export function listInboundGroupMessagesForLedger({
-  botId,
-  groupId,
-  afterMessageId = 0,
-  throughMessageId,
-  limit = 120
-}) {
-  const group = assertGroupAutomationScope({ botId, groupId });
-  const normalizedLimit = Math.max(1, Math.min(500, Number(limit) || 120));
-  const through = Number(throughMessageId);
-  if (!Number.isSafeInteger(through) || through <= 0) return [];
-  return db.prepare(`
-    SELECT *
-    FROM conversation_messages
-    WHERE bot_id = ? AND conversation_key = ? AND direction = 'inbound'
-      AND id > ? AND id <= ?
-    ORDER BY id ASC
-    LIMIT ?
-  `).all(
-    botId,
-    group.conversationKey,
-    Math.max(0, Number(afterMessageId) || 0),
-    through,
-    normalizedLimit
-  ).map(rowToConversationMessage);
-}
-
-export function getLatestInboundGroupMessageId({ botId, groupId }) {
-  const group = assertGroupAutomationScope({ botId, groupId });
-  return Number(db.prepare(`
-    SELECT MAX(id) AS id
-    FROM conversation_messages
-    WHERE bot_id = ? AND conversation_key = ? AND direction = 'inbound'
-  `).get(botId, group.conversationKey)?.id || 0);
+  return { removed: true, reason: "removed" };
 }
 
 export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
@@ -4468,11 +3363,6 @@ export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
       WHERE bot_id = ? AND group_id = ?
     `).run(targetGroupId, timestamp, botId, sourceGroupId);
     db.prepare(`
-      UPDATE managed_group_automation_cycle_states
-      SET group_id = ?, updated_at = ?
-      WHERE bot_id = ? AND group_id = ?
-    `).run(targetGroupId, timestamp, botId, sourceGroupId);
-    db.prepare(`
       UPDATE managed_group_automation_chunks
       SET group_id = ?, updated_at = ?
       WHERE bot_id = ? AND group_id = ?
@@ -4520,52 +3410,6 @@ export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
       );
     }
 
-    const sourceFacts = db.prepare(`
-      SELECT id, semantic_key FROM managed_group_facts
-      WHERE bot_id = ? AND group_id = ?
-    `).all(botId, sourceGroupId);
-    for (const sourceFact of sourceFacts) {
-      const targetFact = db.prepare(`
-        SELECT id FROM managed_group_facts
-        WHERE bot_id = ? AND group_id = ? AND semantic_key = ?
-      `).get(botId, targetGroupId, sourceFact.semantic_key);
-      if (!targetFact) {
-        db.prepare(`
-          UPDATE managed_group_facts SET group_id = ?, updated_at = ? WHERE id = ?
-        `).run(targetGroupId, timestamp, sourceFact.id);
-        db.prepare(`
-          UPDATE managed_group_fact_revisions SET group_id = ? WHERE fact_id = ?
-        `).run(targetGroupId, sourceFact.id);
-        continue;
-      }
-      db.prepare(`
-        UPDATE managed_group_fact_revisions
-        SET fact_id = ?, group_id = ?
-        WHERE fact_id = ?
-      `).run(targetFact.id, targetGroupId, sourceFact.id);
-      db.prepare(`
-        INSERT OR IGNORE INTO managed_group_fact_evidence (fact_id, message_id, ordinal)
-        SELECT ?, message_id, ordinal
-        FROM managed_group_fact_evidence
-        WHERE fact_id = ?
-      `).run(targetFact.id, sourceFact.id);
-      db.prepare(`DELETE FROM managed_group_fact_evidence WHERE fact_id = ?`).run(sourceFact.id);
-      db.prepare(`DELETE FROM managed_group_facts WHERE id = ?`).run(sourceFact.id);
-    }
-    rebuildAllGroupFactAggregates({
-      botId,
-      groupId: targetGroupId,
-      timestamp
-    });
-    db.prepare(`
-      DELETE FROM managed_group_fact_aggregates WHERE bot_id = ? AND group_id = ?
-    `).run(botId, sourceGroupId);
-    db.prepare(`
-      DELETE FROM managed_group_ledger_jobs WHERE bot_id = ? AND group_id = ?
-    `).run(botId, sourceGroupId);
-    db.prepare(`
-      DELETE FROM managed_group_ledger_states WHERE bot_id = ? AND group_id = ?
-    `).run(botId, sourceGroupId);
     db.prepare(`
       DELETE FROM managed_group_role_aliases
       WHERE bot_id = ? AND group_id = ?
@@ -4973,13 +3817,7 @@ export function deleteBotData(botId) {
     "managed_group_history_sync_states",
     "managed_group_automation_chunks",
     "managed_group_automation_attempts",
-    "managed_group_automation_cycle_states",
     "managed_group_automation_occurrences",
-    "managed_group_ledger_jobs",
-    "managed_group_ledger_states",
-    "managed_group_fact_aggregates",
-    "managed_group_fact_revisions",
-    "managed_group_facts",
     "managed_group_automation_tasks",
     "managed_group_role_aliases",
     "managed_group_roles",
@@ -5025,12 +3863,6 @@ export function deleteBotData(botId) {
       DELETE FROM managed_group_automation_mentions
       WHERE task_id IN (
         SELECT id FROM managed_group_automation_tasks WHERE bot_id = ?
-      )
-    `).run(normalizedBotId).changes;
-    deleted.managed_group_fact_evidence = db.prepare(`
-      DELETE FROM managed_group_fact_evidence
-      WHERE fact_id IN (
-        SELECT id FROM managed_group_facts WHERE bot_id = ?
       )
     `).run(normalizedBotId).changes;
     for (const table of tables) {
