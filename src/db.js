@@ -3247,7 +3247,11 @@ export function recordChannelWebhookEvent({
 export function listChannelWebhookEvents(botId) {
   return db.prepare(`
     SELECT * FROM channel_webhook_events WHERE bot_id = ? ORDER BY id ASC
-  `).all(requiredString(botId, "botId")).map((row) => ({
+  `).all(requiredString(botId, "botId")).map(rowToChannelWebhookEvent);
+}
+
+function rowToChannelWebhookEvent(row) {
+  return {
     id: row.id,
     provider: row.provider,
     botId: row.bot_id,
@@ -3263,7 +3267,76 @@ export function listChannelWebhookEvents(botId) {
     receivedAt: row.received_at,
     processedAt: row.processed_at || "",
     updatedAt: row.updated_at
-  }));
+  };
+}
+
+export function claimChannelWebhookEvents({ owner, limit = 10, leaseMs = 60_000, nowIso = now() }) {
+  const normalizedOwner = requiredString(owner, "owner");
+  const count = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 10));
+  const leaseExpiresAt = new Date(new Date(nowIso).getTime() + Math.max(1000, Number(leaseMs) || 60_000)).toISOString();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const candidates = db.prepare(`
+      SELECT id FROM channel_webhook_events
+      WHERE state = 'pending' AND (next_retry_at IS NULL OR next_retry_at <= ?)
+      ORDER BY id ASC LIMIT ?
+    `).all(nowIso, count);
+    const claimed = [];
+    const update = db.prepare(`
+      UPDATE channel_webhook_events
+      SET state = 'processing', attempts = attempts + 1, lease_owner = ?, lease_expires_at = ?, updated_at = ?
+      WHERE id = ? AND state = 'pending'
+    `);
+    const select = db.prepare("SELECT * FROM channel_webhook_events WHERE id = ?");
+    for (const candidate of candidates) {
+      if (update.run(normalizedOwner, leaseExpiresAt, nowIso, candidate.id).changes === 1) {
+        claimed.push(rowToChannelWebhookEvent(select.get(candidate.id)));
+      }
+    }
+    db.exec("COMMIT");
+    return claimed;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function completeChannelWebhookEvent({ id, owner, processedAt = now() }) {
+  const result = db.prepare(`
+    UPDATE channel_webhook_events
+    SET state = 'completed', lease_owner = NULL, lease_expires_at = NULL,
+        next_retry_at = NULL, error_message = '', processed_at = ?, updated_at = ?
+    WHERE id = ? AND state = 'processing' AND lease_owner = ?
+  `).run(processedAt, processedAt, id, requiredString(owner, "owner"));
+  if (result.changes !== 1) throw new Error("channel webhook lease is not owned");
+}
+
+export function failChannelWebhookEvent({ id, owner, retryable, nextRetryAt = null, errorMessage = "" }) {
+  const timestamp = now();
+  const result = db.prepare(`
+    UPDATE channel_webhook_events
+    SET state = ?, lease_owner = NULL, lease_expires_at = NULL,
+        next_retry_at = ?, error_message = ?, processed_at = ?, updated_at = ?
+    WHERE id = ? AND state = 'processing' AND lease_owner = ?
+  `).run(
+    retryable ? "pending" : "failed",
+    retryable ? nextRetryAt : null,
+    String(errorMessage || "").slice(0, 160),
+    retryable ? null : timestamp,
+    timestamp,
+    id,
+    requiredString(owner, "owner")
+  );
+  if (result.changes !== 1) throw new Error("channel webhook lease is not owned");
+}
+
+export function recoverExpiredChannelWebhookLeases({ nowIso = now() } = {}) {
+  return db.prepare(`
+    UPDATE channel_webhook_events
+    SET state = 'pending', lease_owner = NULL, lease_expires_at = NULL,
+        next_retry_at = ?, updated_at = ?
+    WHERE state = 'processing' AND lease_expires_at <= ?
+  `).run(nowIso, nowIso, nowIso).changes;
 }
 
 function normalizeEncryptedToken(value) {

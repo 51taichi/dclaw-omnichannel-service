@@ -113,3 +113,29 @@ test("channel webhook envelopes are durable and idempotent per account", () => {
   assert.deepEqual(result.a[0].payload, { messages: [{ id: "message-1" }] });
   assert.equal(result.a[0].state, "pending");
 });
+
+test("channel webhook leases support completion, retry, and expired recovery", () => {
+  const result = runDatabaseScenario(`
+    import {
+      claimChannelWebhookEvents, completeChannelWebhookEvent, failChannelWebhookEvent,
+      listChannelWebhookEvents, recordChannelWebhookEvent, recoverExpiredChannelWebhookLeases
+    } from "./src/db.js";
+    const add = (id) => recordChannelWebhookEvent({
+      provider: "whapi", botId: "bot-a", channelAccountId: "CHAN-A", eventKind: "messages.post",
+      method: "POST", externalId: id, idempotencyKey: "key-" + id, payload: { id },
+      receivedAt: "2026-08-06T10:00:00.000Z"
+    });
+    add("one"); add("two");
+    const claimed = claimChannelWebhookEvents({ owner: "worker-a", limit: 2, leaseMs: 1000, nowIso: "2026-08-06T10:00:01.000Z" });
+    completeChannelWebhookEvent({ id: claimed[0].id, owner: "worker-a", processedAt: "2026-08-06T10:00:01.100Z" });
+    failChannelWebhookEvent({ id: claimed[1].id, owner: "worker-a", retryable: true, nextRetryAt: "2026-08-06T10:00:02.000Z", errorMessage: "temporary" });
+    const retried = claimChannelWebhookEvents({ owner: "worker-b", limit: 2, leaseMs: 1000, nowIso: "2026-08-06T10:00:02.000Z" });
+    const recovered = recoverExpiredChannelWebhookLeases({ nowIso: "2026-08-06T10:00:04.000Z" });
+    console.log(JSON.stringify({ claimed, retried, recovered, rows: listChannelWebhookEvents("bot-a") }));
+  `);
+  assert.equal(result.claimed.length, 2);
+  assert.equal(result.retried.length, 1);
+  assert.equal(result.retried[0].attempts, 2);
+  assert.equal(result.recovered, 1);
+  assert.deepEqual(result.rows.map((row) => row.state), ["completed", "pending"]);
+});
