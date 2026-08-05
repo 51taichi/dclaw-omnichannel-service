@@ -80,6 +80,59 @@ test("direct occurrence preparation freezes configuration without claiming Agent
   }).some((item) => item.id === occurrence.id), false);
 });
 
+test("direct occurrence claim resumes a frozen send without returning to Agent evaluation", () => {
+  const botId = "direct_send_recovery_bot";
+  const group = createGroup(botId, "发送恢复群");
+  const task = createDailyTask({ botId, groupId: group.id });
+  const occurrence = db.prepareGroupAutomationOccurrences({
+    now: "2026-08-06T00:50:00.000Z",
+    horizonMs: 600_000,
+    limit: 10
+  }).find((item) => item.taskId === task.id);
+  const [claimed] = db.claimDueGroupAutomationOccurrences({
+    owner: "direct-worker-a",
+    now: "2026-08-06T01:00:00.000Z",
+    leaseMs: 60_000,
+    limit: 10
+  }).filter((item) => item.id === occurrence.id);
+  db.transitionGroupAutomationOccurrence({
+    occurrenceId: claimed.id,
+    owner: "direct-worker-a",
+    fromStages: ["evaluating"],
+    toStage: "send_pending",
+    patch: {
+      renderedContent: "今天的作业已经完成，辛苦啦！",
+      frozenPayload: {
+        targetGroupName: "发送恢复群",
+        content: "今天的作业已经完成，辛苦啦！",
+        atList: []
+      }
+    },
+    now: "2026-08-06T01:00:01.000Z"
+  });
+
+  const sqlite = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  sqlite.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET lease_expires_at = '2026-08-06T01:00:02.000Z'
+    WHERE id = ?
+  `).run(occurrence.id);
+  sqlite.close();
+
+  const resumed = db.claimDueGroupAutomationOccurrences({
+    owner: "direct-worker-b",
+    now: "2026-08-06T01:00:03.000Z",
+    leaseMs: 60_000,
+    limit: 10
+  }).find((item) => item.id === occurrence.id);
+
+  assert.ok(resumed);
+  assert.equal(resumed.stage, "send_pending");
+  assert.equal(resumed.leaseOwner, "direct-worker-b");
+  assert.equal(resumed.stageAttemptsByStage.send_pending, 1);
+  assert.equal(resumed.frozenPayload.content, "今天的作业已经完成，辛苦啦！");
+});
+
 test("legacy analysis stages recover to waiting target without touching delivery confirmation", () => {
   const botId = "direct_recovery_bot";
   const group = createGroup(botId, "恢复群");

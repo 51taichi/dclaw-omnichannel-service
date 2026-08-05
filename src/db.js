@@ -2341,6 +2341,12 @@ export function claimDueGroupAutomationOccurrences({
           (occurrence.stage = 'waiting_target' AND occurrence.scheduled_for <= ?)
           OR (occurrence.stage = 'evaluating' AND occurrence.lease_expires_at <= ?)
           OR (occurrence.stage = 'retry_wait' AND occurrence.next_retry_at <= ?)
+          OR (occurrence.stage = 'send_pending' AND (
+            (occurrence.lease_owner != '' AND occurrence.lease_expires_at <= ?)
+            OR (occurrence.lease_owner = '' AND (
+              occurrence.next_retry_at IS NULL OR occurrence.next_retry_at <= ?
+            ))
+          ))
         )
         AND NOT EXISTS (
           SELECT 1 FROM managed_group_automation_occurrences active
@@ -2350,14 +2356,19 @@ export function claimDueGroupAutomationOccurrences({
         )
       ORDER BY occurrence.scheduled_for ASC, occurrence.id ASC
       LIMIT ?
-    `).all(timestamp, timestamp, timestamp, claimLimit);
+    `).all(timestamp, timestamp, timestamp, timestamp, timestamp, claimLimit);
     for (const candidate of candidates) {
+      const retryMetadata = parseJson(candidate.retry_metadata_json) || {};
+      const targetStage = candidate.stage === "send_pending"
+        || (candidate.stage === "retry_wait" && retryMetadata.retryStage === "send_pending")
+        ? "send_pending"
+        : "evaluating";
       const attemptsByStage = parseJson(candidate.stage_attempts_json) || {};
-      const nextAttempts = Number(attemptsByStage.evaluating || 0) + 1;
-      attemptsByStage.evaluating = nextAttempts;
+      const nextAttempts = Number(attemptsByStage[targetStage] || 0) + 1;
+      attemptsByStage[targetStage] = nextAttempts;
       const updated = db.prepare(`
         UPDATE managed_group_automation_occurrences
-        SET stage = 'evaluating', status = 'evaluating',
+        SET stage = ?, status = ?,
             stage_attempts = stage_attempts + 1, stage_attempts_json = ?,
             lease_owner = ?, lease_expires_at = ?, heartbeat_at = ?,
             execution_token = ?, attempts = attempts + 1, next_retry_at = NULL,
@@ -2367,8 +2378,14 @@ export function claimDueGroupAutomationOccurrences({
           (stage = 'waiting_target' AND scheduled_for <= ?)
           OR (stage = 'evaluating' AND lease_expires_at <= ?)
           OR (stage = 'retry_wait' AND next_retry_at <= ?)
+          OR (stage = 'send_pending' AND (
+            (lease_owner != '' AND lease_expires_at <= ?)
+            OR (lease_owner = '' AND (next_retry_at IS NULL OR next_retry_at <= ?))
+          ))
         )
       `).run(
+        targetStage,
+        targetStage === "send_pending" ? "pending" : "evaluating",
         json(attemptsByStage),
         normalizedOwner,
         leaseExpiresAt,
@@ -2380,6 +2397,8 @@ export function claimDueGroupAutomationOccurrences({
         candidate.id,
         timestamp,
         timestamp,
+        timestamp,
+        timestamp,
         timestamp
       );
       if (!updated.changes) continue;
@@ -2387,11 +2406,12 @@ export function claimDueGroupAutomationOccurrences({
         INSERT INTO managed_group_automation_attempts (
           occurrence_id, bot_id, group_id, stage, attempt_number,
           status, error_message, started_at, finished_at, created_at
-        ) VALUES (?, ?, ?, 'evaluating', ?, 'processing', '', ?, NULL, ?)
+        ) VALUES (?, ?, ?, ?, ?, 'processing', '', ?, NULL, ?)
       `).run(
         candidate.id,
         candidate.bot_id,
         candidate.group_id,
+        targetStage,
         nextAttempts,
         timestamp,
         timestamp
