@@ -613,6 +613,29 @@ db.exec(`
     PRIMARY KEY (group_id, tag_group_id)
   );
 
+  CREATE TABLE IF NOT EXISTS managed_group_history_sync_states (
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    synced_through_message_id INTEGER NOT NULL DEFAULT 0,
+    requested_through_message_id INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'pending'
+      CHECK (status IN ('pending','processing','retry_wait','idle')),
+    attempts INTEGER NOT NULL DEFAULT 0,
+    next_retry_at TEXT,
+    lease_owner TEXT NOT NULL DEFAULT '',
+    lease_expires_at TEXT,
+    heartbeat_at TEXT,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (bot_id, group_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_history_sync_claim
+  ON managed_group_history_sync_states (
+    status, next_retry_at, lease_expires_at, updated_at
+  );
+
   CREATE TABLE IF NOT EXISTS managed_group_automation_tasks (
     id TEXT PRIMARY KEY,
     bot_id TEXT NOT NULL,
@@ -2527,6 +2550,27 @@ export function updateGroupAutomationOccurrenceFromCommandCallback({
   `).get(normalizedBotId, occurrence.id));
 }
 
+function rowToGroupHistorySyncState(row) {
+  if (!row) return null;
+  return {
+    botId: row.bot_id,
+    groupId: row.group_id,
+    conversationKey: row.conversation_key || "",
+    groupName: row.current_name || "",
+    syncedThroughMessageId: Number(row.synced_through_message_id || 0),
+    requestedThroughMessageId: Number(row.requested_through_message_id || 0),
+    status: row.status,
+    attempts: Number(row.attempts || 0),
+    nextRetryAt: row.next_retry_at || "",
+    leaseOwner: row.lease_owner || "",
+    leaseExpiresAt: row.lease_expires_at || "",
+    heartbeatAt: row.heartbeat_at || "",
+    lastError: row.last_error || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function rowToGroupLedgerJob(row) {
   if (!row) return null;
   return {
@@ -2592,6 +2636,290 @@ function rowToGroupAutomationCycleState(row) {
     evaluatedAt: row.evaluated_at,
     updatedAt: row.updated_at
   };
+}
+
+export function getLatestGroupConversationMessageIdAtOrBefore({
+  botId,
+  groupId,
+  until
+}) {
+  assertGroupAutomationScope({ botId, groupId });
+  const cutoff = new Date(until);
+  if (Number.isNaN(cutoff.getTime())) throw new Error("invalid group history cutoff");
+  const group = getGroupById({ botId, groupId });
+  return Number(db.prepare(`
+    SELECT COALESCE(MAX(id), 0) AS id
+    FROM conversation_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND created_at <= ?
+  `).get(botId, group.conversationKey, cutoff.toISOString())?.id || 0);
+}
+
+export function listCanonicalGroupMessagesForHistory({
+  botId,
+  groupId,
+  afterMessageId = 0,
+  throughMessageId,
+  limit = 200
+}) {
+  assertGroupAutomationScope({ botId, groupId });
+  const group = getGroupById({ botId, groupId });
+  const after = Math.max(0, Number(afterMessageId) || 0);
+  const through = Math.max(0, Number(throughMessageId) || 0);
+  const batchLimit = Math.max(1, Math.min(1000, Number.parseInt(limit, 10) || 200));
+  if (through < after) throw new Error("throughMessageId cannot precede afterMessageId");
+  const rows = db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND id > ?
+      AND id <= ?
+    ORDER BY id ASC
+    LIMIT ?
+  `).all(botId, group.conversationKey, after, through, batchLimit);
+  if (!rows.length) {
+    return {
+      messages: [],
+      processedThroughMessageId: through,
+      hasMore: false
+    };
+  }
+  const candidatesInWindow = db.prepare(`
+    SELECT *
+    FROM conversation_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND direction = ?
+      AND id <= ?
+      AND created_at BETWEEN ? AND ?
+    ORDER BY created_at ASC, id ASC
+  `);
+  const messages = [];
+  for (const row of rows) {
+    const candidate = rowToConversationMessage(row);
+    const occurredAt = Date.parse(candidate.createdAt);
+    if (!Number.isFinite(occurredAt)) {
+      messages.push(candidate);
+      continue;
+    }
+    const window = candidatesInWindow.all(
+      botId,
+      group.conversationKey,
+      candidate.direction,
+      through,
+      new Date(occurredAt - 10_000).toISOString(),
+      new Date(occurredAt + 10_000).toISOString()
+    ).map(rowToConversationMessage);
+    const canonical = dedupeConversationMessages(window);
+    if (canonical.some((message) => message.id === candidate.id)) {
+      messages.push(candidate);
+    }
+  }
+  const processedThroughMessageId = Number(rows.at(-1).id);
+  return {
+    messages,
+    processedThroughMessageId,
+    hasMore: processedThroughMessageId < through
+  };
+}
+
+export function getGroupHistorySyncState({ botId, groupId }) {
+  assertGroupAutomationScope({ botId, groupId });
+  const row = db.prepare(`
+    SELECT sync.*, groups.conversation_key, groups.current_name
+    FROM managed_group_history_sync_states sync
+    JOIN managed_groups groups
+      ON groups.bot_id = sync.bot_id AND groups.id = sync.group_id
+    WHERE sync.bot_id = ? AND sync.group_id = ?
+  `).get(botId, groupId);
+  return rowToGroupHistorySyncState(row);
+}
+
+export function enqueueGroupHistorySync({ botId, groupId, throughMessageId = 0 }) {
+  assertGroupAutomationScope({ botId, groupId });
+  const through = Number(throughMessageId);
+  if (!Number.isSafeInteger(through) || through < 0) {
+    throw new Error("invalid group history throughMessageId");
+  }
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO managed_group_history_sync_states (
+      bot_id, group_id, synced_through_message_id,
+      requested_through_message_id, status, attempts, next_retry_at,
+      lease_owner, lease_expires_at, heartbeat_at, last_error,
+      created_at, updated_at
+    ) VALUES (?, ?, 0, ?, 'pending', 0, NULL, '', NULL, NULL, '', ?, ?)
+    ON CONFLICT(bot_id, group_id) DO UPDATE SET
+      requested_through_message_id = MAX(
+        managed_group_history_sync_states.requested_through_message_id,
+        excluded.requested_through_message_id
+      ),
+      status = CASE
+        WHEN managed_group_history_sync_states.status = 'processing' THEN 'processing'
+        ELSE 'pending'
+      END,
+      next_retry_at = CASE
+        WHEN managed_group_history_sync_states.status = 'processing'
+          THEN managed_group_history_sync_states.next_retry_at
+        ELSE NULL
+      END,
+      updated_at = excluded.updated_at
+  `).run(botId, groupId, through, timestamp, timestamp);
+  return getGroupHistorySyncState({ botId, groupId });
+}
+
+export function claimGroupHistorySyncJobs({
+  owner,
+  now: nowIso = now(),
+  leaseMs = 60_000,
+  limit = 10
+}) {
+  const normalizedOwner = String(owner || "").trim();
+  if (!normalizedOwner) throw new Error("group history sync owner is required");
+  const clock = new Date(nowIso);
+  if (Number.isNaN(clock.getTime())) throw new Error("invalid group history sync time");
+  const timestamp = clock.toISOString();
+  const leaseExpiresAt = new Date(clock.getTime() + Math.max(1000, Number(leaseMs) || 60_000)).toISOString();
+  const normalizedLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 10));
+  const claimed = [];
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const candidates = db.prepare(`
+      SELECT bot_id, group_id
+      FROM managed_group_history_sync_states
+      WHERE status = 'pending'
+         OR (status = 'retry_wait' AND next_retry_at <= ?)
+         OR (status = 'processing' AND lease_expires_at <= ?)
+      ORDER BY updated_at ASC, bot_id ASC, group_id ASC
+      LIMIT ?
+    `).all(timestamp, timestamp, normalizedLimit);
+    for (const candidate of candidates) {
+      const result = db.prepare(`
+        UPDATE managed_group_history_sync_states
+        SET status = 'processing', lease_owner = ?, lease_expires_at = ?,
+            heartbeat_at = ?, updated_at = ?
+        WHERE bot_id = ? AND group_id = ?
+          AND (
+            status = 'pending'
+            OR (status = 'retry_wait' AND next_retry_at <= ?)
+            OR (status = 'processing' AND lease_expires_at <= ?)
+          )
+      `).run(
+        normalizedOwner,
+        leaseExpiresAt,
+        timestamp,
+        timestamp,
+        candidate.bot_id,
+        candidate.group_id,
+        timestamp,
+        timestamp
+      );
+      if (!result.changes) continue;
+      const row = db.prepare(`
+        SELECT sync.*, groups.conversation_key, groups.current_name
+        FROM managed_group_history_sync_states sync
+        JOIN managed_groups groups
+          ON groups.bot_id = sync.bot_id AND groups.id = sync.group_id
+        WHERE sync.bot_id = ? AND sync.group_id = ?
+      `).get(candidate.bot_id, candidate.group_id);
+      claimed.push(rowToGroupHistorySyncState(row));
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return claimed;
+}
+
+export function heartbeatGroupHistorySyncJob({
+  botId,
+  groupId,
+  owner,
+  now: nowIso = now(),
+  leaseMs = 60_000
+}) {
+  const clock = new Date(nowIso);
+  if (Number.isNaN(clock.getTime())) throw new Error("invalid group history heartbeat time");
+  const timestamp = clock.toISOString();
+  const leaseExpiresAt = new Date(clock.getTime() + Math.max(1000, Number(leaseMs) || 60_000)).toISOString();
+  const result = db.prepare(`
+    UPDATE managed_group_history_sync_states
+    SET heartbeat_at = ?, lease_expires_at = ?, updated_at = ?
+    WHERE bot_id = ? AND group_id = ? AND status = 'processing' AND lease_owner = ?
+  `).run(timestamp, leaseExpiresAt, timestamp, botId, groupId, owner);
+  if (!result.changes) throw new Error("group history sync lease is not owned");
+  return getGroupHistorySyncState({ botId, groupId });
+}
+
+export function completeGroupHistorySyncBatch({
+  botId,
+  groupId,
+  owner,
+  syncedThroughMessageId,
+  now: nowIso = now(),
+  hasMore = false
+}) {
+  const syncedThrough = Number(syncedThroughMessageId);
+  if (!Number.isSafeInteger(syncedThrough) || syncedThrough < 0) {
+    throw new Error("invalid syncedThroughMessageId");
+  }
+  const timestamp = new Date(nowIso).toISOString();
+  const result = db.prepare(`
+    UPDATE managed_group_history_sync_states
+    SET synced_through_message_id = MAX(synced_through_message_id, ?),
+        status = CASE
+          WHEN ? = 1 OR requested_through_message_id > ? THEN 'pending'
+          ELSE 'idle'
+        END,
+        attempts = 0, next_retry_at = NULL, lease_owner = '',
+        lease_expires_at = NULL, heartbeat_at = NULL, last_error = '',
+        updated_at = ?
+    WHERE bot_id = ? AND group_id = ? AND status = 'processing' AND lease_owner = ?
+  `).run(
+    syncedThrough,
+    hasMore ? 1 : 0,
+    syncedThrough,
+    timestamp,
+    botId,
+    groupId,
+    owner
+  );
+  if (!result.changes) throw new Error("group history sync lease is not owned");
+  return getGroupHistorySyncState({ botId, groupId });
+}
+
+export function failGroupHistorySyncJob({
+  botId,
+  groupId,
+  owner,
+  error,
+  nextRetryAt,
+  now: nowIso = now()
+}) {
+  const retryAt = new Date(nextRetryAt);
+  const clock = new Date(nowIso);
+  if (Number.isNaN(retryAt.getTime()) || Number.isNaN(clock.getTime())) {
+    throw new Error("invalid group history retry time");
+  }
+  const result = db.prepare(`
+    UPDATE managed_group_history_sync_states
+    SET status = 'retry_wait', attempts = attempts + 1,
+        next_retry_at = ?, lease_owner = '', lease_expires_at = NULL,
+        heartbeat_at = NULL, last_error = ?, updated_at = ?
+    WHERE bot_id = ? AND group_id = ? AND status = 'processing' AND lease_owner = ?
+  `).run(
+    retryAt.toISOString(),
+    String(error?.message || error || "group history sync failed").slice(0, 2000),
+    clock.toISOString(),
+    botId,
+    groupId,
+    owner
+  );
+  if (!result.changes) throw new Error("group history sync lease is not owned");
+  return getGroupHistorySyncState({ botId, groupId });
 }
 
 export function getGroupLedgerState({ botId, groupId }) {
@@ -3348,11 +3676,43 @@ export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
       SET group_id = ?, updated_at = ?
       WHERE bot_id = ? AND group_id = ?
     `).run(targetGroupId, timestamp, botId, sourceGroupId);
-    db.prepare(`
+    const movedMessages = db.prepare(`
       UPDATE conversation_messages
       SET conversation_key = ?
       WHERE bot_id = ? AND conversation_key = ?
     `).run(target.conversationKey, botId, source.conversationKey);
+
+    db.prepare(`
+      DELETE FROM managed_group_history_sync_states
+      WHERE bot_id = ? AND group_id = ?
+    `).run(botId, sourceGroupId);
+    if (movedMessages.changes > 0) {
+      const requestedThroughMessageId = Number(db.prepare(`
+        SELECT COALESCE(MAX(id), 0) AS id
+        FROM conversation_messages
+        WHERE bot_id = ? AND conversation_key = ?
+      `).get(botId, target.conversationKey)?.id || 0);
+      db.prepare(`
+        INSERT INTO managed_group_history_sync_states (
+          bot_id, group_id, synced_through_message_id,
+          requested_through_message_id, status, attempts, next_retry_at,
+          lease_owner, lease_expires_at, heartbeat_at, last_error,
+          created_at, updated_at
+        ) VALUES (?, ?, 0, ?, 'pending', 0, NULL, '', NULL, NULL, '', ?, ?)
+        ON CONFLICT(bot_id, group_id) DO UPDATE SET
+          synced_through_message_id = 0,
+          requested_through_message_id = excluded.requested_through_message_id,
+          status = 'pending', attempts = 0, next_retry_at = NULL,
+          lease_owner = '', lease_expires_at = NULL, heartbeat_at = NULL,
+          last_error = '', updated_at = excluded.updated_at
+      `).run(
+        botId,
+        targetGroupId,
+        requestedThroughMessageId,
+        timestamp,
+        timestamp
+      );
+    }
 
     const sourceFacts = db.prepare(`
       SELECT id, semantic_key FROM managed_group_facts
@@ -3804,6 +4164,7 @@ export function deleteBotData(botId) {
   if (!binding) return null;
 
   const tables = [
+    "managed_group_history_sync_states",
     "managed_group_automation_cycle_states",
     "managed_group_automation_occurrences",
     "managed_group_ledger_jobs",
