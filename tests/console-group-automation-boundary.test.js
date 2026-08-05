@@ -264,6 +264,18 @@ test("task cards expose compact controls and evidence navigation reuses conversa
   assert.match(app, /anchorMessageId:\s*anchor\.messageId/);
 });
 
+test("enabled group automation cards use a branded running effect without layout movement", () => {
+  const renderer = app.slice(
+    app.indexOf("function renderGroupAutomationList()"),
+    app.indexOf("function updateGroupAutomationCountdowns()")
+  );
+  assert.match(renderer, /task\.enabled \? "is-enabled" : "is-disabled"/);
+  assert.match(css, /\.group-automation-card\.is-enabled\s*\{[^}]*border-color:[^}]*background:/s);
+  assert.match(css, /\.group-automation-card\.is-enabled::before\s*\{[^}]*animation:\s*groupAutomationActiveSheen/s);
+  assert.match(css, /@keyframes groupAutomationActiveSheen/);
+  assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)[\s\S]*?\.group-automation-card\.is-enabled::before\s*\{[^}]*animation:\s*none/s);
+});
+
 test("history dialog renders occurrences, results and bounded evidence without private task concepts", () => {
   assert.match(html, /id="groupAutomationHistoryDialog"/);
   assert.match(html, /id="groupAutomationHistoryList"/);

@@ -5,6 +5,7 @@ const PAGE_SIZE_OPTIONS = [20, 50, 100];
 const DEFAULT_REPLY_WAIT_FALLBACK_REPLY = "刚刚这边有点忙，我稍后回复你哈";
 const { createInteractionLock, intersectTargetMaps } = window.ProactiveTargetSelection;
 const { normalizeGroupDetailTab, nextGroupDetailTab } = window.GroupDetailTabs;
+const GroupPins = window.GroupPins;
 const {
   MONTH_DAY_PAGES,
   clampMonthPage,
@@ -6007,7 +6008,7 @@ function renderGroupAutomationList() {
           .filter((role) => task.mentionRoleIds?.includes(role.id))
           .map((role) => role.currentName);
         return `
-          <article class="group-automation-card ${task.enabled ? "" : "is-disabled"}" data-group-automation-id="${escapeHtml(task.id)}">
+          <article class="group-automation-card ${task.enabled ? "is-enabled" : "is-disabled"}" data-group-automation-id="${escapeHtml(task.id)}">
             <div class="group-automation-card-identity">
               <span class="group-automation-type-icon"><svg class="icon" aria-hidden="true"><use href="#icon-${task.taskType === "periodic_summary" ? "message" : "send"}"></use></svg></span>
               <div class="group-automation-card-title">
@@ -6359,24 +6360,46 @@ function groupDateTagLabel(group) {
 
 function renderGroupList() {
   if (!els.groupList) return;
-  els.groupList.innerHTML = state.groups.length
-    ? state.groups.map((group) => `
-        <button class="groups-list-item ${group.id === state.selectedGroupId ? "active" : ""}" data-group-id="${escapeHtml(group.id)}" type="button">
-          <span class="groups-list-item-main">
-            <span class="groups-list-item-icon"><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" /></span>
-            <span class="groups-list-item-copy">
-              <strong>${escapeHtml(group.currentName)}</strong>
+  const pinnedGroupIds = GroupPins.readPinnedGroupIds(localStorage, window.WorkspaceContext?.slug, state.selectedBotId);
+  const sortedGroups = GroupPins.sortGroupsByPinned(state.groups, pinnedGroupIds);
+  els.groupList.innerHTML = sortedGroups.length
+    ? sortedGroups.map((group) => {
+        const pinned = pinnedGroupIds.has(String(group.id));
+        return `
+        <article class="groups-list-item ${group.id === state.selectedGroupId ? "active" : ""} ${pinned ? "is-pinned" : ""}">
+          <button class="groups-list-item-select" data-group-id="${escapeHtml(group.id)}" type="button">
+            <span class="groups-list-item-main">
+              <span class="groups-list-item-icon"><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" /></span>
+              <span class="groups-list-item-copy">
+                <strong>${escapeHtml(group.currentName)}</strong>
+              </span>
+              <span class="groups-list-date-tag" title="建立日期">
+                <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
+                ${escapeHtml(groupDateTagLabel(group))}
+              </span>
             </span>
-            <span class="groups-list-date-tag" title="建立日期">
-              <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
-              ${escapeHtml(groupDateTagLabel(group))}
-            </span>
-          </span>
-        </button>
-      `).join("")
+          </button>
+          <button class="groups-list-pin ${pinned ? "is-pinned" : ""}" data-group-pin="${escapeHtml(group.id)}" type="button" aria-label="${pinned ? "取消置顶" : "置顶群聊"}" title="${pinned ? "取消置顶" : "置顶群聊"}">
+            <svg class="icon" aria-hidden="true"><use href="#icon-pin"></use></svg>
+          </button>
+        </article>`;
+      }).join("")
     : `<div class="empty-state">暂无群。群回调到达后会自动出现，也可以点击“刷新群列表”。</div>`;
   els.groupList.querySelectorAll("[data-group-id]").forEach((button) => {
     button.addEventListener("click", () => loadGroupDetail(button.dataset.groupId).catch(toastError));
+  });
+  els.groupList.querySelectorAll("[data-group-pin]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      GroupPins.togglePinnedGroupId(
+        localStorage,
+        window.WorkspaceContext?.slug,
+        state.selectedBotId,
+        button.dataset.groupPin
+      );
+      renderGroupList();
+    });
   });
 }
 

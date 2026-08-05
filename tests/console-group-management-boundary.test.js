@@ -157,6 +157,24 @@ test("group list uses avatar copy and a Beijing creation-date tag without reply 
   );
 });
 
+test("group list supports browser-local pinned groups without opening group detail", () => {
+  const renderGroupList = app.slice(
+    app.indexOf("function renderGroupList()"),
+    app.indexOf("async function loadGroupDetail")
+  );
+  assert.match(html, /<script src="\.\/group-pins\.js"><\/script>[\s\S]*?<script src="\.\/app\.js"><\/script>/);
+  assert.match(renderGroupList, /GroupPins\.readPinnedGroupIds\(localStorage,\s*window\.WorkspaceContext\?\.slug,\s*state\.selectedBotId\)/);
+  assert.match(renderGroupList, /GroupPins\.sortGroupsByPinned\(state\.groups,\s*pinnedGroupIds\)/);
+  assert.match(renderGroupList, /data-group-pin=/);
+  assert.match(renderGroupList, /aria-label="\$\{pinned \? "取消置顶" : "置顶群聊"\}"/);
+  assert.match(renderGroupList, /title="\$\{pinned \? "取消置顶" : "置顶群聊"\}"/);
+  assert.match(renderGroupList, /event\.preventDefault\(\)/);
+  assert.match(renderGroupList, /event\.stopPropagation\(\)/);
+  assert.match(renderGroupList, /GroupPins\.togglePinnedGroupId/);
+  assert.match(css, /\.groups-list-pin\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/s);
+  assert.match(css, /\.groups-list-item\.is-pinned/);
+});
+
 test("group workbench and role rows stay bounded inside the available viewport", () => {
   assert.match(css, /#groupsTab\s*\{[^}]*height:\s*100%/s);
   assert.match(css, /\.groups-panel\s*\{[^}]*grid-template-rows:\s*auto\s+minmax\(0,\s*1fr\)/s);
