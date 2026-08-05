@@ -66,6 +66,11 @@ test("capabilities require exactly the documented boolean keys", () => {
   assert.equal(assertCapabilities(capabilities), capabilities);
   expectInvalid(() => assertCapabilities({ ...capabilities, text: "true" }));
   expectInvalid(() => assertCapabilities({ ...capabilities, extra: true }));
+  const withHiddenStringKey = { ...capabilities };
+  Object.defineProperty(withHiddenStringKey, "hidden", { value: true });
+  expectInvalid(() => assertCapabilities(withHiddenStringKey));
+  const withSymbolKey = { ...capabilities, [Symbol("hidden")]: true };
+  expectInvalid(() => assertCapabilities(withSymbolKey));
 });
 
 test("adapters require a valid provider, capabilities, and every contract method", () => {

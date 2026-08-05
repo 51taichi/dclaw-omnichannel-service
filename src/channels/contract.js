@@ -169,7 +169,7 @@ function requireNonEmptyString(value, message) {
 }
 
 function hasExactKeys(value, keys) {
-  const actualKeys = Object.keys(value);
+  const actualKeys = Reflect.ownKeys(value);
   return actualKeys.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 }
 
