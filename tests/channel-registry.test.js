@@ -118,3 +118,22 @@ test("registry instances keep their registered providers isolated", () => {
   expectChannelError(() => second.get("whapi"), "unknown_provider", { provider: "whapi" });
   assert.deepEqual(second.list(), []);
 });
+
+test("registration snapshots capabilities so caller mutation cannot change resolution", () => {
+  const registry = createChannelRegistry();
+  const mutable = adapter("mutable", { text: true, media: false });
+  registry.register(mutable);
+
+  mutable.capabilities.text = false;
+  mutable.capabilities.media = true;
+
+  assert.equal(
+    registry.resolve({ provider: "mutable", channelAccountId: "account-1" }, "text"),
+    mutable
+  );
+  expectChannelError(
+    () => registry.resolve({ provider: "mutable", channelAccountId: "account-1" }, "media"),
+    "unsupported_capability",
+    { provider: "mutable", channelAccountId: "account-1", operation: "media" }
+  );
+});

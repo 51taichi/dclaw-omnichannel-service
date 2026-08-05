@@ -1,7 +1,7 @@
 services:
-  worktool-bot-service:
+  dclaw-omnichannel-service:
     build: .
-    container_name: worktool-bot-service
+    container_name: dclaw-omnichannel-service
     restart: unless-stopped
     env_file:
       - .env

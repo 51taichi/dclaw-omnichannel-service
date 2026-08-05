@@ -55,11 +55,26 @@ const ACCOUNT_HEALTH = Object.freeze({ status: "healthy" });
 const WEBHOOK_CONFIGURATION = Object.freeze({ configured: true });
 
 function normalizeCapabilities(overrides = {}) {
-  if (!isRecord(overrides) || Reflect.ownKeys(overrides).some((key) => !CHANNEL_CAPABILITY_KEYS.includes(key))) {
+  if (!isRecord(overrides)) {
     return invalidCapabilities();
   }
+  const overrideValues = {};
+  for (const key of Reflect.ownKeys(overrides)) {
+    const descriptor = Object.getOwnPropertyDescriptor(overrides, key);
+    if (typeof key !== "string"
+      || !CHANNEL_CAPABILITY_KEYS.includes(key)
+      || !descriptor.enumerable
+      || !Object.hasOwn(descriptor, "value")
+      || typeof descriptor.value !== "boolean") {
+      return invalidCapabilities();
+    }
+    overrideValues[key] = descriptor.value;
+  }
   const defaults = { text: true, media: true };
-  const capabilities = Object.fromEntries(CHANNEL_CAPABILITY_KEYS.map((key) => [key, overrides[key] ?? defaults[key] ?? false]));
+  const capabilities = Object.fromEntries(CHANNEL_CAPABILITY_KEYS.map((key) => [
+    key,
+    Object.hasOwn(overrideValues, key) ? overrideValues[key] : defaults[key] ?? false
+  ]));
   return Object.freeze(capabilities);
 }
 

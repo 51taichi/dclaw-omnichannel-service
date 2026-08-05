@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { inspect } from "node:util";
 
 import {
   CHANNEL_ERROR_CODES,
@@ -8,24 +9,25 @@ import {
 } from "../src/channels/errors.js";
 
 test("ChannelError accepts every documented channel error code", () => {
-  const codes = [
-    "invalid_contract",
-    "unknown_provider",
-    "unsupported_capability",
-    "authentication_required",
-    "rate_limited",
-    "temporary_provider_failure",
-    "permanent_provider_rejection",
-    "invalid_provider_response"
-  ];
+  const publicMessages = {
+    invalid_contract: "Channel contract is invalid",
+    unknown_provider: "Channel provider is unknown",
+    unsupported_capability: "Channel capability is unsupported",
+    authentication_required: "Channel authentication is required",
+    rate_limited: "Channel rate limit exceeded",
+    temporary_provider_failure: "Channel operation failed",
+    permanent_provider_rejection: "Channel operation was rejected",
+    invalid_provider_response: "Channel provider response is invalid"
+  };
+  const codes = Object.keys(publicMessages);
 
   assert.deepEqual(Object.values(CHANNEL_ERROR_CODES), codes);
   assert.equal(Object.isFrozen(CHANNEL_ERROR_CODES), true);
 
   for (const code of codes) {
-    const error = new ChannelError(code, "Public channel error");
+    const error = new ChannelError(code, "caller-controlled message");
     assert.equal(error.code, code);
-    assert.equal(error.message, "Public channel error");
+    assert.equal(error.message, publicMessages[code]);
   }
 });
 
@@ -50,8 +52,9 @@ test("ChannelError code validation does not rely on mutable Set state", () => {
 });
 
 test("ChannelError exposes only safe supplied metadata", () => {
-  const cause = new Error("provider diagnostic");
-  const error = new ChannelError("rate_limited", "Please retry later", {
+  const secret = "secret-token-value";
+  const cause = new Error(`provider diagnostic ${secret}`);
+  const error = new ChannelError("rate_limited", `Please retry later ${secret}`, {
     provider: "whapi",
     channelAccountId: "account-42",
     operation: "sendMessage",
@@ -81,9 +84,12 @@ test("ChannelError exposes only safe supplied metadata", () => {
     operation: "sendMessage",
     retryable: true
   });
-  assert.equal(error.cause, cause);
+  assert.notEqual(error.cause, cause);
   assert.equal(Object.prototype.propertyIsEnumerable.call(error, "cause"), false);
-  assert.equal(JSON.stringify(error).includes("secret-token"), false);
+  assert.equal(error.message.includes(secret), false);
+  assert.equal(error.stack.includes(secret), false);
+  assert.equal(inspect(error).includes(secret), false);
+  assert.equal(JSON.stringify(error).includes(secret), false);
   assert.equal(JSON.stringify(error).includes("raw provider body"), false);
   assert.equal(JSON.stringify(error).includes("raw body"), false);
 });
@@ -106,12 +112,33 @@ test("ChannelError ignores inherited context metadata", () => {
   assert.deepEqual(Object.keys(error), ["name", "code"]);
 });
 
-test("toChannelError passes a ChannelError through unchanged", () => {
-  const expected = new ChannelError("authentication_required", "Authentication required", {
-    provider: "whapi"
+test("toChannelError rebuilds a secret-bearing ChannelError with safe code and context", () => {
+  const secret = "typed-secret-token";
+  const source = new ChannelError("authentication_required", "Authentication required", {
+    provider: "whapi",
+    retryable: false
+  });
+  source.message = `Authorization Bearer ${secret} rejected`;
+  source.stack = `ChannelError: Authorization Bearer ${secret} rejected\n at provider`;
+
+  const error = toChannelError(source, {
+    channelAccountId: "account-42",
+    operation: "sendMessage",
+    token: secret
   });
 
-  assert.equal(toChannelError(expected, { token: "must-not-matter" }), expected);
+  assert.notEqual(error, source);
+  assert.equal(error.code, "authentication_required");
+  assert.equal(error.message, "Channel authentication is required");
+  assert.equal(error.provider, "whapi");
+  assert.equal(error.channelAccountId, "account-42");
+  assert.equal(error.operation, "sendMessage");
+  assert.equal(error.retryable, false);
+  assert.equal(Object.prototype.propertyIsEnumerable.call(error, "cause"), false);
+  assert.equal(error.message.includes(secret), false);
+  assert.equal(error.stack.includes(secret), false);
+  assert.equal(inspect(error).includes(secret), false);
+  assert.equal(JSON.stringify(error).includes(secret), false);
 });
 
 test("toChannelError turns unexpected values into a safe retryable temporary failure", () => {
@@ -132,7 +159,7 @@ test("toChannelError turns unexpected values into a safe retryable temporary fai
   assert.equal(error.code, "temporary_provider_failure");
   assert.equal(error.message, "Channel operation failed");
   assert.equal(error.retryable, true);
-  assert.equal(error.cause, cause);
+  assert.notEqual(error.cause, cause);
   assert.deepEqual(JSON.parse(JSON.stringify(error)), {
     name: "ChannelError",
     code: "temporary_provider_failure",
@@ -144,5 +171,7 @@ test("toChannelError turns unexpected values into a safe retryable temporary fai
   assert.equal(JSON.stringify(error).includes("secret-token"), false);
   assert.equal(JSON.stringify(error).includes("raw provider body"), false);
   assert.equal(JSON.stringify(error).includes("raw body"), false);
+  assert.equal(error.stack.includes("secret-token"), false);
+  assert.equal(inspect(error).includes("secret-token"), false);
   assert.equal(Object.prototype.propertyIsEnumerable.call(error, "cause"), false);
 });

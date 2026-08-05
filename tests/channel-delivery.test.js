@@ -166,6 +166,15 @@ test("delivery rejects disabled required capabilities before it sends", async ()
   assert.deepEqual(adapter.sentCommands, []);
 });
 
+test("fake capability overrides require booleans when a key is present", () => {
+  for (const value of [null, 1, "false"]) {
+    assert.throws(
+      () => createFakeChannelAdapter({ capabilities: { text: value } }),
+      (error) => error instanceof ChannelError && error.code === "invalid_contract"
+    );
+  }
+});
+
 test("fake queued outcomes are FIFO and preserve documented provider errors", async () => {
   const adapter = createFakeChannelAdapter();
   const delivery = deliveryWith(adapter);
@@ -189,7 +198,7 @@ test("fake queued outcomes are FIFO and preserve documented provider errors", as
 test("delivery rejects malformed provider results and sanitizes unexpected secret-bearing errors", async () => {
   const adapter = createFakeChannelAdapter();
   const delivery = deliveryWith(adapter);
-  adapter.queueOutcome({ accepted: true, externalMessageId: "", status: "accepted", token: "secret-token" });
+  adapter.queueOutcome({ accepted: true, externalMessageId: "message-1", status: "accepted", token: "secret-token" });
   adapter.queueOutcome(new Error("Authorization Bearer secret-token failed"));
 
   await expectChannelError(() => delivery.send(command()), "invalid_contract");

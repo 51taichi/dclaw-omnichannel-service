@@ -26,6 +26,37 @@ const SEND_COMMAND_KEYS = Object.freeze([
   "metadata"
 ]);
 
+const SEND_RESULT_KEYS = Object.freeze([
+  "accepted",
+  "externalMessageId",
+  "status",
+  "providerResponse"
+]);
+
+const INBOUND_EVENT_KEYS = Object.freeze([
+  "provider",
+  "channelAccountId",
+  "eventId",
+  "eventType",
+  "occurredAt",
+  "chat",
+  "sender",
+  "message",
+  "rawPayload"
+]);
+
+const INBOUND_CHAT_KEYS = Object.freeze(["externalId", "type", "displayName"]);
+const INBOUND_SENDER_KEYS = Object.freeze(["externalId", "displayName"]);
+const INBOUND_MESSAGE_KEYS = Object.freeze([
+  "externalId",
+  "type",
+  "text",
+  "attachments",
+  "quotedMessageId",
+  "mentions",
+  "fromMe"
+]);
+
 const ADAPTER_METHODS = Object.freeze([
   "normalizeWebhook",
   "sendText",
@@ -39,6 +70,7 @@ const ADAPTER_METHODS = Object.freeze([
 ]);
 
 const PROVIDER_ID = /^[a-z][a-z0-9-]*$/;
+const RFC3339_TIMESTAMP = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 
 export function assertProviderId(provider) {
   if (typeof provider !== "string" || !PROVIDER_ID.test(provider)) {
@@ -107,67 +139,127 @@ export function normalizeSendCommand(command) {
 }
 
 export function assertSendResult(result) {
-  if (!isRecord(result) || typeof result.accepted !== "boolean") {
+  const fields = ownDataFields(result, SEND_RESULT_KEYS, ["accepted", "status"]);
+  if (fields === null || typeof fields.accepted !== "boolean") {
     invalid("Send result is invalid");
   }
-  requireNonEmptyString(result.status, "Send result is invalid");
-  if (result.accepted) {
-    requireNonEmptyString(result.externalMessageId, "Send result is invalid");
-  } else if (result.externalMessageId !== undefined && typeof result.externalMessageId !== "string") {
+  requireNonEmptyString(fields.status, "Send result is invalid");
+  if (fields.accepted) {
+    requireNonEmptyString(fields.externalMessageId, "Send result is invalid");
+  } else if (Object.hasOwn(fields, "externalMessageId") && typeof fields.externalMessageId !== "string") {
     invalid("Send result is invalid");
   }
-  return result;
+
+  const snapshot = {
+    accepted: fields.accepted,
+    ...(Object.hasOwn(fields, "externalMessageId") ? { externalMessageId: fields.externalMessageId } : {}),
+    status: fields.status,
+    ...(Object.hasOwn(fields, "providerResponse")
+      ? { providerResponse: freezeSnapshot(fields.providerResponse, new WeakSet(), "Send result is invalid") }
+      : {})
+  };
+  return Object.freeze(snapshot);
 }
 
 export function assertInboundEvents(events) {
-  if (!Array.isArray(events)) {
+  if (!isStandardArray(events)) {
     invalid("Inbound events are invalid");
   }
-  for (const event of events) {
-    assertInboundEvent(event);
-  }
-  return events;
+  return Object.freeze(events.map(normalizeInboundEvent));
 }
 
-function assertInboundEvent(event) {
-  if (!isRecord(event)) {
+function normalizeInboundEvent(event) {
+  const fields = ownDataFields(event, INBOUND_EVENT_KEYS, [
+    "provider",
+    "channelAccountId",
+    "eventId",
+    "eventType",
+    "occurredAt",
+    "chat",
+    "sender",
+    "message"
+  ]);
+  if (fields === null) {
     invalid("Inbound event is invalid");
   }
-  assertProviderId(event.provider);
-  requireNonEmptyString(event.channelAccountId, "Inbound event is invalid");
-  requireNonEmptyString(event.eventId, "Inbound event is invalid");
-  requireNonEmptyString(event.eventType, "Inbound event is invalid");
-  requireNonEmptyString(event.occurredAt, "Inbound event is invalid");
-  assertIdentity(event.chat, true, "Inbound event is invalid");
-  assertIdentity(event.sender, false, "Inbound event is invalid");
+  assertProviderId(fields.provider);
+  requireNonBlankString(fields.channelAccountId, "Inbound event is invalid");
+  requireNonBlankString(fields.eventId, "Inbound event is invalid");
+  requireNonBlankString(fields.eventType, "Inbound event is invalid");
+  if (typeof fields.occurredAt !== "string"
+    || !RFC3339_TIMESTAMP.test(fields.occurredAt)
+    || !Number.isFinite(Date.parse(fields.occurredAt))) {
+    invalid("Inbound event is invalid");
+  }
 
-  if (event.message === null) {
-    if (isMessageEvent(event.eventType)) {
-      invalid("Inbound event is invalid", { provider: event.provider, channelAccountId: event.channelAccountId });
+  const chat = normalizeInboundIdentity(fields.chat, INBOUND_CHAT_KEYS, true);
+  const sender = normalizeInboundIdentity(fields.sender, INBOUND_SENDER_KEYS, false);
+  let message = null;
+  if (fields.message === null) {
+    if (isMessageEvent(fields.eventType)) {
+      invalid("Inbound event is invalid", { provider: fields.provider, channelAccountId: fields.channelAccountId });
     }
-    return;
+  } else {
+    message = normalizeInboundMessage(fields.message, fields);
   }
-  if (!isRecord(event.message)) {
-    invalid("Inbound event is invalid", { provider: event.provider, channelAccountId: event.channelAccountId });
-  }
-  requireNonEmptyString(event.message.externalId, "Inbound event is invalid");
-  requireNonEmptyString(event.message.type, "Inbound event is invalid");
-  if (!Array.isArray(event.message.attachments) || !Array.isArray(event.message.mentions)) {
-    invalid("Inbound event is invalid", { provider: event.provider, channelAccountId: event.channelAccountId });
-  }
+
+  return Object.freeze({
+    provider: fields.provider,
+    channelAccountId: fields.channelAccountId,
+    eventId: fields.eventId,
+    eventType: fields.eventType,
+    occurredAt: fields.occurredAt,
+    chat,
+    sender,
+    message,
+    ...(Object.hasOwn(fields, "rawPayload")
+      ? { rawPayload: freezeSnapshot(fields.rawPayload, new WeakSet(), "Inbound event is invalid") }
+      : {})
+  });
 }
 
-function assertIdentity(value, requiresType, message) {
-  if (!isRecord(value)) {
-    invalid(message);
+function normalizeInboundIdentity(value, keys, includesType) {
+  const fields = ownDataFields(value, keys, keys);
+  if (fields === null) {
+    invalid("Inbound event is invalid");
   }
-  requireNonEmptyString(value.externalId, message);
-  if (requiresType) {
-    requireNonEmptyString(value.type, message);
+  requireNonBlankString(fields.externalId, "Inbound event is invalid");
+  if (includesType) {
+    requireNonBlankString(fields.type, "Inbound event is invalid");
   }
-  if (value.displayName !== undefined && typeof value.displayName !== "string") {
-    invalid(message);
+  if (typeof fields.displayName !== "string") {
+    invalid("Inbound event is invalid");
   }
+  return Object.freeze({
+    externalId: fields.externalId,
+    ...(includesType ? { type: fields.type } : {}),
+    displayName: fields.displayName
+  });
+}
+
+function normalizeInboundMessage(value, eventFields) {
+  const fields = ownDataFields(value, INBOUND_MESSAGE_KEYS, INBOUND_MESSAGE_KEYS);
+  if (fields === null) {
+    invalid("Inbound event is invalid", { provider: eventFields.provider, channelAccountId: eventFields.channelAccountId });
+  }
+  requireNonBlankString(fields.externalId, "Inbound event is invalid");
+  requireNonBlankString(fields.type, "Inbound event is invalid");
+  if (typeof fields.text !== "string"
+    || typeof fields.quotedMessageId !== "string"
+    || typeof fields.fromMe !== "boolean"
+    || !isStandardArray(fields.attachments)
+    || !isStandardArray(fields.mentions)) {
+    invalid("Inbound event is invalid", { provider: eventFields.provider, channelAccountId: eventFields.channelAccountId });
+  }
+  return Object.freeze({
+    externalId: fields.externalId,
+    type: fields.type,
+    text: fields.text,
+    attachments: freezeSnapshot(fields.attachments, new WeakSet(), "Inbound event is invalid"),
+    quotedMessageId: fields.quotedMessageId,
+    mentions: freezeSnapshot(fields.mentions, new WeakSet(), "Inbound event is invalid"),
+    fromMe: fields.fromMe
+  });
 }
 
 function isMessageEvent(eventType) {
@@ -176,6 +268,12 @@ function isMessageEvent(eventType) {
 
 function requireNonEmptyString(value, message) {
   if (typeof value !== "string" || value.length === 0) {
+    invalid(message);
+  }
+}
+
+function requireNonBlankString(value, message) {
+  if (typeof value !== "string" || value.trim().length === 0) {
     invalid(message);
   }
 }
@@ -193,7 +291,42 @@ function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function freezeSnapshot(value, ancestors = new WeakSet()) {
+function isStandardArray(value) {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  const keys = Reflect.ownKeys(value);
+  const elementKeys = keys.filter((key) => key !== "length");
+  return elementKeys.length === value.length && elementKeys.every((key) => {
+    if (typeof key !== "string" || !isArrayIndex(key)) {
+      return false;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    return descriptor.enumerable && Object.hasOwn(descriptor, "value");
+  });
+}
+
+function ownDataFields(value, allowedKeys, requiredKeys = []) {
+  if (!isPlainObject(value) || !hasOnlyKnownKeys(value, allowedKeys)) {
+    return null;
+  }
+  const fields = {};
+  for (const key of Reflect.ownKeys(value)) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (typeof key !== "string" || !descriptor.enumerable || !Object.hasOwn(descriptor, "value")) {
+      return null;
+    }
+    Object.defineProperty(fields, key, {
+      value: descriptor.value,
+      enumerable: true,
+      configurable: false,
+      writable: false
+    });
+  }
+  return requiredKeys.every((key) => Object.hasOwn(fields, key)) ? fields : null;
+}
+
+function freezeSnapshot(value, ancestors = new WeakSet(), errorMessage = "Send command is invalid") {
   if (value === null || typeof value === "string" || typeof value === "boolean") {
     return value;
   }
@@ -201,7 +334,7 @@ function freezeSnapshot(value, ancestors = new WeakSet()) {
     return value;
   }
   if (typeof value !== "object" || (!isPlainObject(value) && !Array.isArray(value)) || ancestors.has(value)) {
-    invalid("Send command is invalid");
+    invalid(errorMessage);
   }
   const copy = Array.isArray(value) ? [] : {};
   ancestors.add(value);
@@ -214,10 +347,10 @@ function freezeSnapshot(value, ancestors = new WeakSet()) {
       || !descriptor.enumerable
       || !Object.hasOwn(descriptor, "value")
       || (Array.isArray(value) && !isArrayIndex(key))) {
-      invalid("Send command is invalid");
+      invalid(errorMessage);
     }
     Object.defineProperty(copy, key, {
-      value: freezeSnapshot(descriptor.value, ancestors),
+      value: freezeSnapshot(descriptor.value, ancestors, errorMessage),
       enumerable: true,
       configurable: false,
       writable: false
@@ -228,6 +361,9 @@ function freezeSnapshot(value, ancestors = new WeakSet()) {
 }
 
 function isPlainObject(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }

@@ -11,15 +11,25 @@ export const CHANNEL_ERROR_CODES = Object.freeze({
 
 const VALID_CODES = Object.freeze(Object.values(CHANNEL_ERROR_CODES));
 const SAFE_CONTEXT_FIELDS = ["provider", "channelAccountId", "operation"];
+const PUBLIC_MESSAGES = Object.freeze({
+  [CHANNEL_ERROR_CODES.INVALID_CONTRACT]: "Channel contract is invalid",
+  [CHANNEL_ERROR_CODES.UNKNOWN_PROVIDER]: "Channel provider is unknown",
+  [CHANNEL_ERROR_CODES.UNSUPPORTED_CAPABILITY]: "Channel capability is unsupported",
+  [CHANNEL_ERROR_CODES.AUTHENTICATION_REQUIRED]: "Channel authentication is required",
+  [CHANNEL_ERROR_CODES.RATE_LIMITED]: "Channel rate limit exceeded",
+  [CHANNEL_ERROR_CODES.TEMPORARY_PROVIDER_FAILURE]: "Channel operation failed",
+  [CHANNEL_ERROR_CODES.PERMANENT_PROVIDER_REJECTION]: "Channel operation was rejected",
+  [CHANNEL_ERROR_CODES.INVALID_PROVIDER_RESPONSE]: "Channel provider response is invalid"
+});
 
 export class ChannelError extends Error {
-  constructor(code, message, context = {}) {
+  constructor(code, _message, context = {}) {
     if (!VALID_CODES.includes(code)) {
       throw new TypeError("Unknown channel error code");
     }
 
     const safeContext = isRecord(context) ? context : {};
-    super(message);
+    super(PUBLIC_MESSAGES[code]);
     this.name = "ChannelError";
     this.code = code;
 
@@ -35,20 +45,27 @@ export class ChannelError extends Error {
     }
     if (Object.hasOwn(safeContext, "cause")) {
       Object.defineProperty(this, "cause", {
-        value: safeContext.cause,
-        configurable: true,
-        writable: true
+        value: safeCause(),
+        configurable: false,
+        enumerable: false,
+        writable: false
       });
     }
   }
 }
 
 export function toChannelError(value, context = {}) {
+  const safeContext = isRecord(context) ? context : {};
   if (value instanceof ChannelError) {
-    return value;
+    return new ChannelError(value.code, undefined, {
+      provider: ownString(value, "provider") ?? ownString(safeContext, "provider"),
+      channelAccountId: ownString(value, "channelAccountId") ?? ownString(safeContext, "channelAccountId"),
+      operation: ownString(value, "operation") ?? ownString(safeContext, "operation"),
+      retryable: ownBoolean(value, "retryable") ?? ownBoolean(safeContext, "retryable"),
+      cause: value
+    });
   }
 
-  const safeContext = isRecord(context) ? context : {};
   return new ChannelError(
     CHANNEL_ERROR_CODES.TEMPORARY_PROVIDER_FAILURE,
     "Channel operation failed",
@@ -67,13 +84,19 @@ function isRecord(value) {
 }
 
 function ownString(record, key) {
-  return Object.hasOwn(record, key) && typeof record[key] === "string"
-    ? record[key]
+  const descriptor = Object.getOwnPropertyDescriptor(record, key);
+  return descriptor && Object.hasOwn(descriptor, "value") && typeof descriptor.value === "string"
+    ? descriptor.value
     : undefined;
 }
 
 function ownBoolean(record, key) {
-  return Object.hasOwn(record, key) && typeof record[key] === "boolean"
-    ? record[key]
+  const descriptor = Object.getOwnPropertyDescriptor(record, key);
+  return descriptor && Object.hasOwn(descriptor, "value") && typeof descriptor.value === "boolean"
+    ? descriptor.value
     : undefined;
+}
+
+function safeCause() {
+  return Object.freeze(new Error("Channel failure cause withheld"));
 }

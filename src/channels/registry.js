@@ -6,14 +6,16 @@ const KNOWN_CAPABILITIES = Object.freeze([...CHANNEL_CAPABILITY_KEYS]);
 export function createChannelRegistry() {
   const adapters = new Map();
 
-  const get = (provider) => {
+  const getEntry = (provider) => {
     assertProviderId(provider);
-    const adapter = adapters.get(provider);
-    if (adapter === undefined) {
+    const entry = adapters.get(provider);
+    if (entry === undefined) {
       throw new ChannelError(CHANNEL_ERROR_CODES.UNKNOWN_PROVIDER, "Channel provider is unknown", { provider });
     }
-    return adapter;
+    return entry;
   };
+
+  const get = (provider) => getEntry(provider).adapter;
 
   return Object.freeze({
     register(adapter) {
@@ -25,7 +27,12 @@ export function createChannelRegistry() {
           { provider: adapter.provider }
         );
       }
-      adapters.set(adapter.provider, adapter);
+      adapters.set(adapter.provider, Object.freeze({
+        adapter,
+        capabilities: Object.freeze(Object.fromEntries(
+          CHANNEL_CAPABILITY_KEYS.map((key) => [key, adapter.capabilities[key]])
+        ))
+      }));
       return adapter;
     },
 
@@ -42,15 +49,15 @@ export function createChannelRegistry() {
         throw new ChannelError(CHANNEL_ERROR_CODES.INVALID_CONTRACT, "Channel account identifier is invalid", context);
       }
 
-      const adapter = get(request.provider);
-      if (requiredCapability !== undefined && (!KNOWN_CAPABILITIES.includes(requiredCapability) || !adapter.capabilities[requiredCapability])) {
+      const entry = getEntry(request.provider);
+      if (requiredCapability !== undefined && (!KNOWN_CAPABILITIES.includes(requiredCapability) || !entry.capabilities[requiredCapability])) {
         throw new ChannelError(
           CHANNEL_ERROR_CODES.UNSUPPORTED_CAPABILITY,
           "Channel capability is unsupported",
           context
         );
       }
-      return adapter;
+      return entry.adapter;
     },
 
     list() {

@@ -10,6 +10,20 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
+function readArtifact(relativePath) {
+  return fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
+}
+
+function parseExampleEnvironment(source) {
+  return Object.fromEntries(source
+    .split(/\r?\n/u)
+    .filter((line) => line.length > 0 && !line.startsWith("#"))
+    .map((line) => {
+      const separator = line.indexOf("=");
+      return [line.slice(0, separator), line.slice(separator + 1)];
+    }));
+}
+
 function reservePort() {
   return new Promise((resolve, reject) => {
     const server = http.createServer();
@@ -76,6 +90,26 @@ test("package metadata identifies the omnichannel service", () => {
     name: "dclaw-omnichannel-service",
     description: "Channel-neutral DClaw customer service and sales platform"
   });
+});
+
+test("compose identifies the omnichannel deployment service and container", () => {
+  const compose = readArtifact("compose.yaml");
+  const serviceMatch = compose.match(/^services:\s*\n {2}([^:\n]+):/mu);
+  const containerMatch = compose.match(/^ {4}container_name:\s*([^\s#]+)/mu);
+
+  assert.equal(serviceMatch?.[1], "dclaw-omnichannel-service");
+  assert.equal(containerMatch?.[1], "dclaw-omnichannel-service");
+});
+
+test("example environment makes BOT_ID canonical and documents isolated data paths", () => {
+  const source = readArtifact(".env.example");
+  const environment = parseExampleEnvironment(source);
+
+  assert.equal(environment.BOT_ID, "replace_with_your_bot_id");
+  assert.equal(environment.ROBOT_ID, "");
+  assert.equal(environment.DATA_DIR, "./data");
+  assert.equal(environment.DATABASE_PATH, "");
+  assert.match(source, /# Temporary fallback for older deployments only\.\nROBOT_ID=/u);
 });
 
 test("health endpoint identifies the running omnichannel service", async (t) => {
