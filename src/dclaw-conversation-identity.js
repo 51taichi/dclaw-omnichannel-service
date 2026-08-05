@@ -8,6 +8,17 @@ function digest(value, length = 32) {
     .slice(0, length);
 }
 
+export function buildDclawGroupHistoryId({ botId, groupId }) {
+  const scope = [
+    "worktool-dclaw-group-history-v1",
+    String(botId || "").trim(),
+    String(groupId || "").trim()
+  ].join("\n");
+  if (!String(botId || "").trim()) throw new Error("botId is required");
+  if (!String(groupId || "").trim()) throw new Error("groupId is required");
+  return `wt-g-${digest(scope, 32)}`;
+}
+
 export function buildDclawConversationIdentity({
   botId,
   conversationKey,
