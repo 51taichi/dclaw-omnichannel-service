@@ -23,3 +23,9 @@
 ## Scope
 
 Only the Task 5 registry implementation, its tests, and this report are included in the task commit.
+
+## Review fix: remove module-scope mutability
+
+- Replaced the module-scope `Set` of known capabilities with a frozen array and `includes` lookup. The registry keeps its only mutable state (`Map`) inside `createChannelRegistry()`.
+- Existing capability-resolution tests cover the preserved unknown/disabled/allowed capability behavior; no source-shape test was added because it would be brittle rather than consumer-observable.
+- Re-ran `node --test tests/channel-errors.test.js tests/channel-contract.test.js tests/channel-registry.test.js`: 20 passed, 0 failed (exit code 0).

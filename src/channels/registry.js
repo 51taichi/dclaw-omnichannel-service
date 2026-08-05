@@ -1,7 +1,7 @@
 import { CHANNEL_CAPABILITY_KEYS, assertChannelAdapter, assertProviderId } from "./contract.js";
 import { CHANNEL_ERROR_CODES, ChannelError } from "./errors.js";
 
-const KNOWN_CAPABILITIES = new Set(CHANNEL_CAPABILITY_KEYS);
+const KNOWN_CAPABILITIES = Object.freeze([...CHANNEL_CAPABILITY_KEYS]);
 
 export function createChannelRegistry() {
   const adapters = new Map();
@@ -43,7 +43,7 @@ export function createChannelRegistry() {
       }
 
       const adapter = get(request.provider);
-      if (requiredCapability !== undefined && (!KNOWN_CAPABILITIES.has(requiredCapability) || !adapter.capabilities[requiredCapability])) {
+      if (requiredCapability !== undefined && (!KNOWN_CAPABILITIES.includes(requiredCapability) || !adapter.capabilities[requiredCapability])) {
         throw new ChannelError(
           CHANNEL_ERROR_CODES.UNSUPPORTED_CAPABILITY,
           "Channel capability is unsupported",
