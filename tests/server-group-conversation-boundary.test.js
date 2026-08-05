@@ -19,12 +19,9 @@ test("server records unmentioned group messages before agent mention filtering",
   );
 });
 
-test("server wakes DClaw history sync for every persisted managed-group message before reply-policy exits", () => {
-  assert.match(serverSource, /function insertConversationMessageAndWakeGroupHistory\(/);
-  assert.match(
-    serverSource,
-    /getGroupByConversationKey\(\{[\s\S]*groupHistorySyncWorker\.wake\(\{[\s\S]*messageId:\s*message\.id/
-  );
+test("server keeps non-triggering group messages local without a DClaw history wake", () => {
+  assert.match(serverSource, /const insertConversationMessage = insertConversationMessageDb/);
+  assert.doesNotMatch(serverSource, /insertConversationMessageAndWakeGroupHistory|groupHistorySyncWorker/);
   assert.equal(
     processIncomingSource.indexOf("persistInboundConversation({") <
       processIncomingSource.indexOf("group_mention_required"),

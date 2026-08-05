@@ -28,6 +28,7 @@ import {
   getDclawFormatRetryTimeoutMs,
   getDclawAgentTimeoutMs,
   getAgentReplySendabilityIssue,
+  invokeDclawAgent,
   invokeDclawAgentWithRetry
 } from "./dclaw.js";
 import {
@@ -83,8 +84,7 @@ import {
   cancelTagActivationTasks,
   claimDueFlowActivationTasks,
   claimDueTagActivationTasks,
-  claimPreparatoryGroupAutomationOccurrences,
-  claimTargetGroupAutomationOccurrences,
+  claimDueGroupAutomationOccurrences,
   claimNextProactiveTarget,
   cancelProactiveTask,
   clearConversationForReset,
@@ -220,20 +220,11 @@ import {
   scheduleTagActivationTask,
   saveGroupConfig,
   saveGroupRoles,
-  getLatestGroupConversationMessageIdAtOrBefore,
-  getGroupHistorySyncState,
-  enqueueGroupHistorySync,
-  claimGroupHistorySyncJobs,
-  heartbeatGroupHistorySyncJob,
-  listCanonicalGroupMessagesForHistory,
-  completeGroupHistorySyncBatch,
-  failGroupHistorySyncJob,
-  allManagedGroupHistoryBackfillsReady,
-  finalizeLegacyGroupLedgerRemoval,
+  prepareGroupAutomationOccurrences,
+  recoverLegacyGroupAutomationOccurrences,
+  validateGroupAutomationEvidenceMessageIds,
+  finalizeObsoleteGroupHistoryRemoval,
   disableLegacyConditionalTasksWithoutCondition,
-  getGroupAutomationChunkCheckpoint,
-  saveGroupAutomationChunkCheckpoint,
-  cleanupGroupAutomationChunkCheckpoints,
   heartbeatGroupAutomationOccurrence,
   transitionGroupAutomationOccurrence,
   resolveGroupAutomationMentionNames,
@@ -269,22 +260,12 @@ import {
   upsertWorktoolApiMessageCache
 } from "./db.js";
 import { createGroupAutomationWorker } from "./group-automation-worker.js";
-import { createGroupHistorySyncWorker } from "./group-history-sync-worker.js";
-import {
-  appendDclawGroupHistory,
-  buildDclawGroupHistoryId,
-  listDclawGroupHistory,
-  probeDclawGroupHistoryCapability
-} from "./dclaw-group-history.js";
 import {
   nextGroupAutomationRunAt,
   normalizeGroupAutomationSchedule
 } from "./group-automation-schedule.js";
 import {
-  analyzeGroupHistoryChunk,
-  finalizeConditionalPush,
-  finalizePeriodicSummary,
-  mergeGroupHistoryAnalyses
+  executeGroupAutomationAgentTask
 } from "./group-automation-agent.js";
 import { parseGroupSummaryTemplate } from "./group-summary-template.js";
 import { createGroupAutomationStreamHub } from "./group-automation-stream.js";
@@ -1640,25 +1621,6 @@ const groupAutomationWorkerConfig = {
     Math.min(100, Number(process.env.GROUP_AUTOMATION_BATCH_SIZE || 10))
   )
 };
-const groupHistorySyncWorkerConfig = {
-  enabled: process.env.GROUP_HISTORY_SYNC_WORKER_ENABLED !== "false",
-  intervalMs: Math.max(
-    500,
-    Number(process.env.GROUP_HISTORY_SYNC_INTERVAL_MS || 2000)
-  ),
-  leaseMs: Math.max(
-    30_000,
-    Number(process.env.GROUP_HISTORY_SYNC_LEASE_MS || 120000)
-  ),
-  batchSize: Math.max(
-    1,
-    Math.min(200, Number(process.env.GROUP_HISTORY_SYNC_BATCH_SIZE || 200))
-  ),
-  claimLimit: Math.max(
-    1,
-    Math.min(100, Number(process.env.GROUP_HISTORY_SYNC_CLAIM_LIMIT || 10))
-  )
-};
 const friendAddedReentryCooldownMs = Math.max(
   0,
   Number(process.env.FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES || 0) * 60 * 1000
@@ -1696,82 +1658,18 @@ const agentInvocationQueue = createAgentInvocationQueue({
   concurrency: process.env.DCLAW_AGENT_CONCURRENCY || 3
 });
 
-let groupHistorySyncWorker = null;
-const groupHistoryCapabilityByBot = new Map();
-
-async function probeTrackedGroupHistoryCapability({ binding }) {
-  const botId = String(binding?.botId || "").trim();
-  if (!binding?.enabled || !String(binding?.agentApiUrl || "").trim()) {
-    const unavailable = {
-      ready: false,
-      status: 0,
-      reason: "DClaw Agent 未启用或未配置群历史接口"
-    };
-    if (botId) groupHistoryCapabilityByBot.set(botId, unavailable);
-    return unavailable;
-  }
-  try {
-    const capability = await probeDclawGroupHistoryCapability({ binding });
-    const tracked = {
-      ready: capability?.ready === true,
-      status: Number(capability?.status || 0),
-      reason: String(capability?.reason || "")
-    };
-    if (botId) groupHistoryCapabilityByBot.set(botId, tracked);
-    return tracked;
-  } catch (error) {
-    const unavailable = {
-      ready: false,
-      status: 0,
-      reason: String(error?.message || error || "DClaw 群历史能力验证失败")
-    };
-    if (botId) groupHistoryCapabilityByBot.set(botId, unavailable);
-    return unavailable;
-  }
-}
-
 function groupAutomationExecutionCapability(botId) {
   const binding = getBotBinding(botId);
   if (!binding?.enabled || !String(binding?.agentApiUrl || "").trim()) {
     return {
       executionAvailable: false,
-      technicalReason: "DClaw Agent 未启用或未配置群历史接口"
+      technicalReason: "DClaw Agent 未启用或未完成配置"
     };
   }
-  const capability = groupHistoryCapabilityByBot.get(botId);
-  if (!capability) {
-    return {
-      executionAvailable: false,
-      technicalReason: "正在验证 DClaw 群历史能力"
-    };
-  }
-  return capability.ready
-    ? { executionAvailable: true, technicalReason: "" }
-    : {
-        executionAvailable: false,
-        technicalReason: `DClaw 群历史能力不可用：${capability.reason || capability.status || "未知原因"}`
-      };
+  return { executionAvailable: true, technicalReason: "" };
 }
 
-function insertConversationMessageAndWakeGroupHistory(input) {
-  const message = insertConversationMessageDb(input);
-  const group = getGroupByConversationKey({
-    botId: input.botId,
-    conversationKey: input.conversationKey
-  });
-  if (group && groupHistorySyncWorker) {
-    void groupHistorySyncWorker.wake({ botId: input.botId, groupId: group.id })
-      .catch((error) => logWarn("group_history.sync.wake_failed", {
-        botId: input.botId,
-        groupId: group.id,
-        messageId: message.id,
-        error
-      }));
-  }
-  return message;
-}
-
-const insertConversationMessage = insertConversationMessageAndWakeGroupHistory;
+const insertConversationMessage = insertConversationMessageDb;
 
 function inboundCoalesceKey(botId, conversationKey) {
   return `${String(botId || "")}\u0000${String(conversationKey || "")}`;
@@ -1870,129 +1768,31 @@ function enqueueAgentInvocation(task, options) {
   return agentInvocationQueue.enqueue(task, options);
 }
 
-groupHistorySyncWorker = createGroupHistorySyncWorker({
-  db: {
-    getLatestGroupConversationMessageIdAtOrBefore,
-    getGroupHistorySyncState,
-    enqueueGroupHistorySync,
-    claimGroupHistorySyncJobs,
-    heartbeatGroupHistorySyncJob,
-    listCanonicalGroupMessagesForHistory,
-    completeGroupHistorySyncBatch,
-    failGroupHistorySyncJob,
-    listGroupRoles
-  },
-  resolveDclawBinding: getBotBinding,
-  probeCapability: probeTrackedGroupHistoryCapability,
-  appendHistory: appendDclawGroupHistory,
-  now: () => new Date(),
-  logger: {
-    info: logInfo,
-    warn: logWarn,
-    error: logError
-  },
-  batchSize: groupHistorySyncWorkerConfig.batchSize,
-  leaseMs: groupHistorySyncWorkerConfig.leaseMs
-});
-
-async function enqueueAllManagedGroupsForHistorySync() {
-  let enqueued = 0;
-  for (const binding of listBotBindings()) {
-    await probeTrackedGroupHistoryCapability({ binding });
-    let page = 1;
-    while (true) {
-      const result = listGroupsPage({ botId: binding.botId, page, pageSize: 100 });
-      for (const group of result.items) {
-        try {
-          await groupHistorySyncWorker.wake({ botId: binding.botId, groupId: group.id });
-          enqueued += 1;
-        } catch (error) {
-          logWarn("group_history.sync.backfill_enqueue_failed", {
-            botId: binding.botId,
-            groupId: group.id,
-            error
-          });
-        }
-      }
-      if (page >= result.pagination.totalPages) break;
-      page += 1;
-    }
-  }
-  logInfo("group_history.sync.backfill_enqueued", { groupCount: enqueued });
-  return enqueued;
-}
-
-function maybeFinalizeLegacyGroupLedgerRemoval() {
-  const capabilityReady = listBotBindings().every((binding) => {
-    const managedGroupCount = listGroupsPage({
-      botId: binding.botId,
-      page: 1,
-      pageSize: 1
-    }).pagination.total;
-    return managedGroupCount === 0
-      || groupHistoryCapabilityByBot.get(binding.botId)?.ready === true;
-  });
-  const result = finalizeLegacyGroupLedgerRemoval({
-    capabilityReady,
-    allManagedGroupsBackfilled: allManagedGroupHistoryBackfillsReady()
-  });
-  if (result.removed) {
-    logInfo("group_history.legacy_business_state_removed", {});
-  }
-  return result;
+const obsoleteGroupHistoryRemoval = finalizeObsoleteGroupHistoryRemoval();
+if (obsoleteGroupHistoryRemoval.removed) {
+  logInfo("group_history.obsolete_runtime_removed", {});
 }
 
 const groupAutomationWorker = createGroupAutomationWorker({
   db: {
+    prepareGroupAutomationOccurrences,
+    recoverLegacyGroupAutomationOccurrences,
+    claimDueGroupAutomationOccurrences,
     getGroupById,
+    getConversation,
+    upsertConversation,
     getGroupAutomationOccurrence,
-    getLatestGroupConversationMessageIdAtOrBefore,
-    claimPreparatoryGroupAutomationOccurrences,
-    claimTargetGroupAutomationOccurrences,
-    getGroupAutomationChunkCheckpoint,
-    saveGroupAutomationChunkCheckpoint,
-    cleanupGroupAutomationChunkCheckpoints,
+    validateGroupAutomationEvidenceMessageIds,
     heartbeatGroupAutomationOccurrence,
     transitionGroupAutomationOccurrence,
-    resolveGroupAutomationMentionNames,
     markGroupAutomationSendUnknown
   },
-  historySyncWorker: groupHistorySyncWorker,
-  listDclawHistory: ({ botId, groupId, ...query }) => listDclawGroupHistory({
-    binding: getBotBinding(botId),
-    externalGroupId: buildDclawGroupHistoryId({ botId, groupId }),
-    ...query
-  }),
-  analyzeChunk: (input) => analyzeGroupHistoryChunk({
+  getBinding: getBotBinding,
+  executeAgentTask: (input) => executeGroupAutomationAgentTask({
     ...input,
-    binding: getBotBinding(input.task.botId),
-    invokeAgent: ({ binding, request }) => enqueueAgentInvocation(
-      () => invokeDclawAgentWithRetry({ binding, request }),
-      { priority: "background", key: input.group.conversationKey }
-    )
-  }),
-  mergeAnalyses: (input) => mergeGroupHistoryAnalyses({
-    ...input,
-    binding: getBotBinding(input.task.botId),
-    invokeAgent: ({ binding, request }) => enqueueAgentInvocation(
-      () => invokeDclawAgentWithRetry({ binding, request }),
-      { priority: "background", key: input.group.conversationKey }
-    )
-  }),
-  finalizeConditional: (input) => finalizeConditionalPush({
-    ...input,
-    binding: getBotBinding(input.task.botId),
-    invokeAgent: ({ binding, request }) => enqueueAgentInvocation(
-      () => invokeDclawAgentWithRetry({ binding, request }),
-      { priority: "background", key: input.group.conversationKey }
-    )
-  }),
-  finalizeSummary: (input) => finalizePeriodicSummary({
-    ...input,
-    binding: getBotBinding(input.task.botId),
-    invokeAgent: ({ binding, request }) => enqueueAgentInvocation(
-      () => invokeDclawAgentWithRetry({ binding, request }),
-      { priority: "background", key: input.group.conversationKey }
+    invokeAgent: ({ binding, request, signal }) => enqueueAgentInvocation(
+      () => invokeDclawAgent({ binding, request, signal }),
+      { priority: "background", key: input.conversation.conversationKey }
     )
   }),
   sendGroupMessage: sendTextMessage,
@@ -2002,6 +1802,7 @@ const groupAutomationWorker = createGroupAutomationWorker({
     warn: logWarn,
     error: logError
   },
+  onOccurrenceChanged: publishGroupAutomationCallbackResult,
   leaseMs: groupAutomationWorkerConfig.leaseMs
 });
 
@@ -4591,25 +4392,6 @@ if (disabledLegacyConditionalTaskCount > 0) {
     taskCount: disabledLegacyConditionalTaskCount,
     reason: "needs_condition"
   });
-}
-
-if (groupHistorySyncWorkerConfig.enabled) {
-  const groupHistorySyncOwner = `group-history:${process.pid}:${crypto.randomUUID()}`;
-  void enqueueAllManagedGroupsForHistorySync()
-    .then(() => maybeFinalizeLegacyGroupLedgerRemoval())
-    .catch((error) => {
-      logError("group_history.sync.backfill_failed", { error });
-    });
-  setInterval(() => {
-    void groupHistorySyncWorker.runTick({
-      owner: groupHistorySyncOwner,
-      limit: groupHistorySyncWorkerConfig.claimLimit
-    })
-      .then(() => maybeFinalizeLegacyGroupLedgerRemoval())
-      .catch((error) => {
-        logError("group_history.sync.worker_failed", { error });
-      });
-  }, groupHistorySyncWorkerConfig.intervalMs).unref();
 }
 
 if (groupAutomationWorkerConfig.enabled) {

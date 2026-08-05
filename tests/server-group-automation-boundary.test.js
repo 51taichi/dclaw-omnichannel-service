@@ -56,19 +56,15 @@ test("group automation responses expose operational runs and evidence anchors wi
   assert.match(source, /listConversationMessagesAround\(\{[\s\S]*anchorMessageId:\s*messageId/);
 });
 
-test("server uses only the phased DClaw history worker for group task execution", () => {
+test("server executes group tasks from the existing conversation without full-history analysis", () => {
   const workerStart = source.indexOf("createGroupAutomationWorker({");
   const workerSource = source.slice(workerStart, workerStart + 5000);
-  assert.match(workerSource, /historySyncWorker:\s*groupHistorySyncWorker/);
-  assert.match(workerSource, /listDclawHistory:/);
-  assert.match(workerSource, /analyzeChunk:/);
-  assert.match(workerSource, /mergeAnalyses:/);
-  assert.match(workerSource, /finalizeConditional:/);
-  assert.match(workerSource, /finalizeSummary:/);
+  assert.match(workerSource, /executeAgentTask:/);
+  assert.match(workerSource, /executeGroupAutomationAgentTask\(\{/);
+  assert.match(workerSource, /claimDueGroupAutomationOccurrences/);
+  assert.match(workerSource, /validateGroupAutomationEvidenceMessageIds/);
   assert.match(source, /groupAutomationWorker\.recoverExpiredLeases\(/);
-  assert.doesNotMatch(workerSource, /enqueueGroupLedgerJob/);
-  assert.doesNotMatch(workerSource, /listGroupLedgerProjection/);
-  assert.doesNotMatch(source, /groupAutomationWorker\.runLedgerTick\(/);
+  assert.doesNotMatch(workerSource, /historySyncWorker|listDclawHistory|analyzeChunk|mergeAnalyses/);
 });
 
 test("both WorkTool command callbacks reconcile group automation delivery and publish the result", () => {
@@ -89,12 +85,19 @@ test("manual delivery resolution verifies group ownership and records the authen
   }
 });
 
-test("group history sync is startup-backed and wakes only from persisted group conversation writes", () => {
-  assert.match(source, /createGroupHistorySyncWorker\(\{/);
-  assert.match(source, /enqueueAllManagedGroupsForHistorySync\(/);
-  assert.match(source, /function insertConversationMessageAndWakeGroupHistory\(/);
-  assert.match(source, /getGroupByConversationKey\(\{[\s\S]*groupHistorySyncWorker\.wake\(\{/);
-  assert.doesNotMatch(source, /groupHistorySyncWorker[\s\S]{0,300}listWorkToolGroups/);
+test("server has no full-history synchronization runtime or obsolete modules", () => {
+  assert.match(source, /finalizeObsoleteGroupHistoryRemoval\(\)/);
+  assert.doesNotMatch(source, /createGroupHistorySyncWorker|groupHistorySyncWorker/);
+  assert.doesNotMatch(source, /enqueueAllManagedGroupsForHistorySync|probeDclawGroupHistoryCapability/);
+  assert.doesNotMatch(source, /analyzeGroupHistoryChunk|mergeGroupHistoryAnalyses|listDclawGroupHistory/);
+  assert.doesNotMatch(source, /insertConversationMessageAndWakeGroupHistory/);
+  for (const file of [
+    "../src/dclaw-group-history.js",
+    "../src/group-history-sync-worker.js",
+    "../src/group-history-transcript.js"
+  ]) {
+    assert.equal(fs.existsSync(new URL(file, import.meta.url)), false, file);
+  }
 });
 
 test("production no longer contains the legacy group business ledger runtime or schema", () => {
@@ -105,6 +108,5 @@ test("production no longer contains the legacy group business ledger runtime or 
     /managed_group_(?:facts|fact_aggregates|fact_evidence|fact_revisions|ledger_states|ledger_jobs|automation_cycle_states)/
   );
   assert.doesNotMatch(productionSources, /variable_values_json|fact_ids_json/);
-  assert.match(source, /finalizeLegacyGroupLedgerRemoval\(\{/);
-  assert.match(source, /allManagedGroupHistoryBackfillsReady\(\)/);
+  assert.match(source, /finalizeObsoleteGroupHistoryRemoval\(\)/);
 });

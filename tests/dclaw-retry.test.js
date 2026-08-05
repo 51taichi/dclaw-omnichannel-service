@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  buildDclawGroupHistoryAnalysisRequest,
   getDclawAgentTimeoutMs,
   getDclawRequestMessageMaxChars,
   invokeDclawAgentWithRetry
@@ -199,27 +198,4 @@ test("does not wrap malformed streaming text as a valid reply object", async () 
   } finally {
     globalThis.fetch = originalFetch;
   }
-});
-
-test("builds deterministic but stage-isolated group history analysis sessions", () => {
-  const input = {
-    binding: { botId: "bot-1", agentId: "agent-1" },
-    conversationKey: "bot-1:group-id:group-1",
-    conversationEpoch: "epoch-1",
-    message: "分析历史",
-    analysisKey: "occ-1:chunk:0",
-    metadata: { groupId: "group-1", taskId: "task-1", occurrenceId: "occ-1", stage: "chunk" }
-  };
-  const first = buildDclawGroupHistoryAnalysisRequest(input);
-  const repeat = buildDclawGroupHistoryAnalysisRequest(input);
-  const next = buildDclawGroupHistoryAnalysisRequest({
-    ...input,
-    analysisKey: "occ-1:chunk:1"
-  });
-
-  assert.equal(first.external_session_id, repeat.external_session_id);
-  assert.notEqual(first.external_session_id, next.external_session_id);
-  assert.equal(first.metadata.localConversationId, input.conversationKey);
-  assert.equal(first.metadata.analysisKey, "occ-1:chunk:0");
-  assert.equal(first.metadata.eventType, "group_history_analysis");
 });

@@ -732,65 +732,6 @@ export function parseConversationMemoryClearAcknowledgement(rawReply) {
   };
 }
 
-function buildDclawGroupAutomationAnalysisRequest({
-  binding,
-  conversationKey,
-  conversationEpoch = "",
-  purpose,
-  eventType,
-  message,
-  metadata = {},
-  analysisKey = ""
-}) {
-  if (purpose !== "group-history-analysis") {
-    throw new Error("invalid group automation DClaw purpose");
-  }
-  const localConversationId = String(conversationKey || "").trim();
-  if (!localConversationId) throw new Error("group automation conversationKey is required");
-  const isolatedAnalysisKey = boundedDclawText(analysisKey, 240).trim();
-  if (purpose === "group-history-analysis" && !isolatedAnalysisKey) {
-    throw new Error("group history analysisKey is required");
-  }
-  const identity = buildDclawConversationIdentity({
-    botId: binding.botId,
-    conversationKey: isolatedAnalysisKey
-      ? `${localConversationId}\nanalysis:${isolatedAnalysisKey}`
-      : localConversationId,
-    conversationEpoch,
-    purpose
-  });
-  return {
-    external_user_id: identity.externalUserId,
-    external_session_id: identity.externalSessionId,
-    message: String(message || ""),
-    stream: true,
-    metadata: {
-      source: "worktool",
-      eventType,
-      botId: binding.botId,
-      agentId: binding.agentId,
-      conversationId: identity.runtimeConversationId,
-      localConversationId,
-      groupId: boundedDclawText(metadata.groupId, 120),
-      taskId: boundedDclawText(metadata.taskId, 120),
-      cycleKey: boundedDclawText(metadata.cycleKey, 80),
-      occurrenceId: boundedDclawText(metadata.occurrenceId, 120),
-      stage: boundedDclawText(metadata.stage, 80),
-      level: Number.isSafeInteger(Number(metadata.level)) ? Number(metadata.level) : null,
-      ordinal: Number.isSafeInteger(Number(metadata.ordinal)) ? Number(metadata.ordinal) : null,
-      analysisKey: isolatedAnalysisKey
-    }
-  };
-}
-
-export function buildDclawGroupHistoryAnalysisRequest(input) {
-  return buildDclawGroupAutomationAnalysisRequest({
-    ...input,
-    purpose: "group-history-analysis",
-    eventType: "group_history_analysis"
-  });
-}
-
 function compactGroupAutomationPrivateContext(group, roles, {
   maxRoles = 20,
   maxBackgroundChars = 2400,
