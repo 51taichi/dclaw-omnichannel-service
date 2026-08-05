@@ -2194,13 +2194,14 @@ const terminalGroupAutomationStages = new Set([
 
 const allowedGroupAutomationStageTransitions = new Map([
   ["preanalysis", new Set(["waiting_target", "retry_wait", "failed", "canceled"])],
-  ["waiting_target", new Set(["delta_analysis", "failed", "canceled"])],
+  ["waiting_target", new Set(["evaluating", "delta_analysis", "failed", "canceled"])],
+  ["evaluating", new Set(["retry_wait", "send_pending", "skipped", "failed", "canceled"])],
   ["delta_analysis", new Set(["finalizing", "retry_wait", "failed", "canceled"])],
   ["finalizing", new Set(["send_pending", "skipped", "retry_wait", "failed", "canceled"])],
   ["send_pending", new Set(["sending", "skipped", "failed", "canceled"])],
   ["sending", new Set(["awaiting_confirmation", "sent", "delivery_unknown", "failed"])],
   ["awaiting_confirmation", new Set(["sent", "failed", "delivery_unknown"])],
-  ["retry_wait", new Set(["preanalysis", "delta_analysis", "finalizing", "send_pending", "failed", "canceled"])]
+  ["retry_wait", new Set(["evaluating", "preanalysis", "delta_analysis", "finalizing", "send_pending", "failed", "canceled"])]
 ]);
 
 function isUnfinishedGroupAutomationOccurrenceSql(alias = "occurrence") {
@@ -2208,6 +2209,249 @@ function isUnfinishedGroupAutomationOccurrenceSql(alias = "occurrence") {
     (${alias}.stage != 'legacy' AND ${alias}.stage NOT IN ('sent','skipped','failed','delivery_unknown','canceled'))
     OR (${alias}.stage = 'legacy' AND ${alias}.status IN ('pending','evaluating','sending','retry_wait'))
   )`;
+}
+
+export function prepareGroupAutomationOccurrences({
+  now: nowIso = now(),
+  horizonMs = 600_000,
+  limit = 10
+} = {}) {
+  const clock = new Date(nowIso);
+  if (Number.isNaN(clock.getTime())) throw new Error("invalid group automation preparation time");
+  const timestamp = clock.toISOString();
+  const prepareThrough = new Date(
+    clock.getTime() + Math.max(0, Number(horizonMs) || 0)
+  ).toISOString();
+  const prepareLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 10));
+  const prepared = [];
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const dueTasks = db.prepare(`
+      SELECT task.*
+      FROM managed_group_automation_tasks task
+      WHERE task.enabled = 1 AND task.deleted_at IS NULL
+        AND task.next_run_at IS NOT NULL AND task.next_run_at <= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM managed_group_automation_occurrences occurrence
+          WHERE occurrence.task_id = task.id
+            AND ${isUnfinishedGroupAutomationOccurrenceSql("occurrence")}
+        )
+      ORDER BY task.next_run_at ASC, task.created_at ASC, task.id ASC
+      LIMIT ?
+    `).all(prepareThrough, prepareLimit);
+    for (const taskRow of dueTasks) {
+      const scheduledFor = taskRow.next_run_at;
+      const cycle = groupAutomationCycleWindow(taskRow.cadence, scheduledFor);
+      const occurrenceId = crypto.randomUUID();
+      const snapshot = buildGroupAutomationTaskSnapshot(taskRow);
+      const inserted = db.prepare(`
+        INSERT OR IGNORE INTO managed_group_automation_occurrences (
+          id, task_id, bot_id, group_id, scheduled_for, cycle_key,
+          cycle_start_at, cycle_end_at, status, attempts, lease_expires_at,
+          mention_role_ids_json, task_snapshot_json, history_start_at,
+          history_end_at, preanalysis_cutoff_at, stage, stage_attempts,
+          stage_attempts_json, lease_owner, heartbeat_at,
+          frozen_payload_json, retry_metadata_json, created_at, updated_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, ?, ?, ?, ?, NULL,
+          'waiting_target', 0, '{}', '', NULL, '{}', '{}', ?, ?
+        )
+      `).run(
+        occurrenceId,
+        taskRow.id,
+        taskRow.bot_id,
+        taskRow.group_id,
+        scheduledFor,
+        cycle.cycleKey,
+        cycle.startAt,
+        cycle.endAt,
+        json(snapshot.mentionRoleIds),
+        json(snapshot),
+        cycle.startAt,
+        scheduledFor,
+        timestamp,
+        timestamp
+      );
+      const schedule = {
+        cadence: taskRow.cadence,
+        scheduleDays: parseJson(taskRow.schedule_days_json) || [],
+        timeOfDay: taskRow.time_of_day
+      };
+      db.prepare(`
+        UPDATE managed_group_automation_tasks
+        SET next_run_at = ?, updated_at = ?
+        WHERE id = ? AND next_run_at = ?
+      `).run(
+        nextGroupAutomationRunAt(schedule, scheduledFor),
+        timestamp,
+        taskRow.id,
+        scheduledFor
+      );
+      if (inserted.changes) {
+        prepared.push(getGroupAutomationOccurrence({ occurrenceId }));
+      }
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return prepared;
+}
+
+export function recoverLegacyGroupAutomationOccurrences({ now: nowIso = now() } = {}) {
+  const timestamp = new Date(nowIso);
+  if (Number.isNaN(timestamp.getTime())) throw new Error("invalid group automation recovery time");
+  const result = db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET stage = 'waiting_target', status = 'pending', lease_owner = '',
+        lease_expires_at = NULL, heartbeat_at = NULL, execution_token = NULL,
+        next_retry_at = NULL, updated_at = ?
+    WHERE stage IN ('preanalysis_pending','preanalysis','delta_analysis','finalizing')
+  `).run(timestamp.toISOString());
+  return Number(result.changes || 0);
+}
+
+export function claimDueGroupAutomationOccurrences({
+  owner,
+  now: nowIso = now(),
+  leaseMs = 300_000,
+  limit = 10
+} = {}) {
+  const normalizedOwner = String(owner || "").trim();
+  if (!normalizedOwner) throw new Error("group automation occurrence owner is required");
+  const clock = new Date(nowIso);
+  if (Number.isNaN(clock.getTime())) throw new Error("invalid group automation claim time");
+  const timestamp = clock.toISOString();
+  const leaseExpiresAt = new Date(
+    clock.getTime() + Math.max(1000, Number(leaseMs) || 0)
+  ).toISOString();
+  const claimLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 10));
+  const claimed = [];
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const candidates = db.prepare(`
+      SELECT occurrence.*
+      FROM managed_group_automation_occurrences occurrence
+      JOIN managed_group_automation_tasks task ON task.id = occurrence.task_id
+      WHERE task.enabled = 1 AND task.deleted_at IS NULL
+        AND (
+          (occurrence.stage = 'waiting_target' AND occurrence.scheduled_for <= ?)
+          OR (occurrence.stage = 'evaluating' AND occurrence.lease_expires_at <= ?)
+          OR (occurrence.stage = 'retry_wait' AND occurrence.next_retry_at <= ?)
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM managed_group_automation_occurrences active
+          WHERE active.task_id = occurrence.task_id AND active.id != occurrence.id
+            AND active.scheduled_for < occurrence.scheduled_for
+            AND ${isUnfinishedGroupAutomationOccurrenceSql("active")}
+        )
+      ORDER BY occurrence.scheduled_for ASC, occurrence.id ASC
+      LIMIT ?
+    `).all(timestamp, timestamp, timestamp, claimLimit);
+    for (const candidate of candidates) {
+      const attemptsByStage = parseJson(candidate.stage_attempts_json) || {};
+      const nextAttempts = Number(attemptsByStage.evaluating || 0) + 1;
+      attemptsByStage.evaluating = nextAttempts;
+      const updated = db.prepare(`
+        UPDATE managed_group_automation_occurrences
+        SET stage = 'evaluating', status = 'evaluating',
+            stage_attempts = stage_attempts + 1, stage_attempts_json = ?,
+            lease_owner = ?, lease_expires_at = ?, heartbeat_at = ?,
+            execution_token = ?, attempts = attempts + 1, next_retry_at = NULL,
+            actual_started_at = COALESCE(actual_started_at, ?),
+            started_at = COALESCE(started_at, ?), updated_at = ?
+        WHERE id = ? AND (
+          (stage = 'waiting_target' AND scheduled_for <= ?)
+          OR (stage = 'evaluating' AND lease_expires_at <= ?)
+          OR (stage = 'retry_wait' AND next_retry_at <= ?)
+        )
+      `).run(
+        json(attemptsByStage),
+        normalizedOwner,
+        leaseExpiresAt,
+        timestamp,
+        normalizedOwner,
+        timestamp,
+        timestamp,
+        timestamp,
+        candidate.id,
+        timestamp,
+        timestamp,
+        timestamp
+      );
+      if (!updated.changes) continue;
+      db.prepare(`
+        INSERT INTO managed_group_automation_attempts (
+          occurrence_id, bot_id, group_id, stage, attempt_number,
+          status, error_message, started_at, finished_at, created_at
+        ) VALUES (?, ?, ?, 'evaluating', ?, 'processing', '', ?, NULL, ?)
+      `).run(
+        candidate.id,
+        candidate.bot_id,
+        candidate.group_id,
+        nextAttempts,
+        timestamp,
+        timestamp
+      );
+      claimed.push(getGroupAutomationOccurrence({ occurrenceId: candidate.id }));
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return claimed;
+}
+
+export function validateGroupAutomationEvidenceMessageIds({
+  botId,
+  groupId,
+  messageIds = []
+}) {
+  const requested = [...new Set((Array.isArray(messageIds) ? messageIds : [])
+    .map(Number)
+    .filter((id) => Number.isSafeInteger(id) && id > 0))];
+  if (!requested.length) return { validIds: [], invalidIds: [] };
+  const group = getGroupById({ botId, groupId });
+  if (!group) return { validIds: [], invalidIds: requested };
+  const placeholders = requested.map(() => "?").join(", ");
+  const rows = db.prepare(`
+    SELECT id
+    FROM conversation_messages
+    WHERE bot_id = ? AND conversation_key = ?
+      AND id IN (${placeholders})
+  `).all(botId, group.conversationKey, ...requested);
+  const validSet = new Set(rows.map((row) => Number(row.id)));
+  return {
+    validIds: requested.filter((id) => validSet.has(id)),
+    invalidIds: requested.filter((id) => !validSet.has(id))
+  };
+}
+
+export function finalizeObsoleteGroupHistoryRemoval() {
+  const obsoleteTables = [
+    "managed_group_history_sync_states",
+    "managed_group_automation_chunks"
+  ];
+  const existing = db.prepare(`
+    SELECT name
+    FROM sqlite_master
+    WHERE type = 'table' AND name IN (?, ?)
+  `).all(...obsoleteTables);
+  if (!existing.length) return { removed: false };
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.exec("DROP TABLE IF EXISTS managed_group_history_sync_states");
+    db.exec("DROP TABLE IF EXISTS managed_group_automation_chunks");
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return { removed: true };
 }
 
 export function claimPreparatoryGroupAutomationOccurrences({
