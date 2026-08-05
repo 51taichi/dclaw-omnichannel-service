@@ -142,6 +142,7 @@ test("group list uses avatar copy and a Beijing creation-date tag without reply 
   assert.match(app, /function groupDateTagLabel\(group\)[\s\S]*?timeZone:\s*BEIJING_TIME_ZONE/);
   assert.match(renderGroupList, /groups-list-date-tag/);
   assert.match(renderGroupList, /groupDateTagLabel\(group\)/);
+  assert.match(renderGroupList, /<strong title="\$\{escapeHtml\(group\.currentName\)\}">/);
   assert.doesNotMatch(renderGroupList, /groups-list-item-meta|仅 @ 回复|始终回复|从不回复/);
   assert.match(
     css,
@@ -149,12 +150,17 @@ test("group list uses avatar copy and a Beijing creation-date tag without reply 
   );
   assert.match(
     css,
-    /\.groups-list-item-main\s*\{[^}]*grid-template-columns:\s*44px\s+minmax\(0,\s*1fr\)\s+112px[^}]*width:\s*100%/s
+    /\.groups-list-item-main\s*\{[^}]*grid-template-columns:\s*44px\s+minmax\(0,\s*1fr\)[^}]*grid-template-rows:\s*auto\s+auto[^}]*width:\s*100%/s
   );
   assert.match(
     css,
-    /\.groups-list-date-tag\s*\{[^}]*justify-content:\s*center[^}]*min-width:\s*112px/s
+    /\.groups-list-item-icon\s*\{[^}]*grid-row:\s*1\s*\/\s*3/s
   );
+  assert.match(
+    css,
+    /\.groups-list-date-tag\s*\{[^}]*grid-column:\s*2[^}]*grid-row:\s*2[^}]*justify-self:\s*start/s
+  );
+  assert.doesNotMatch(css, /\.groups-list-date-tag\s*\{[^}]*min-width:\s*112px/s);
 });
 
 test("group list supports browser-local pinned groups without opening group detail", () => {

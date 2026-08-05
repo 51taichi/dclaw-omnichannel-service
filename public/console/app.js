@@ -6458,7 +6458,7 @@ function renderGroupList() {
             <span class="groups-list-item-main">
               <span class="groups-list-item-icon"><img class="group-asset-icon" src="./assets/group.png" alt="" aria-hidden="true" /></span>
               <span class="groups-list-item-copy">
-                <strong>${escapeHtml(group.currentName)}</strong>
+                <strong title="${escapeHtml(group.currentName)}">${escapeHtml(group.currentName)}</strong>
               </span>
               <span class="groups-list-date-tag" title="建立日期">
                 <svg class="icon" aria-hidden="true"><use href="#icon-calendar"></use></svg>
