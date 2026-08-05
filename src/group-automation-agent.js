@@ -1,5 +1,7 @@
 import {
+  buildDclawGroupAutomationRequest,
   buildDclawGroupHistoryAnalysisRequest,
+  invokeDclawAgent,
   invokeDclawAgentWithRetry
 } from "./dclaw.js";
 
@@ -210,6 +212,97 @@ function replyText(result) {
   if (typeof result?.reply === "string") return result.reply;
   if (typeof result?.response?.reply === "string") return result.response.reply;
   return "";
+}
+
+function strictEvidenceMessageIds(value) {
+  if (!Array.isArray(value)) throw new Error("evidenceMessageIds must be an array");
+  const normalized = [];
+  const seen = new Set();
+  for (const rawId of value) {
+    const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+      throw new Error("evidenceMessageIds must contain positive safe integers");
+    }
+    if (seen.has(id)) continue;
+    seen.add(id);
+    normalized.push(id);
+  }
+  return normalized;
+}
+
+function parseDirectConditionalReply(rawReply) {
+  const parsed = parseJsonObject(rawReply);
+  assertExactKeys(
+    parsed,
+    ["achieved", "decisionNote", "evidenceMessageIds"],
+    "conditional group automation reply"
+  );
+  if (typeof parsed.achieved !== "boolean") throw new Error("achieved must be boolean");
+  const evidenceMessageIds = strictEvidenceMessageIds(parsed.evidenceMessageIds);
+  if (parsed.achieved && !evidenceMessageIds.length) {
+    throw new Error("achieved condition requires evidence message ids");
+  }
+  return {
+    taskType: "conditional_push",
+    achieved: parsed.achieved,
+    decisionNote: boundedText(parsed.decisionNote, "decisionNote", 1000, { required: true }),
+    evidenceMessageIds
+  };
+}
+
+function parseDirectSummaryReply(rawReply) {
+  const parsed = parseJsonObject(rawReply);
+  assertExactKeys(
+    parsed,
+    ["content", "decisionNote", "evidenceMessageIds"],
+    "periodic summary group automation reply"
+  );
+  return {
+    taskType: "periodic_summary",
+    content: validateCustomerVisibleGroupAutomationContent({ content: parsed.content }),
+    decisionNote: boundedText(parsed.decisionNote, "decisionNote", 1000, { required: true }),
+    evidenceMessageIds: strictEvidenceMessageIds(parsed.evidenceMessageIds)
+  };
+}
+
+function parseDirectGroupAutomationReply(rawReply, taskType) {
+  if (taskType === "conditional_push") return parseDirectConditionalReply(rawReply);
+  if (taskType === "periodic_summary") return parseDirectSummaryReply(rawReply);
+  throw new Error("unsupported group automation task type");
+}
+
+export async function executeGroupAutomationAgentTask({
+  binding,
+  conversation,
+  group,
+  roles = [],
+  task,
+  occurrence,
+  invokeAgent = ({ request }) => invokeDclawAgent({ binding, request }),
+  signal
+}) {
+  const maxAttempts = 3;
+  let repairError = "";
+  let lastError;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const request = buildDclawGroupAutomationRequest({
+      binding,
+      conversation,
+      group,
+      roles,
+      task,
+      occurrence,
+      repairError
+    });
+    try {
+      const result = await invokeAgent({ binding, request, signal, attempt, maxAttempts });
+      return parseDirectGroupAutomationReply(replyText(result), task?.taskType);
+    } catch (error) {
+      lastError = error;
+      repairError = String(error?.message || "Agent invocation failed").slice(0, 500);
+    }
+  }
+  throw lastError;
 }
 
 async function invokeStrictHistoryAgent({
