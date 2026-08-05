@@ -24,7 +24,7 @@ test("group management loads the authenticated automation event client before ap
   assert.match(client, /response\.body\.getReader\(\)/);
   assert.match(client, /controller\?\.abort\(\)/);
   assert.doesNotMatch(client, /setInterval|setTimeout\([^)]*fetch/);
-  assert.match(app, /if \(ledgerUpdated\) loadGroupAutomations\(\{ reconnect: false \}\)/);
+  assert.doesNotMatch(app, /ledgerUpdated/);
 });
 
 test("group detail tab keyboard helper loads before app.js", () => {
@@ -34,15 +34,16 @@ test("group detail tab keyboard helper loads before app.js", () => {
   assert.match(app, /GroupDetailTabs/);
 });
 
-test("group automation uses a bounded card list with local countdown and only two business states", () => {
+test("group automation uses a bounded card list with trigger-time operational states", () => {
   assert.match(app, /id="groupAutomationSection"/);
   assert.match(app, /id="addGroupAutomationButton"/);
   assert.match(app, /id="groupAutomationList"/);
   assert.match(app, /function formatGroupAutomationCountdown\(/);
   assert.match(app, /setInterval\([^,]+,\s*1000\)/s);
-  assert.match(statusSource, /已达成/);
-  assert.match(statusSource, /尚未达成/);
-  assert.doesNotMatch(statusSource, />待判断<|>判断异常</);
+  for (const label of ["倒计时", "执行中", "已发送", "未发送", "执行失败", "发送待确认"]) {
+    assert.match(statusSource, new RegExp(label));
+  }
+  assert.doesNotMatch(statusSource, /已达成|尚未达成|判断暂不可用|正在判断/);
   assert.match(css, /\.groups-panel-content,\s*\.group-automation-list\s*\{[^}]*overflow-y:\s*auto/s);
   assert.match(css, /\.group-automation-list\s*\{[^}]*max-height:\s*none/s);
 });
@@ -167,19 +168,15 @@ test("group automation dialog supports both task types, schedules, month end, na
   assert.match(dialog, /value="month_end"[^>]*>月底</);
   assert.doesNotMatch(dialog, /value="(?:29|30|31)"/);
   assert.match(dialog, /name="timeOfDay"/);
-  assert.match(dialog, /name="conditionText"/);
+  assert.match(dialog, /name="conditionText"[^>]*required/);
   assert.match(dialog, /name="content"/);
   assert.match(dialog, /name="summaryTemplate"/);
   assert.match(dialog, /id="groupAutomationMentionRoles"/);
   assert.match(dialog, /name="enabled"/);
-  assert.match(dialog, /id="insertGroupAutomationVariableButton"/);
-  assert.match(dialog, /id="groupAutomationVariableCount"/);
-  assert.match(dialog, /id="groupAutomationTemplatePreview"/);
-  assert.match(app, /function renderGroupAutomationTemplatePreview\(/);
-  assert.match(app, /［\$\{escapeHtml\(name\)\}］/);
+  assert.doesNotMatch(dialog, /insertGroupAutomationVariableButton|groupAutomationVariableCount|groupAutomationTemplatePreview/);
 });
 
-test("group automation summary tools stay in one bounded editor column", () => {
+test("group automation summary uses one natural-language template without variable parsing", () => {
   const dialog = html.slice(
     html.indexOf('id="groupAutomationDialog"'),
     html.indexOf('id="groupAutomationHistoryDialog"')
@@ -191,16 +188,10 @@ test("group automation summary tools stay in one bounded editor column", () => {
 
   assert.match(
     summaryField,
-    /class="group-automation-template-editor"[\s\S]*?name="summaryTemplate"[\s\S]*?class="group-automation-template-tools"[\s\S]*?id="groupAutomationTemplatePreview"/
+    /class="group-automation-template-editor"[\s\S]*?name="summaryTemplate"[\s\S]*?直接写清楚希望群内收到的总结结构和客观统计口径/
   );
-  assert.match(
-    css,
-    /\.group-automation-template-editor\s*\{[^}]*display:\s*grid[^}]*min-width:\s*0/s
-  );
-  assert.match(
-    css,
-    /\.group-automation-template-preview\s*\{[^}]*max-height:\s*120px[^}]*overflow-y:\s*auto/s
-  );
+  assert.doesNotMatch(summaryField, /insertGroupAutomationVariableButton|groupAutomationVariableCount|groupAutomationTemplatePreview/);
+  assert.doesNotMatch(app, /renderGroupAutomationTemplatePreview|insertGroupAutomationTemplateVariable/);
 });
 
 test("group automation mention roles use conversation mascot avatars without people icons", () => {
@@ -278,7 +269,12 @@ test("history dialog renders occurrences, results and bounded evidence without p
   assert.match(html, /id="groupAutomationHistoryList"/);
   assert.match(app, /\/occurrences\?/);
   assert.match(app, /data-group-automation-evidence/);
-  assert.match(app, /data-group-automation-retry/);
+  for (const field of ["actualStartedAt", "actualCompletedAt", "targetDelayMs", "decisionNote", "frozenContent", "evidenceMessageIds", "stageAttemptsByStage"]) {
+    assert.match(app, new RegExp(field));
+  }
+  assert.match(app, /data-group-automation-confirm-delivered/);
+  assert.match(app, /data-group-automation-confirm-not-delivered/);
+  assert.doesNotMatch(app, /data-group-automation-retry/);
   assert.doesNotMatch(app, /群定时任务[\s\S]{0,300}任务状态机|群定时任务[\s\S]{0,300}资产/);
 });
 

@@ -5865,15 +5865,25 @@ function validateGroupAutomationRequest({ botId, groupId, body, current = null }
     || body.cadence !== undefined
     || body.scheduleDays !== undefined
     || body.timeOfDay !== undefined;
+  const activationChanged = body.enabled === true && current?.enabled === false;
+  const shouldChooseNextRun = scheduleChanged || activationChanged;
+  const nowIso = new Date().toISOString();
+  const immediateRunAt = shouldChooseNextRun
+    ? nextGroupAutomationRunAt(schedule, nowIso)
+    : "";
+  const eligibleRunAt = shouldChooseNextRun
+    ? nextGroupAutomationRunAt(schedule, nowIso, { minimumLeadMs: 600_000 })
+    : "";
   return {
     taskType,
     ...schedule,
     content,
     summaryTemplate,
     mentionRoleIds,
-    ...(scheduleChanged
-      ? { nextRunAt: nextGroupAutomationRunAt(schedule, new Date().toISOString()) }
-      : {})
+    ...(shouldChooseNextRun ? { nextRunAt: eligibleRunAt } : {}),
+    skippedImminentTarget: Boolean(
+      shouldChooseNextRun && immediateRunAt !== eligibleRunAt
+    )
   };
 }
 
@@ -6209,7 +6219,11 @@ app.post(
     });
     const serialized = serializeGroupAutomationTask({ botId, groupId, task });
     groupAutomationStreamHub.publish({ botId, groupId, task: serialized });
-    res.status(201).json({ ok: true, task: serialized });
+    res.status(201).json({
+      ok: true,
+      task: serialized,
+      skippedImminentTarget: normalized.skippedImminentTarget
+    });
   })
 );
 
@@ -6376,7 +6390,11 @@ app.patch(
     });
     const serialized = serializeGroupAutomationTask({ botId, groupId, task });
     groupAutomationStreamHub.publish({ botId, groupId, task: serialized });
-    res.json({ ok: true, task: serialized });
+    res.json({
+      ok: true,
+      task: serialized,
+      skippedImminentTarget: normalized.skippedImminentTarget
+    });
   })
 );
 

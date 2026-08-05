@@ -1081,9 +1081,9 @@
             </div>
             <div id="groupAutomationMonthPageStatus" class="group-automation-month-page-status" aria-live="polite" aria-atomic="true">1 / 3</div>
           </fieldset>
-          <label id="groupAutomationConditionField"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>达成条件</span><textarea name="conditionText" rows="2" placeholder="例如：今天客户已经完成作业"></textarea></label>
+          <label id="groupAutomationConditionField"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-check"></use></svg>达成条件</span><textarea name="conditionText" rows="2" required placeholder="例如：今天客户已经完成作业"></textarea></label>
           <label id="groupAutomationContentField"><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>达成后推送内容</span><textarea name="content" rows="3" placeholder="例如：今天的作业已完成，辛苦啦！"></textarea></label>
-          <label id="groupAutomationSummaryField" hidden><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-message"></use></svg>汇总模板</span><span class="group-automation-template-editor"><textarea name="summaryTemplate" rows="5" placeholder="本周上课 {{本周上课次数（明确已经完成的课程才计数，取消或改期不计）}} 次"></textarea><span class="group-automation-template-tools"><button id="insertGroupAutomationVariableButton" class="secondary" type="button"><svg class="icon" aria-hidden="true"><use href="#icon-plus"></use></svg>插入变量</button><span id="groupAutomationVariableCount">0 个变量</span></span><small>在 {{ }} 中用白话描述变量及判断规则。</small><span id="groupAutomationTemplatePreview" class="group-automation-template-preview">预览会显示在这里</span></span></label>
+          <label id="groupAutomationSummaryField" hidden><span class="field-label"><svg class="icon" aria-hidden="true"><use href="#icon-message"></use></svg>汇总模板</span><span class="group-automation-template-editor"><textarea name="summaryTemplate" rows="5" placeholder="例如：总结本周已完成的课程次数、作业完成情况和下周建议；取消或改期的课程不计入完成次数。"></textarea><small>直接写清楚希望群内收到的总结结构和客观统计口径，系统会在执行时结合本周期群聊生成最终内容。</small></span></label>
           <fieldset class="group-automation-mentions"><legend>推送时 @ 群角色（可多选）</legend><div id="groupAutomationMentionRoles" class="group-automation-mention-list"></div></fieldset>
         </div>
         <div class="confirm-actions groups-dialog-actions">

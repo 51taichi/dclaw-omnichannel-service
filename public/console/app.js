@@ -111,9 +111,6 @@ const els = {
   groupAutomationConditionField: document.querySelector("#groupAutomationConditionField"),
   groupAutomationContentField: document.querySelector("#groupAutomationContentField"),
   groupAutomationSummaryField: document.querySelector("#groupAutomationSummaryField"),
-  insertGroupAutomationVariableButton: document.querySelector("#insertGroupAutomationVariableButton"),
-  groupAutomationVariableCount: document.querySelector("#groupAutomationVariableCount"),
-  groupAutomationTemplatePreview: document.querySelector("#groupAutomationTemplatePreview"),
   groupAutomationMentionRoles: document.querySelector("#groupAutomationMentionRoles"),
   groupAutomationHistoryDialog: document.querySelector("#groupAutomationHistoryDialog"),
   groupAutomationHistoryTitle: document.querySelector("#groupAutomationHistoryTitle"),
@@ -1165,8 +1162,7 @@ const groupAutomationClient = window.createGroupAutomationClient({
     state.groupAutomations = Array.isArray(tasks) ? tasks : [];
     renderGroupAutomationList();
   },
-  onUpdate: ({ task, occurrence, ledgerUpdated } = {}) => {
-    if (ledgerUpdated) loadGroupAutomations({ reconnect: false }).catch(toastError);
+  onUpdate: ({ task, occurrence } = {}) => {
     if (task?.deleted) {
       state.groupAutomations = state.groupAutomations.filter((item) => item.id !== task.id);
     } else if (task?.id) {
@@ -1176,7 +1172,7 @@ const groupAutomationClient = window.createGroupAutomationClient({
     }
     if (occurrence?.taskId) {
       const item = state.groupAutomations.find((candidate) => candidate.id === occurrence.taskId);
-      if (item) item.lastOccurrence = occurrence;
+      if (item) item.latestOccurrence = occurrence;
     }
     renderGroupAutomationList();
   },
@@ -1197,12 +1193,8 @@ const conversationGroupAutomationClient = window.createGroupAutomationClient({
     };
     renderConversationGroupTasks();
   },
-  onUpdate: ({ task, occurrence, ledgerUpdated } = {}) => {
+  onUpdate: ({ task, occurrence } = {}) => {
     if (!currentConversationGroupTasks.groupId) return;
-    if (ledgerUpdated) {
-      loadConversationGroupTasks({ reconnect: false }).catch(() => {});
-      return;
-    }
     const tasks = [...currentConversationGroupTasks.tasks];
     if (task?.deleted) {
       currentConversationGroupTasks.tasks = tasks.filter((item) => item.id !== task.id);
@@ -1216,7 +1208,7 @@ const conversationGroupAutomationClient = window.createGroupAutomationClient({
       const item = currentConversationGroupTasks.tasks.find(
         (candidate) => candidate.id === occurrence.taskId
       );
-      if (item) item.lastOccurrence = occurrence;
+      if (item) item.latestOccurrence = occurrence;
     }
     currentConversationGroupTasks.phase = "ready";
     renderConversationGroupTasks();
@@ -4750,17 +4742,7 @@ function renderConversationAssetsForSession(session, assets) {
 }
 
 function conversationGroupTaskState(task) {
-  if (!task.enabled) return { label: "已停用", className: "is-disabled", iconName: "lock" };
-  if (task.taskType === "periodic_summary") {
-    return { label: "周期汇总", className: "is-summary", iconName: "message" };
-  }
-  if (task.taskType === "conditional_push" && String(task.conditionText || "").trim()) {
-    return task.currentState?.achieved
-      ? { label: "已达成", className: "achieved", iconName: "check" }
-      : { label: "尚未达成", className: "unachieved", iconName: "clock" };
-  }
-  return groupAutomationStatus(task)
-    || { label: "尚未达成", className: "unachieved", iconName: "clock" };
+  return window.resolveGroupAutomationDisplayStatus(task);
 }
 
 function renderConversationGroupTaskRows(tasks) {
@@ -6006,19 +5988,12 @@ function groupAutomationStatus(task) {
   return window.resolveGroupAutomationDisplayStatus(task);
 }
 
-function groupAutomationLastResult(occurrence) {
-  const labels = {
-    sent: "已发送",
-    skipped: "未发送",
-    failed: "执行失败",
-    delivery_unknown: "发送结果未知",
-    retry_wait: "等待重试",
-    evaluating: "正在判断",
-    sending: "正在发送",
-    pending: "等待执行",
-    canceled: "已取消"
-  };
-  return labels[occurrence?.status] || "暂无记录";
+function groupAutomationOccurrenceStatus(occurrence) {
+  return window.resolveGroupAutomationDisplayStatus({
+    enabled: true,
+    executionAvailable: true,
+    latestOccurrence: occurrence
+  });
 }
 
 function renderGroupAutomationList() {
@@ -6046,7 +6021,7 @@ function renderGroupAutomationList() {
                 ${mentionNames.length ? `<span title="${escapeHtml(mentionNames.join("、"))}"><svg class="icon" aria-hidden="true"><use href="#icon-users"></use></svg>@ ${escapeHtml(mentionNames.join("、"))}</span>` : ""}
               </div>
               <div class="group-automation-state-row">
-                ${status ? `<span class="group-automation-status ${status.className}">${icon(status.iconName)}${status.label}</span>` : `<span class="group-automation-status summary">${icon("history")}${escapeHtml(groupAutomationLastResult(task.lastOccurrence))}</span>`}
+                <span class="group-automation-status ${status.className}"${task.technicalReason ? ` title="${escapeHtml(task.technicalReason)}"` : ""}>${icon(status.iconName)}${escapeHtml(status.label)}</span>
                 <span class="group-automation-countdown" data-next-run-at="${escapeHtml(task.nextRunAt || "")}">${escapeHtml(formatGroupAutomationCountdown(task.nextRunAt))}</span>
                 <small>下次 ${escapeHtml(formatGroupAutomationDateTime(task.nextRunAt))}</small>
               </div>
@@ -6113,40 +6088,6 @@ function renderGroupAutomationMentionRoles(selectedRoleIds = []) {
     : `<span class="muted">请先在群角色中添加需要 @ 的成员。</span>`;
 }
 
-function groupAutomationTemplateVariableName(body) {
-  const normalized = String(body || "").trim();
-  const ruleStart = normalized.indexOf("（");
-  return (ruleStart < 0 ? normalized : normalized.slice(0, ruleStart)).trim();
-}
-
-function renderGroupAutomationTemplatePreview() {
-  const template = els.groupAutomationForm?.summaryTemplate.value || "";
-  const tokenPattern = /\{\{([\s\S]*?)\}\}/g;
-  const variables = [];
-  let preview = "";
-  let lastIndex = 0;
-  for (const match of template.matchAll(tokenPattern)) {
-    const name = groupAutomationTemplateVariableName(match[1]);
-    if (name && !variables.includes(name)) variables.push(name);
-    preview += escapeHtml(template.slice(lastIndex, match.index));
-    preview += name ? `<mark>［${escapeHtml(name)}］</mark>` : `<mark>［未命名变量］</mark>`;
-    lastIndex = match.index + match[0].length;
-  }
-  preview += escapeHtml(template.slice(lastIndex));
-  els.groupAutomationVariableCount.textContent = `${variables.length} 个变量`;
-  els.groupAutomationTemplatePreview.innerHTML = preview || "预览会显示在这里";
-}
-
-function insertGroupAutomationTemplateVariable() {
-  const textarea = els.groupAutomationForm.summaryTemplate;
-  const token = "{{变量名称（用白话说明客观判断规则）}}";
-  const start = textarea.selectionStart ?? textarea.value.length;
-  const end = textarea.selectionEnd ?? start;
-  textarea.setRangeText(token, start, end, "end");
-  textarea.focus();
-  renderGroupAutomationTemplatePreview();
-}
-
 let groupAutomationMonthScrollFrame = 0;
 
 function syncGroupAutomationMonthPage({ scroll = false, behavior = "auto" } = {}) {
@@ -6195,10 +6136,9 @@ function syncGroupAutomationDialogFields() {
   els.groupAutomationConditionField.hidden = summary;
   els.groupAutomationContentField.hidden = summary;
   els.groupAutomationSummaryField.hidden = !summary;
-  form.conditionText.required = false;
+  form.conditionText.required = !summary;
   form.content.required = !summary;
   form.summaryTemplate.required = summary;
-  renderGroupAutomationTemplatePreview();
 }
 
 function openGroupAutomationDialog(task = null) {
@@ -6276,11 +6216,12 @@ async function saveGroupAutomation(event) {
   else state.groupAutomations.push(data.task);
   closeGroupAutomationDialog();
   renderGroupAutomationList();
-  toast(taskId ? "群定时任务已更新" : "群定时任务已创建", "success");
-}
-
-function groupAutomationOccurrenceStatus(occurrence) {
-  return groupAutomationLastResult(occurrence);
+  toast(
+    data.skippedImminentTarget
+      ? "任务已保存；距本次执行不足十分钟，已安排到下一个执行时间"
+      : taskId ? "群定时任务已更新" : "群定时任务已创建",
+    "success"
+  );
 }
 
 async function openGroupAutomationHistory(task) {
@@ -6291,18 +6232,39 @@ async function openGroupAutomationHistory(task) {
   const data = await request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/${encodeURIComponent(task.id)}/occurrences?botId=${encodeURIComponent(state.selectedBotId)}&page=1&pageSize=50`);
   if (state.groupAutomationHistoryTaskId !== task.id) return;
   els.groupAutomationHistoryList.innerHTML = data.items?.length
-    ? data.items.map((occurrence) => `
-        <article class="group-automation-history-item">
-          <div><strong>计划 ${escapeHtml(formatGroupAutomationDateTime(occurrence.scheduledFor))}</strong><span class="group-automation-history-status status-${escapeHtml(occurrence.status)}">${escapeHtml(groupAutomationOccurrenceStatus(occurrence))}</span></div>
-          <div class="group-automation-history-meta"><span>完成 ${escapeHtml(formatGroupAutomationDateTime(occurrence.finishedAt))}</span><span>尝试 ${escapeHtml(occurrence.attempts || 0)} 次</span>${occurrence.mentionNames?.length ? `<span>@ ${escapeHtml(occurrence.mentionNames.join("、"))}</span>` : ""}</div>
-          ${occurrence.reason ? `<p>${escapeHtml(occurrence.reason)}</p>` : ""}
-          ${occurrence.renderedContent ? `<blockquote>${escapeHtml(occurrence.renderedContent)}</blockquote>` : ""}
-          ${occurrence.errorMessage ? `<p class="error-text">${escapeHtml(occurrence.errorMessage)}</p>` : ""}
-          <div class="group-automation-history-actions">
-            ${(occurrence.evidenceMessageIds || []).map((messageId) => `<button class="secondary" data-group-automation-evidence="${escapeHtml(messageId)}" type="button">${icon("message")}查看依据</button>`).join("")}
-            ${["failed", "delivery_unknown"].includes(occurrence.status) ? `<button class="secondary" data-group-automation-retry="${escapeHtml(occurrence.id)}" type="button">${icon("refresh")}人工重试</button>` : ""}
-          </div>
-        </article>`).join("")
+    ? data.items.map((occurrence) => {
+        const displayStatus = groupAutomationOccurrenceStatus(occurrence);
+        const attemptsByStage = occurrence.retryHistory?.stageAttemptsByStage || {};
+        const attempts = Object.values(attemptsByStage).reduce(
+          (total, value) => total + Math.max(0, Number(value) || 0),
+          0
+        );
+        const delayMs = Number(occurrence.targetDelayMs);
+        const delayLabel = Number.isFinite(delayMs)
+          ? `${Math.max(0, Math.round(delayMs / 1000))} 秒`
+          : "-";
+        return `
+          <article class="group-automation-history-item">
+            <div><strong>目标 ${escapeHtml(formatGroupAutomationDateTime(occurrence.scheduledFor))}</strong><span class="group-automation-history-status status-${escapeHtml(displayStatus.key)}">${escapeHtml(displayStatus.label)}</span></div>
+            <div class="group-automation-history-meta">
+              <span>实际开始 ${escapeHtml(formatGroupAutomationDateTime(occurrence.actualStartedAt))}</span>
+              <span>实际完成 ${escapeHtml(formatGroupAutomationDateTime(occurrence.actualCompletedAt))}</span>
+              <span>延迟 ${escapeHtml(delayLabel)}</span>
+              <span>阶段 ${escapeHtml(occurrence.stage || "-")}</span>
+              <span>阶段尝试 ${escapeHtml(attempts)} 次</span>
+              ${occurrence.mentionNames?.length ? `<span>@ ${escapeHtml(occurrence.mentionNames.join("、"))}</span>` : ""}
+            </div>
+            ${occurrence.decisionNote ? `<p><strong>判断备注：</strong>${escapeHtml(occurrence.decisionNote)}</p>` : ""}
+            ${occurrence.reason ? `<p>${escapeHtml(occurrence.reason)}</p>` : ""}
+            ${occurrence.frozenContent ? `<blockquote>${escapeHtml(occurrence.frozenContent)}</blockquote>` : ""}
+            ${occurrence.errorMessage ? `<p class="error-text">${escapeHtml(occurrence.errorMessage)}</p>` : ""}
+            <div class="group-automation-history-actions">
+              ${(occurrence.evidenceMessageIds || []).map((messageId, index) => `<button class="secondary" data-group-automation-evidence="${escapeHtml(messageId)}" type="button">${icon("message")}查看依据 ${index + 1}</button>`).join("")}
+              ${occurrence.canConfirmDelivered ? `<button class="secondary" data-group-automation-confirm-delivered="${escapeHtml(occurrence.id)}" type="button">${icon("check")}确认已送达</button>` : ""}
+              ${occurrence.canConfirmNotDeliveredAndRetry ? `<button class="secondary danger" data-group-automation-confirm-not-delivered="${escapeHtml(occurrence.id)}" type="button">${icon("refresh")}确认未送达并重试</button>` : ""}
+            </div>
+          </article>`;
+      }).join("")
     : `<div class="empty-state">暂无执行记录</div>`;
 }
 
@@ -6937,8 +6899,6 @@ els.groupAutomationMonthViewport?.addEventListener("keydown", (event) => {
     state.groupAutomationMonthPage + (event.key === "ArrowRight" ? 1 : -1)
   );
 });
-els.groupAutomationForm?.summaryTemplate.addEventListener("input", renderGroupAutomationTemplatePreview);
-els.insertGroupAutomationVariableButton?.addEventListener("click", insertGroupAutomationTemplateVariable);
 els.groupAutomationForm?.addEventListener("submit", (event) => saveGroupAutomation(event).catch(toastError));
 els.groupAutomationHistoryCloseButton?.addEventListener("click", () => {
   state.groupAutomationHistoryTaskId = "";
@@ -6956,13 +6916,17 @@ els.groupAutomationHistoryList?.addEventListener("click", (event) => {
     openGroupAutomationEvidence(evidence.dataset.groupAutomationEvidence).catch(toastError);
     return;
   }
-  const retry = event.target.closest("[data-group-automation-retry]");
-  if (!retry) return;
-  request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automations/occurrences/${encodeURIComponent(retry.dataset.groupAutomationRetry)}/retry`, {
+  const delivered = event.target.closest("[data-group-automation-confirm-delivered]");
+  const notDelivered = event.target.closest("[data-group-automation-confirm-not-delivered]");
+  const occurrenceId = delivered?.dataset.groupAutomationConfirmDelivered
+    || notDelivered?.dataset.groupAutomationConfirmNotDelivered;
+  if (!occurrenceId) return;
+  const action = delivered ? "confirm-delivery" : "confirm-not-delivered-and-retry";
+  request(`/api/groups/${encodeURIComponent(state.selectedGroupId)}/automation-occurrences/${encodeURIComponent(occurrenceId)}/${action}`, {
     method: "POST",
     body: JSON.stringify({ botId: state.selectedBotId })
   }).then(async () => {
-    toast("已提交人工重试", "success");
+    toast(delivered ? "已确认消息送达" : "已确认未送达并提交重试", "success");
     const task = state.groupAutomations.find((item) => item.id === state.groupAutomationHistoryTaskId);
     if (task) await openGroupAutomationHistory(task);
   }).catch(toastError);

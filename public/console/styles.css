@@ -4764,19 +4764,21 @@ html.has-bot-context .action-toolbox-toggle:hover {
   height: 13px;
 }
 
-.group-conversation-task-state.achieved {
+.group-conversation-task-state.sent {
   color: #08775c;
   border-color: #9bddc8;
   background: #eafaf4;
 }
 
-.group-conversation-task-state.unachieved {
+.group-conversation-task-state.not-sent,
+.group-conversation-task-state.error,
+.group-conversation-task-state.send-unknown {
   color: #a44114;
   border-color: #ffc7a7;
   background: #fff3e9;
 }
 
-.group-conversation-task-state.is-disabled {
+.group-conversation-task-state.disabled {
   color: var(--muted);
   border-color: var(--line);
   background: #f1f2f7;
@@ -6612,22 +6614,27 @@ td .muted {
   white-space: nowrap;
 }
 
-.group-automation-status.achieved {
+.group-automation-status.sent {
   background: color-mix(in srgb, var(--cyan) 15%, #fff);
   color: color-mix(in srgb, var(--cyan) 70%, #126246);
 }
 
-.group-automation-status.unachieved,
-.group-automation-status.summary,
-.group-automation-status.fixed,
-.group-automation-status.loading {
+.group-automation-status.countdown,
+.group-automation-status.running {
   background: var(--accent-soft);
   color: var(--accent);
 }
 
+.group-automation-status.not-sent,
+.group-automation-status.send-unknown,
 .group-automation-status.error {
   background: color-mix(in srgb, var(--orange) 14%, #fff);
   color: var(--orange);
+}
+
+.group-automation-status.disabled {
+  background: #f1f2f7;
+  color: var(--muted);
 }
 
 .group-automation-countdown {

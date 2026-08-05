@@ -34,6 +34,8 @@ test("create and update validate recurrence, summary templates, and group role m
   assert.match(source, /nextGroupAutomationRunAt\(/);
   assert.doesNotMatch(source, /groupAutomationWorker\.enqueueReindex\(/);
   assert.doesNotMatch(source, /groupAutomationWorker\.enqueueLive\(/);
+  assert.match(source, /minimumLeadMs:\s*600_000/);
+  assert.match(source, /skippedImminentTarget/);
 });
 
 test("group automation responses expose operational runs and evidence anchors without ledger state", () => {

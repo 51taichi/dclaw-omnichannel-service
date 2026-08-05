@@ -12,60 +12,47 @@ vm.runInContext(source, context);
 const resolveStatus = context.resolveGroupAutomationDisplayStatus;
 const resolveTypeLabel = context.resolveGroupAutomationTypeLabel;
 
-test("first condition evaluation is operational loading rather than a false business state", () => {
+test("task type labels contain only the two supported group task types", () => {
+  assert.equal(resolveTypeLabel({ taskType: "conditional_push" }), "条件推送");
+  assert.equal(resolveTypeLabel({ taskType: "periodic_summary" }), "周期汇总");
+});
+
+test("a task without an occurrence is a countdown rather than a live condition judgment", () => {
   assert.deepEqual({ ...resolveStatus({
-    taskType: "conditional_push",
-    conditionText: "今天是否交作业",
-    currentState: null,
-    evaluationError: ""
+    enabled: true,
+    nextRunAt: "2026-08-05T04:00:00.000Z",
+    latestOccurrence: null
   }) }, {
-    label: "正在判断",
-    className: "loading",
-    iconName: "clock",
-    business: false
+    key: "countdown",
+    label: "倒计时",
+    className: "countdown",
+    iconName: "clock"
   });
 });
 
-test("task type owns the fixed or conditional push label without duplicating status", () => {
-  assert.equal(resolveTypeLabel({
-    taskType: "conditional_push",
-    conditionText: "",
-    currentState: null
-  }), "固定推送");
-  assert.equal(resolveStatus({
-    taskType: "conditional_push",
-    conditionText: "",
-    currentState: null
-  }), null);
-  assert.equal(resolveTypeLabel({
-    taskType: "conditional_push",
-    conditionText: "今天是否交作业"
-  }), "条件推送");
-  assert.equal(resolveTypeLabel({
-    taskType: "periodic_summary"
-  }), "周期汇总");
+test("occurrence stages project to the six customer-facing operational states", () => {
+  const cases = [
+    ["waiting_target", "pending", "执行中"],
+    ["sent", "sent", "已发送"],
+    ["skipped", "skipped", "未发送"],
+    ["failed", "failed", "执行失败"],
+    ["delivery_unknown", "failed", "发送待确认"],
+    ["awaiting_confirmation", "pending", "发送待确认"]
+  ];
+  for (const [stage, status, label] of cases) {
+    assert.equal(resolveStatus({
+      enabled: true,
+      latestOccurrence: { stage, status }
+    }).label, label);
+  }
 });
 
-test("evaluated conditions retain their business states", () => {
+test("disabled and technically blocked tasks never masquerade as condition results", () => {
+  assert.equal(resolveStatus({ enabled: false }).label, "已停用");
   assert.equal(resolveStatus({
-    taskType: "conditional_push",
-    conditionText: "今天是否交作业",
-    currentState: { achieved: false }
-  }).label, "尚未达成");
-  assert.equal(resolveStatus({
-    taskType: "conditional_push",
-    conditionText: "今天是否交作业",
-    currentState: { achieved: true }
-  }).label, "已达成");
-});
-
-test("first evaluation failure remains operational metadata, not a third business state", () => {
-  const status = resolveStatus({
-    taskType: "conditional_push",
-    conditionText: "今天是否交作业",
-    currentState: null,
-    evaluationError: "Agent timeout"
-  });
-  assert.equal(status.label, "判断暂不可用");
-  assert.equal(status.business, false);
+    enabled: true,
+    executionAvailable: false,
+    technicalReason: "DClaw 群历史能力不可用"
+  }).label, "执行不可用");
+  assert.doesNotMatch(source, /已达成|尚未达成|判断暂不可用|正在判断/);
 });
