@@ -69,6 +69,91 @@ test("buildDclawRequest omits recent messages and nested raw payloads", () => {
   assert.notEqual(request.external_session_id, "bot_1:private:魔兮");
 });
 
+test("normal group request keeps structured per-message attribution", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: {
+      conversationKey: "bot_1:group-id:group-1",
+      conversationEpoch: "epoch-1"
+    },
+    message: {
+      messageId: "upstream-102",
+      spoken: "路由文本",
+      rawSpoken: "路由文本",
+      roomType: 1,
+      groupName: "学习群",
+      receivedName: "李四",
+      atMe: "true"
+    },
+    groupContext: {
+      groupId: "group-1",
+      background: "学习服务群",
+      roles: [],
+      replyDecision: { authorized: true, effectivePolicy: "always" }
+    },
+    groupTurns: [
+      {
+        messageId: 101,
+        occurredAt: "2026-08-05T06:30:01.000Z",
+        speakerName: "张三",
+        roleId: "role-a",
+        identityType: "客户",
+        roleDescription: "客户负责人",
+        content: "第一句话",
+        realAtMe: false,
+        effectiveReplyPolicy: "always",
+        triggerReason: "role_always"
+      },
+      {
+        messageId: 102,
+        occurredAt: "2026-08-05T06:30:04.000Z",
+        speakerName: "李四",
+        roleId: "role-b",
+        identityType: "同事",
+        roleDescription: "交付老师",
+        content: "第二句话",
+        realAtMe: true,
+        effectiveReplyPolicy: "mention_only",
+        triggerReason: "mentioned"
+      }
+    ]
+  });
+
+  const payload = JSON.parse(request.message.slice(request.message.lastIndexOf("\n\n{") + 2));
+  assert.deepEqual(payload.groupTurns.map(({ messageId, speakerName }) => ({ messageId, speakerName })), [
+    { messageId: 101, speakerName: "张三" },
+    { messageId: 102, speakerName: "李四" }
+  ]);
+  assert.equal(request.metadata.groupTurns[0].roleId, "role-a");
+  assert.equal(request.metadata.groupTurns[1].realAtMe, true);
+  assert.match(request.message, /逐条群消息.*唯一事实归属/u);
+});
+
+test("private request does not serialize group turns", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: { conversationKey: "bot_1:private:客户", conversationEpoch: "epoch-1" },
+    message: {
+      messageId: "private-1",
+      spoken: "你好",
+      rawSpoken: "你好",
+      roomType: 2,
+      receivedName: "客户",
+      atMe: "false"
+    },
+    groupTurns: [{
+      messageId: 999,
+      occurredAt: "2026-08-05T06:30:01.000Z",
+      speakerName: "不应出现",
+      content: "不应出现"
+    }]
+  });
+
+  assert.equal(request.metadata.groupTurns, undefined);
+  assert.doesNotMatch(request.message, /"groupTurns"/u);
+  assert.doesNotMatch(request.message, /不应出现/u);
+});
+
 test("normal inbound requests hide node activation scripts from the agent", () => {
   const activation = {
     enabled: true,

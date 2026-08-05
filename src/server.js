@@ -11,6 +11,10 @@ import { loadBotBindingsFromConfig } from "./config.js";
 import { runConversationResetRequests } from "./conversation-reset.js";
 import { createConversationResetWorker } from "./conversation-reset-worker.js";
 import {
+  buildGroupAgentTurns,
+  formatGroupAgentTurns
+} from "./group-agent-turns.js";
+import {
   buildDclawActivationRequest,
   buildDclawAttachmentSourceRetryRequest,
   buildDclawConversationMemoryClearRequest,
@@ -4982,6 +4986,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     messageKey,
     groupReplyDecision: groupPolicy,
     conversationMessageId: persisted.messageRecord?.id,
+    conversationMessageCreatedAt: persisted.messageRecord?.createdAt,
     acceptedAt: new Date().toISOString()
   }, {
     baseQuietMs: replyWaitConfig.baseSeconds * 1000,
@@ -4994,8 +4999,8 @@ async function processCoalescedIncomingBatch(batch) {
   const botId = batch.botId;
   const conversationKey = batch.conversationKey;
   const messages = batch.items.map((item) => item.message);
-  const coalescedMessage = buildCoalescedAgentMessage(messages);
-  const message = coalescedMessage;
+  let coalescedMessage = buildCoalescedAgentMessage(messages);
+  let message = coalescedMessage;
   const messageKey = batch.items.at(-1)?.messageKey || "";
   const binding = getBotBinding(botId);
   const baseLog = messageLogFields({ botId, conversationKey, message });
@@ -5074,6 +5079,18 @@ async function processCoalescedIncomingBatch(batch) {
   const groupRoles = managedGroup
     ? listGroupRoles({ botId, groupId: managedGroup.id })
     : [];
+  const groupTurns = managedGroup
+    ? buildGroupAgentTurns({ items: batch.items, roles: groupRoles })
+    : [];
+  if (groupTurns.length) {
+    const groupTurnText = formatGroupAgentTurns(groupTurns);
+    coalescedMessage = {
+      ...coalescedMessage,
+      spoken: groupTurnText,
+      rawSpoken: groupTurnText
+    };
+    message = coalescedMessage;
+  }
   const groupReplyDecision = batch.items
     .map((item) => item.groupReplyDecision)
     .reverse()
@@ -5106,6 +5123,7 @@ async function processCoalescedIncomingBatch(batch) {
     flow,
     tagContext,
     groupContext,
+    groupTurns,
     tagEvidenceCandidates,
     legacyHistoryAnalysis: null,
     conversationReset,

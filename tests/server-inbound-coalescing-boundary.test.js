@@ -14,10 +14,13 @@ test("server configures an inbound coalescer with approved defaults", () => {
 test("multiple inbound texts are presented to the Agent as one ordered customer turn", () => {
   assert.match(source, /function buildCoalescedAgentMessage\(messages\)/);
   assert.match(source, /客户连续发送了以下消息，请结合上下文统一回答/);
+  assert.match(source, /buildGroupAgentTurns\(\{\s*items: batch\.items,\s*roles: groupRoles\s*\}\)/);
+  assert.match(source, /formatGroupAgentTurns\(groupTurns\)/);
   assert.match(
     source,
     /const agentMessage = normalizeMessageForAgent\(\s*coalescedMessage,\s*binding,\s*groupReplyDecision\s*\)/
   );
+  assert.match(source, /buildDclawRequest\(\{[\s\S]*groupTurns,/);
   assert.match(source, /coalescedMessages/);
   assert.match(source, /atMe: mentioned \? "true" : last\.atMe/);
 });
@@ -31,6 +34,7 @@ test("callbacks persist and cancel old activation before entering the buffer", (
   assert.ok(source.indexOf("persistInboundConversation", handlerStart) < push);
   assert.match(source, /function persistInboundConversation\([\s\S]*insertConversationMessage\(/);
   assert.match(source, /conversationMessageId: persisted\.messageRecord\?\.id/);
+  assert.match(source, /conversationMessageCreatedAt: persisted\.messageRecord\?\.createdAt/);
   assert.ok(source.indexOf("invalidateFlowActivation", handlerStart) < push);
 });
 
