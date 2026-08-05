@@ -44,6 +44,27 @@ db.exec(`
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS channel_accounts (
+    bot_id TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    public_id TEXT NOT NULL UNIQUE,
+    token_ciphertext TEXT NOT NULL,
+    token_iv TEXT NOT NULL,
+    token_auth_tag TEXT NOT NULL,
+    token_suffix TEXT NOT NULL,
+    webhook_secret_hash TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    provider_status TEXT NOT NULL DEFAULT '',
+    health_status TEXT NOT NULL DEFAULT 'disconnected',
+    last_health_check_at TEXT,
+    last_webhook_at TEXT,
+    last_error TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(provider, channel_id)
+  );
+
   CREATE TABLE IF NOT EXISTS agents (
     agent_id TEXT PRIMARY KEY,
     agent_name TEXT,
@@ -3017,6 +3038,164 @@ function rowToBinding(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
+}
+
+function rowToChannelAccount(row) {
+  if (!row) return null;
+  return {
+    botId: row.bot_id,
+    provider: row.provider,
+    channelId: row.channel_id,
+    publicId: row.public_id,
+    tokenConfigured: Boolean(row.token_ciphertext),
+    tokenSuffix: row.token_suffix || "",
+    enabled: Boolean(row.enabled),
+    providerStatus: row.provider_status || "",
+    healthStatus: row.health_status || "disconnected",
+    lastHealthCheckAt: row.last_health_check_at || "",
+    lastWebhookAt: row.last_webhook_at || "",
+    lastError: row.last_error || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function createChannelAccount({
+  botId,
+  provider,
+  channelId,
+  encryptedToken,
+  webhookSecretHash,
+  enabled = true,
+  publicId = crypto.randomUUID()
+}) {
+  const normalizedBotId = requiredString(botId, "botId");
+  const normalizedProvider = requiredString(provider, "provider");
+  const normalizedChannelId = requiredString(channelId, "channelId");
+  const normalizedPublicId = requiredString(publicId, "publicId");
+  const credentials = normalizeEncryptedToken(encryptedToken);
+  const secretHash = requiredString(webhookSecretHash, "webhookSecretHash");
+  const timestamp = now();
+  db.prepare(`
+    INSERT INTO channel_accounts (
+      bot_id, provider, channel_id, public_id,
+      token_ciphertext, token_iv, token_auth_tag, token_suffix,
+      webhook_secret_hash, enabled, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    normalizedBotId,
+    normalizedProvider,
+    normalizedChannelId,
+    normalizedPublicId,
+    credentials.ciphertext,
+    credentials.iv,
+    credentials.authTag,
+    credentials.suffix,
+    secretHash,
+    enabled === false ? 0 : 1,
+    timestamp,
+    timestamp
+  );
+  return getChannelAccount(normalizedBotId);
+}
+
+export function updateChannelAccountToken({ botId, encryptedToken }) {
+  const normalizedBotId = requiredString(botId, "botId");
+  const credentials = normalizeEncryptedToken(encryptedToken);
+  const result = db.prepare(`
+    UPDATE channel_accounts
+    SET token_ciphertext = ?, token_iv = ?, token_auth_tag = ?, token_suffix = ?, updated_at = ?
+    WHERE bot_id = ?
+  `).run(
+    credentials.ciphertext,
+    credentials.iv,
+    credentials.authTag,
+    credentials.suffix,
+    now(),
+    normalizedBotId
+  );
+  if (result.changes === 0) throw new Error("channel account not found");
+  return getChannelAccount(normalizedBotId);
+}
+
+export function getChannelAccount(botId) {
+  return rowToChannelAccount(
+    db.prepare("SELECT * FROM channel_accounts WHERE bot_id = ?").get(botId)
+  );
+}
+
+export function getChannelAccountByPublicId(publicId) {
+  return rowToChannelAccount(
+    db.prepare("SELECT * FROM channel_accounts WHERE public_id = ?").get(publicId)
+  );
+}
+
+export function getChannelAccountCredentials(botId) {
+  const row = db.prepare("SELECT * FROM channel_accounts WHERE bot_id = ?").get(botId);
+  if (!row) return null;
+  return {
+    botId: row.bot_id,
+    provider: row.provider,
+    channelId: row.channel_id,
+    encryptedToken: {
+      ciphertext: row.token_ciphertext,
+      iv: row.token_iv,
+      authTag: row.token_auth_tag,
+      suffix: row.token_suffix
+    },
+    webhookSecretHash: row.webhook_secret_hash
+  };
+}
+
+export function listChannelAccounts() {
+  return db.prepare("SELECT * FROM channel_accounts ORDER BY updated_at DESC").all().map(rowToChannelAccount);
+}
+
+export function updateChannelAccountHealth({
+  botId,
+  healthStatus,
+  providerStatus = "",
+  checkedAt = now(),
+  lastError = ""
+}) {
+  const result = db.prepare(`
+    UPDATE channel_accounts
+    SET health_status = ?, provider_status = ?, last_health_check_at = ?, last_error = ?, updated_at = ?
+    WHERE bot_id = ?
+  `).run(
+    requiredString(healthStatus, "healthStatus"),
+    String(providerStatus || ""),
+    checkedAt,
+    String(lastError || ""),
+    now(),
+    requiredString(botId, "botId")
+  );
+  if (result.changes === 0) throw new Error("channel account not found");
+  return getChannelAccount(botId);
+}
+
+export function markChannelAccountWebhookSuccess({ botId, receivedAt = now() }) {
+  const result = db.prepare(`
+    UPDATE channel_accounts SET last_webhook_at = ?, updated_at = ? WHERE bot_id = ?
+  `).run(receivedAt, now(), requiredString(botId, "botId"));
+  if (result.changes === 0) throw new Error("channel account not found");
+  return getChannelAccount(botId);
+}
+
+function normalizeEncryptedToken(value) {
+  if (!value || typeof value !== "object") throw new Error("encryptedToken is required");
+  return {
+    ciphertext: requiredString(value.ciphertext, "encryptedToken.ciphertext"),
+    iv: requiredString(value.iv, "encryptedToken.iv"),
+    authTag: requiredString(value.authTag, "encryptedToken.authTag"),
+    suffix: String(value.suffix || "")
+  };
+}
+
+function requiredString(value, name) {
+  const normalized = String(value || "").trim();
+  if (!normalized) throw new Error(`${name} is required`);
+  return normalized;
 }
 
 export function upsertAgent(agent) {
