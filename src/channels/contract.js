@@ -14,6 +14,18 @@ export const CHANNEL_CAPABILITY_KEYS = Object.freeze([
   "friendAddedEvent"
 ]);
 
+const SEND_COMMAND_KEYS = Object.freeze([
+  "channelAccountId",
+  "externalChatId",
+  "messageType",
+  "text",
+  "attachments",
+  "mentions",
+  "replyToExternalMessageId",
+  "idempotencyKey",
+  "metadata"
+]);
+
 const ADAPTER_METHODS = Object.freeze([
   "normalizeWebhook",
   "sendText",
@@ -62,7 +74,7 @@ export function assertChannelAdapter(adapter) {
 }
 
 export function normalizeSendCommand(command) {
-  if (!isRecord(command)) {
+  if (!isRecord(command) || !hasOnlyKnownKeys(command, SEND_COMMAND_KEYS)) {
     invalid("Send command is invalid");
   }
   for (const key of ["channelAccountId", "externalChatId", "messageType", "idempotencyKey"]) {
@@ -173,26 +185,51 @@ function hasExactKeys(value, keys) {
   return actualKeys.length === keys.length && keys.every((key) => Object.hasOwn(value, key));
 }
 
+function hasOnlyKnownKeys(value, keys) {
+  return Reflect.ownKeys(value).every((key) => typeof key === "string" && keys.includes(key));
+}
+
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-function freezeSnapshot(value, seen = new WeakMap()) {
-  if (value === null || typeof value !== "object") {
+function freezeSnapshot(value, ancestors = new WeakSet()) {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
     return value;
   }
-  if (seen.has(value)) {
-    invalid("Send command is invalid");
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
   }
-  if (!Array.isArray(value) && !isRecord(value)) {
+  if (typeof value !== "object" || (!isPlainObject(value) && !Array.isArray(value)) || ancestors.has(value)) {
     invalid("Send command is invalid");
   }
   const copy = Array.isArray(value) ? [] : {};
-  seen.set(value, copy);
-  for (const key of Object.keys(value)) {
-    copy[key] = freezeSnapshot(value[key], seen);
+  ancestors.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    if (Array.isArray(value) && key === "length") {
+      continue;
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (typeof key !== "string"
+      || !descriptor.enumerable
+      || !Object.hasOwn(descriptor, "value")
+      || (Array.isArray(value) && !isArrayIndex(key))) {
+      invalid("Send command is invalid");
+    }
+    copy[key] = freezeSnapshot(descriptor.value, ancestors);
   }
+  ancestors.delete(value);
   return Object.freeze(copy);
+}
+
+function isPlainObject(value) {
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function isArrayIndex(key) {
+  const index = Number(key);
+  return Number.isInteger(index) && index >= 0 && index < 4294967295 && String(index) === key;
 }
 
 function invalid(message, context) {

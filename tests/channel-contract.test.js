@@ -111,6 +111,34 @@ test("send commands validate required fields and produce immutable input snapsho
   expectInvalid(() => normalizeSendCommand({ ...input, channelAccountId: "" }));
 });
 
+test("send commands reject unknown extension fields and non-JSON-like nested data", () => {
+  const input = {
+    channelAccountId: "account-1",
+    externalChatId: "chat-1",
+    messageType: "text",
+    idempotencyKey: "idempotency-1",
+    metadata: { nested: { source: "original" } }
+  };
+  const normalized = normalizeSendCommand(input);
+  input.metadata.nested.source = "changed";
+
+  assert.deepEqual(normalized.metadata, { nested: { source: "original" } });
+  assert.equal(Object.isFrozen(normalized.metadata.nested), true);
+  expectInvalid(() => normalizeSendCommand({ ...input, custom: { enabled: true } }));
+  expectInvalid(() => normalizeSendCommand({ ...input, metadata: { createdAt: new Date() } }));
+  expectInvalid(() => normalizeSendCommand({ ...input, metadata: { values: new Map() } }));
+  expectInvalid(() => normalizeSendCommand({ ...input, metadata: { callback: () => undefined } }));
+  expectInvalid(() => normalizeSendCommand({ ...input, metadata: { count: 1n } }));
+  expectInvalid(() => normalizeSendCommand({ ...input, metadata: { marker: Symbol("marker") } }));
+  expectInvalid(() => normalizeSendCommand({ ...input, metadata: { values: [Symbol("marker")] } }));
+  const arrayWithExtension = ["valid"];
+  arrayWithExtension.extension = true;
+  expectInvalid(() => normalizeSendCommand({ ...input, metadata: { values: arrayWithExtension } }));
+  const cyclic = {};
+  cyclic.self = cyclic;
+  expectInvalid(() => normalizeSendCommand({ ...input, metadata: cyclic }));
+});
+
 test("send results require accepted status and message IDs without putting responses in errors", () => {
   const result = {
     accepted: true,

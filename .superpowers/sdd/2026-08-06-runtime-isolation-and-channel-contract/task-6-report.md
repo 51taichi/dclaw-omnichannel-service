@@ -39,3 +39,10 @@ None.
 - Added a regression for a retained extension field (`custom.nested`) passed directly to the fake adapter. Before the fix, mutating that nested field after `sendText` changed the stored record; the focused test failed with `changed` where `direct` was expected.
 - The fake now creates its own recursive frozen snapshot after command normalization, so every retained plain object or array field is isolated from later caller mutation while supported command fields keep their existing normalization semantics.
 - Re-ran `node --test tests/channel-errors.test.js tests/channel-contract.test.js tests/channel-registry.test.js tests/channel-delivery.test.js`: 31 passed, 0 failed (exit code 0).
+
+## Review fix: strict standard command boundary
+
+- Replaced the fake-only recursive clone with strict validation in `normalizeSendCommand`. The standard command accepts only documented top-level keys and recursively snapshots JSON-like primitives, plain objects, and arrays in `attachments`, `mentions`, and `metadata`.
+- Unknown extension keys, cycles, functions, symbols, bigint values, Dates, Maps, other non-plain objects, and named array extensions now fail safely as `invalid_contract` instead of being aliased or silently corrupted. The fake records the already validated immutable normalized command without changing its semantics.
+- Regression coverage proves unknown fields are rejected, known nested plain data remains isolated, and unsafe nested values are rejected. The initial new tests failed because the prior boundary accepted unknown extension fields and named array properties; after the contract change, the complete channel suite passed.
+- Re-ran `node --test tests/channel-errors.test.js tests/channel-contract.test.js tests/channel-registry.test.js tests/channel-delivery.test.js`: 32 passed, 0 failed (exit code 0).
