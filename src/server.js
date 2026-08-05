@@ -79,7 +79,8 @@ import {
   cancelTagActivationTasks,
   claimDueFlowActivationTasks,
   claimDueTagActivationTasks,
-  claimDueGroupAutomationOccurrences,
+  claimPreparatoryGroupAutomationOccurrences,
+  claimTargetGroupAutomationOccurrences,
   claimNextProactiveTarget,
   cancelProactiveTask,
   clearConversationForReset,
@@ -125,9 +126,6 @@ import {
   getGroupById,
   getGroupAutomationTask,
   getGroupAutomationOccurrence,
-  getGroupAutomationCycleState,
-  getGroupLedgerState,
-  getLatestInboundGroupMessageId,
   hasCachedWorktoolMessageId,
   hasRecentBotMessageProcessing,
   ensureConversationDateTag,
@@ -167,9 +165,6 @@ import {
   listGroupRoles,
   listGroupAutomationTasks,
   listGroupAutomationOccurrences,
-  listGroupAutomationEvidenceMessages,
-  listGroupLedgerProjection,
-  listInboundGroupMessagesForLedger,
   listGroupsPage,
   listUnreadTagAlerts,
   listCachedApiMessages,
@@ -229,19 +224,15 @@ import {
   listCanonicalGroupMessagesForHistory,
   completeGroupHistorySyncBatch,
   failGroupHistorySyncJob,
-  enqueueGroupLedgerJob,
-  claimGroupLedgerJobs,
-  applyGroupLedgerEvaluation,
-  failGroupLedgerJob,
-  hasUnfinishedGroupLedgerReindex,
+  getGroupAutomationChunkCheckpoint,
+  saveGroupAutomationChunkCheckpoint,
+  cleanupGroupAutomationChunkCheckpoints,
+  heartbeatGroupAutomationOccurrence,
+  transitionGroupAutomationOccurrence,
   resolveGroupAutomationMentionNames,
-  markGroupAutomationOccurrenceSending,
+  markGroupAutomationSendUnknown,
   confirmGroupAutomationDelivery,
   prepareManualGroupAutomationRetry,
-  completeGroupAutomationOccurrence,
-  scheduleGroupAutomationOccurrenceRetry,
-  failGroupAutomationOccurrence,
-  retryGroupAutomationOccurrence,
   updateGroupAutomationTask,
   duplicateGroupAutomationTask,
   softDeleteGroupAutomationTask,
@@ -274,14 +265,20 @@ import { createGroupAutomationWorker } from "./group-automation-worker.js";
 import { createGroupHistorySyncWorker } from "./group-history-sync-worker.js";
 import {
   appendDclawGroupHistory,
+  buildDclawGroupHistoryId,
+  listDclawGroupHistory,
   probeDclawGroupHistoryCapability
 } from "./dclaw-group-history.js";
-import { serializeGroupAutomationCurrentState } from "./group-automation-task-state.js";
 import {
-  groupAutomationCycleKey,
   nextGroupAutomationRunAt,
   normalizeGroupAutomationSchedule
 } from "./group-automation-schedule.js";
+import {
+  analyzeGroupHistoryChunk,
+  finalizeConditionalPush,
+  finalizePeriodicSummary,
+  mergeGroupHistoryAnalyses
+} from "./group-automation-agent.js";
 import { parseGroupSummaryTemplate } from "./group-summary-template.js";
 import { createGroupAutomationStreamHub } from "./group-automation-stream.js";
 import {
@@ -1697,6 +1694,61 @@ const agentInvocationQueue = createAgentInvocationQueue({
 });
 
 let groupHistorySyncWorker = null;
+const groupHistoryCapabilityByBot = new Map();
+
+async function probeTrackedGroupHistoryCapability({ binding }) {
+  const botId = String(binding?.botId || "").trim();
+  if (!binding?.enabled || !String(binding?.agentApiUrl || "").trim()) {
+    const unavailable = {
+      ready: false,
+      status: 0,
+      reason: "DClaw Agent 未启用或未配置群历史接口"
+    };
+    if (botId) groupHistoryCapabilityByBot.set(botId, unavailable);
+    return unavailable;
+  }
+  try {
+    const capability = await probeDclawGroupHistoryCapability({ binding });
+    const tracked = {
+      ready: capability?.ready === true,
+      status: Number(capability?.status || 0),
+      reason: String(capability?.reason || "")
+    };
+    if (botId) groupHistoryCapabilityByBot.set(botId, tracked);
+    return tracked;
+  } catch (error) {
+    const unavailable = {
+      ready: false,
+      status: 0,
+      reason: String(error?.message || error || "DClaw 群历史能力验证失败")
+    };
+    if (botId) groupHistoryCapabilityByBot.set(botId, unavailable);
+    return unavailable;
+  }
+}
+
+function groupAutomationExecutionCapability(botId) {
+  const binding = getBotBinding(botId);
+  if (!binding?.enabled || !String(binding?.agentApiUrl || "").trim()) {
+    return {
+      executionAvailable: false,
+      technicalReason: "DClaw Agent 未启用或未配置群历史接口"
+    };
+  }
+  const capability = groupHistoryCapabilityByBot.get(botId);
+  if (!capability) {
+    return {
+      executionAvailable: false,
+      technicalReason: "正在验证 DClaw 群历史能力"
+    };
+  }
+  return capability.ready
+    ? { executionAvailable: true, technicalReason: "" }
+    : {
+        executionAvailable: false,
+        technicalReason: `DClaw 群历史能力不可用：${capability.reason || capability.status || "未知原因"}`
+      };
+}
 
 function insertConversationMessageAndWakeGroupHistory(input) {
   const message = insertConversationMessageDb(input);
@@ -1828,7 +1880,7 @@ groupHistorySyncWorker = createGroupHistorySyncWorker({
     listGroupRoles
   },
   resolveDclawBinding: getBotBinding,
-  probeCapability: probeDclawGroupHistoryCapability,
+  probeCapability: probeTrackedGroupHistoryCapability,
   appendHistory: appendDclawGroupHistory,
   now: () => new Date(),
   logger: {
@@ -1843,6 +1895,7 @@ groupHistorySyncWorker = createGroupHistorySyncWorker({
 async function enqueueAllManagedGroupsForHistorySync() {
   let enqueued = 0;
   for (const binding of listBotBindings()) {
+    await probeTrackedGroupHistoryCapability({ binding });
     let page = 1;
     while (true) {
       const result = listGroupsPage({ botId: binding.botId, page, pageSize: 100 });
@@ -1868,42 +1921,64 @@ async function enqueueAllManagedGroupsForHistorySync() {
 
 const groupAutomationWorker = createGroupAutomationWorker({
   db: {
-    enqueueGroupLedgerJob,
-    claimGroupLedgerJobs,
     getGroupById,
-    listGroupRoles,
-    listGroupAutomationTasks,
-    listGroupLedgerProjection,
-    listInboundGroupMessagesForLedger,
-    getLatestInboundGroupMessageId,
-    getGroupLedgerState,
-    applyGroupLedgerEvaluation,
-    failGroupLedgerJob,
-    hasUnfinishedGroupLedgerReindex,
-    claimDueGroupAutomationOccurrences,
-    getGroupAutomationTask,
+    getGroupAutomationOccurrence,
+    getLatestGroupConversationMessageIdAtOrBefore,
+    claimPreparatoryGroupAutomationOccurrences,
+    claimTargetGroupAutomationOccurrences,
+    getGroupAutomationChunkCheckpoint,
+    saveGroupAutomationChunkCheckpoint,
+    cleanupGroupAutomationChunkCheckpoints,
+    heartbeatGroupAutomationOccurrence,
+    transitionGroupAutomationOccurrence,
     resolveGroupAutomationMentionNames,
-    markGroupAutomationOccurrenceSending,
-    completeGroupAutomationOccurrence,
-    scheduleGroupAutomationOccurrenceRetry,
-    failGroupAutomationOccurrence,
-    retryGroupAutomationOccurrence,
-    insertConversationMessage
+    markGroupAutomationSendUnknown
   },
-  getBinding: getBotBinding,
-  invokeAgent: ({ binding, request, priority, key }) => enqueueAgentInvocation(
-    () => invokeDclawAgentWithRetry({ binding, request }),
-    { priority, key }
-  ),
-  sendText: sendTextMessage,
-  publish: (event) => groupAutomationStreamHub.publish(event),
+  historySyncWorker: groupHistorySyncWorker,
+  listDclawHistory: ({ botId, groupId, ...query }) => listDclawGroupHistory({
+    binding: getBotBinding(botId),
+    externalGroupId: buildDclawGroupHistoryId({ botId, groupId }),
+    ...query
+  }),
+  analyzeChunk: (input) => analyzeGroupHistoryChunk({
+    ...input,
+    binding: getBotBinding(input.task.botId),
+    invokeAgent: ({ binding, request }) => enqueueAgentInvocation(
+      () => invokeDclawAgentWithRetry({ binding, request }),
+      { priority: "background", key: input.group.conversationKey }
+    )
+  }),
+  mergeAnalyses: (input) => mergeGroupHistoryAnalyses({
+    ...input,
+    binding: getBotBinding(input.task.botId),
+    invokeAgent: ({ binding, request }) => enqueueAgentInvocation(
+      () => invokeDclawAgentWithRetry({ binding, request }),
+      { priority: "background", key: input.group.conversationKey }
+    )
+  }),
+  finalizeConditional: (input) => finalizeConditionalPush({
+    ...input,
+    binding: getBotBinding(input.task.botId),
+    invokeAgent: ({ binding, request }) => enqueueAgentInvocation(
+      () => invokeDclawAgentWithRetry({ binding, request }),
+      { priority: "background", key: input.group.conversationKey }
+    )
+  }),
+  finalizeSummary: (input) => finalizePeriodicSummary({
+    ...input,
+    binding: getBotBinding(input.task.botId),
+    invokeAgent: ({ binding, request }) => enqueueAgentInvocation(
+      () => invokeDclawAgentWithRetry({ binding, request }),
+      { priority: "background", key: input.group.conversationKey }
+    )
+  }),
+  sendGroupMessage: sendTextMessage,
   now: () => new Date(),
   logger: {
     info: logInfo,
     warn: logWarn,
     error: logError
   },
-  batchSize: groupAutomationWorkerConfig.batchSize,
   leaseMs: groupAutomationWorkerConfig.leaseMs
 });
 
@@ -1912,7 +1987,7 @@ function publishGroupAutomationCallbackResult(occurrence) {
   groupAutomationStreamHub.publish({
     botId: occurrence.botId,
     groupId: occurrence.groupId,
-    occurrence
+    occurrence: serializeGroupAutomationOccurrence(occurrence)
   });
 }
 
@@ -4503,16 +4578,18 @@ if (groupHistorySyncWorkerConfig.enabled) {
 }
 
 if (groupAutomationWorkerConfig.enabled) {
-  void groupAutomationWorker.recover().catch((error) => {
+  const groupAutomationOwner = `group-automation:${process.pid}:${crypto.randomUUID()}`;
+  void groupAutomationWorker.recoverExpiredLeases({
+    owner: groupAutomationOwner,
+    limit: groupAutomationWorkerConfig.batchSize
+  }).catch((error) => {
     logError("group_automation.recovery_failed", { error });
   });
   setInterval(() => {
-    void groupAutomationWorker.runLedgerTick().catch((error) => {
-      logError("group_automation.ledger.worker_failed", { error });
-    });
-  }, groupAutomationWorkerConfig.ledgerIntervalMs).unref();
-  setInterval(() => {
-    void groupAutomationWorker.runOccurrenceTick().catch((error) => {
+    void groupAutomationWorker.runOccurrenceTick({
+      owner: groupAutomationOwner,
+      limit: groupAutomationWorkerConfig.batchSize
+    }).catch((error) => {
       logError("group_automation.occurrence.worker_failed", { error });
     });
   }, groupAutomationWorkerConfig.occurrenceIntervalMs).unref();
@@ -4622,21 +4699,6 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         managedGroup: group
       })
     : { conversation: null, messageRecord: null };
-
-  if (group && persisted.messageRecord?.id) {
-    void groupAutomationWorker.enqueueLive({
-      botId,
-      groupId: group.id,
-      throughMessageId: persisted.messageRecord.id
-    }).catch((error) => {
-      logWarn("group_automation.ledger.enqueue_failed", {
-        botId,
-        groupId: group.id,
-        conversationMessageId: persisted.messageRecord.id,
-        error: error.message
-      });
-    });
-  }
 
   if (!shouldProcessInboundForAgent(message)) {
     logInfo("incoming.skipped", {
@@ -5674,22 +5736,58 @@ function resolveLegacyBotId(req) {
   return req.params.botId || req.query.botId || process.env.ROBOT_ID;
 }
 
+function serializeGroupAutomationOccurrence(occurrence) {
+  if (!occurrence) return null;
+  const retryMetadata = occurrence.retryMetadata || {};
+  return {
+    id: occurrence.id,
+    taskId: occurrence.taskId,
+    groupId: occurrence.groupId,
+    scheduledFor: occurrence.scheduledFor,
+    cycleStartAt: occurrence.cycleStartAt,
+    cycleEndAt: occurrence.cycleEndAt,
+    status: occurrence.status,
+    stage: occurrence.stage,
+    nextRetryAt: occurrence.nextRetryAt,
+    decisionNote: occurrence.decisionNote,
+    frozenContent: String(
+      occurrence.frozenPayload?.content || occurrence.renderedContent || ""
+    ),
+    renderedContent: occurrence.renderedContent,
+    evidenceMessageIds: occurrence.evidenceMessageIds,
+    mentionNames: occurrence.mentionNames,
+    warnings: occurrence.warnings,
+    deliveryState: occurrence.deliveryState,
+    worktoolMessageId: occurrence.worktoolMessageId,
+    errorMessage: occurrence.errorMessage,
+    reason: occurrence.reason,
+    startedAt: occurrence.startedAt,
+    finishedAt: occurrence.finishedAt,
+    actualStartedAt: occurrence.actualStartedAt,
+    actualCompletedAt: occurrence.actualCompletedAt,
+    targetDelayMs: occurrence.targetDelayMs,
+    retryHistory: {
+      attempts: occurrence.attempts,
+      stageAttemptsByStage: occurrence.stageAttemptsByStage,
+      sendAttempts: Number(retryMetadata.sendAttempts || 0),
+      deliveryResolution: retryMetadata.deliveryResolution || null,
+      manualRetry: retryMetadata.manualRetry || null
+    },
+    canConfirmDelivered: occurrence.stage === "delivery_unknown",
+    canConfirmNotDeliveredAndRetry: occurrence.stage === "delivery_unknown",
+    createdAt: occurrence.createdAt,
+    updatedAt: occurrence.updatedAt
+  };
+}
+
 function serializeGroupAutomationTask({ botId, groupId, task }) {
-  const cycleKey = groupAutomationCycleKey(task.cadence, new Date().toISOString());
-  const cycleState = task.taskType === "conditional_push" && task.conditionText
-    ? getGroupAutomationCycleState({
-        botId,
-        groupId,
-        taskId: task.id,
-        cycleKey
-      })
-    : null;
   const lastOccurrence = listGroupAutomationOccurrences({
     botId,
     taskId: task.id,
     page: 1,
     pageSize: 1
   }).items[0] || null;
+  const capability = groupAutomationExecutionCapability(botId);
   return {
     id: task.id,
     groupId: task.groupId,
@@ -5705,14 +5803,9 @@ function serializeGroupAutomationTask({ botId, groupId, task }) {
     mentionRoleIds: task.mentionRoleIds,
     nextRunAt: task.nextRunAt,
     version: task.version,
-    currentState: serializeGroupAutomationCurrentState({
-      task,
-      currentCycleKey: cycleKey,
-      cycleState,
-      lastOccurrence
-    }),
-    evaluationError: lastOccurrence?.errorMessage || "",
-    lastOccurrence,
+    executionAvailable: capability.executionAvailable,
+    technicalReason: capability.technicalReason,
+    latestOccurrence: serializeGroupAutomationOccurrence(lastOccurrence),
     createdAt: task.createdAt,
     updatedAt: task.updatedAt
   };
@@ -6114,15 +6207,6 @@ app.post(
       enabled: body.enabled !== false,
       ...normalized
     });
-    void groupAutomationWorker.enqueueReindex({
-      botId,
-      groupId,
-      reason: "automation_created"
-    }).catch((error) => logWarn("group_automation.ledger.reindex_failed", {
-      botId,
-      groupId,
-      error: error.message
-    }));
     const serialized = serializeGroupAutomationTask({ botId, groupId, task });
     groupAutomationStreamHub.publish({ botId, groupId, task: serialized });
     res.status(201).json({ ok: true, task: serialized });
@@ -6158,11 +6242,14 @@ app.get(
       return;
     }
     const messageId = Number(req.params.messageId);
-    const message = listGroupAutomationEvidenceMessages({
+    const messages = listConversationMessagesAround({
       botId,
-      groupId,
-      messageIds: [messageId]
-    })[0];
+      conversationKey: group.conversationKey,
+      anchorMessageId: messageId,
+      before: 80,
+      after: 80
+    });
+    const message = messages.find((item) => Number(item.id) === messageId);
     if (!message) {
       res.status(404).json({ ok: false, message: "evidence message not found" });
       return;
@@ -6177,28 +6264,9 @@ app.get(
         createdAt: message.createdAt,
         senderName: message.senderName,
         content: message.content
-      }
+      },
+      messages
     });
-  })
-);
-
-app.post(
-  "/api/groups/:groupId/automations/occurrences/:occurrenceId/retry",
-  asyncHandler(async (req, res) => {
-    const body = req.body || {};
-    const botId = String(body.botId || "").trim();
-    const groupId = req.params.groupId;
-    assertBotAccess(req, botId);
-    if (!getGroupById({ botId, groupId })) {
-      res.status(404).json({ ok: false, message: "managed group not found" });
-      return;
-    }
-    const occurrence = await groupAutomationWorker.retryOccurrence({
-      botId,
-      groupId,
-      occurrenceId: req.params.occurrenceId
-    });
-    res.json({ ok: true, occurrence });
   })
 );
 
@@ -6229,7 +6297,7 @@ app.post(
       operatorId
     });
     publishGroupAutomationCallbackResult(resolved);
-    res.json({ ok: true, occurrence: resolved });
+    res.json({ ok: true, occurrence: serializeGroupAutomationOccurrence(resolved) });
   })
 );
 
@@ -6259,7 +6327,7 @@ app.post(
       operatorId
     });
     publishGroupAutomationCallbackResult(resolved);
-    res.json({ ok: true, occurrence: resolved });
+    res.json({ ok: true, occurrence: serializeGroupAutomationOccurrence(resolved) });
   })
 );
 
@@ -6306,15 +6374,6 @@ app.patch(
       taskId: current.id,
       expectedVersion: body.expectedVersion
     });
-    void groupAutomationWorker.enqueueReindex({
-      botId,
-      groupId,
-      reason: "automation_updated"
-    }).catch((error) => logWarn("group_automation.ledger.reindex_failed", {
-      botId,
-      groupId,
-      error: error.message
-    }));
     const serialized = serializeGroupAutomationTask({ botId, groupId, task });
     groupAutomationStreamHub.publish({ botId, groupId, task: serialized });
     res.json({ ok: true, task: serialized });
@@ -6383,28 +6442,11 @@ app.get(
       page: Number(req.query.page || 1),
       pageSize: Number(req.query.pageSize || 20)
     });
-    res.json({ ok: true, ...result });
-  })
-);
-
-app.post(
-  "/api/groups/:groupId/automations/:taskId/refresh",
-  asyncHandler(async (req, res) => {
-    const body = req.body || {};
-    const botId = String(body.botId || "").trim();
-    const groupId = req.params.groupId;
-    assertBotAccess(req, botId);
-    const task = getGroupAutomationTask({ botId, taskId: req.params.taskId });
-    if (!task || task.groupId !== groupId || task.deletedAt) {
-      res.status(404).json({ ok: false, message: "group automation task not found" });
-      return;
-    }
-    const job = await groupAutomationWorker.enqueueReindex({
-      botId,
-      groupId,
-      reason: "automation_refreshed"
+    res.json({
+      ok: true,
+      items: result.items.map(serializeGroupAutomationOccurrence),
+      pagination: result.pagination
     });
-    res.status(202).json({ ok: true, queued: Boolean(job) });
   })
 );
 
@@ -6433,17 +6475,6 @@ app.patch(
       background: body.background || "",
       tagGroupIds: requested
     });
-    void groupAutomationWorker.enqueueReindex({
-      botId,
-      groupId: group.id,
-      reason: "group_context_changed"
-    }).catch((error) => {
-      logWarn("group_automation.ledger.reindex_failed", {
-        botId,
-        groupId: group.id,
-        error: error.message
-      });
-    });
     res.json({ ok: true, group });
   })
 );
@@ -6459,17 +6490,6 @@ app.patch(
       groupId: req.params.groupId,
       expectedVersion: body.expectedVersion,
       roles: body.roles
-    });
-    void groupAutomationWorker.enqueueReindex({
-      botId,
-      groupId: saved.group.id,
-      reason: "group_context_changed"
-    }).catch((error) => {
-      logWarn("group_automation.ledger.reindex_failed", {
-        botId,
-        groupId: saved.group.id,
-        error: error.message
-      });
     });
     res.json({
       ok: true,
@@ -6490,15 +6510,6 @@ app.post(
       sourceGroupId: String(body.sourceGroupId || "").trim(),
       targetGroupId: req.params.groupId
     });
-    void groupAutomationWorker.enqueueReindex({
-      botId,
-      groupId: group.id,
-      reason: "group_merged"
-    }).catch((error) => logWarn("group_automation.ledger.reindex_failed", {
-      botId,
-      groupId: group.id,
-      error: error.message
-    }));
     res.json({ ok: true, group });
   })
 );

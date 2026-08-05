@@ -13,8 +13,6 @@ const routes = [
   ["post", "/api/groups/:groupId/automations/:taskId/duplicate"],
   ["delete", "/api/groups/:groupId/automations/:taskId"],
   ["get", "/api/groups/:groupId/automations/:taskId/occurrences"],
-  ["post", "/api/groups/:groupId/automations/:taskId/refresh"],
-  ["post", "/api/groups/:groupId/automations/occurrences/:occurrenceId/retry"],
   ["post", "/api/groups/:groupId/automation-occurrences/:occurrenceId/confirm-delivery"],
   ["post", "/api/groups/:groupId/automation-occurrences/:occurrenceId/confirm-not-delivered-and-retry"],
   ["get", "/api/groups/:groupId/automations/evidence/:messageId"]
@@ -29,24 +27,39 @@ test("exposes the complete authorized group automation API", () => {
   }
 });
 
-test("create and update validate recurrence, summary templates, and group role mentions", () => {
+test("create and update validate recurrence, summary templates, and group role mentions without ledger refresh", () => {
   assert.match(source, /normalizeGroupAutomationSchedule\(\{/);
   assert.match(source, /parseGroupSummaryTemplate\(/);
   assert.match(source, /resolveGroupAutomationMentionNames\(\{/);
   assert.match(source, /nextGroupAutomationRunAt\(/);
-  assert.match(source, /enqueueReindex\(\{[\s\S]*automation_(?:created|updated|refreshed)/);
+  assert.doesNotMatch(source, /groupAutomationWorker\.enqueueReindex\(/);
+  assert.doesNotMatch(source, /groupAutomationWorker\.enqueueLive\(/);
 });
 
-test("group automation responses exclude private group background and expose evidence anchors", () => {
+test("group automation responses expose operational runs and evidence anchors without ledger state", () => {
   assert.match(source, /serializeGroupAutomationTask\(/);
-  assert.match(source, /serializeGroupAutomationCurrentState\(\{[\s\S]*currentCycleKey:\s*cycleKey/);
-  assert.match(source, /conversationKey:[\s\S]*messageId:[\s\S]*createdAt:/);
+  assert.match(source, /latestOccurrence:\s*serializeGroupAutomationOccurrence\(/);
+  assert.match(source, /executionAvailable:/);
+  assert.match(source, /technicalReason:/);
+  assert.doesNotMatch(source, /getGroupAutomationCycleState\(/);
+  assert.doesNotMatch(source, /serializeGroupAutomationCurrentState\(/);
+  assert.doesNotMatch(source, /listGroupAutomationEvidenceMessages\(/);
+  assert.match(source, /listConversationMessagesAround\(\{[\s\S]*anchorMessageId:\s*messageId/);
 });
 
-test("merging a managed group reindexes the target shared ledger", () => {
-  const marker = '"/api/groups/:groupId/merge"';
-  const routeSource = source.slice(source.indexOf(marker), source.indexOf(marker) + 1200);
-  assert.match(routeSource, /enqueueReindex\(\{[\s\S]*groupId:\s*group\.id[\s\S]*group_merged/);
+test("server uses only the phased DClaw history worker for group task execution", () => {
+  const workerStart = source.indexOf("createGroupAutomationWorker({");
+  const workerSource = source.slice(workerStart, workerStart + 5000);
+  assert.match(workerSource, /historySyncWorker:\s*groupHistorySyncWorker/);
+  assert.match(workerSource, /listDclawHistory:/);
+  assert.match(workerSource, /analyzeChunk:/);
+  assert.match(workerSource, /mergeAnalyses:/);
+  assert.match(workerSource, /finalizeConditional:/);
+  assert.match(workerSource, /finalizeSummary:/);
+  assert.match(source, /groupAutomationWorker\.recoverExpiredLeases\(/);
+  assert.doesNotMatch(workerSource, /enqueueGroupLedgerJob/);
+  assert.doesNotMatch(workerSource, /listGroupLedgerProjection/);
+  assert.doesNotMatch(source, /groupAutomationWorker\.runLedgerTick\(/);
 });
 
 test("both WorkTool command callbacks reconcile group automation delivery and publish the result", () => {
