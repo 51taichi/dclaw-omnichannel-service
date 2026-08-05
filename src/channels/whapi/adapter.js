@@ -2,6 +2,7 @@ import { CHANNEL_ERROR_CODES, ChannelError } from "../errors.js";
 import { assertChannelAdapter } from "../contract.js";
 import { WHAPI_CAPABILITIES } from "./capabilities.js";
 import { mapWhapiHealth } from "./health.js";
+import { normalizeWhapiWebhook } from "./mapper.js";
 
 const MEDIA_TYPES = new Set(["image", "video", "audio", "voice", "document"]);
 
@@ -12,7 +13,7 @@ export function createWhapiAdapter({ resolveAccountClient }) {
   const adapter = {
     provider: "whapi",
     capabilities: WHAPI_CAPABILITIES,
-    normalizeWebhook: () => EMPTY_EVENTS,
+    normalizeWebhook: normalizeWhapiWebhook,
     async sendText(command) {
       const client = await clientFor(command);
       return standardSendResult(await client.sendText(messageBase(command, { body: command.text })));
@@ -70,8 +71,6 @@ export function createWhapiAdapter({ resolveAccountClient }) {
   assertChannelAdapter(adapter);
   return Object.freeze(adapter);
 }
-
-const EMPTY_EVENTS = Object.freeze([]);
 
 function accountId(value) {
   const id = value?.channelAccountId || value?.channelId;
