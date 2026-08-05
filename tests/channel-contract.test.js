@@ -139,6 +139,29 @@ test("send commands reject unknown extension fields and non-JSON-like nested dat
   expectInvalid(() => normalizeSendCommand({ ...input, metadata: cyclic }));
 });
 
+test("send command snapshots preserve __proto__ as immutable JSON data", () => {
+  const metadata = JSON.parse('{"__proto__":{"retained":"yes"},"normal":1}');
+  const normalized = normalizeSendCommand({
+    channelAccountId: "account-1",
+    externalChatId: "chat-1",
+    messageType: "text",
+    idempotencyKey: "idempotency-1",
+    metadata
+  });
+  metadata.__proto__.retained = "changed";
+
+  assert.equal(Object.getPrototypeOf(normalized.metadata), Object.prototype);
+  assert.equal(Object.hasOwn(normalized.metadata, "__proto__"), true);
+  assert.deepEqual(normalized.metadata.__proto__, { retained: "yes" });
+  assert.equal(normalized.metadata.normal, 1);
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(normalized.metadata)),
+    JSON.parse('{"__proto__":{"retained":"yes"},"normal":1}')
+  );
+  assert.equal(Object.isFrozen(normalized.metadata), true);
+  assert.equal(Object.isFrozen(normalized.metadata.__proto__), true);
+});
+
 test("send results require accepted status and message IDs without putting responses in errors", () => {
   const result = {
     accepted: true,

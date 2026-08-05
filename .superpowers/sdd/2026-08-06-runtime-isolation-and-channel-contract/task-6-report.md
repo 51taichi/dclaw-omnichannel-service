@@ -46,3 +46,9 @@ None.
 - Unknown extension keys, cycles, functions, symbols, bigint values, Dates, Maps, other non-plain objects, and named array extensions now fail safely as `invalid_contract` instead of being aliased or silently corrupted. The fake records the already validated immutable normalized command without changing its semantics.
 - Regression coverage proves unknown fields are rejected, known nested plain data remains isolated, and unsafe nested values are rejected. The initial new tests failed because the prior boundary accepted unknown extension fields and named array properties; after the contract change, the complete channel suite passed.
 - Re-ran `node --test tests/channel-errors.test.js tests/channel-contract.test.js tests/channel-registry.test.js tests/channel-delivery.test.js`: 32 passed, 0 failed (exit code 0).
+
+## Review fix: preserve `__proto__` JSON fields safely
+
+- Added a JSON-parsed metadata regression containing an own `__proto__` data field. The initial test failed because ordinary property assignment changed the output object's prototype instead of retaining that key.
+- Snapshot construction now defines each copied key as an own frozen data property. This keeps `__proto__` enumerable and JSON-serializable without prototype pollution, while retaining the normal object prototype and deep immutability.
+- Re-ran `node --test tests/channel-errors.test.js tests/channel-contract.test.js tests/channel-registry.test.js tests/channel-delivery.test.js`: 33 passed, 0 failed (exit code 0).

@@ -216,7 +216,12 @@ function freezeSnapshot(value, ancestors = new WeakSet()) {
       || (Array.isArray(value) && !isArrayIndex(key))) {
       invalid("Send command is invalid");
     }
-    copy[key] = freezeSnapshot(descriptor.value, ancestors);
+    Object.defineProperty(copy, key, {
+      value: freezeSnapshot(descriptor.value, ancestors),
+      enumerable: true,
+      configurable: false,
+      writable: false
+    });
   }
   ancestors.delete(value);
   return Object.freeze(copy);
