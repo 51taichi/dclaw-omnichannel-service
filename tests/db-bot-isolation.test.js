@@ -237,7 +237,7 @@ test("legacy Bot-owned flow machines migrate to the bound Agent", () => {
   db.upsertBotBinding({ botId, botName: "旧 Bot", agentId, enabled: true });
   db.upsertBotBinding({ botId: conflictBotId, botName: "冲突旧 Bot", agentId, enabled: true });
 
-  const rawDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const rawDb = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
   const timestamp = new Date().toISOString();
   rawDb.prepare(`
     INSERT INTO flow_machines (
@@ -302,7 +302,7 @@ test("legacy Bot-owned flow machines migrate to the bound Agent", () => {
   const machine = db.getFlowMachineForBot(botId);
   assert.equal(machine.agentId, agentId);
   assert.equal(machine.config.entryNodeId, "legacy_node_1");
-  const conflictDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const conflictDb = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
   const conflict = conflictDb.prepare(`
     SELECT agent_id, legacy_bot_id, selected_legacy_bot_id
     FROM agent_flow_machine_migration_conflicts

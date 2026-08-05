@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import crypto from "node:crypto";
-import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { resolveRuntimePaths } from "./runtime-paths.js";
 import { mergeInlineActions } from "./action-chips.js";
 import { activationDelayMs } from "./activation-timing.js";
 import { hashAccessKey } from "./auth.js";
@@ -19,10 +19,9 @@ import {
   normalizeGroupAutomationSchedule
 } from "./group-automation-schedule.js";
 
-const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
+const { dataDir, databasePath: dbPath } = resolveRuntimePaths();
 fs.mkdirSync(dataDir, { recursive: true });
 
-const dbPath = path.join(dataDir, "worktool-bot-service.sqlite");
 const db = new DatabaseSync(dbPath);
 
 db.exec(`
