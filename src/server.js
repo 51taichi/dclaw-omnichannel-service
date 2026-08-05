@@ -1027,9 +1027,9 @@ function persistInboundConversation({
   }
   const flowMachine = getFlowMachineForBot(botId);
   if (binding?.enabled) {
-    if (isGroupMessage(message)) {
+    if (isGroupMessage(message) || !flowMachine?.enabled) {
       getOrCreateConversationSession({ botId, conversationKey });
-    } else if (flowMachine?.enabled) {
+    } else {
       getOrCreateFlowSession({
         botId,
         conversationKey,
