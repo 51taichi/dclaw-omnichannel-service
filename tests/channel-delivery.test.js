@@ -123,6 +123,18 @@ test("fake adapter snapshots commands when called directly", async () => {
   assert.equal(Object.isFrozen(adapter.sentCommands[0]), true);
 });
 
+test("fake adapter deeply snapshots retained extension fields", async () => {
+  const adapter = createFakeChannelAdapter();
+  const input = command({ custom: { nested: { source: "direct" } } });
+
+  await adapter.sendText(input);
+  input.custom.nested.source = "changed";
+
+  assert.deepEqual(adapter.sentCommands[0].custom, { nested: { source: "direct" } });
+  assert.equal(Object.isFrozen(adapter.sentCommands[0].custom), true);
+  assert.equal(Object.isFrozen(adapter.sentCommands[0].custom.nested), true);
+});
+
 test("delivery rejects missing and mismatched accounts without invoking an adapter", async () => {
   const adapter = createFakeChannelAdapter();
   const registry = createChannelRegistry();

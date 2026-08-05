@@ -7,7 +7,7 @@ export function createFakeChannelAdapter(options = {}) {
   const capabilities = normalizeCapabilities(options.capabilities);
 
   const send = async (command) => {
-    const snapshot = normalizeSendCommand(command);
+    const snapshot = deepFreezeSnapshot(normalizeSendCommand(command));
     sentCommands.push(snapshot);
     const outcome = outcomes.shift();
     if (outcome !== undefined) {
@@ -69,4 +69,23 @@ function invalidCapabilities() {
 
 function isRecord(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function deepFreezeSnapshot(value, seen = new WeakMap()) {
+  if (value === null || typeof value !== "object") {
+    return value;
+  }
+  if (seen.has(value)) {
+    return seen.get(value);
+  }
+  if (!Array.isArray(value) && !isRecord(value)) {
+    return value;
+  }
+
+  const copy = Array.isArray(value) ? [] : {};
+  seen.set(value, copy);
+  for (const key of Object.keys(value)) {
+    copy[key] = deepFreezeSnapshot(value[key], seen);
+  }
+  return Object.freeze(copy);
 }

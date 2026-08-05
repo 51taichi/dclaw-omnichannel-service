@@ -33,3 +33,9 @@ Result: 30 passed, 0 failed (exit code 0).
 ## Concerns
 
 None.
+
+## Review fix: deeply immutable fake command records
+
+- Added a regression for a retained extension field (`custom.nested`) passed directly to the fake adapter. Before the fix, mutating that nested field after `sendText` changed the stored record; the focused test failed with `changed` where `direct` was expected.
+- The fake now creates its own recursive frozen snapshot after command normalization, so every retained plain object or array field is isolated from later caller mutation while supported command fields keep their existing normalization semantics.
+- Re-ran `node --test tests/channel-errors.test.js tests/channel-contract.test.js tests/channel-registry.test.js tests/channel-delivery.test.js`: 31 passed, 0 failed (exit code 0).
