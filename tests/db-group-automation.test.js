@@ -741,6 +741,7 @@ test("preparatory claims freeze the task configuration at T-10 and advance from 
   assert.equal(occurrence.leaseOwner, "prepare-worker-a");
   assert.equal(occurrence.stageAttempts, 1);
   assert.equal(occurrence.taskSnapshot.name, "作业提醒");
+  assert.equal(occurrence.taskSnapshot.group.createdAt, group.createdAt);
   assert.deepEqual(occurrence.taskSnapshot.mentionRoleIds, roles.map((role) => role.id));
   assert.equal(db.getGroupAutomationTask({ botId, taskId: task.id }).nextRunAt, "2026-08-07T12:00:00.000Z");
 
@@ -805,6 +806,13 @@ test("occurrence checkpoints, heartbeat, transitions, and stage fencing are dura
     evidenceMessageIds: [99],
     now: "2026-08-05T11:50:50.000Z"
   }).result, { summary: "本段确认完成一次作业" });
+  assert.deepEqual(db.getGroupAutomationChunkCheckpoint({
+    occurrenceId: occurrence.id,
+    stage: "preanalysis",
+    level: 0,
+    ordinal: 0,
+    inputHash: "sha256:chunk-0"
+  }).result, { summary: "本段确认完成一次作业" });
 
   const waiting = db.transitionGroupAutomationOccurrence({
     occurrenceId: occurrence.id,
@@ -834,6 +842,67 @@ test("occurrence checkpoints, heartbeat, transitions, and stage fencing are dura
     now: "2026-08-05T11:51:01.000Z",
     leaseMs: 60_000
   }), /lease|owner/i);
+});
+
+test("waiting target occurrences are claimed exactly at T and terminal transitions update status", () => {
+  const botId = "group_automation_target_claim_bot";
+  const { group } = createGroupWithRoles(botId);
+  createWeeklyTask({ botId, groupId: group.id });
+  const occurrence = db.claimPreparatoryGroupAutomationOccurrences({
+    owner: "prepare-worker",
+    now: "2026-08-05T11:50:00.000Z",
+    prepareBeforeMs: 600_000,
+    leaseMs: 60_000,
+    limit: 1
+  })[0];
+  db.transitionGroupAutomationOccurrence({
+    occurrenceId: occurrence.id,
+    owner: "prepare-worker",
+    fromStages: ["preanalysis"],
+    toStage: "waiting_target",
+    now: "2026-08-05T11:51:00.000Z"
+  });
+
+  assert.deepEqual(db.claimTargetGroupAutomationOccurrences({
+    owner: "target-worker-a",
+    now: "2026-08-05T11:59:59.999Z",
+    leaseMs: 60_000,
+    limit: 1
+  }), []);
+  const claimed = db.claimTargetGroupAutomationOccurrences({
+    owner: "target-worker-a",
+    now: "2026-08-05T12:00:00.000Z",
+    leaseMs: 60_000,
+    limit: 100
+  });
+  const target = claimed.find((item) => item.id === occurrence.id);
+  assert.equal(target.stage, "delta_analysis");
+  assert.equal(target.leaseOwner, "target-worker-a");
+  const duplicateClaims = db.claimTargetGroupAutomationOccurrences({
+    owner: "target-worker-b",
+    now: "2026-08-05T12:00:01.000Z",
+    leaseMs: 60_000,
+    limit: 100
+  });
+  assert.equal(duplicateClaims.some((item) => item.id === occurrence.id), false);
+
+  db.transitionGroupAutomationOccurrence({
+    occurrenceId: occurrence.id,
+    owner: "target-worker-a",
+    fromStages: ["delta_analysis"],
+    toStage: "finalizing",
+    now: "2026-08-05T12:00:02.000Z"
+  });
+  const skipped = db.transitionGroupAutomationOccurrence({
+    occurrenceId: occurrence.id,
+    owner: "target-worker-a",
+    fromStages: ["finalizing"],
+    toStage: "skipped",
+    patch: { decisionNote: "条件未达成" },
+    now: "2026-08-05T12:00:03.000Z"
+  });
+  assert.equal(skipped.stage, "skipped");
+  assert.equal(skipped.status, "skipped");
 });
 
 test("expired preparatory leases are reclaimable but an unfinished same-task occurrence stays serial", () => {
