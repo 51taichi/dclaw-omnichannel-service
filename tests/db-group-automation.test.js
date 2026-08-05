@@ -231,7 +231,7 @@ test("re-enabling a task discards stale disabled schedules instead of backfillin
     cadence: "daily",
     scheduleDays: [],
     timeOfDay: "20:00",
-    conditionText: "",
+    conditionText: "客户今天是否完成作业",
     content: "测试提醒",
     summaryTemplate: "",
     mentionRoleIds: [],
@@ -272,7 +272,7 @@ test("re-enabling a task cancels retry occurrences created before it was disable
     cadence: "daily",
     scheduleDays: [],
     timeOfDay: "20:00",
-    conditionText: "",
+    conditionText: "客户今天是否完成作业",
     content: "测试提醒",
     summaryTemplate: "",
     mentionRoleIds: [],
@@ -488,7 +488,7 @@ test("occurrence retries reuse the same identity and sending snapshots are durab
 test("delivery_unknown is never automatically reclaimed but can be manually retried", () => {
   const botId = "group_automation_unknown_bot";
   const { group } = createGroupWithRoles(botId);
-  createWeeklyTask({ botId, groupId: group.id });
+  const task = createWeeklyTask({ botId, groupId: group.id });
   const occurrence = db.claimDueGroupAutomationOccurrences({
     nowIso: "2026-08-05T12:00:00.000Z",
     limit: 1,
@@ -679,4 +679,204 @@ test("a failed WorkTool command callback marks the matching sent occurrence fail
   });
   assert.equal(failed.status, "failed");
   assert.match(failed.errorMessage, /发送失败/);
+});
+
+test("task type validation requires an objective condition only for conditional pushes", () => {
+  const botId = "group_automation_contract_bot";
+  const { group } = createGroupWithRoles(botId);
+  assert.throws(() => db.createGroupAutomationTask({
+    botId,
+    groupId: group.id,
+    name: "缺少条件",
+    taskType: "conditional_push",
+    cadence: "daily",
+    scheduleDays: [],
+    timeOfDay: "20:00",
+    conditionText: "",
+    content: "提醒",
+    summaryTemplate: "",
+    enabled: true,
+    nextRunAt: "2026-08-05T12:00:00.000Z"
+  }), /condition/i);
+  assert.throws(() => db.createGroupAutomationTask({
+    botId,
+    groupId: group.id,
+    name: "汇总不应有条件",
+    taskType: "periodic_summary",
+    cadence: "weekly",
+    scheduleDays: [3],
+    timeOfDay: "20:00",
+    conditionText: "客户是否交作业",
+    content: "",
+    summaryTemplate: "本周复盘",
+    enabled: true,
+    nextRunAt: "2026-08-05T12:00:00.000Z"
+  }), /condition/i);
+});
+
+test("preparatory claims freeze the task configuration at T-10 and advance from the target", () => {
+  const botId = "group_automation_prepare_bot";
+  const { group, roles } = createGroupWithRoles(botId);
+  const task = createWeeklyTask({
+    botId,
+    groupId: group.id,
+    mentionRoleIds: roles.map((role) => role.id)
+  });
+
+  const claimed = db.claimPreparatoryGroupAutomationOccurrences({
+    owner: "prepare-worker-a",
+    now: "2026-08-05T11:50:00.000Z",
+    prepareBeforeMs: 600_000,
+    leaseMs: 120_000,
+    limit: 10
+  });
+
+  assert.equal(claimed.length, 1);
+  const occurrence = claimed[0];
+  assert.equal(occurrence.scheduledFor, "2026-08-05T12:00:00.000Z");
+  assert.equal(occurrence.preanalysisCutoffAt, "2026-08-05T11:50:00.000Z");
+  assert.equal(occurrence.historyStartAt, "2026-08-02T16:00:00.000Z");
+  assert.equal(occurrence.historyEndAt, "2026-08-05T12:00:00.000Z");
+  assert.equal(occurrence.stage, "preanalysis");
+  assert.equal(occurrence.leaseOwner, "prepare-worker-a");
+  assert.equal(occurrence.stageAttempts, 1);
+  assert.equal(occurrence.taskSnapshot.name, "作业提醒");
+  assert.deepEqual(occurrence.taskSnapshot.mentionRoleIds, roles.map((role) => role.id));
+  assert.equal(db.getGroupAutomationTask({ botId, taskId: task.id }).nextRunAt, "2026-08-07T12:00:00.000Z");
+
+  const updated = db.updateGroupAutomationTask({
+    botId,
+    taskId: task.id,
+    expectedVersion: task.version,
+    name: "修改后的任务名称"
+  });
+  assert.equal(updated.name, "修改后的任务名称");
+  assert.equal(db.getGroupAutomationOccurrence({
+    botId,
+    occurrenceId: occurrence.id
+  }).taskSnapshot.name, "作业提醒");
+  db.transitionGroupAutomationOccurrence({
+    occurrenceId: occurrence.id,
+    owner: "prepare-worker-a",
+    fromStages: ["preanalysis"],
+    toStage: "waiting_target",
+    now: "2026-08-05T11:51:00.000Z"
+  });
+});
+
+test("occurrence checkpoints, heartbeat, transitions, and stage fencing are durable", () => {
+  const botId = "group_automation_stage_bot";
+  const { group } = createGroupWithRoles(botId);
+  createWeeklyTask({ botId, groupId: group.id });
+  const occurrence = db.claimPreparatoryGroupAutomationOccurrences({
+    owner: "stage-worker-a",
+    now: "2026-08-05T11:50:00.000Z",
+    prepareBeforeMs: 600_000,
+    leaseMs: 60_000,
+    limit: 1
+  })[0];
+
+  const heartbeat = db.heartbeatGroupAutomationOccurrence({
+    occurrenceId: occurrence.id,
+    owner: "stage-worker-a",
+    now: "2026-08-05T11:50:30.000Z",
+    leaseMs: 60_000
+  });
+  assert.equal(heartbeat.leaseExpiresAt, "2026-08-05T11:51:30.000Z");
+
+  const checkpoint = db.saveGroupAutomationChunkCheckpoint({
+    occurrenceId: occurrence.id,
+    stage: "preanalysis",
+    level: 0,
+    ordinal: 0,
+    inputHash: "sha256:chunk-0",
+    result: { summary: "本段确认完成一次作业" },
+    evidenceMessageIds: [12, 13],
+    now: "2026-08-05T11:50:40.000Z"
+  });
+  assert.deepEqual(checkpoint.evidenceMessageIds, [12, 13]);
+  assert.deepEqual(db.saveGroupAutomationChunkCheckpoint({
+    occurrenceId: occurrence.id,
+    stage: "preanalysis",
+    level: 0,
+    ordinal: 0,
+    inputHash: "sha256:chunk-0",
+    result: { summary: "不得覆盖" },
+    evidenceMessageIds: [99],
+    now: "2026-08-05T11:50:50.000Z"
+  }).result, { summary: "本段确认完成一次作业" });
+
+  const waiting = db.transitionGroupAutomationOccurrence({
+    occurrenceId: occurrence.id,
+    owner: "stage-worker-a",
+    fromStages: ["preanalysis"],
+    toStage: "waiting_target",
+    patch: {
+      decisionNote: "预分析已完成",
+      evidenceMessageIds: [12, 13],
+      frozenPayload: { partial: "完成一次作业" }
+    },
+    now: "2026-08-05T11:51:00.000Z"
+  });
+  assert.equal(waiting.stage, "waiting_target");
+  assert.equal(waiting.leaseOwner, "");
+  assert.equal(waiting.decisionNote, "预分析已完成");
+  assert.throws(() => db.transitionGroupAutomationOccurrence({
+    occurrenceId: occurrence.id,
+    owner: "stage-worker-a",
+    fromStages: ["waiting_target"],
+    toStage: "preanalysis",
+    now: "2026-08-05T11:51:01.000Z"
+  }), /transition|stage/i);
+  assert.throws(() => db.heartbeatGroupAutomationOccurrence({
+    occurrenceId: occurrence.id,
+    owner: "stage-worker-a",
+    now: "2026-08-05T11:51:01.000Z",
+    leaseMs: 60_000
+  }), /lease|owner/i);
+});
+
+test("expired preparatory leases are reclaimable but an unfinished same-task occurrence stays serial", () => {
+  const botId = "group_automation_prepare_reclaim_bot";
+  const { group } = createGroupWithRoles(botId);
+  const task = createWeeklyTask({ botId, groupId: group.id });
+  const first = db.claimPreparatoryGroupAutomationOccurrences({
+    owner: "prepare-worker-a",
+    now: "2026-08-05T11:50:00.000Z",
+    prepareBeforeMs: 600_000,
+    leaseMs: 1_000,
+    limit: 1
+  })[0];
+  assert.deepEqual(db.claimPreparatoryGroupAutomationOccurrences({
+    owner: "prepare-worker-b",
+    now: "2026-08-05T11:50:00.500Z",
+    prepareBeforeMs: 600_000,
+    leaseMs: 1_000,
+    limit: 1
+  }), []);
+  const reclaimed = db.claimPreparatoryGroupAutomationOccurrences({
+    owner: "prepare-worker-b",
+    now: "2026-08-05T11:50:01.000Z",
+    prepareBeforeMs: 600_000,
+    leaseMs: 1_000,
+    limit: 1
+  })[0];
+  assert.equal(reclaimed.id, first.id);
+  assert.equal(reclaimed.leaseOwner, "prepare-worker-b");
+  assert.equal(reclaimed.stageAttempts, 2);
+  db.transitionGroupAutomationOccurrence({
+    occurrenceId: reclaimed.id,
+    owner: "prepare-worker-b",
+    fromStages: ["preanalysis"],
+    toStage: "waiting_target",
+    now: "2026-08-05T11:50:02.000Z"
+  });
+  const fridayClaims = db.claimPreparatoryGroupAutomationOccurrences({
+    owner: "prepare-worker-c",
+    now: "2026-08-07T11:50:00.000Z",
+    prepareBeforeMs: 600_000,
+    leaseMs: 1_000,
+    limit: 100
+  });
+  assert.equal(fridayClaims.some((item) => item.taskId === task.id), false);
 });

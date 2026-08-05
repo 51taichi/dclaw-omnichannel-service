@@ -53,6 +53,26 @@ test("month_end resolves to the real Beijing month end", () => {
   }, "2028-02-01T00:00:00.000Z"), "2028-02-29T01:00:00.000Z");
 });
 
+test("minimum lead time skips an otherwise imminent target", () => {
+  const schedule = {
+    cadence: "daily",
+    scheduleDays: [],
+    timeOfDay: "20:00"
+  };
+  assert.equal(
+    nextGroupAutomationRunAt(schedule, "2026-08-05T11:55:00.000Z", { minimumLeadMs: 600_000 }),
+    "2026-08-06T12:00:00.000Z"
+  );
+  assert.equal(
+    nextGroupAutomationRunAt(schedule, "2026-08-05T11:49:59.999Z", { minimumLeadMs: 600_000 }),
+    "2026-08-05T12:00:00.000Z"
+  );
+  assert.equal(
+    nextGroupAutomationRunAt(schedule, "2026-08-05T11:50:00.000Z", { minimumLeadMs: 600_000 }),
+    "2026-08-05T12:00:00.000Z"
+  );
+});
+
 test("weekly selected days are independent and cycle starts Monday", () => {
   const schedule = {
     cadence: "weekly",

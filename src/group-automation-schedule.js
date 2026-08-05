@@ -128,9 +128,11 @@ export function normalizeGroupAutomationSchedule(input = {}) {
   return { cadence, scheduleDays, timeOfDay };
 }
 
-export function nextGroupAutomationRunAt(input, afterIso) {
+export function nextGroupAutomationRunAt(input, afterIso, { minimumLeadMs = 0 } = {}) {
   const schedule = normalizeGroupAutomationSchedule(input);
   const after = parseInstant(afterIso);
+  const leadMs = Math.max(0, Number(minimumLeadMs) || 0);
+  const eligibleAfterMs = after.getTime() + leadMs;
   const current = beijingParts(after);
   const startDate = {
     year: current.year,
@@ -151,7 +153,10 @@ export function nextGroupAutomationRunAt(input, afterIso) {
     if (!matches) continue;
 
     const candidate = beijingInstant(candidateDate, hour, minute);
-    if (candidate.getTime() > after.getTime()) return candidate.toISOString();
+    if (
+      (leadMs === 0 && candidate.getTime() > eligibleAfterMs) ||
+      (leadMs > 0 && candidate.getTime() >= eligibleAfterMs)
+    ) return candidate.toISOString();
   }
 
   throw new Error("unable to resolve next group automation run");

@@ -697,6 +697,22 @@ db.exec(`
     error_message TEXT NOT NULL DEFAULT '',
     started_at TEXT,
     finished_at TEXT,
+    task_snapshot_json TEXT NOT NULL DEFAULT '{}',
+    history_start_at TEXT,
+    history_end_at TEXT,
+    preanalysis_cutoff_at TEXT,
+    stage TEXT NOT NULL DEFAULT 'legacy',
+    stage_attempts INTEGER NOT NULL DEFAULT 0,
+    stage_attempts_json TEXT NOT NULL DEFAULT '{}',
+    lease_owner TEXT NOT NULL DEFAULT '',
+    heartbeat_at TEXT,
+    decision_note TEXT NOT NULL DEFAULT '',
+    frozen_payload_json TEXT NOT NULL DEFAULT '{}',
+    delivery_state TEXT NOT NULL DEFAULT '',
+    actual_started_at TEXT,
+    actual_completed_at TEXT,
+    target_delay_ms INTEGER,
+    retry_metadata_json TEXT NOT NULL DEFAULT '{}',
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (task_id, scheduled_for)
@@ -707,6 +723,41 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_group_automation_occurrences_lease
   ON managed_group_automation_occurrences (status, lease_expires_at);
+
+  CREATE TABLE IF NOT EXISTS managed_group_automation_chunks (
+    occurrence_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    level INTEGER NOT NULL,
+    ordinal INTEGER NOT NULL,
+    input_hash TEXT NOT NULL,
+    result_json TEXT NOT NULL DEFAULT '{}',
+    evidence_message_ids_json TEXT NOT NULL DEFAULT '[]',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (occurrence_id, stage, level, ordinal, input_hash)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_automation_chunks_occurrence
+  ON managed_group_automation_chunks (bot_id, group_id, occurrence_id, stage, level, ordinal);
+
+  CREATE TABLE IF NOT EXISTS managed_group_automation_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    occurrence_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    group_id TEXT NOT NULL,
+    stage TEXT NOT NULL,
+    attempt_number INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    error_message TEXT NOT NULL DEFAULT '',
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_group_automation_attempts_occurrence
+  ON managed_group_automation_attempts (bot_id, group_id, occurrence_id, id);
 
   CREATE TABLE IF NOT EXISTS managed_group_facts (
     id TEXT PRIMARY KEY,
@@ -1089,6 +1140,22 @@ ensureColumn(
   "warnings_json",
   "TEXT NOT NULL DEFAULT '[]'"
 );
+ensureColumn("managed_group_automation_occurrences", "task_snapshot_json", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("managed_group_automation_occurrences", "history_start_at", "TEXT");
+ensureColumn("managed_group_automation_occurrences", "history_end_at", "TEXT");
+ensureColumn("managed_group_automation_occurrences", "preanalysis_cutoff_at", "TEXT");
+ensureColumn("managed_group_automation_occurrences", "stage", "TEXT NOT NULL DEFAULT 'legacy'");
+ensureColumn("managed_group_automation_occurrences", "stage_attempts", "INTEGER NOT NULL DEFAULT 0");
+ensureColumn("managed_group_automation_occurrences", "stage_attempts_json", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("managed_group_automation_occurrences", "lease_owner", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("managed_group_automation_occurrences", "heartbeat_at", "TEXT");
+ensureColumn("managed_group_automation_occurrences", "decision_note", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("managed_group_automation_occurrences", "frozen_payload_json", "TEXT NOT NULL DEFAULT '{}'");
+ensureColumn("managed_group_automation_occurrences", "delivery_state", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("managed_group_automation_occurrences", "actual_started_at", "TEXT");
+ensureColumn("managed_group_automation_occurrences", "actual_completed_at", "TEXT");
+ensureColumn("managed_group_automation_occurrences", "target_delay_ms", "INTEGER");
+ensureColumn("managed_group_automation_occurrences", "retry_metadata_json", "TEXT NOT NULL DEFAULT '{}'");
 db.exec(`
   CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_messages_external_source
   ON conversation_messages (bot_id, source, source_key)
@@ -1826,6 +1893,22 @@ function rowToGroupAutomationOccurrence(row) {
     errorMessage: row.error_message || "",
     startedAt: row.started_at || "",
     finishedAt: row.finished_at || "",
+    taskSnapshot: parseJson(row.task_snapshot_json) || {},
+    historyStartAt: row.history_start_at || "",
+    historyEndAt: row.history_end_at || "",
+    preanalysisCutoffAt: row.preanalysis_cutoff_at || "",
+    stage: row.stage || "legacy",
+    stageAttempts: Number(row.stage_attempts || 0),
+    stageAttemptsByStage: parseJson(row.stage_attempts_json) || {},
+    leaseOwner: row.lease_owner || "",
+    heartbeatAt: row.heartbeat_at || "",
+    decisionNote: row.decision_note || "",
+    frozenPayload: parseJson(row.frozen_payload_json) || {},
+    deliveryState: row.delivery_state || "",
+    actualStartedAt: row.actual_started_at || "",
+    actualCompletedAt: row.actual_completed_at || "",
+    targetDelayMs: row.target_delay_ms == null ? null : Number(row.target_delay_ms),
+    retryMetadata: parseJson(row.retry_metadata_json) || {},
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -1844,25 +1927,20 @@ function normalizeGroupAutomationTaskValues(input, current = null) {
     throw new Error("invalid group automation task type");
   }
 
-  const scheduleChanged = !current
-    || input.cadence !== undefined
-    || input.scheduleDays !== undefined
-    || input.timeOfDay !== undefined;
   const schedule = normalizeGroupAutomationSchedule({
     cadence: input.cadence === undefined ? current?.cadence : input.cadence,
     scheduleDays: input.scheduleDays === undefined ? current?.scheduleDays : input.scheduleDays,
     timeOfDay: input.timeOfDay === undefined ? current?.timeOfDay : input.timeOfDay
   });
   const enabled = input.enabled === undefined ? current?.enabled ?? true : Boolean(input.enabled);
-  const reenabled = Boolean(current && !current.enabled && enabled);
   let nextRunAt = input.nextRunAt === undefined ? current?.nextRunAt || "" : String(input.nextRunAt || "");
   if (nextRunAt && Number.isNaN(new Date(nextRunAt).getTime())) {
     throw new Error("invalid group automation nextRunAt");
   }
-  if ((scheduleChanged || reenabled) && input.nextRunAt === undefined) {
-    nextRunAt = nextGroupAutomationRunAt(schedule, now());
-  } else if (enabled && !nextRunAt) {
-    nextRunAt = nextGroupAutomationRunAt(schedule, now());
+  if (enabled && input.nextRunAt === undefined) {
+    nextRunAt = nextGroupAutomationRunAt(schedule, now(), { minimumLeadMs: 600_000 });
+  } else if (!current && !enabled && input.nextRunAt === undefined) {
+    nextRunAt = "";
   }
 
   const mentionRoleIds = input.mentionRoleIds === undefined
@@ -1871,13 +1949,21 @@ function normalizeGroupAutomationTaskValues(input, current = null) {
       .map((value) => String(value || "").trim())
       .filter(Boolean))];
 
+  const conditionText = input.conditionText === undefined
+    ? current?.conditionText || ""
+    : String(input.conditionText || "").trim();
+  if (taskType === "conditional_push" && !conditionText) {
+    throw new Error("conditional push condition is required");
+  }
+  if (taskType === "periodic_summary" && conditionText) {
+    throw new Error("periodic summary condition must be empty");
+  }
+
   return {
     name,
     taskType,
     ...schedule,
-    conditionText: input.conditionText === undefined
-      ? current?.conditionText || ""
-      : String(input.conditionText || "").trim(),
+    conditionText,
     content: input.content === undefined ? current?.content || "" : String(input.content || ""),
     summaryTemplate: input.summaryTemplate === undefined
       ? current?.summaryTemplate || ""
@@ -2026,14 +2112,22 @@ export function updateGroupAutomationTask(input) {
     if (taskActivationChanged) {
       db.prepare(`
         UPDATE managed_group_automation_occurrences
-        SET status = 'canceled', lease_expires_at = NULL, execution_token = NULL,
+        SET status = 'canceled',
+            stage = CASE WHEN stage = 'legacy' THEN stage ELSE 'canceled' END,
+            lease_owner = '', lease_expires_at = NULL, heartbeat_at = NULL,
+            execution_token = NULL,
             next_retry_at = NULL,
             reason = CASE WHEN reason = '' THEN ? ELSE reason END,
+            actual_completed_at = CASE
+              WHEN stage = 'legacy' THEN actual_completed_at
+              ELSE COALESCE(actual_completed_at, ?)
+            END,
             finished_at = COALESCE(finished_at, ?), updated_at = ?
         WHERE bot_id = ? AND task_id = ?
           AND status IN ('pending', 'retry_wait', 'evaluating')
       `).run(
         values.enabled ? '任务重新启用，旧执行已取消' : '任务已停用，旧执行已取消',
+        timestamp,
         timestamp,
         timestamp,
         botId,
@@ -2055,7 +2149,7 @@ export function duplicateGroupAutomationTask({ botId, taskId, name = "" }) {
     ...current,
     id: undefined,
     name: String(name || "").trim() || `${current.name} 副本`,
-    nextRunAt: current.nextRunAt,
+    nextRunAt: undefined,
     version: undefined,
     deletedAt: undefined
   });
@@ -2080,13 +2174,20 @@ export function softDeleteGroupAutomationTask({ botId, taskId, expectedVersion }
     if (Number(result.changes) !== 1) throw new Error("group automation task version conflict");
     db.prepare(`
       UPDATE managed_group_automation_occurrences
-      SET status = 'canceled', lease_expires_at = NULL, execution_token = NULL,
+      SET status = 'canceled',
+          stage = CASE WHEN stage = 'legacy' THEN stage ELSE 'canceled' END,
+          lease_owner = '', lease_expires_at = NULL, heartbeat_at = NULL,
+          execution_token = NULL,
           next_retry_at = NULL,
           reason = CASE WHEN reason = '' THEN '任务已删除，旧执行已取消' ELSE reason END,
+          actual_completed_at = CASE
+            WHEN stage = 'legacy' THEN actual_completed_at
+            ELSE COALESCE(actual_completed_at, ?)
+          END,
           finished_at = COALESCE(finished_at, ?), updated_at = ?
       WHERE bot_id = ? AND task_id = ?
         AND status IN ('pending', 'retry_wait', 'evaluating')
-    `).run(timestamp, timestamp, botId, taskId);
+    `).run(timestamp, timestamp, timestamp, botId, taskId);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -2115,6 +2216,397 @@ export function resolveGroupAutomationMentionNames({ botId, groupId, roleIds = [
     else warnings.push(`Mention role ${roleId} was removed`);
   }
   return { names, warnings };
+}
+
+function buildGroupAutomationTaskSnapshot(taskRow) {
+  const group = getGroupById({ botId: taskRow.bot_id, groupId: taskRow.group_id });
+  const roles = listGroupRoles({ botId: taskRow.bot_id, groupId: taskRow.group_id });
+  return {
+    id: taskRow.id,
+    botId: taskRow.bot_id,
+    groupId: taskRow.group_id,
+    name: taskRow.name,
+    taskType: taskRow.task_type,
+    cadence: taskRow.cadence,
+    scheduleDays: parseJson(taskRow.schedule_days_json) || [],
+    timeOfDay: taskRow.time_of_day,
+    conditionText: taskRow.condition_text || "",
+    content: taskRow.content || "",
+    summaryTemplate: taskRow.summary_template || "",
+    mentionRoleIds: listGroupAutomationMentionRoleIds(taskRow.id),
+    version: Number(taskRow.version || 1),
+    group: group ? {
+      id: group.id,
+      currentName: group.currentName,
+      currentRemark: group.currentRemark,
+      background: group.background,
+      replyPolicy: group.replyPolicy
+    } : null,
+    roles: roles.map((role) => ({
+      id: role.id,
+      currentName: role.currentName,
+      identityType: role.identityType,
+      description: role.description,
+      replyPolicy: role.replyPolicy,
+      aliases: role.aliases
+    }))
+  };
+}
+
+export function getGroupAutomationOccurrence({ botId = "", occurrenceId }) {
+  const normalizedBotId = String(botId || "").trim();
+  const row = normalizedBotId
+    ? db.prepare(`
+        SELECT * FROM managed_group_automation_occurrences
+        WHERE bot_id = ? AND id = ?
+      `).get(normalizedBotId, occurrenceId)
+    : db.prepare(`
+        SELECT * FROM managed_group_automation_occurrences WHERE id = ?
+      `).get(occurrenceId);
+  return rowToGroupAutomationOccurrence(row);
+}
+
+const terminalGroupAutomationStages = new Set([
+  "sent",
+  "skipped",
+  "failed",
+  "delivery_unknown",
+  "canceled"
+]);
+
+const allowedGroupAutomationStageTransitions = new Map([
+  ["preanalysis", new Set(["waiting_target", "retry_wait", "failed", "canceled"])],
+  ["waiting_target", new Set(["delta_analysis", "failed", "canceled"])],
+  ["delta_analysis", new Set(["finalizing", "retry_wait", "failed", "canceled"])],
+  ["finalizing", new Set(["send_pending", "skipped", "retry_wait", "failed", "canceled"])],
+  ["send_pending", new Set(["sending", "skipped", "failed", "canceled"])],
+  ["sending", new Set(["sent", "delivery_unknown", "failed"])],
+  ["retry_wait", new Set(["preanalysis", "delta_analysis", "finalizing", "send_pending", "failed", "canceled"])]
+]);
+
+function isUnfinishedGroupAutomationOccurrenceSql(alias = "occurrence") {
+  return `(
+    (${alias}.stage != 'legacy' AND ${alias}.stage NOT IN ('sent','skipped','failed','delivery_unknown','canceled'))
+    OR (${alias}.stage = 'legacy' AND ${alias}.status IN ('pending','evaluating','sending','retry_wait'))
+  )`;
+}
+
+export function claimPreparatoryGroupAutomationOccurrences({
+  owner,
+  now: nowIso = now(),
+  prepareBeforeMs = 600_000,
+  leaseMs = 300_000,
+  limit = 10
+} = {}) {
+  const normalizedOwner = String(owner || "").trim();
+  if (!normalizedOwner) throw new Error("group automation occurrence owner is required");
+  const clock = new Date(nowIso);
+  if (Number.isNaN(clock.getTime())) throw new Error("invalid preparatory claim time");
+  const timestamp = clock.toISOString();
+  const prepareMs = Math.max(0, Number(prepareBeforeMs) || 0);
+  const prepareThrough = new Date(clock.getTime() + prepareMs).toISOString();
+  const leaseExpiresAt = new Date(clock.getTime() + Math.max(1000, Number(leaseMs) || 0))
+    .toISOString();
+  const claimLimit = Math.max(1, Math.min(100, Number.parseInt(limit, 10) || 10));
+  const claimed = [];
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const dueTasks = db.prepare(`
+      SELECT task.*
+      FROM managed_group_automation_tasks task
+      WHERE task.enabled = 1 AND task.deleted_at IS NULL
+        AND task.next_run_at IS NOT NULL AND task.next_run_at <= ?
+        AND NOT EXISTS (
+          SELECT 1 FROM managed_group_automation_occurrences occurrence
+          WHERE occurrence.task_id = task.id
+            AND ${isUnfinishedGroupAutomationOccurrenceSql("occurrence")}
+        )
+      ORDER BY task.next_run_at ASC, task.created_at ASC, task.id ASC
+      LIMIT ?
+    `).all(prepareThrough, claimLimit);
+    for (const taskRow of dueTasks) {
+      const scheduledFor = taskRow.next_run_at;
+      const scheduledInstant = new Date(scheduledFor);
+      const cycle = groupAutomationCycleWindow(taskRow.cadence, scheduledFor);
+      const occurrenceId = crypto.randomUUID();
+      const preanalysisCutoffAt = new Date(scheduledInstant.getTime() - prepareMs).toISOString();
+      const snapshot = buildGroupAutomationTaskSnapshot(taskRow);
+      db.prepare(`
+        INSERT OR IGNORE INTO managed_group_automation_occurrences (
+          id, task_id, bot_id, group_id, scheduled_for, cycle_key,
+          cycle_start_at, cycle_end_at, status, attempts, lease_expires_at,
+          mention_role_ids_json, task_snapshot_json, history_start_at,
+          history_end_at, preanalysis_cutoff_at, stage, stage_attempts,
+          stage_attempts_json, lease_owner, heartbeat_at,
+          frozen_payload_json, retry_metadata_json, created_at, updated_at
+        ) VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, NULL, ?, ?, ?, ?, ?,
+          'preanalysis_pending', 0, '{}', '', NULL, '{}', '{}', ?, ?
+        )
+      `).run(
+        occurrenceId,
+        taskRow.id,
+        taskRow.bot_id,
+        taskRow.group_id,
+        scheduledFor,
+        cycle.cycleKey,
+        cycle.startAt,
+        cycle.endAt,
+        json(snapshot.mentionRoleIds),
+        json(snapshot),
+        cycle.startAt,
+        scheduledFor,
+        preanalysisCutoffAt,
+        timestamp,
+        timestamp
+      );
+      const schedule = {
+        cadence: taskRow.cadence,
+        scheduleDays: parseJson(taskRow.schedule_days_json) || [],
+        timeOfDay: taskRow.time_of_day
+      };
+      db.prepare(`
+        UPDATE managed_group_automation_tasks
+        SET next_run_at = ?, updated_at = ?
+        WHERE id = ? AND next_run_at = ?
+      `).run(
+        nextGroupAutomationRunAt(schedule, scheduledFor),
+        timestamp,
+        taskRow.id,
+        scheduledFor
+      );
+    }
+
+    const candidates = db.prepare(`
+      SELECT occurrence.*
+      FROM managed_group_automation_occurrences occurrence
+      JOIN managed_group_automation_tasks task ON task.id = occurrence.task_id
+      WHERE task.enabled = 1 AND task.deleted_at IS NULL
+        AND (
+          occurrence.stage = 'preanalysis_pending'
+          OR (occurrence.stage = 'preanalysis' AND occurrence.lease_expires_at <= ?)
+          OR (occurrence.stage = 'retry_wait' AND occurrence.next_retry_at <= ?)
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM managed_group_automation_occurrences active
+          WHERE active.task_id = occurrence.task_id AND active.id != occurrence.id
+            AND active.scheduled_for < occurrence.scheduled_for
+            AND ${isUnfinishedGroupAutomationOccurrenceSql("active")}
+        )
+      ORDER BY occurrence.scheduled_for ASC, occurrence.id ASC
+      LIMIT ?
+    `).all(timestamp, timestamp, claimLimit);
+    for (const candidate of candidates) {
+      const attemptsByStage = parseJson(candidate.stage_attempts_json) || {};
+      const nextAttempts = Number(attemptsByStage.preanalysis || 0) + 1;
+      attemptsByStage.preanalysis = nextAttempts;
+      const result = db.prepare(`
+        UPDATE managed_group_automation_occurrences
+        SET stage = 'preanalysis', stage_attempts = stage_attempts + 1,
+            stage_attempts_json = ?, lease_owner = ?, lease_expires_at = ?,
+            heartbeat_at = ?, execution_token = ?, attempts = attempts + 1,
+            started_at = COALESCE(started_at, ?),
+            actual_started_at = COALESCE(actual_started_at, ?), updated_at = ?
+        WHERE id = ? AND (
+          stage = 'preanalysis_pending'
+          OR (stage = 'preanalysis' AND lease_expires_at <= ?)
+          OR (stage = 'retry_wait' AND next_retry_at <= ?)
+        )
+      `).run(
+        json(attemptsByStage),
+        normalizedOwner,
+        leaseExpiresAt,
+        timestamp,
+        normalizedOwner,
+        timestamp,
+        timestamp,
+        timestamp,
+        candidate.id,
+        timestamp,
+        timestamp
+      );
+      if (!result.changes) continue;
+      db.prepare(`
+        INSERT INTO managed_group_automation_attempts (
+          occurrence_id, bot_id, group_id, stage, attempt_number,
+          status, error_message, started_at, finished_at, created_at
+        ) VALUES (?, ?, ?, 'preanalysis', ?, 'processing', '', ?, NULL, ?)
+      `).run(
+        candidate.id,
+        candidate.bot_id,
+        candidate.group_id,
+        nextAttempts,
+        timestamp,
+        timestamp
+      );
+      claimed.push(getGroupAutomationOccurrence({ occurrenceId: candidate.id }));
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return claimed;
+}
+
+function rowToGroupAutomationChunk(row) {
+  if (!row) return null;
+  return {
+    occurrenceId: row.occurrence_id,
+    botId: row.bot_id,
+    groupId: row.group_id,
+    stage: row.stage,
+    level: Number(row.level),
+    ordinal: Number(row.ordinal),
+    inputHash: row.input_hash,
+    result: parseJson(row.result_json) || {},
+    evidenceMessageIds: parseJson(row.evidence_message_ids_json) || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function saveGroupAutomationChunkCheckpoint({
+  occurrenceId,
+  stage,
+  level,
+  ordinal,
+  inputHash,
+  result,
+  evidenceMessageIds = [],
+  now: nowIso = now()
+}) {
+  const occurrence = getGroupAutomationOccurrence({ occurrenceId });
+  if (!occurrence) throw new Error("group automation occurrence not found");
+  const normalizedStage = String(stage || "").trim();
+  const normalizedHash = String(inputHash || "").trim();
+  if (!normalizedStage || !normalizedHash) throw new Error("group automation chunk identity is required");
+  const timestamp = new Date(nowIso).toISOString();
+  db.prepare(`
+    INSERT OR IGNORE INTO managed_group_automation_chunks (
+      occurrence_id, bot_id, group_id, stage, level, ordinal, input_hash,
+      result_json, evidence_message_ids_json, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    occurrence.id,
+    occurrence.botId,
+    occurrence.groupId,
+    normalizedStage,
+    Math.max(0, Number.parseInt(level, 10) || 0),
+    Math.max(0, Number.parseInt(ordinal, 10) || 0),
+    normalizedHash,
+    json(result || {}),
+    json(Array.isArray(evidenceMessageIds) ? evidenceMessageIds : []),
+    timestamp,
+    timestamp
+  );
+  return rowToGroupAutomationChunk(db.prepare(`
+    SELECT * FROM managed_group_automation_chunks
+    WHERE occurrence_id = ? AND stage = ? AND level = ? AND ordinal = ? AND input_hash = ?
+  `).get(
+    occurrence.id,
+    normalizedStage,
+    Math.max(0, Number.parseInt(level, 10) || 0),
+    Math.max(0, Number.parseInt(ordinal, 10) || 0),
+    normalizedHash
+  ));
+}
+
+const groupAutomationOccurrencePatchColumns = new Map([
+  ["historyStartAt", ["history_start_at", (value) => String(value || "")]],
+  ["historyEndAt", ["history_end_at", (value) => String(value || "")]],
+  ["preanalysisCutoffAt", ["preanalysis_cutoff_at", (value) => String(value || "")]],
+  ["taskSnapshot", ["task_snapshot_json", (value) => json(value || {})]],
+  ["decisionNote", ["decision_note", (value) => String(value || "")]],
+  ["evidenceMessageIds", ["evidence_message_ids_json", (value) => json(Array.isArray(value) ? value : [])]],
+  ["frozenPayload", ["frozen_payload_json", (value) => json(value || {})]],
+  ["deliveryState", ["delivery_state", (value) => String(value || "")]],
+  ["actualStartedAt", ["actual_started_at", (value) => value ? String(value) : null]],
+  ["actualCompletedAt", ["actual_completed_at", (value) => value ? String(value) : null]],
+  ["targetDelayMs", ["target_delay_ms", (value) => value == null ? null : Number(value)]],
+  ["retryMetadata", ["retry_metadata_json", (value) => json(value || {})]],
+  ["nextRetryAt", ["next_retry_at", (value) => value ? String(value) : null]],
+  ["errorMessage", ["error_message", (value) => String(value || "")]],
+  ["conditionAchieved", ["condition_achieved", (value) => value == null ? null : value ? 1 : 0]],
+  ["renderedContent", ["rendered_content", (value) => String(value || "")]],
+  ["mentionRoleIds", ["mention_role_ids_json", (value) => json(Array.isArray(value) ? value : [])]],
+  ["mentionNames", ["mention_names_json", (value) => json(Array.isArray(value) ? value : [])]],
+  ["warnings", ["warnings_json", (value) => json(Array.isArray(value) ? value : [])]]
+]);
+
+export function transitionGroupAutomationOccurrence({
+  occurrenceId,
+  owner,
+  fromStages,
+  toStage,
+  patch = {},
+  now: nowIso = now()
+}) {
+  const occurrence = getGroupAutomationOccurrence({ occurrenceId });
+  if (!occurrence) throw new Error("group automation occurrence not found");
+  const allowedFrom = [...new Set((Array.isArray(fromStages) ? fromStages : [fromStages])
+    .map((value) => String(value || "").trim()).filter(Boolean))];
+  const targetStage = String(toStage || "").trim();
+  if (!allowedFrom.includes(occurrence.stage)) {
+    throw new Error("group automation occurrence stage no longer matches transition");
+  }
+  if (!allowedGroupAutomationStageTransitions.get(occurrence.stage)?.has(targetStage)) {
+    throw new Error(`invalid group automation stage transition: ${occurrence.stage} -> ${targetStage}`);
+  }
+  const normalizedOwner = String(owner || "").trim();
+  if (!normalizedOwner || occurrence.leaseOwner !== normalizedOwner) {
+    throw new Error("group automation occurrence lease owner no longer owns this stage");
+  }
+  const timestamp = new Date(nowIso).toISOString();
+  const assignments = ["stage = ?", "updated_at = ?"];
+  const values = [targetStage, timestamp];
+  for (const [key, value] of Object.entries(patch || {})) {
+    const mapping = groupAutomationOccurrencePatchColumns.get(key);
+    if (!mapping) throw new Error(`unsupported group automation occurrence patch: ${key}`);
+    assignments.push(`${mapping[0]} = ?`);
+    values.push(mapping[1](value));
+  }
+  const releasesLease = targetStage === "waiting_target" || terminalGroupAutomationStages.has(targetStage);
+  if (releasesLease) {
+    assignments.push("lease_owner = ''", "lease_expires_at = NULL", "heartbeat_at = NULL", "execution_token = NULL");
+  }
+  if (terminalGroupAutomationStages.has(targetStage)) {
+    assignments.push("actual_completed_at = COALESCE(actual_completed_at, ?)", "finished_at = COALESCE(finished_at, ?)");
+    values.push(timestamp, timestamp);
+  }
+  const placeholders = allowedFrom.map(() => "?").join(", ");
+  const result = db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET ${assignments.join(", ")}
+    WHERE id = ? AND lease_owner = ? AND stage IN (${placeholders})
+  `).run(...values, occurrence.id, normalizedOwner, ...allowedFrom);
+  if (!result.changes) throw new Error("group automation occurrence lease owner no longer owns this stage");
+  return getGroupAutomationOccurrence({ occurrenceId });
+}
+
+export function heartbeatGroupAutomationOccurrence({
+  occurrenceId,
+  owner,
+  now: nowIso = now(),
+  leaseMs = 300_000
+}) {
+  const normalizedOwner = String(owner || "").trim();
+  const clock = new Date(nowIso);
+  if (!normalizedOwner || Number.isNaN(clock.getTime())) {
+    throw new Error("valid group automation occurrence heartbeat owner and time are required");
+  }
+  const timestamp = clock.toISOString();
+  const leaseExpiresAt = new Date(clock.getTime() + Math.max(1000, Number(leaseMs) || 0))
+    .toISOString();
+  const result = db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET heartbeat_at = ?, lease_expires_at = ?, updated_at = ?
+    WHERE id = ? AND lease_owner = ?
+      AND stage NOT IN ('waiting_target','sent','skipped','failed','delivery_unknown','canceled')
+  `).run(timestamp, leaseExpiresAt, timestamp, occurrenceId, normalizedOwner);
+  if (!result.changes) throw new Error("group automation occurrence lease owner no longer owns this stage");
+  return getGroupAutomationOccurrence({ occurrenceId });
 }
 
 function claimGroupAutomationOccurrenceRow({ row, nowIso, leaseExpiresAt }) {
@@ -3676,6 +4168,16 @@ export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
       SET group_id = ?, updated_at = ?
       WHERE bot_id = ? AND group_id = ?
     `).run(targetGroupId, timestamp, botId, sourceGroupId);
+    db.prepare(`
+      UPDATE managed_group_automation_chunks
+      SET group_id = ?, updated_at = ?
+      WHERE bot_id = ? AND group_id = ?
+    `).run(targetGroupId, timestamp, botId, sourceGroupId);
+    db.prepare(`
+      UPDATE managed_group_automation_attempts
+      SET group_id = ?
+      WHERE bot_id = ? AND group_id = ?
+    `).run(targetGroupId, botId, sourceGroupId);
     const movedMessages = db.prepare(`
       UPDATE conversation_messages
       SET conversation_key = ?
@@ -4165,6 +4667,8 @@ export function deleteBotData(botId) {
 
   const tables = [
     "managed_group_history_sync_states",
+    "managed_group_automation_chunks",
+    "managed_group_automation_attempts",
     "managed_group_automation_cycle_states",
     "managed_group_automation_occurrences",
     "managed_group_ledger_jobs",
