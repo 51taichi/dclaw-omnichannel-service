@@ -1,7 +1,7 @@
 {
-  "name": "worktool-bot-service",
+  "name": "dclaw-omnichannel-service",
   "version": "1.0.0",
-  "description": "WorkTool bot callback and proactive message service",
+  "description": "Channel-neutral DClaw customer service and sales platform",
   "type": "module",
   "main": "src/server.js",
   "scripts": {

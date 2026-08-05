@@ -5722,7 +5722,7 @@ function validateGroupAutomationRequest({ botId, groupId, body, current = null }
 app.get("/health", (req, res) => {
   res.json({
     ok: true,
-    service: "worktool-bot-service",
+    service: "dclaw-omnichannel-service",
     time: new Date().toISOString()
   });
 });
@@ -8105,5 +8105,5 @@ app.listen(port, host, () => {
       .catch((error) => logWarn("cockpit.bootstrap.failed", { error }))
       .finally(() => cockpitWorker.start());
   }
-  logInfo("service.started", { host, port });
+  logInfo("service.started", { service: "DClaw omnichannel service", host, port });
 });

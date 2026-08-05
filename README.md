@@ -1,23 +1,24 @@
-# WorkTool Bot Service
+# DClaw Omnichannel Service
 
-这个项目用于把 WorkTool 机器人和 DClaw Agent 连接起来。它只做连接层，不写具体业务回复逻辑。
+独立的 DClaw 客服与销售中台：统一维护 Bot、客户会话、自动化任务和 Agent 调用边界。服务本身不承载具体业务回复逻辑；业务知识、话术和工具调用由 DClaw Agent 负责。
 
-- 被动触发：企微里有人发消息，WorkTool 回调本服务。
-- 主动触发：你的系统调用本服务，本服务再调用 WorkTool 主动发消息。
-- 回调信息：WorkTool 把主动指令的执行结果回调给本服务。
-- Agent 网关：根据 `botId -> DClaw agent` 配置，把消息转给对应 agent。
+- 入站消息由渠道适配器标准化后交给服务。
+- 业务系统可通过服务发起主动消息与自动化任务。
+- Agent 网关根据 `botId -> DClaw agent` 配置路由请求。
+
+> **迁移说明（WorkTool）**：仓库仍保留既有 WorkTool/企业微信适配器与操作说明，仅用于从旧 WorkTool 部署迁移和维持现有集成；它不是新的渠道承诺。当前版本尚未接入 Whapi，也不应据此配置或假定 Whapi 可用。
 
 ## 架构边界
 
 ```text
-WorkTool / 企业微信
-  -> worktool-bot-service
+DClaw 渠道适配器
+  -> dclaw-omnichannel-service
   -> DClaw Agent
-  -> worktool-bot-service
-  -> WorkTool / 企业微信
+  -> dclaw-omnichannel-service
+  -> 渠道适配器
 ```
 
-`worktool-bot-service` 负责：
+`dclaw-omnichannel-service` 负责：
 
 ```text
 接收回调、识别 botId、维护会话、调用 Agent、发送回复、记录日志
@@ -34,7 +35,7 @@ DClaw Agent 负责：
 需要本机安装 Node.js 18 或更高版本。
 
 ```bash
-cd "/Users/moxi/Desktop/codex space/agent create/worktool-bot-service"
+cd "/Users/moxi/Desktop/codex space/agent create/dclaw-omnichannel-service"
 npm install
 cp .env.example .env
 ```
@@ -44,9 +45,9 @@ cp .env.example .env
 ```bash
 PORT=8765
 HOST=0.0.0.0
-ROBOT_ID=你的真实botid
-WORKTOOL_BASE_URL=https://api.worktool.ymdyes.cn
-PUBLIC_BASE_URL=https://你的公网域名
+BOT_ID=你的默认botId
+DCLAW_BASE_URL=https://你的dclaw域名
+DCLAW_PUBLIC_ID=openapi_public_id
 CALLBACK_SECRET=自己生成一串随机字符串
 ADMIN_API_KEY=自己生成一串管理密钥
 ADMIN_SESSION_TTL_HOURS=8
@@ -55,8 +56,9 @@ UPLOAD_MAX_MB=100
 UPLOAD_ALLOWED_ORIGINS=https://你的外部应用域名
 ```
 
-`PUBLIC_BASE_URL` 必须是 WorkTool 可以访问到的 HTTPS 地址。正式环境建议用服务器域名；本地联调用 ngrok、frp、Cloudflare Tunnel 都可以。
-如果外部应用是在浏览器里直接调用上传接口，把它的页面 Origin 写入 `UPLOAD_ALLOWED_ORIGINS`；多个域名用英文逗号分隔。后端服务直连上传不需要配置跨域。
+`BOT_ID` 是单 Bot 配置的首选变量；迁移期间也接受 `ROBOT_ID`。若两者同时设置，`BOT_ID` 优先。多 Bot 部署继续使用 `BOTS_CONFIG_JSON` 或 `BOTS_CONFIG_PATH`，其行为不变。
+
+默认数据库为 `data/dclaw-omnichannel-service.sqlite`。使用 `DATABASE_PATH` 可指定独立数据库文件；该变量优先于 `DATA_DIR`。如果外部应用在浏览器里直接调用上传接口，把页面 Origin 写入 `UPLOAD_ALLOWED_ORIGINS`；多个域名用英文逗号分隔。
 
 DClaw 调用默认 120 秒超时，超时或 DClaw 网关返回 `502/503/504` 会快速重试 1 次。Agent 回复格式不合规时，服务端会先尝试从返回文本中提取唯一 JSON；提取失败才发起一次短超时格式修复。如果最终仍失败，私聊会发送一条兜底提示，避免客户侧完全无响应：
 
@@ -158,7 +160,7 @@ npm run dev
 看到下面输出就说明本地服务已启动：
 
 ```text
-WorkTool bot service listening on http://0.0.0.0:8765
+{"event":"service.started","service":"DClaw omnichannel service","host":"0.0.0.0","port":8765}
 ```
 
 本地健康检查：
@@ -234,7 +236,7 @@ PUBLIC_BASE_URL=https://xxxx.ngrok-free.app
 
 然后重启服务。
 
-## 5. 配置 WorkTool 回调
+## 5. WorkTool 迁移：配置旧回调
 
 启动服务后执行：
 
@@ -327,7 +329,7 @@ cp .env.example .env
 ```bash
 PORT=8765
 HOST=0.0.0.0
-ROBOT_ID=你的真实botid
+BOT_ID=你的真实botid
 WORKTOOL_BASE_URL=https://api.worktool.ymdyes.cn
 PUBLIC_BASE_URL=https://worktool.deepmega.cn
 CALLBACK_SECRET=自己生成一串随机字符串
@@ -361,9 +363,9 @@ npm start
 
 - 使用 PM2 或 systemd 守护进程。
 - 使用 Nginx 反向代理 HTTPS 到本服务的 `3000` 端口。
-- 把 `data/*.jsonl` 换成 MySQL、Postgres 或 MongoDB。
+- 评估备份与迁移策略；当前运行数据默认保存在 SQLite 数据库 `data/dclaw-omnichannel-service.sqlite`。
 - 对 `/api/send` 增加你自己系统的鉴权，避免任何人都能调用你的机器人发消息。
-- 主动发送加队列和限流，WorkTool 文档里接口频率限制约为 QPM 60。
+- 若继续使用旧 WorkTool 适配器，按其文档评估主动发送的队列、限流与频率限制。
 
 Nginx 应代理到：
 
