@@ -2,10 +2,26 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  detectGroupAutomationHistoryScope,
   isCumulativeSummaryVariable,
   parseGroupSummaryTemplate,
   renderGroupSummaryTemplate
 } from "../src/group-summary-template.js";
+
+test("detects cumulative history only when the task language explicitly requires it", () => {
+  assert.equal(detectGroupAutomationHistoryScope({
+    taskType: "conditional_push",
+    conditionText: "今天客户是否完成作业"
+  }), "cycle");
+  assert.equal(detectGroupAutomationHistoryScope({
+    taskType: "conditional_push",
+    conditionText: "从建群至今是否累计完成20次作业"
+  }), "cumulative");
+  assert.equal(detectGroupAutomationHistoryScope({
+    taskType: "periodic_summary",
+    summaryTemplate: "本周 {{本周上课次数（本周明确完成）}}，累计 {{累计上课次数（从建群至今）}}"
+  }), "cumulative");
+});
 
 test("classifies only explicitly cumulative white-language variables", () => {
   assert.equal(isCumulativeSummaryVariable({

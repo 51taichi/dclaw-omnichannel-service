@@ -697,16 +697,23 @@ function buildDclawGroupAutomationAnalysisRequest({
   purpose,
   eventType,
   message,
-  metadata = {}
+  metadata = {},
+  analysisKey = ""
 }) {
-  if (!["group-ledger", "group-automation-occurrence"].includes(purpose)) {
+  if (!["group-ledger", "group-automation-occurrence", "group-history-analysis"].includes(purpose)) {
     throw new Error("invalid group automation DClaw purpose");
   }
   const localConversationId = String(conversationKey || "").trim();
   if (!localConversationId) throw new Error("group automation conversationKey is required");
+  const isolatedAnalysisKey = boundedDclawText(analysisKey, 240).trim();
+  if (purpose === "group-history-analysis" && !isolatedAnalysisKey) {
+    throw new Error("group history analysisKey is required");
+  }
   const identity = buildDclawConversationIdentity({
     botId: binding.botId,
-    conversationKey: localConversationId,
+    conversationKey: isolatedAnalysisKey
+      ? `${localConversationId}\nanalysis:${isolatedAnalysisKey}`
+      : localConversationId,
     conversationEpoch,
     purpose
   });
@@ -724,7 +731,12 @@ function buildDclawGroupAutomationAnalysisRequest({
       localConversationId,
       groupId: boundedDclawText(metadata.groupId, 120),
       taskId: boundedDclawText(metadata.taskId, 120),
-      cycleKey: boundedDclawText(metadata.cycleKey, 80)
+      cycleKey: boundedDclawText(metadata.cycleKey, 80),
+      occurrenceId: boundedDclawText(metadata.occurrenceId, 120),
+      stage: boundedDclawText(metadata.stage, 80),
+      level: Number.isSafeInteger(Number(metadata.level)) ? Number(metadata.level) : null,
+      ordinal: Number.isSafeInteger(Number(metadata.ordinal)) ? Number(metadata.ordinal) : null,
+      analysisKey: isolatedAnalysisKey
     }
   };
 }
@@ -742,6 +754,14 @@ export function buildDclawGroupAutomationOccurrenceRequest(input) {
     ...input,
     purpose: "group-automation-occurrence",
     eventType: "group_automation_occurrence"
+  });
+}
+
+export function buildDclawGroupHistoryAnalysisRequest(input) {
+  return buildDclawGroupAutomationAnalysisRequest({
+    ...input,
+    purpose: "group-history-analysis",
+    eventType: "group_history_analysis"
   });
 }
 

@@ -8,6 +8,23 @@ export function isCumulativeSummaryVariable(variable = {}) {
   );
 }
 
+export function detectGroupAutomationHistoryScope({
+  taskType,
+  conditionText = "",
+  summaryTemplate = ""
+} = {}) {
+  if (taskType === "conditional_push") {
+    return /累计|至今|从建群|自建群|全部历史|历史总/u.test(String(conditionText))
+      ? "cumulative"
+      : "cycle";
+  }
+  if (taskType === "periodic_summary") {
+    const parsed = parseGroupSummaryTemplate(summaryTemplate);
+    return parsed.variables.some(isCumulativeSummaryVariable) ? "cumulative" : "cycle";
+  }
+  throw new Error("unsupported group automation task type");
+}
+
 function parseVariableBody(rawBody) {
   const body = String(rawBody || "").trim();
   const ruleStart = body.indexOf("（");
