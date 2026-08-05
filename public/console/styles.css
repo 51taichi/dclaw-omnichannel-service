@@ -5280,6 +5280,50 @@ html.has-bot-context .action-toolbox-toggle:hover {
   word-break: break-all;
 }
 
+.chat-file-card {
+  display: inline-grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  width: min(280px, 100%);
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line));
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--accent) 7%, #ffffff);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.chat-file-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
+  background: color-mix(in srgb, var(--accent) 11%, #ffffff);
+}
+
+.chat-file-icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent) 14%, #ffffff);
+  color: var(--accent);
+}
+
+.chat-file-icon .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.chat-file-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .chat-attachments {
   display: grid;
   gap: 4px;

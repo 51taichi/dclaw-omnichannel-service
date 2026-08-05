@@ -634,3 +634,39 @@ test("format repair retains the flow decision schema for flow conversations", ()
   assert.match(repairInstructions, /"flowDecision"/);
   assert.match(repairInstructions, /当前节点ID/);
 });
+
+test("inbound WorkTool attachments are included for DClaw agent processing", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation: {
+      conversationKey: "bot_1:private:张三",
+      conversationEpoch: "epoch-1"
+    },
+    message: {
+      messageId: "attachment-1",
+      spoken: "",
+      rawSpoken: "",
+      roomType: 2,
+      textType: 6,
+      receivedName: "张三",
+      atMe: "false",
+      fileUrl: "https://cdn.example.test/resume.pdf",
+      fileName: "张三简历.pdf"
+    }
+  });
+
+  const expected = [
+    {
+      type: "file",
+      url: "https://cdn.example.test/resume.pdf",
+      name: "张三简历.pdf",
+      textType: 6,
+      source: "worktool_callback",
+      available: true
+    }
+  ];
+  assert.deepEqual(request.metadata.worktool.metadata.inboundAttachments, expected);
+  assert.deepEqual(request.metadata.worktool.metadata.payload.inboundAttachments, expected);
+  assert.match(request.message, /inboundAttachments/);
+  assert.match(request.message, /https:\/\/cdn\.example\.test\/resume\.pdf/);
+});

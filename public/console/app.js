@@ -5000,6 +5000,58 @@ function resolveInboundImageMessage(message) {
   };
 }
 
+function inboundMediaType(rawPayload = {}) {
+  const explicitType = String(rawPayload.fileType || rawPayload.type || rawPayload.messageType || "")
+    .trim()
+    .toLowerCase();
+  if (["image", "file", "video", "audio"].includes(explicitType)) return explicitType;
+  return {
+    2: "image",
+    3: "audio",
+    4: "video",
+    5: "file",
+    6: "file"
+  }[Number(rawPayload.textType)] || "file";
+}
+
+function inboundFileIcon(type) {
+  return {
+    video: "video",
+    audio: "audio",
+    file: "file"
+  }[type] || "file";
+}
+
+function resolveInboundFileMessage(message) {
+  const rawPayload = message?.rawPayload || {};
+  const normalizedAttachment = (Array.isArray(message.rawPayload?.inboundAttachments)
+    ? message.rawPayload.inboundAttachments
+    : []
+  ).find((attachment) => attachment && attachment.url && attachment.type !== "image");
+  const fileUrl = String(
+    normalizedAttachment?.url ||
+    [rawPayload.fileUrl, rawPayload.filePath, rawPayload.url]
+      .map((value) => String(value || "").trim())
+      .find((value) => /^https?:\/\//i.test(value)) ||
+    ""
+  ).trim();
+  const type = String(normalizedAttachment?.type || inboundMediaType(rawPayload));
+  if (!fileUrl || type === "image") return null;
+  return {
+    fileUrl,
+    fileName: String(
+      normalizedAttachment?.name ||
+      rawPayload.fileName ||
+      rawPayload.objectName ||
+      rawPayload.name ||
+      fileUrl.split("/").filter(Boolean).pop() ||
+      "文件"
+    ).trim(),
+    label: attachmentTypeLabel(type),
+    icon: inboundFileIcon(type)
+  };
+}
+
 function renderChatMessageContent(message) {
   const mediaPayload = message.rawPayload?.messagePayload;
   const mediaType = String(message.rawPayload?.messageType || "");
@@ -5017,6 +5069,22 @@ function renderChatMessageContent(message) {
       <div class="chat-media">
         ${media}
         ${caption && caption !== "[图片消息]" ? `<div class="chat-text">${escapeHtml(caption)}</div>` : ""}
+        ${attachments}
+        ${sources}
+      </div>
+    `;
+  }
+  const inboundFile = resolveInboundFileMessage(message);
+  if (inboundFile) {
+    const caption = String(message.content || "").trim();
+    const placeholder = `[${inboundFile.label}] ${inboundFile.fileName}`;
+    return `
+      <div class="chat-media">
+        <a class="chat-file-card" href="${escapeHtml(inboundFile.fileUrl)}" target="_blank" rel="noreferrer" title="${escapeHtml(inboundFile.fileUrl)}">
+          <span class="chat-file-icon">${icon(inboundFile.icon)}</span>
+          <span class="chat-file-name">${escapeHtml(inboundFile.fileName)}</span>
+        </a>
+        ${caption && caption !== placeholder ? `<div class="chat-text">${escapeHtml(caption)}</div>` : ""}
         ${attachments}
         ${sources}
       </div>

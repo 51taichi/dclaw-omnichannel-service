@@ -2,6 +2,7 @@ import { normalizeTagDecision } from "./tags.js";
 import { normalizeTagEvaluation } from "./tag-audit.js";
 import { listConfiguredFlowCollectFields } from "./flow-assets.js";
 import { buildDclawConversationIdentity } from "./dclaw-conversation-identity.js";
+import { extractInboundAttachments } from "./inbound-attachments.js";
 
 const defaultDclawRequestMessageMaxChars = 16000;
 const maxDclawCurrentMessageChars = 1200;
@@ -29,6 +30,7 @@ function boundedDclawTextArray(value, maxItems = maxDclawFlowArrayItems, maxChar
 }
 
 function compactInboundPayload(message = {}) {
+  const inboundAttachments = extractInboundAttachments(message);
   return {
     messageId: boundedDclawText(message.messageId, 200),
     receivedName: boundedDclawText(message.receivedName, 200),
@@ -37,7 +39,8 @@ function compactInboundPayload(message = {}) {
     textType: message.textType ?? null,
     atMe: boundedDclawText(message.atMe ?? message.metadata?.atMe, 50),
     fileName: boundedDclawText(message.fileName, 200),
-    filePath: boundedDclawText(message.filePath, 500)
+    filePath: boundedDclawText(message.filePath, 500),
+    inboundAttachments
   };
 }
 
@@ -231,6 +234,7 @@ export function buildDclawRequest({
   const legacyHistoryText = String(legacyHistoryAnalysis?.text || "").trim();
   const currentMessage = String(message.spoken || message.rawSpoken || "");
   const localConversationId = String(conversation.conversationKey || "").trim();
+  const inboundAttachments = extractInboundAttachments(message);
   const identity = buildDclawConversationIdentity({
     botId: binding.botId,
     conversationKey: localConversationId,
@@ -259,6 +263,7 @@ export function buildDclawRequest({
       textType: message.textType,
       fileName: boundedDclawText(message.fileName, 200),
       filePath: boundedDclawText(message.filePath, 500),
+      inboundAttachments,
       payload: compactInboundPayload(message)
     }
   };

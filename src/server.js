@@ -306,6 +306,7 @@ import {
 import {
   shouldProcessInboundForAgent
 } from "./message-rules.js";
+import { inboundAttachmentPlaceholder } from "./inbound-attachments.js";
 import {
   DEFAULT_FRIEND_ADDED_SIGNAL_DEDUPE_MS,
   isFriendAddedSignalDuplicate,
@@ -1025,7 +1026,7 @@ function persistInboundConversation({
       conversationKey,
       direction: "inbound",
       senderName: message.receivedName || "",
-      content: message.spoken || message.rawSpoken || "",
+      content: message.spoken || message.rawSpoken || inboundAttachmentPlaceholder(message) || "",
       rawPayload: message
     })
     : null;

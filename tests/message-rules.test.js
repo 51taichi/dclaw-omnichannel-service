@@ -40,6 +40,32 @@ test("does not treat WorkTool friend-added callbacks as ordinary Agent messages"
   );
 });
 
+test("allows non-text callbacks with readable inbound attachments", () => {
+  assert.equal(
+    shouldProcessInboundForAgent({
+      textType: 6,
+      spoken: "",
+      rawSpoken: "",
+      fileUrl: "https://cdn.example.test/resume.pdf",
+      fileName: "张三简历.pdf"
+    }),
+    true
+  );
+});
+
+test("skips non-text callbacks with only unavailable local attachment paths", () => {
+  assert.equal(
+    shouldProcessInboundForAgent({
+      textType: 2,
+      spoken: "",
+      rawSpoken: "",
+      filePath: "/tmp/worktool/image.png",
+      fileName: "截图.png"
+    }),
+    false
+  );
+});
+
 test("recognizes the WeCom automatic friend greeting but not similar customer text", () => {
   assert.equal(
     isSystemFriendGreeting({
