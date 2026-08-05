@@ -70,7 +70,7 @@ const ADAPTER_METHODS = Object.freeze([
 ]);
 
 const PROVIDER_ID = /^[a-z][a-z0-9-]*$/;
-const RFC3339_TIMESTAMP = /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+const RFC3339_TIMESTAMP = /^(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
 
 export function assertProviderId(provider) {
   if (typeof provider !== "string" || !PROVIDER_ID.test(provider)) {
@@ -84,7 +84,8 @@ export function assertCapabilities(value) {
     invalid("Channel capabilities are invalid");
   }
   for (const key of CHANNEL_CAPABILITY_KEYS) {
-    if (typeof value[key] !== "boolean") {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor.enumerable || !Object.hasOwn(descriptor, "value") || typeof descriptor.value !== "boolean") {
       invalid("Channel capabilities are invalid");
     }
   }
@@ -186,9 +187,7 @@ function normalizeInboundEvent(event) {
   requireNonBlankString(fields.channelAccountId, "Inbound event is invalid");
   requireNonBlankString(fields.eventId, "Inbound event is invalid");
   requireNonBlankString(fields.eventType, "Inbound event is invalid");
-  if (typeof fields.occurredAt !== "string"
-    || !RFC3339_TIMESTAMP.test(fields.occurredAt)
-    || !Number.isFinite(Date.parse(fields.occurredAt))) {
+  if (!isValidRfc3339Timestamp(fields.occurredAt)) {
     invalid("Inbound event is invalid");
   }
 
@@ -336,6 +335,9 @@ function freezeSnapshot(value, ancestors = new WeakSet(), errorMessage = "Send c
   if (typeof value !== "object" || (!isPlainObject(value) && !Array.isArray(value)) || ancestors.has(value)) {
     invalid(errorMessage);
   }
+  if (Array.isArray(value) && !isStandardArray(value)) {
+    invalid(errorMessage);
+  }
   const copy = Array.isArray(value) ? [] : {};
   ancestors.add(value);
   for (const key of Reflect.ownKeys(value)) {
@@ -358,6 +360,27 @@ function freezeSnapshot(value, ancestors = new WeakSet(), errorMessage = "Send c
   }
   ancestors.delete(value);
   return Object.freeze(copy);
+}
+
+function isValidRfc3339Timestamp(value) {
+  if (typeof value !== "string") {
+    return false;
+  }
+  const match = RFC3339_TIMESTAMP.exec(value);
+  if (match === null || !Number.isFinite(Date.parse(value))) {
+    return false;
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return day <= daysInMonth(year, month);
+}
+
+function daysInMonth(year, month) {
+  if (month === 2) {
+    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
 }
 
 function isPlainObject(value) {

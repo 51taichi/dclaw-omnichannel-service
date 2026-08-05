@@ -94,6 +94,17 @@ test("capabilities require exactly the documented boolean keys", () => {
   expectInvalid(() => assertCapabilities(withHiddenStringKey));
   const withSymbolKey = { ...capabilities, [Symbol("hidden")]: true };
   expectInvalid(() => assertCapabilities(withSymbolKey));
+  let getterCalls = 0;
+  const withAccessor = { ...capabilities };
+  Object.defineProperty(withAccessor, "text", {
+    enumerable: true,
+    get() {
+      getterCalls += 1;
+      return true;
+    }
+  });
+  expectInvalid(() => assertCapabilities(withAccessor));
+  assert.equal(getterCalls, 0);
 });
 
 test("adapters require a valid provider, capabilities, and every contract method", () => {
@@ -252,6 +263,11 @@ test("send results reject credential extensions, hidden keys, accessors, and uns
     status: "rejected",
     providerResponse: cyclicResponse
   }));
+  expectInvalid(() => assertSendResult({
+    accepted: false,
+    status: "rejected",
+    providerResponse: Array(2)
+  }));
 });
 
 test("inbound events become recursively frozen snapshots without mutating or aliasing input", () => {
@@ -316,6 +332,7 @@ test("inbound events reject every malformed documented scalar field", () => {
     { eventType: 1 },
     { occurredAt: "not-a-timestamp" },
     { occurredAt: "1" },
+    { occurredAt: "2026-02-31T12:00:00Z" },
     { chat: null },
     { chat: { externalId: "", type: "private", displayName: "Ada" } },
     { chat: { externalId: "chat-1", type: "", displayName: "Ada" } },
@@ -355,6 +372,13 @@ test("inbound events reject unknown extensions, accessors, and unsafe nested aud
   })]));
   expectInvalid(() => assertInboundEvents([validInboundEvent({ rawPayload: { count: 1n } })]));
   expectInvalid(() => assertInboundEvents([validInboundEvent({ rawPayload: new Date() })]));
+  expectInvalid(() => assertInboundEvents([validInboundEvent({
+    message: { ...validInboundEvent().message, attachments: Array(1) }
+  })]));
+  expectInvalid(() => assertInboundEvents([validInboundEvent({
+    message: { ...validInboundEvent().message, mentions: [Array(1)] }
+  })]));
+  expectInvalid(() => assertInboundEvents([validInboundEvent({ rawPayload: { nested: Array(1) } })]));
   const cyclic = {};
   cyclic.self = cyclic;
   expectInvalid(() => assertInboundEvents([validInboundEvent({ rawPayload: cyclic })]));
