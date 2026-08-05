@@ -40,7 +40,13 @@ export function createWhapiAdapter({ resolveAccountClient }) {
     },
     async configureWebhook(account) {
       const client = await clientFor(account);
-      return client.updateSettings(account.webhookSettings);
+      const response = await client.updateSettings(account.webhookSettings);
+      return Object.freeze({
+        configured: true,
+        changes: Array.isArray(response.changes)
+          ? Object.freeze(response.changes.filter((value) => typeof value === "string"))
+          : Object.freeze([])
+      });
     },
     async listChats(account, options) {
       const client = await clientFor(account);
