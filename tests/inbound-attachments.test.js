@@ -47,3 +47,23 @@ test("keeps non-public WorkTool paths unavailable", () => {
   assert.equal(hasAvailableInboundAttachment(message), false);
   assert.equal(inboundAttachmentPlaceholder(message), "[图片] 截图.png");
 });
+
+test("recognizes WorkTool filename size text as an unavailable file", () => {
+  const message = {
+    textType: 1,
+    rawSpoken: "公司就业项目汇总\n(2026).xlsx###42K"
+  };
+
+  assert.deepEqual(extractInboundAttachments(message), [
+    {
+      type: "file",
+      url: "",
+      name: "公司就业项目汇总 (2026).xlsx",
+      textType: 1,
+      source: "worktool_callback",
+      available: false
+    }
+  ]);
+  assert.equal(hasAvailableInboundAttachment(message), false);
+  assert.equal(inboundAttachmentPlaceholder(message), "[文件] 公司就业项目汇总 (2026).xlsx");
+});

@@ -5300,6 +5300,16 @@ html.has-bot-context .action-toolbox-toggle:hover {
   background: color-mix(in srgb, var(--accent) 11%, #ffffff);
 }
 
+.chat-file-card.is-unavailable {
+  cursor: default;
+  color: color-mix(in srgb, var(--text) 72%, var(--muted));
+}
+
+.chat-file-card.is-unavailable:hover {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--line));
+  background: color-mix(in srgb, var(--accent) 7%, #ffffff);
+}
+
 .chat-file-icon {
   display: grid;
   place-items: center;

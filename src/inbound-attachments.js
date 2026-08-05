@@ -55,8 +55,15 @@ function attachmentName(message = {}) {
     message.fileName ||
     message.filename ||
     message.objectName ||
-    message.name
+    message.name ||
+    filenameFromWorktoolText(message.rawSpoken || message.spoken || message.rawMessage)
   );
+}
+
+function filenameFromWorktoolText(value) {
+  const text = cleanText(value);
+  const match = text.match(/^([\s\S]{1,300}?)###\s*[\d.]+\s*(?:B|K|KB|M|MB|G|GB)?$/i);
+  return match ? match[1].replace(/\s+/g, " ").trim() : "";
 }
 
 export function extractInboundAttachments(message = {}) {
@@ -72,7 +79,9 @@ export function extractInboundAttachments(message = {}) {
 
   return [
     {
-      type: detectType(message),
+      type: url || cleanText(message.fileUrl) || cleanText(message.filePath)
+        ? detectType(message)
+        : "file",
       url,
       name,
       textType: normalizeTextType(message.textType),

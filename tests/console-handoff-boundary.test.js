@@ -633,12 +633,16 @@ test("live inbound image callbacks remain visible when WorkTool omits text conte
 
 test("live inbound file callbacks render as clickable file cards", () => {
   assert.equal(app.includes("function resolveInboundFileMessage"), true);
+  assert.equal(app.includes("function inboundFilenameFromText"), true);
   assert.equal(app.includes("message.rawPayload?.inboundAttachments"), true);
   assert.equal(app.includes('class="chat-file-card"'), true);
+  assert.equal(app.includes('class="chat-file-card is-unavailable"'), true);
   assert.equal(app.includes('target="_blank" rel="noreferrer"'), true);
   assert.equal(app.includes('icon(inboundFile.icon)'), true);
   assert.equal(app.includes("inboundFile.fileName"), true);
+  assert.equal(app.includes("###"), true);
   assert.equal(css.includes(".chat-file-card"), true);
+  assert.equal(css.includes(".chat-file-card.is-unavailable"), true);
   assert.equal(css.includes(".chat-file-icon"), true);
   assert.equal(css.includes(".chat-file-name"), true);
 });

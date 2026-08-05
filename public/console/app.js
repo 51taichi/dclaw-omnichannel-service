@@ -5022,12 +5022,19 @@ function inboundFileIcon(type) {
   }[type] || "file";
 }
 
+function inboundFilenameFromText(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^([\s\S]{1,300}?)###\s*[\d.]+\s*(?:B|K|KB|M|MB|G|GB)?$/i);
+  if (!match) return "";
+  return match[1].replace(/\s+/g, " ").trim();
+}
+
 function resolveInboundFileMessage(message) {
   const rawPayload = message?.rawPayload || {};
   const normalizedAttachment = (Array.isArray(message.rawPayload?.inboundAttachments)
     ? message.rawPayload.inboundAttachments
     : []
-  ).find((attachment) => attachment && attachment.url && attachment.type !== "image");
+  ).find((attachment) => attachment && attachment.type !== "image");
   const fileUrl = String(
     normalizedAttachment?.url ||
     [rawPayload.fileUrl, rawPayload.filePath, rawPayload.url]
@@ -5036,7 +5043,12 @@ function resolveInboundFileMessage(message) {
     ""
   ).trim();
   const type = String(normalizedAttachment?.type || inboundMediaType(rawPayload));
-  if (!fileUrl || type === "image") return null;
+  const textFileName = inboundFilenameFromText(
+    message.content || rawPayload.rawSpoken || rawPayload.spoken || rawPayload.rawMessage
+  );
+  if (type === "image" || (!fileUrl && !normalizedAttachment?.name && !textFileName && !rawPayload.fileName)) {
+    return null;
+  }
   return {
     fileUrl,
     fileName: String(
@@ -5044,6 +5056,7 @@ function resolveInboundFileMessage(message) {
       rawPayload.fileName ||
       rawPayload.objectName ||
       rawPayload.name ||
+      textFileName ||
       fileUrl.split("/").filter(Boolean).pop() ||
       "文件"
     ).trim(),
@@ -5078,13 +5091,19 @@ function renderChatMessageContent(message) {
   if (inboundFile) {
     const caption = String(message.content || "").trim();
     const placeholder = `[${inboundFile.label}] ${inboundFile.fileName}`;
-    return `
-      <div class="chat-media">
-        <a class="chat-file-card" href="${escapeHtml(inboundFile.fileUrl)}" target="_blank" rel="noreferrer" title="${escapeHtml(inboundFile.fileUrl)}">
+    const fileCard = inboundFile.fileUrl
+      ? `<a class="chat-file-card" href="${escapeHtml(inboundFile.fileUrl)}" target="_blank" rel="noreferrer" title="${escapeHtml(inboundFile.fileUrl)}">
           <span class="chat-file-icon">${icon(inboundFile.icon)}</span>
           <span class="chat-file-name">${escapeHtml(inboundFile.fileName)}</span>
-        </a>
-        ${caption && caption !== placeholder ? `<div class="chat-text">${escapeHtml(caption)}</div>` : ""}
+        </a>`
+      : `<div class="chat-file-card is-unavailable" title="暂无可打开的文件链接">
+          <span class="chat-file-icon">${icon(inboundFile.icon)}</span>
+          <span class="chat-file-name">${escapeHtml(inboundFile.fileName)}</span>
+        </div>`;
+    return `
+      <div class="chat-media">
+        ${fileCard}
+        ${caption && caption !== placeholder && !inboundFilenameFromText(caption) ? `<div class="chat-text">${escapeHtml(caption)}</div>` : ""}
         ${attachments}
         ${sources}
       </div>
