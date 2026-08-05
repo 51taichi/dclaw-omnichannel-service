@@ -15,6 +15,8 @@ const routes = [
   ["get", "/api/groups/:groupId/automations/:taskId/occurrences"],
   ["post", "/api/groups/:groupId/automations/:taskId/refresh"],
   ["post", "/api/groups/:groupId/automations/occurrences/:occurrenceId/retry"],
+  ["post", "/api/groups/:groupId/automation-occurrences/:occurrenceId/confirm-delivery"],
+  ["post", "/api/groups/:groupId/automation-occurrences/:occurrenceId/confirm-not-delivered-and-retry"],
   ["get", "/api/groups/:groupId/automations/evidence/:messageId"]
 ];
 
@@ -50,6 +52,19 @@ test("merging a managed group reindexes the target shared ledger", () => {
 test("both WorkTool command callbacks reconcile group automation delivery and publish the result", () => {
   assert.equal((source.match(/updateGroupAutomationOccurrenceFromCommandCallback\(\{/g) || []).length, 2);
   assert.equal((source.match(/publishGroupAutomationCallbackResult\(/g) || []).length >= 3, true);
+});
+
+test("manual delivery resolution verifies group ownership and records the authenticated operator", () => {
+  for (const path of [
+    "/api/groups/:groupId/automation-occurrences/:occurrenceId/confirm-delivery",
+    "/api/groups/:groupId/automation-occurrences/:occurrenceId/confirm-not-delivered-and-retry"
+  ]) {
+    const marker = `app.post(\n  "${path}"`;
+    const routeSource = source.slice(source.indexOf(marker), source.indexOf(marker) + 1800);
+    assert.match(routeSource, /assertBotAccess\(req, botId\)/);
+    assert.match(routeSource, /occurrence\.groupId !== groupId/);
+    assert.match(routeSource, /operatorId/);
+  }
 });
 
 test("group history sync is startup-backed and wakes only from persisted group conversation writes", () => {

@@ -124,6 +124,7 @@ import {
   getGroupByConversationKey,
   getGroupById,
   getGroupAutomationTask,
+  getGroupAutomationOccurrence,
   getGroupAutomationCycleState,
   getGroupLedgerState,
   getLatestInboundGroupMessageId,
@@ -235,6 +236,8 @@ import {
   hasUnfinishedGroupLedgerReindex,
   resolveGroupAutomationMentionNames,
   markGroupAutomationOccurrenceSending,
+  confirmGroupAutomationDelivery,
+  prepareManualGroupAutomationRetry,
   completeGroupAutomationOccurrence,
   scheduleGroupAutomationOccurrenceRetry,
   failGroupAutomationOccurrence,
@@ -6196,6 +6199,67 @@ app.post(
       occurrenceId: req.params.occurrenceId
     });
     res.json({ ok: true, occurrence });
+  })
+);
+
+app.post(
+  "/api/groups/:groupId/automation-occurrences/:occurrenceId/confirm-delivery",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    const groupId = req.params.groupId;
+    const access = assertBotAccess(req, botId);
+    if (!getGroupById({ botId, groupId })) {
+      res.status(404).json({ ok: false, message: "managed group not found" });
+      return;
+    }
+    const occurrence = getGroupAutomationOccurrence({
+      botId,
+      occurrenceId: req.params.occurrenceId
+    });
+    if (!occurrence || occurrence.groupId !== groupId) {
+      res.status(404).json({ ok: false, message: "group automation occurrence not found" });
+      return;
+    }
+    const operatorId = String(access.sessionId || access.botId || access.role || "operator");
+    const resolved = confirmGroupAutomationDelivery({
+      botId,
+      occurrenceId: occurrence.id,
+      delivered: true,
+      operatorId
+    });
+    publishGroupAutomationCallbackResult(resolved);
+    res.json({ ok: true, occurrence: resolved });
+  })
+);
+
+app.post(
+  "/api/groups/:groupId/automation-occurrences/:occurrenceId/confirm-not-delivered-and-retry",
+  asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    const botId = String(body.botId || "").trim();
+    const groupId = req.params.groupId;
+    const access = assertBotAccess(req, botId);
+    if (!getGroupById({ botId, groupId })) {
+      res.status(404).json({ ok: false, message: "managed group not found" });
+      return;
+    }
+    const occurrence = getGroupAutomationOccurrence({
+      botId,
+      occurrenceId: req.params.occurrenceId
+    });
+    if (!occurrence || occurrence.groupId !== groupId) {
+      res.status(404).json({ ok: false, message: "group automation occurrence not found" });
+      return;
+    }
+    const operatorId = String(access.sessionId || access.botId || access.role || "operator");
+    const resolved = prepareManualGroupAutomationRetry({
+      botId,
+      occurrenceId: occurrence.id,
+      operatorId
+    });
+    publishGroupAutomationCallbackResult(resolved);
+    res.json({ ok: true, occurrence: resolved });
   })
 );
 

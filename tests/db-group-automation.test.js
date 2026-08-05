@@ -905,6 +905,139 @@ test("waiting target occurrences are claimed exactly at T and terminal transitio
   assert.equal(skipped.status, "skipped");
 });
 
+test("confirmed group delivery writes outbound history once and manual unknown resolution is idempotent", () => {
+  const botId = "group_automation_delivery_resolution_bot";
+  const { group } = createGroupWithRoles(botId);
+  createWeeklyTask({ botId, groupId: group.id });
+
+  function prepareSendingOccurrence(owner, scheduledFor) {
+    const occurrence = db.claimPreparatoryGroupAutomationOccurrences({
+      owner,
+      now: new Date(new Date(scheduledFor).getTime() - 600_000).toISOString(),
+      prepareBeforeMs: 600_000,
+      leaseMs: 60_000,
+      limit: 100
+    }).find((item) => item.botId === botId);
+    db.transitionGroupAutomationOccurrence({
+      occurrenceId: occurrence.id,
+      owner,
+      fromStages: ["preanalysis"],
+      toStage: "waiting_target",
+      now: new Date(new Date(scheduledFor).getTime() - 500_000).toISOString()
+    });
+    const targetOwner = `${owner}-target`;
+    const target = db.claimTargetGroupAutomationOccurrences({
+      owner: targetOwner,
+      now: scheduledFor,
+      leaseMs: 60_000,
+      limit: 100
+    }).find((item) => item.id === occurrence.id);
+    db.transitionGroupAutomationOccurrence({
+      occurrenceId: target.id,
+      owner: targetOwner,
+      fromStages: ["delta_analysis"],
+      toStage: "finalizing",
+      now: scheduledFor
+    });
+    db.transitionGroupAutomationOccurrence({
+      occurrenceId: target.id,
+      owner: targetOwner,
+      fromStages: ["finalizing"],
+      toStage: "send_pending",
+      patch: {
+        frozenPayload: {
+          targetGroupName: group.currentName,
+          content: "固定群提醒",
+          atList: ["家长"],
+          mentionRoleIds: [],
+          evidenceMessageIds: []
+        },
+        renderedContent: "固定群提醒",
+        mentionNames: ["家长"]
+      },
+      now: scheduledFor
+    });
+    db.transitionGroupAutomationOccurrence({
+      occurrenceId: target.id,
+      owner: targetOwner,
+      fromStages: ["send_pending"],
+      toStage: "sending",
+      now: scheduledFor
+    });
+    return { occurrenceId: target.id, owner: targetOwner };
+  }
+
+  const first = prepareSendingOccurrence("delivery-worker", "2026-08-05T12:00:00.000Z");
+  db.transitionGroupAutomationOccurrence({
+    occurrenceId: first.occurrenceId,
+    owner: first.owner,
+    fromStages: ["sending"],
+    toStage: "awaiting_confirmation",
+    patch: {
+      worktoolMessageId: "command-1",
+      worktoolResponse: { code: 0, messageId: "command-1" },
+      deliveryState: "awaiting_confirmation"
+    },
+    now: "2026-08-05T12:00:01.000Z"
+  });
+  const confirmed = db.updateGroupAutomationOccurrenceFromCommandCallback({
+    botId,
+    messageId: "command-1",
+    payload: { errorCode: 0 }
+  });
+  assert.equal(confirmed.stage, "sent");
+  assert.equal(confirmed.status, "sent");
+  db.updateGroupAutomationOccurrenceFromCommandCallback({
+    botId,
+    messageId: "command-1",
+    payload: { errorCode: 0 }
+  });
+  assert.equal(db.listConversationMessages({
+    botId,
+    conversationKey: group.conversationKey,
+    limit: 20
+  }).filter((message) => message.content === "固定群提醒").length, 1);
+
+  const secondTask = db.createGroupAutomationTask({
+    botId,
+    groupId: group.id,
+    name: "第二个任务",
+    taskType: "conditional_push",
+    cadence: "weekly",
+    scheduleDays: [5],
+    timeOfDay: "20:00",
+    conditionText: "是否完成",
+    content: "第二次提醒",
+    summaryTemplate: "",
+    mentionRoleIds: [],
+    enabled: true,
+    nextRunAt: "2026-08-07T12:00:00.000Z"
+  });
+  assert.ok(secondTask.id);
+  const second = prepareSendingOccurrence("unknown-worker", "2026-08-07T12:00:00.000Z");
+  const unknown = db.markGroupAutomationSendUnknown({
+    occurrenceId: second.occurrenceId,
+    owner: second.owner,
+    transportReference: "transport-unknown",
+    error: "timeout",
+    now: "2026-08-07T12:00:01.000Z"
+  });
+  assert.equal(unknown.stage, "delivery_unknown");
+  const retry = db.prepareManualGroupAutomationRetry({
+    botId,
+    occurrenceId: second.occurrenceId,
+    operatorId: "operator-1",
+    now: "2026-08-07T12:01:00.000Z"
+  });
+  assert.equal(retry.stage, "send_pending");
+  assert.deepEqual(db.prepareManualGroupAutomationRetry({
+    botId,
+    occurrenceId: second.occurrenceId,
+    operatorId: "operator-1",
+    now: "2026-08-07T12:01:01.000Z"
+  }), retry);
+});
+
 test("expired preparatory leases are reclaimable but an unfinished same-task occurrence stays serial", () => {
   const botId = "group_automation_prepare_reclaim_bot";
   const { group } = createGroupWithRoles(botId);

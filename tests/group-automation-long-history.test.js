@@ -24,7 +24,8 @@ function createPhasedHarness({
   messages = [],
   transcriptMaxChars = 8_000,
   failChunkOrdinalOnce = null,
-  finalDecision = null
+  finalDecision = null,
+  sendSequence = null
 } = {}) {
   let clock = new Date("2026-08-05T03:50:00.000Z");
   const scheduledFor = "2026-08-05T04:00:00.000Z";
@@ -137,7 +138,7 @@ function createPhasedHarness({
       transitions.push({ from: occurrence.stage, to: toStage, patch: structuredClone(patch) });
       occurrence.stage = toStage;
       Object.assign(occurrence, patch);
-      if (["waiting_target", "sent", "skipped", "failed"].includes(toStage)) {
+      if (["waiting_target", "awaiting_confirmation", "sent", "skipped", "failed", "delivery_unknown"].includes(toStage)) {
         occurrence.leaseOwner = "";
       }
       occurrence.status = toStage === "sent"
@@ -227,7 +228,9 @@ function createPhasedHarness({
     finalizeSummary,
     sendGroupMessage: async (input) => {
       sendCalls.push(input);
-      return { code: 0, messageId: "send-1" };
+      const next = Array.isArray(sendSequence) ? sendSequence.shift() : null;
+      if (next instanceof Error) throw next;
+      return next || { code: 0, messageId: "send-1" };
     },
     now: () => new Date(clock),
     logger: {
@@ -343,10 +346,56 @@ test("mandatory sparse summary freezes and sends nonempty content without a cond
   harness.setClock("2026-08-05T04:00:00.000Z");
   await harness.worker.runOccurrenceTick({ owner: "worker-1", limit: 10 });
 
-  assert.equal(harness.occurrence.stage, "sent");
+  assert.equal(harness.occurrence.stage, "awaiting_confirmation");
   assert.equal(harness.sendCalls[0].content, "本周暂无明确记录。");
   assert.deepEqual(harness.sendCalls[0].atList, ["家长"]);
   assert.equal(harness.occurrence.frozenPayload.content, "本周暂无明确记录。");
+});
+
+test("explicit WorkTool rejection retries the exact frozen payload only twice", async () => {
+  const harness = createPhasedHarness({
+    finalDecision: {
+      achieved: true,
+      decisionNote: "客户已明确完成",
+      evidenceMessageCodes: []
+    },
+    sendSequence: [
+      { code: 500, message: "rejected-1" },
+      { code: 500, message: "rejected-2" },
+      { code: 500, message: "rejected-3" }
+    ]
+  });
+  await harness.worker.runOccurrenceTick({ owner: "worker-1", limit: 10 });
+  harness.setClock("2026-08-05T04:00:00.000Z");
+  await harness.worker.runOccurrenceTick({ owner: "worker-1", limit: 10 });
+
+  assert.equal(harness.occurrence.stage, "failed");
+  assert.equal(harness.sendCalls.length, 3);
+  assert.deepEqual(
+    harness.sendCalls.map(({ content, atList }) => ({ content, atList })),
+    Array(3).fill({ content: "请完成作业", atList: ["家长"] })
+  );
+  assert.equal(harness.finalCalls.length, 1);
+});
+
+test("ambiguous transport failure stops after one send and requires manual resolution", async () => {
+  const timeout = new DOMException("timed out", "TimeoutError");
+  const harness = createPhasedHarness({
+    finalDecision: {
+      achieved: true,
+      decisionNote: "客户已明确完成",
+      evidenceMessageCodes: []
+    },
+    sendSequence: [timeout]
+  });
+  await harness.worker.runOccurrenceTick({ owner: "worker-1", limit: 10 });
+  harness.setClock("2026-08-05T04:00:00.000Z");
+  await harness.worker.runOccurrenceTick({ owner: "worker-1", limit: 10 });
+
+  assert.equal(harness.occurrence.stage, "delivery_unknown");
+  assert.equal(harness.sendCalls.length, 1);
+  assert.equal(harness.finalCalls.length, 1);
+  assert.equal(harness.occurrence.frozenPayload.content, "请完成作业");
 });
 
 test("technical analysis failure never sends and metrics never contain message or context bodies", async () => {

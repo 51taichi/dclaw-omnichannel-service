@@ -1059,6 +1059,93 @@ function createPhasedGroupAutomationWorker({
     return checkpoint.result;
   }
 
+  async function deliverFrozenPayload(occurrence) {
+    const frozenPayload = occurrence.frozenPayload || {};
+    if (!String(frozenPayload.content || "").trim()) {
+      throw new Error("frozen group automation payload is unavailable");
+    }
+    if (occurrence.stage === "send_pending") {
+      const sending = db.transitionGroupAutomationOccurrence({
+        occurrenceId: occurrence.id,
+        owner: occurrence.leaseOwner,
+        fromStages: ["send_pending"],
+        toStage: "sending",
+        patch: { deliveryState: "sending" },
+        now: instantFrom(now).toISOString()
+      });
+      Object.assign(occurrence, sending, { stage: "sending" });
+    }
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      try {
+        const response = await sendGroupMessage({
+          robotId: occurrence.botId,
+          targets: [frozenPayload.targetGroupName],
+          content: frozenPayload.content,
+          atList: frozenPayload.atList || [],
+          occurrenceId: occurrence.id
+        });
+        assertWorktoolAccepted(response);
+        const worktoolMessageId = extractWorktoolMessageId(response);
+        return db.transitionGroupAutomationOccurrence({
+          occurrenceId: occurrence.id,
+          owner: occurrence.leaseOwner,
+          fromStages: ["sending"],
+          toStage: "awaiting_confirmation",
+          patch: {
+            deliveryState: "awaiting_confirmation",
+            worktoolMessageId,
+            worktoolResponse: response,
+            retryMetadata: {
+              ...(occurrence.retryMetadata || {}),
+              sendAttempts: attempt
+            }
+          },
+          now: instantFrom(now).toISOString()
+        });
+      } catch (error) {
+        if (error?.worktoolExplicitRejection === true) {
+          if (attempt < 3) continue;
+          return db.transitionGroupAutomationOccurrence({
+            occurrenceId: occurrence.id,
+            owner: occurrence.leaseOwner,
+            fromStages: ["sending"],
+            toStage: "failed",
+            patch: {
+              deliveryState: "rejected",
+              errorMessage: String(error.message || error),
+              retryMetadata: {
+                ...(occurrence.retryMetadata || {}),
+                sendAttempts: attempt
+              }
+            },
+            now: instantFrom(now).toISOString()
+          });
+        }
+        if (typeof db.markGroupAutomationSendUnknown === "function") {
+          return db.markGroupAutomationSendUnknown({
+            occurrenceId: occurrence.id,
+            owner: occurrence.leaseOwner,
+            transportReference: String(error?.transportReference || ""),
+            error: String(error?.message || error),
+            now: instantFrom(now).toISOString()
+          });
+        }
+        return db.transitionGroupAutomationOccurrence({
+          occurrenceId: occurrence.id,
+          owner: occurrence.leaseOwner,
+          fromStages: ["sending"],
+          toStage: "delivery_unknown",
+          patch: {
+            deliveryState: "unknown",
+            errorMessage: String(error?.message || error)
+          },
+          now: instantFrom(now).toISOString()
+        });
+      }
+    }
+    throw new Error("unreachable group automation delivery state");
+  }
+
   async function processTarget(occurrence, context) {
     const startedAt = instantFrom(now);
     if (startedAt.getTime() < new Date(occurrence.scheduledFor).getTime()) {
@@ -1093,7 +1180,7 @@ function createPhasedGroupAutomationWorker({
           checkpointStage: "delta_chunk"
         })
       : null;
-    db.transitionGroupAutomationOccurrence({
+    const sendPending = db.transitionGroupAutomationOccurrence({
       occurrenceId: occurrence.id,
       owner: occurrence.leaseOwner,
       fromStages: ["delta_analysis"],
@@ -1187,40 +1274,12 @@ function createPhasedGroupAutomationWorker({
       },
       now: instantFrom(now).toISOString()
     });
-    occurrence.stage = "send_pending";
+    Object.assign(occurrence, sendPending, { stage: "send_pending", frozenPayload });
     if (typeof sendGroupMessage !== "function") return db.getGroupAutomationOccurrence({
       occurrenceId: occurrence.id
     });
-    db.transitionGroupAutomationOccurrence({
-      occurrenceId: occurrence.id,
-      owner: occurrence.leaseOwner,
-      fromStages: ["send_pending"],
-      toStage: "sending",
-      patch: { deliveryState: "sending" },
-      now: instantFrom(now).toISOString()
-    });
-    occurrence.stage = "sending";
-    const response = await sendGroupMessage({
-      robotId: occurrence.botId,
-      targets: [frozenPayload.targetGroupName],
-      content: frozenPayload.content,
-      atList: frozenPayload.atList,
-      occurrenceId: occurrence.id
-    });
-    assertWorktoolAccepted(response);
+    const completed = await deliverFrozenPayload(occurrence);
     const completedAt = instantFrom(now);
-    const completed = db.transitionGroupAutomationOccurrence({
-      occurrenceId: occurrence.id,
-      owner: occurrence.leaseOwner,
-      fromStages: ["sending"],
-      toStage: "sent",
-      patch: {
-        deliveryState: "sent",
-        actualCompletedAt: completedAt.toISOString(),
-        targetDelayMs: Math.max(0, completedAt.getTime() - new Date(occurrence.scheduledFor).getTime())
-      },
-      now: completedAt.toISOString()
-    });
     logPhased(logger, "info", "group_automation.target.completed", stageMetrics({
       occurrence,
       stage: "sent",
@@ -1289,6 +1348,9 @@ function createPhasedGroupAutomationWorker({
     try {
       if (occurrence.stage === "preanalysis") return await processPreanalysis(occurrence, context);
       if (occurrence.stage === "delta_analysis") return await processTarget(occurrence, context);
+      if (occurrence.stage === "send_pending" && typeof sendGroupMessage === "function") {
+        return await deliverFrozenPayload(occurrence);
+      }
       return occurrence;
     } catch (error) {
       return failStage(occurrence, error);

@@ -2281,7 +2281,8 @@ const allowedGroupAutomationStageTransitions = new Map([
   ["delta_analysis", new Set(["finalizing", "retry_wait", "failed", "canceled"])],
   ["finalizing", new Set(["send_pending", "skipped", "retry_wait", "failed", "canceled"])],
   ["send_pending", new Set(["sending", "skipped", "failed", "canceled"])],
-  ["sending", new Set(["sent", "delivery_unknown", "failed"])],
+  ["sending", new Set(["awaiting_confirmation", "sent", "delivery_unknown", "failed"])],
+  ["awaiting_confirmation", new Set(["sent", "failed", "delivery_unknown"])],
   ["retry_wait", new Set(["preanalysis", "delta_analysis", "finalizing", "send_pending", "failed", "canceled"])]
 ]);
 
@@ -2575,6 +2576,8 @@ export function claimTargetGroupAutomationOccurrences({
           OR (occurrence.stage IN ('delta_analysis','finalizing','send_pending')
             AND occurrence.lease_expires_at <= ?)
           OR (occurrence.stage = 'retry_wait' AND occurrence.next_retry_at <= ?)
+          OR (occurrence.stage = 'send_pending' AND occurrence.lease_owner = ''
+            AND occurrence.next_retry_at <= ?)
         )
         AND NOT EXISTS (
           SELECT 1 FROM managed_group_automation_occurrences active
@@ -2584,7 +2587,7 @@ export function claimTargetGroupAutomationOccurrences({
         )
       ORDER BY occurrence.scheduled_for ASC, occurrence.id ASC
       LIMIT ?
-    `).all(timestamp, timestamp, timestamp, claimLimit);
+    `).all(timestamp, timestamp, timestamp, timestamp, claimLimit);
     for (const candidate of candidates) {
       const retryMetadata = parseJson(candidate.retry_metadata_json) || {};
       const targetStage = candidate.stage === "waiting_target"
@@ -2607,6 +2610,7 @@ export function claimTargetGroupAutomationOccurrences({
           (stage = 'waiting_target' AND scheduled_for <= ?)
           OR (stage IN ('delta_analysis','finalizing','send_pending') AND lease_expires_at <= ?)
           OR (stage = 'retry_wait' AND next_retry_at <= ?)
+          OR (stage = 'send_pending' AND lease_owner = '' AND next_retry_at <= ?)
         )
       `).run(
         targetStage,
@@ -2619,6 +2623,7 @@ export function claimTargetGroupAutomationOccurrences({
         timestamp,
         timestamp,
         candidate.id,
+        timestamp,
         timestamp,
         timestamp,
         timestamp
@@ -2668,6 +2673,8 @@ const groupAutomationOccurrencePatchColumns = new Map([
   ["mentionRoleIds", ["mention_role_ids_json", (value) => json(Array.isArray(value) ? value : [])]],
   ["mentionNames", ["mention_names_json", (value) => json(Array.isArray(value) ? value : [])]],
   ["warnings", ["warnings_json", (value) => json(Array.isArray(value) ? value : [])]]
+  , ["worktoolMessageId", ["worktool_message_id", (value) => String(value || "")]]
+  , ["worktoolResponse", ["worktool_response_json", (value) => value == null ? null : json(value)]]
 ]);
 
 export function transitionGroupAutomationOccurrence({
@@ -2702,7 +2709,9 @@ export function transitionGroupAutomationOccurrence({
     assignments.push(`${mapping[0]} = ?`);
     values.push(mapping[1](value));
   }
-  const releasesLease = targetStage === "waiting_target" || terminalGroupAutomationStages.has(targetStage);
+  const releasesLease = targetStage === "waiting_target"
+    || targetStage === "awaiting_confirmation"
+    || terminalGroupAutomationStages.has(targetStage);
   if (releasesLease) {
     assignments.push("lease_owner = ''", "lease_expires_at = NULL", "heartbeat_at = NULL", "execution_token = NULL");
   }
@@ -3139,6 +3148,152 @@ export function listGroupAutomationOccurrences({
   };
 }
 
+function insertConfirmedGroupAutomationOutbound(occurrence, confirmedAt = now()) {
+  const frozenPayload = occurrence?.frozenPayload || {};
+  const content = String(frozenPayload.content || occurrence?.renderedContent || "").trim();
+  if (!content) throw new Error("confirmed group automation content is unavailable");
+  const group = getGroupById({ botId: occurrence.botId, groupId: occurrence.groupId });
+  if (!group) throw new Error("confirmed group automation group is unavailable");
+  const existing = db.prepare(`
+    SELECT id FROM conversation_messages
+    WHERE bot_id = ? AND conversation_key = ?
+      AND json_extract(raw_payload_json, '$.source') = 'group_automation'
+      AND json_extract(raw_payload_json, '$.occurrenceId') = ?
+    LIMIT 1
+  `).get(occurrence.botId, group.conversationKey, occurrence.id);
+  if (existing) return existing.id;
+  const result = db.prepare(`
+    INSERT INTO conversation_messages (
+      bot_id, conversation_key, direction, sender_name, content, raw_payload_json, created_at
+    ) VALUES (?, ?, 'outbound', '机器人', ?, ?, ?)
+  `).run(
+    occurrence.botId,
+    group.conversationKey,
+    content,
+    json({
+      source: "group_automation",
+      occurrenceId: occurrence.id,
+      taskId: occurrence.taskId,
+      atList: frozenPayload.atList || occurrence.mentionNames || [],
+      messageId: occurrence.worktoolMessageId
+    }),
+    new Date(confirmedAt).toISOString()
+  );
+  return Number(result.lastInsertRowid);
+}
+
+export function markGroupAutomationSendUnknown({
+  occurrenceId,
+  owner,
+  transportReference = "",
+  error = "",
+  now: nowIso = now()
+}) {
+  const occurrence = getGroupAutomationOccurrence({ occurrenceId });
+  if (!occurrence) throw new Error("group automation occurrence not found");
+  return transitionGroupAutomationOccurrence({
+    occurrenceId,
+    owner,
+    fromStages: ["sending"],
+    toStage: "delivery_unknown",
+    patch: {
+      deliveryState: "unknown",
+      errorMessage: String(error || "group automation delivery result is unknown"),
+      retryMetadata: {
+        ...(occurrence.retryMetadata || {}),
+        transportReference: String(transportReference || ""),
+        unknownAt: new Date(nowIso).toISOString()
+      }
+    },
+    now: nowIso
+  });
+}
+
+export function confirmGroupAutomationDelivery({
+  botId,
+  occurrenceId,
+  delivered = true,
+  operatorId,
+  now: nowIso = now()
+}) {
+  const occurrence = getGroupAutomationOccurrence({ botId, occurrenceId });
+  if (!occurrence) throw new Error("group automation occurrence not found");
+  const normalizedOperatorId = String(operatorId || "").trim();
+  if (!normalizedOperatorId) throw new Error("group automation delivery operator is required");
+  if (delivered && occurrence.stage === "sent") return occurrence;
+  if (!delivered && occurrence.stage === "send_pending") return occurrence;
+  if (!delivered) throw new Error("use prepareManualGroupAutomationRetry to confirm non-delivery");
+  if (!["delivery_unknown", "awaiting_confirmation"].includes(occurrence.stage)) {
+    throw new Error("group automation occurrence is not awaiting delivery resolution");
+  }
+  const timestamp = new Date(nowIso).toISOString();
+  const retryMetadata = {
+    ...(occurrence.retryMetadata || {}),
+    deliveryResolution: {
+      delivered: true,
+      operatorId: normalizedOperatorId,
+      resolvedAt: timestamp
+    }
+  };
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const result = db.prepare(`
+      UPDATE managed_group_automation_occurrences
+      SET stage = 'sent', status = 'sent', delivery_state = 'confirmed',
+          retry_metadata_json = ?, actual_completed_at = COALESCE(actual_completed_at, ?),
+          finished_at = COALESCE(finished_at, ?), error_message = '', updated_at = ?
+      WHERE bot_id = ? AND id = ? AND stage IN ('delivery_unknown','awaiting_confirmation')
+    `).run(json(retryMetadata), timestamp, timestamp, timestamp, botId, occurrenceId);
+    if (!result.changes) throw new Error("group automation delivery resolution changed concurrently");
+    const updated = getGroupAutomationOccurrence({ botId, occurrenceId });
+    insertConfirmedGroupAutomationOutbound(updated, timestamp);
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return getGroupAutomationOccurrence({ botId, occurrenceId });
+}
+
+export function prepareManualGroupAutomationRetry({
+  botId,
+  occurrenceId,
+  operatorId,
+  now: nowIso = now()
+}) {
+  const occurrence = getGroupAutomationOccurrence({ botId, occurrenceId });
+  if (!occurrence) throw new Error("group automation occurrence not found");
+  const normalizedOperatorId = String(operatorId || "").trim();
+  if (!normalizedOperatorId) throw new Error("group automation delivery operator is required");
+  if (
+    occurrence.stage === "send_pending"
+    && occurrence.retryMetadata?.manualRetry?.operatorId === normalizedOperatorId
+  ) return occurrence;
+  if (occurrence.stage !== "delivery_unknown") {
+    throw new Error("only an unknown delivery can be confirmed not delivered and retried");
+  }
+  const timestamp = new Date(nowIso).toISOString();
+  const retryMetadata = {
+    ...(occurrence.retryMetadata || {}),
+    retryStage: "send_pending",
+    manualRetry: {
+      confirmedNotDelivered: true,
+      operatorId: normalizedOperatorId,
+      requestedAt: timestamp
+    }
+  };
+  const result = db.prepare(`
+    UPDATE managed_group_automation_occurrences
+    SET stage = 'send_pending', status = 'pending', delivery_state = 'manual_retry_pending',
+        retry_metadata_json = ?, lease_owner = '', lease_expires_at = NULL,
+        heartbeat_at = NULL, execution_token = NULL, next_retry_at = ?,
+        error_message = '', actual_completed_at = NULL, finished_at = NULL, updated_at = ?
+    WHERE bot_id = ? AND id = ? AND stage = 'delivery_unknown'
+  `).run(json(retryMetadata), timestamp, timestamp, botId, occurrenceId);
+  if (!result.changes) throw new Error("group automation manual retry changed concurrently");
+  return getGroupAutomationOccurrence({ botId, occurrenceId });
+}
+
 export function updateGroupAutomationOccurrenceFromCommandCallback({
   botId,
   messageId,
@@ -3156,11 +3311,23 @@ export function updateGroupAutomationOccurrenceFromCommandCallback({
   `).get(normalizedBotId, normalizedMessageId));
   if (!occurrence) return null;
   const errorCode = Number(payload.errorCode ?? 0);
+  if (occurrence.stage === "awaiting_confirmation" && errorCode === 0) {
+    return confirmGroupAutomationDelivery({
+      botId: normalizedBotId,
+      occurrenceId: occurrence.id,
+      delivered: true,
+      operatorId: "worktool_callback",
+      now: now()
+    });
+  }
   if (errorCode === 0) return occurrence;
   const timestamp = now();
   db.prepare(`
     UPDATE managed_group_automation_occurrences
-    SET status = 'failed',
+    SET status = 'failed', stage = CASE
+          WHEN stage = 'awaiting_confirmation' THEN 'failed'
+          ELSE stage
+        END,
         worktool_response_json = ?,
         error_message = ?,
         finished_at = COALESCE(finished_at, ?),
