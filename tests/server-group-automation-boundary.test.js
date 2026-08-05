@@ -51,3 +51,11 @@ test("both WorkTool command callbacks reconcile group automation delivery and pu
   assert.equal((source.match(/updateGroupAutomationOccurrenceFromCommandCallback\(\{/g) || []).length, 2);
   assert.equal((source.match(/publishGroupAutomationCallbackResult\(/g) || []).length >= 3, true);
 });
+
+test("group history sync is startup-backed and wakes only from persisted group conversation writes", () => {
+  assert.match(source, /createGroupHistorySyncWorker\(\{/);
+  assert.match(source, /enqueueAllManagedGroupsForHistorySync\(/);
+  assert.match(source, /function insertConversationMessageAndWakeGroupHistory\(/);
+  assert.match(source, /getGroupByConversationKey\(\{[\s\S]*groupHistorySyncWorker\.wake\(\{/);
+  assert.doesNotMatch(source, /groupHistorySyncWorker[\s\S]{0,300}listWorkToolGroups/);
+});

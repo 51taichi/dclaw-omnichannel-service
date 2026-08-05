@@ -145,7 +145,7 @@ import {
   insertAgentResponseValidationFailure,
   insertAgentTagEvaluations,
   updateAgentResponseValidationRetryOutcome,
-  insertConversationMessage,
+  insertConversationMessage as insertConversationMessageDb,
   insertImportedConversationMessages,
   insertCommandCallback,
   insertIncomingMessage,
@@ -220,6 +220,14 @@ import {
   scheduleTagActivationTask,
   saveGroupConfig,
   saveGroupRoles,
+  getLatestGroupConversationMessageIdAtOrBefore,
+  getGroupHistorySyncState,
+  enqueueGroupHistorySync,
+  claimGroupHistorySyncJobs,
+  heartbeatGroupHistorySyncJob,
+  listCanonicalGroupMessagesForHistory,
+  completeGroupHistorySyncBatch,
+  failGroupHistorySyncJob,
   enqueueGroupLedgerJob,
   claimGroupLedgerJobs,
   applyGroupLedgerEvaluation,
@@ -260,6 +268,11 @@ import {
   upsertWorktoolApiMessageCache
 } from "./db.js";
 import { createGroupAutomationWorker } from "./group-automation-worker.js";
+import { createGroupHistorySyncWorker } from "./group-history-sync-worker.js";
+import {
+  appendDclawGroupHistory,
+  probeDclawGroupHistoryCapability
+} from "./dclaw-group-history.js";
 import { serializeGroupAutomationCurrentState } from "./group-automation-task-state.js";
 import {
   groupAutomationCycleKey,
@@ -1624,6 +1637,25 @@ const groupAutomationWorkerConfig = {
     Math.min(100, Number(process.env.GROUP_AUTOMATION_BATCH_SIZE || 10))
   )
 };
+const groupHistorySyncWorkerConfig = {
+  enabled: process.env.GROUP_HISTORY_SYNC_WORKER_ENABLED !== "false",
+  intervalMs: Math.max(
+    500,
+    Number(process.env.GROUP_HISTORY_SYNC_INTERVAL_MS || 2000)
+  ),
+  leaseMs: Math.max(
+    30_000,
+    Number(process.env.GROUP_HISTORY_SYNC_LEASE_MS || 120000)
+  ),
+  batchSize: Math.max(
+    1,
+    Math.min(200, Number(process.env.GROUP_HISTORY_SYNC_BATCH_SIZE || 200))
+  ),
+  claimLimit: Math.max(
+    1,
+    Math.min(100, Number(process.env.GROUP_HISTORY_SYNC_CLAIM_LIMIT || 10))
+  )
+};
 const friendAddedReentryCooldownMs = Math.max(
   0,
   Number(process.env.FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES || 0) * 60 * 1000
@@ -1660,6 +1692,28 @@ let tagActivationWorkerBusy = false;
 const agentInvocationQueue = createAgentInvocationQueue({
   concurrency: process.env.DCLAW_AGENT_CONCURRENCY || 3
 });
+
+let groupHistorySyncWorker = null;
+
+function insertConversationMessageAndWakeGroupHistory(input) {
+  const message = insertConversationMessageDb(input);
+  const group = getGroupByConversationKey({
+    botId: input.botId,
+    conversationKey: input.conversationKey
+  });
+  if (group && groupHistorySyncWorker) {
+    void groupHistorySyncWorker.wake({ botId: input.botId, groupId: group.id })
+      .catch((error) => logWarn("group_history.sync.wake_failed", {
+        botId: input.botId,
+        groupId: group.id,
+        messageId: message.id,
+        error
+      }));
+  }
+  return message;
+}
+
+const insertConversationMessage = insertConversationMessageAndWakeGroupHistory;
 
 function inboundCoalesceKey(botId, conversationKey) {
   return `${String(botId || "")}\u0000${String(conversationKey || "")}`;
@@ -1756,6 +1810,57 @@ const inboundCoalescer = createInboundMessageCoalescer({
 
 function enqueueAgentInvocation(task, options) {
   return agentInvocationQueue.enqueue(task, options);
+}
+
+groupHistorySyncWorker = createGroupHistorySyncWorker({
+  db: {
+    getLatestGroupConversationMessageIdAtOrBefore,
+    getGroupHistorySyncState,
+    enqueueGroupHistorySync,
+    claimGroupHistorySyncJobs,
+    heartbeatGroupHistorySyncJob,
+    listCanonicalGroupMessagesForHistory,
+    completeGroupHistorySyncBatch,
+    failGroupHistorySyncJob,
+    listGroupRoles
+  },
+  resolveDclawBinding: getBotBinding,
+  probeCapability: probeDclawGroupHistoryCapability,
+  appendHistory: appendDclawGroupHistory,
+  now: () => new Date(),
+  logger: {
+    info: logInfo,
+    warn: logWarn,
+    error: logError
+  },
+  batchSize: groupHistorySyncWorkerConfig.batchSize,
+  leaseMs: groupHistorySyncWorkerConfig.leaseMs
+});
+
+async function enqueueAllManagedGroupsForHistorySync() {
+  let enqueued = 0;
+  for (const binding of listBotBindings()) {
+    let page = 1;
+    while (true) {
+      const result = listGroupsPage({ botId: binding.botId, page, pageSize: 100 });
+      for (const group of result.items) {
+        try {
+          await groupHistorySyncWorker.wake({ botId: binding.botId, groupId: group.id });
+          enqueued += 1;
+        } catch (error) {
+          logWarn("group_history.sync.backfill_enqueue_failed", {
+            botId: binding.botId,
+            groupId: group.id,
+            error
+          });
+        }
+      }
+      if (page >= result.pagination.totalPages) break;
+      page += 1;
+    }
+  }
+  logInfo("group_history.sync.backfill_enqueued", { groupCount: enqueued });
+  return enqueued;
 }
 
 const groupAutomationWorker = createGroupAutomationWorker({
@@ -4377,6 +4482,21 @@ if (tagActivationWorkerConfig.enabled) {
       logError("tag.activation.worker.failed", { error });
     });
   }, tagActivationWorkerConfig.intervalMs).unref();
+}
+
+if (groupHistorySyncWorkerConfig.enabled) {
+  const groupHistorySyncOwner = `group-history:${process.pid}:${crypto.randomUUID()}`;
+  void enqueueAllManagedGroupsForHistorySync().catch((error) => {
+    logError("group_history.sync.backfill_failed", { error });
+  });
+  setInterval(() => {
+    void groupHistorySyncWorker.runTick({
+      owner: groupHistorySyncOwner,
+      limit: groupHistorySyncWorkerConfig.claimLimit
+    }).catch((error) => {
+      logError("group_history.sync.worker_failed", { error });
+    });
+  }, groupHistorySyncWorkerConfig.intervalMs).unref();
 }
 
 if (groupAutomationWorkerConfig.enabled) {
