@@ -237,7 +237,7 @@ test("gateway reports when the validation retry succeeds", async () => {
   }]);
 });
 
-test("gateway stops after two syntax failures and reports the final outcome", async () => {
+test("gateway stops after three syntax failures and reports the final outcome", async () => {
   const requests = [];
   const failures = [];
   const outcomes = [];
@@ -254,10 +254,39 @@ test("gateway stops after two syntax failures and reports the final outcome", as
   });
 
   assert.equal(result.valid, false);
-  assert.equal(requests.length, 2);
-  assert.deepEqual(requests, [originalRequest, originalRequest]);
-  assert.deepEqual(failures.map((failure) => failure.retryRequested), [false, true]);
-  assert.deepEqual(outcomes, [{ outcome: "failed", attemptNumber: 2, error: null }]);
+  assert.equal(requests.length, 3);
+  assert.deepEqual(requests, [originalRequest, originalRequest, originalRequest]);
+  assert.deepEqual(
+    failures.map((failure) => failure.retryRequested),
+    [false, true, true]
+  );
+  assert.deepEqual(outcomes, [{ outcome: "failed", attemptNumber: 3, error: null }]);
+});
+
+test("gateway accepts a valid third response after two syntax failures", async () => {
+  const requests = [];
+  const originalRequest = { message: "客户：你好", metadata: { source: "test" } };
+  const validResponse = JSON.stringify({
+    reply: "您好，我在的。",
+    attachments: [],
+    sources: []
+  });
+
+  const result = await validateAndRetryAgentResponse({
+    request: originalRequest,
+    invoke: async ({ request, attemptNumber }) => {
+      requests.push(structuredClone(request));
+      return {
+        reply: attemptNumber < 3 ? "not-json" : validResponse,
+        response: { attemptNumber }
+      };
+    }
+  });
+
+  assert.equal(result.valid, true);
+  assert.equal(result.agentReply.reply, "您好，我在的。");
+  assert.equal(result.attempts.length, 3);
+  assert.deepEqual(requests, [originalRequest, originalRequest, originalRequest]);
 });
 
 test("authorized group requests retry an empty reply instead of accepting silence", async () => {
@@ -388,7 +417,7 @@ test("gateway never accepts repeated group-context disclosure", async () => {
   });
 
   assert.equal(result.valid, false);
-  assert.equal(result.attempts.length, 2);
+  assert.equal(result.attempts.length, 3);
   assert.ok(result.attempts.every((attempt) => attempt.validation.valid === false));
 });
 

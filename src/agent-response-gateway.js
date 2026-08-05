@@ -7,6 +7,7 @@ import {
 
 const maxValidationRetryPriorResponseChars = 4000;
 const maxValidationRetryTagConditionChars = 240;
+const maxAgentResponseValidationAttempts = 3;
 const groupContextDisclosurePatterns = [
   /群背景(?:里|中|上|配置|写|显示|记录)/u,
   /(?:根据|按照|从)?角色配置(?:里|中|上|显示|写|记录|，|,)/u,
@@ -151,7 +152,11 @@ export async function validateAndRetryAgentResponse({
   const originalRequest = structuredClone(request);
   let currentRequest = structuredClone(originalRequest);
 
-  for (let attemptNumber = 1; attemptNumber <= 2; attemptNumber += 1) {
+  for (
+    let attemptNumber = 1;
+    attemptNumber <= maxAgentResponseValidationAttempts;
+    attemptNumber += 1
+  ) {
     let invocation;
     try {
       invocation = await invoke({ request: currentRequest, attemptNumber });
@@ -206,7 +211,7 @@ export async function validateAndRetryAgentResponse({
       repairs: validation.repairs
     });
 
-    if (attemptNumber === 1) {
+    if (attemptNumber < maxAgentResponseValidationAttempts) {
       onRetryRequested?.({ rawReplyLength: String(invocation?.reply || "").length });
       currentRequest = shouldRegenerateOriginalRequest(validation.errors)
         ? structuredClone(originalRequest)
