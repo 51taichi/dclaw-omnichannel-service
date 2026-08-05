@@ -10,7 +10,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-legacy-history-t
 process.env.DATA_DIR = dataDir;
 
 const db = await import("../src/db.js");
-const rawDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+const rawDb = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
 
 function insertRawConversationMessage({
   botId,

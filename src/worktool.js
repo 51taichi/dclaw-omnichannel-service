@@ -9,7 +9,7 @@ function getBaseUrl() {
 function getRobotId(robotId) {
   robotId = robotId || process.env.BOT_ID || process.env.ROBOT_ID;
   if (!robotId) {
-    throw new Error("ROBOT_ID is required");
+    throw new Error("BOT_ID (or legacy ROBOT_ID) is required");
   }
   return robotId;
 }

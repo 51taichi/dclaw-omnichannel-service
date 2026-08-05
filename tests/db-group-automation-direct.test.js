@@ -111,7 +111,7 @@ test("direct occurrence claim resumes a frozen send without returning to Agent e
     now: "2026-08-06T01:00:01.000Z"
   });
 
-  const sqlite = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
   sqlite.prepare(`
     UPDATE managed_group_automation_occurrences
     SET lease_expires_at = '2026-08-06T01:00:02.000Z'
@@ -142,7 +142,7 @@ test("legacy analysis stages recover to waiting target without touching delivery
     horizonMs: 600_000,
     limit: 10
   }).find((item) => item.taskId === task.id);
-  const sqlite = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
   sqlite.prepare(`
     UPDATE managed_group_automation_occurrences
     SET stage = 'finalizing', lease_owner = 'legacy-worker',

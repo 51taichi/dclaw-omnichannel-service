@@ -9,12 +9,12 @@ export const CHANNEL_ERROR_CODES = Object.freeze({
   INVALID_PROVIDER_RESPONSE: "invalid_provider_response"
 });
 
-const VALID_CODES = new Set(Object.values(CHANNEL_ERROR_CODES));
+const VALID_CODES = Object.freeze(Object.values(CHANNEL_ERROR_CODES));
 const SAFE_CONTEXT_FIELDS = ["provider", "channelAccountId", "operation"];
 
 export class ChannelError extends Error {
   constructor(code, message, context = {}) {
-    if (!VALID_CODES.has(code)) {
+    if (!VALID_CODES.includes(code)) {
       throw new TypeError("Unknown channel error code");
     }
 

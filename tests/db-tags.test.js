@@ -267,7 +267,7 @@ test("legacy enabled date rules gain an effective time without backfilling conve
     message: { roomType: 2, receivedName: "旧配置客户", groupName: "旧配置客户" }
   });
 
-  const rawDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const rawDb = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
   const timestamp = new Date().toISOString();
   rawDb.prepare(`
     INSERT INTO agent_tag_schemas (agent_id, config_json, created_at, updated_at)

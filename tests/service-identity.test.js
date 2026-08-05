@@ -183,3 +183,22 @@ test("WorkTool requests use BOT_ID when no explicit robot id is supplied", async
 
   assert.equal(requestUrl.searchParams.get("robotId"), "runtime-bot");
 });
+
+test("WorkTool missing-ID diagnostic documents BOT_ID and legacy ROBOT_ID", async (t) => {
+  const originalBotId = process.env.BOT_ID;
+  const originalRobotId = process.env.ROBOT_ID;
+  process.env.BOT_ID = "";
+  process.env.ROBOT_ID = "";
+  t.after(() => {
+    if (originalBotId === undefined) delete process.env.BOT_ID;
+    else process.env.BOT_ID = originalBotId;
+    if (originalRobotId === undefined) delete process.env.ROBOT_ID;
+    else process.env.ROBOT_ID = originalRobotId;
+  });
+
+  const { requestWorkTool } = await import("../src/worktool.js");
+  await assert.rejects(
+    requestWorkTool("/robot/robotInfo/get"),
+    /BOT_ID.*ROBOT_ID/
+  );
+});

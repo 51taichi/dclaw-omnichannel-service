@@ -11,7 +11,7 @@ process.env.DATA_DIR = dataDir;
 const db = await import("../src/db.js");
 
 function tableNames() {
-  const sqlite = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
   const names = sqlite.prepare(`
     SELECT name FROM sqlite_master WHERE type = 'table'
   `).all().map((row) => row.name);
@@ -20,7 +20,7 @@ function tableNames() {
 }
 
 function seedObsoleteTables() {
-  const sqlite = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
   for (const table of [
     "managed_group_history_sync_states",
     "managed_group_automation_chunks",

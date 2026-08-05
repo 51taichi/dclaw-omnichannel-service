@@ -88,7 +88,7 @@ test("private conversation sessions enter the configured flow without overwritin
     content: "历史消息",
     rawPayload: {}
   });
-  const rawDb = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+  const rawDb = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
   rawDb.prepare(`
     UPDATE flow_sessions
     SET activation_state_json = ?

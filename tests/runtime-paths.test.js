@@ -62,7 +62,7 @@ test("database initialization creates the new database without touching a legacy
     const dbUrl = new URL("../src/db.js", import.meta.url).href;
     const result = spawnSync(process.execPath, ["--input-type=module", "--eval", `await import(${JSON.stringify(dbUrl)})`], {
       cwd,
-      env: { ...process.env },
+      env: { ...process.env, DATA_DIR: "", DATABASE_PATH: "" },
       encoding: "utf8"
     });
 

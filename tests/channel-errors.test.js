@@ -36,6 +36,19 @@ test("ChannelError rejects an unknown error code", () => {
   );
 });
 
+test("ChannelError code validation does not rely on mutable Set state", () => {
+  const originalHas = Set.prototype.has;
+  Set.prototype.has = () => true;
+  try {
+    assert.throws(
+      () => new ChannelError("provider_database_dump", "Public channel error"),
+      TypeError
+    );
+  } finally {
+    Set.prototype.has = originalHas;
+  }
+});
+
 test("ChannelError exposes only safe supplied metadata", () => {
   const cause = new Error("provider diagnostic");
   const error = new ChannelError("rate_limited", "Please retry later", {

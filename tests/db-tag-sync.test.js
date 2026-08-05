@@ -9,7 +9,7 @@ const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-tag-sync-db-test
 process.env.DATA_DIR = dataDir;
 
 const db = await import("../src/db.js");
-const sqlite = new DatabaseSync(path.join(dataDir, "worktool-bot-service.sqlite"));
+const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
 
 function ensureBot(botId) {
   const agentId = `${botId}_agent`;
