@@ -40,3 +40,30 @@ No whitespace errors.
 ## Concerns
 
 None. WorkTool-specific documentation is retained only as clearly labeled migration guidance; Whapi is explicitly documented as not yet connected.
+
+## Fix round 1/5: BOT_ID runtime fallbacks
+
+### Red / green evidence
+
+1. Red: `node --test tests/service-identity.test.js` reported two targeted failures. A real subprocess callback to the legacy no-`botId` route returned `400` under a `BOT_ID`-only setup, and `requestWorkTool()` threw `ROBOT_ID is required` despite `BOT_ID=runtime-bot`.
+2. Green: all single-Bot server defaults now resolve explicit request/path/query values first, then `BOT_ID`, then temporary `ROBOT_ID`; `requestWorkTool()` follows the same order. The health subprocess test now awaits the matching startup log before issuing its HTTP request.
+
+### Commands and results
+
+```text
+node --test tests/service-identity.test.js tests/server-boundary.test.js
+6 tests passed, 0 failed.
+
+git diff --check
+No whitespace errors.
+```
+
+### Commit
+
+`fix: honor BOT_ID in runtime fallbacks`
+
+### Self-review and concerns
+
+- Explicit route parameters, body values, and query values remain ahead of environment defaults.
+- The callback route test exercises a real subprocess HTTP request with `BOT_ID` set and `ROBOT_ID` absent; the outbound adapter test checks the real query URL assembled by `requestWorkTool()` with only the network boundary stubbed.
+- No concerns.

@@ -5565,7 +5565,7 @@ function applyManualConversationTagChange({ botId, binding, conversationKey, gro
 }
 
 function resolveLegacyBotId(req) {
-  return req.params.botId || req.query.botId || process.env.ROBOT_ID;
+  return req.params.botId || req.query.botId || process.env.BOT_ID || process.env.ROBOT_ID;
 }
 
 function serializeGroupAutomationOccurrence(occurrence) {
@@ -6368,7 +6368,7 @@ app.post(
   "/api/send",
   asyncHandler(async (req, res) => {
     const body = req.body || {};
-    const robotId = body.botId || body.robotId || process.env.ROBOT_ID;
+    const robotId = body.botId || body.robotId || process.env.BOT_ID || process.env.ROBOT_ID;
     assertBotAccess(req, robotId);
     const targets = Array.isArray(body.targets) ? body.targets : [body.target].filter(Boolean);
     const content = body.content;
@@ -7843,7 +7843,7 @@ app.post(
 app.post(
   "/api/config/message-callback",
   asyncHandler(async (req, res) => {
-    const botId = req.body?.botId || process.env.ROBOT_ID;
+    const botId = req.body?.botId || process.env.BOT_ID || process.env.ROBOT_ID;
     if (!botId) throw new Error("botId is required");
     assertAdminForBot(req, botId);
     const callbackUrl =
@@ -7857,7 +7857,7 @@ app.post(
 app.post(
   "/api/config/command-callback",
   asyncHandler(async (req, res) => {
-    const botId = req.body?.botId || process.env.ROBOT_ID;
+    const botId = req.body?.botId || process.env.BOT_ID || process.env.ROBOT_ID;
     if (!botId) throw new Error("botId is required");
     assertAdminForBot(req, botId);
     const callBackUrl =
@@ -7870,7 +7870,7 @@ app.post(
 app.get(
   "/api/robot",
   asyncHandler(async (req, res) => {
-    const botId = req.query.botId || process.env.ROBOT_ID;
+    const botId = req.query.botId || process.env.BOT_ID || process.env.ROBOT_ID;
     assertBotAccess(req, botId);
     const robotInfo = await getRobotInfo(botId);
     res.json({ ok: true, robotInfo });
@@ -7889,7 +7889,7 @@ app.get(
 app.get(
   "/api/callback-config",
   asyncHandler(async (req, res) => {
-    const botId = req.query.botId || process.env.ROBOT_ID;
+    const botId = req.query.botId || process.env.BOT_ID || process.env.ROBOT_ID;
     assertAdminForBot(req, botId);
     const callbackConfig = await getCallbackConfig(botId);
     res.json({ ok: true, callbackConfig });

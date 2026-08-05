@@ -37,6 +37,24 @@ async function waitForHealth(port) {
   throw lastError || new Error("health endpoint did not become ready");
 }
 
+function waitForStartupLog(child, pattern) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error(`startup log did not match ${pattern}`));
+    }, 10_000);
+    child.stdout.on("data", (chunk) => {
+      if (pattern.test(chunk.toString())) {
+        clearTimeout(timeout);
+        resolve();
+      }
+    });
+    child.once("exit", (code, signal) => {
+      clearTimeout(timeout);
+      reject(new Error(`server exited before startup log (code=${code}, signal=${signal})`));
+    });
+  });
+}
+
 async function stopProcess(child) {
   if (child.exitCode !== null || child.signalCode !== null) return;
   child.kill("SIGTERM");
@@ -71,6 +89,9 @@ test("health endpoint identifies the running omnichannel service", async (t) => 
       HOST: "127.0.0.1",
       DATABASE_PATH: path.join(dataDir, "service.sqlite"),
       BOTS_CONFIG_JSON: '{"bots":[]}',
+      BOT_ID: "runtime-bot",
+      ROBOT_ID: "",
+      CALLBACK_SECRET: "test-callback-secret",
       PROACTIVE_WORKER_ENABLED: "false",
       ACTIVATION_WORKER_ENABLED: "false",
       TAG_ACTIVATION_WORKER_ENABLED: "false",
@@ -82,6 +103,7 @@ test("health endpoint identifies the running omnichannel service", async (t) => 
   });
   let stdout = "";
   child.stdout.on("data", (chunk) => { stdout += chunk; });
+  const startupLog = waitForStartupLog(child, /DClaw omnichannel service/);
   let stderr = "";
   child.stderr.on("data", (chunk) => { stderr += chunk; });
   t.after(async () => {
@@ -89,10 +111,16 @@ test("health endpoint identifies the running omnichannel service", async (t) => 
     fs.rmSync(dataDir, { recursive: true, force: true });
   });
 
+  await startupLog;
   const health = await waitForHealth(port);
   assert.deepEqual(health.ok, true);
   assert.equal(health.service, "dclaw-omnichannel-service");
   assert.match(stdout, /DClaw omnichannel service/);
+  const callback = await fetch(
+    `http://127.0.0.1:${port}/worktool/command-callback?secret=test-callback-secret`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
+  );
+  assert.equal(callback.status, 200);
   assert.equal(child.exitCode, null, stderr);
 });
 
@@ -129,4 +157,29 @@ test("single-bot configuration prefers BOT_ID and falls back to ROBOT_ID", () =>
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
+});
+
+test("WorkTool requests use BOT_ID when no explicit robot id is supplied", async (t) => {
+  const originalFetch = globalThis.fetch;
+  const originalBotId = process.env.BOT_ID;
+  const originalRobotId = process.env.ROBOT_ID;
+  let requestUrl;
+  globalThis.fetch = async (url) => {
+    requestUrl = new URL(url);
+    return new Response(JSON.stringify({ code: 0 }), { status: 200 });
+  };
+  process.env.BOT_ID = "runtime-bot";
+  process.env.ROBOT_ID = "";
+  t.after(() => {
+    globalThis.fetch = originalFetch;
+    if (originalBotId === undefined) delete process.env.BOT_ID;
+    else process.env.BOT_ID = originalBotId;
+    if (originalRobotId === undefined) delete process.env.ROBOT_ID;
+    else process.env.ROBOT_ID = originalRobotId;
+  });
+
+  const { requestWorkTool } = await import("../src/worktool.js");
+  await requestWorkTool("/robot/robotInfo/get");
+
+  assert.equal(requestUrl.searchParams.get("robotId"), "runtime-bot");
 });
