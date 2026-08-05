@@ -65,6 +65,31 @@ db.exec(`
     UNIQUE(provider, channel_id)
   );
 
+  CREATE TABLE IF NOT EXISTS channel_webhook_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    provider TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    channel_account_id TEXT NOT NULL,
+    event_kind TEXT NOT NULL,
+    request_method TEXT NOT NULL,
+    external_id TEXT NOT NULL DEFAULT '',
+    idempotency_key TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_owner TEXT,
+    lease_expires_at TEXT,
+    next_retry_at TEXT,
+    error_message TEXT NOT NULL DEFAULT '',
+    received_at TEXT NOT NULL,
+    processed_at TEXT,
+    updated_at TEXT NOT NULL,
+    UNIQUE(bot_id, idempotency_key)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_channel_webhook_events_pending
+  ON channel_webhook_events (state, next_retry_at, id);
+
   CREATE TABLE IF NOT EXISTS agents (
     agent_id TEXT PRIMARY KEY,
     agent_name TEXT,
@@ -3182,6 +3207,65 @@ export function markChannelAccountWebhookSuccess({ botId, receivedAt = now() }) 
   return getChannelAccount(botId);
 }
 
+export function recordChannelWebhookEvent({
+  provider,
+  botId,
+  channelAccountId,
+  eventKind,
+  method,
+  externalId = "",
+  idempotencyKey,
+  payload,
+  receivedAt = now()
+}) {
+  const normalizedBotId = requiredString(botId, "botId");
+  const normalizedKey = requiredString(idempotencyKey, "idempotencyKey");
+  const result = db.prepare(`
+    INSERT INTO channel_webhook_events (
+      provider, bot_id, channel_account_id, event_kind, request_method,
+      external_id, idempotency_key, payload_json, received_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(bot_id, idempotency_key) DO NOTHING
+  `).run(
+    requiredString(provider, "provider"),
+    normalizedBotId,
+    requiredString(channelAccountId, "channelAccountId"),
+    requiredString(eventKind, "eventKind"),
+    requiredString(method, "method").toUpperCase(),
+    String(externalId || ""),
+    normalizedKey,
+    json(payload),
+    receivedAt,
+    receivedAt
+  );
+  const row = db.prepare(`
+    SELECT id FROM channel_webhook_events WHERE bot_id = ? AND idempotency_key = ?
+  `).get(normalizedBotId, normalizedKey);
+  return Object.freeze({ inserted: result.changes === 1, eventId: row.id });
+}
+
+export function listChannelWebhookEvents(botId) {
+  return db.prepare(`
+    SELECT * FROM channel_webhook_events WHERE bot_id = ? ORDER BY id ASC
+  `).all(requiredString(botId, "botId")).map((row) => ({
+    id: row.id,
+    provider: row.provider,
+    botId: row.bot_id,
+    channelAccountId: row.channel_account_id,
+    eventKind: row.event_kind,
+    method: row.request_method,
+    externalId: row.external_id,
+    idempotencyKey: row.idempotency_key,
+    payload: parseJson(row.payload_json),
+    state: row.state,
+    attempts: Number(row.attempts || 0),
+    errorMessage: row.error_message || "",
+    receivedAt: row.received_at,
+    processedAt: row.processed_at || "",
+    updatedAt: row.updated_at
+  }));
+}
+
 function normalizeEncryptedToken(value) {
   if (!value || typeof value !== "object") throw new Error("encryptedToken is required");
   return {
@@ -3446,6 +3530,8 @@ export function deleteBotData(botId) {
   if (!binding) return null;
 
   const tables = [
+    "channel_webhook_events",
+    "channel_accounts",
     "managed_group_automation_attempts",
     "managed_group_automation_occurrences",
     "managed_group_automation_tasks",

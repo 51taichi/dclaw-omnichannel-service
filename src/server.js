@@ -104,6 +104,8 @@ import {
   finishMessageProcessing,
   getAgent,
   getBotBinding,
+  getChannelAccountByPublicId,
+  getChannelAccountCredentials,
   getConversation,
   getCockpitConfig,
   getCockpitDailyCounters,
@@ -200,6 +202,7 @@ import {
   markTagSyncCommandSubmitFailed,
   markConversationFriendAddedSignal,
   markCockpitStageCompleted,
+  markChannelAccountWebhookSuccess,
   markConversationResetHandledForEpoch,
   markLegacyHistoryContextSent,
   markTagAlertRead,
@@ -212,6 +215,7 @@ import {
   normalizeActivationConfig,
   prepareConversationResetForNewActivity,
   resetInterruptedProactiveTargets,
+  recordChannelWebhookEvent,
   recoverExpiredTagSyncLeases,
   reserveFlowActionExecution,
   reserveTagActivationTaskForSend,
@@ -259,6 +263,8 @@ import {
   finishCockpitDelivery,
   upsertWorktoolApiMessageCache
 } from "./db.js";
+import { verifyWebhookSecret } from "./channels/credentials.js";
+import { createWebhookIntake } from "./channels/webhook-intake.js";
 import { createGroupAutomationWorker } from "./group-automation-worker.js";
 import {
   nextGroupAutomationRunAt,
@@ -395,6 +401,43 @@ const upload = multer({
     fileSize: uploadMaxMb * 1024 * 1024
   }
 });
+
+const whapiWebhookIntake = createWebhookIntake({
+  resolveAccount(publicId) {
+    const account = getChannelAccountByPublicId(publicId);
+    if (!account) return null;
+    const credentials = getChannelAccountCredentials(account.botId);
+    return { ...account, webhookSecretHash: credentials?.webhookSecretHash || "" };
+  },
+  verifySecret: verifyWebhookSecret,
+  recordEvent: recordChannelWebhookEvent
+});
+
+const whapiWebhookJson = express.json({ limit: "512kb", strict: true });
+const receiveWhapiWebhook = (req, res) => {
+  try {
+    const result = whapiWebhookIntake.handle({
+      publicId: req.params.publicId,
+      method: req.method,
+      headers: req.headers,
+      body: req.body
+    });
+    if (!result.disabled) {
+      const account = getChannelAccountByPublicId(req.params.publicId);
+      if (account) markChannelAccountWebhookSuccess({ botId: account.botId });
+    }
+    res.json({ ok: true, duplicate: result.duplicate, ...(result.disabled ? { disabled: true } : {}) });
+  } catch (error) {
+    res.status(error.status || 500).json({
+      ok: false,
+      message: error.status === 401 ? "Webhook authentication failed" : "Webhook intake failed"
+    });
+  }
+};
+
+for (const method of ["post", "put", "patch", "delete"]) {
+  app[method]("/webhooks/whapi/:publicId", whapiWebhookJson, receiveWhapiWebhook);
+}
 
 app.use(express.json({ limit: "2mb" }));
 app.get("/console", (req, res) => res.redirect(302, "/admin/"));

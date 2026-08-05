@@ -90,3 +90,26 @@ test("channel accounts enforce provider-channel uniqueness and isolate health by
   assert.equal(result.b.healthStatus, "disconnected");
   assert.equal(result.b.tokenSuffix, "9999");
 });
+
+test("channel webhook envelopes are durable and idempotent per account", () => {
+  const result = runDatabaseScenario(`
+    import { listChannelWebhookEvents, recordChannelWebhookEvent } from "./src/db.js";
+    const event = {
+      provider: "whapi", botId: "bot-a", channelAccountId: "CHAN-A",
+      eventKind: "messages.post", method: "POST", externalId: "message-1",
+      idempotencyKey: "whapi:CHAN-A:messages.post:message-1",
+      payload: { messages: [{ id: "message-1" }] }
+    };
+    const first = recordChannelWebhookEvent(event);
+    const duplicate = recordChannelWebhookEvent(event);
+    const isolated = recordChannelWebhookEvent({ ...event, botId: "bot-b" });
+    console.log(JSON.stringify({ first, duplicate, isolated, a: listChannelWebhookEvents("bot-a"), b: listChannelWebhookEvents("bot-b") }));
+  `);
+  assert.equal(result.first.inserted, true);
+  assert.equal(result.duplicate.inserted, false);
+  assert.equal(result.isolated.inserted, true);
+  assert.equal(result.a.length, 1);
+  assert.equal(result.b.length, 1);
+  assert.deepEqual(result.a[0].payload, { messages: [{ id: "message-1" }] });
+  assert.equal(result.a[0].state, "pending");
+});
