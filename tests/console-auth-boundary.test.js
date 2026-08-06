@@ -13,6 +13,8 @@ test("console header uses the AI sales and customer service platform title", () 
   assert.equal(html.includes("微信机器人管理控制台"), false);
   assert.equal(html.includes('aria-label="WhatsApp / Whapi.Cloud"'), true);
   assert.match(html, /class="platform-logo whatsapp"/);
+  assert.match(html, /class="platform-logo whatsapp"[^>]*>[\s\S]*?<img src="\/console\/assets\/whatsapp-logo\.jpg" alt="" aria-hidden="true" \/>/);
+  assert.doesNotMatch(html, />WhatsApp<\/span>/);
   assert.equal(css.includes(".topbar-platforms"), true);
   assert.equal(css.includes(".platform-logo.whatsapp"), true);
   assert.match(css, /\.platform-logo\s*\{[\s\S]*width:\s*42px[\s\S]*height:\s*42px[\s\S]*border-radius:\s*12px[\s\S]*border:\s*1px solid/);

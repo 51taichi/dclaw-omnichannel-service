@@ -12,6 +12,8 @@ test("admin console exposes global management tabs without user management", () 
   assert.match(html, /class="topbar admin-topbar"[\s\S]*class="topbar-inner"[\s\S]*class="brand"/);
   assert.match(html, /<h1>WhatsApp AI 销售客服管理后台<\/h1>/);
   assert.equal(html.includes('class="platform-logo whatsapp"'), true);
+  assert.match(html, /class="platform-logo whatsapp"[^>]*>[\s\S]*?<img src="\/console\/assets\/whatsapp-logo\.jpg" alt="" aria-hidden="true" \/>/);
+  assert.doesNotMatch(html, />WhatsApp<\/span>/);
   for (const label of ["工作区", "Bots", "Agents", "系统设置", "退出"]) {
     assert.equal(html.includes(label), true, `missing ${label}`);
   }
