@@ -46,7 +46,6 @@ test("Whapi webhook persists before acknowledging the provider", () => {
   const handler = source.slice(start, end);
   assert.ok(start >= 0 && end > start);
   assert.ok(handler.indexOf("whapiWebhookIntake.handle") < handler.indexOf("res.json"));
-  assert.doesNotMatch(source, /app\.post\("\/worktool\/[^\"]*message-callback"/);
 });
 
 test("the first Whapi private message initializes the entry flow without skipping Agent work", () => {

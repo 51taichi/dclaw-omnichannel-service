@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-proactive-scheduling-test-"));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-proactive-scheduling-test-"));
 process.env.DATA_DIR = dataDir;
 
 const db = await import("../src/db.js");

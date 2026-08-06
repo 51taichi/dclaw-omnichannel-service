@@ -31,7 +31,7 @@ test("server exposes a bot-scoped handoff route", () => {
   assert.equal(serverSource.includes("updateFlowSessionHandoff"), true);
 });
 
-test("server branches human handoff before sending WorkTool replies", () => {
+test("server branches human handoff before sending Channel replies", () => {
   const body = processIncomingBody();
   const handoffStart = body.indexOf("if (isHumanHandoff)");
   const handoffEnd = body.indexOf("finishMessageProcessing({ messageKey, status: \"human_handoff\" })");
@@ -67,7 +67,7 @@ test("group human handoff bypasses visible reply policy and uses the silent sync
   assert.doesNotMatch(coalescedBody, /flow\?\.session\?\.handoffStatus === "human"/);
 });
 
-test("visible Agent sends recheck handoff after DClaw and before every WorkTool command", () => {
+test("visible Agent sends recheck handoff after DClaw and before every Channel command", () => {
   const coalescedBody = functionBody("processCoalescedIncomingBatch");
   const failureFallbackBody = functionBody("sendAgentFailureFallback");
   const textSendBody = functionBody("sendTextReplyParts");

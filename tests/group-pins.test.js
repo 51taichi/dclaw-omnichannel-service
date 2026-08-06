@@ -46,7 +46,7 @@ test("toggling a group pin persists both pin and unpin", () => {
 
 test("group pins tolerate malformed storage and ignore stale IDs while sorting", () => {
   const storage = createStorage();
-  storage.setItem("worktool_console_group_pins:workspace:bot", "not-json");
+  storage.setItem("omnichannel_console_group_pins:workspace:bot", "not-json");
   assert.deepEqual([...readPinnedGroupIds(storage, "workspace", "bot")], []);
 
   const groups = [{ id: "a" }, { id: "b" }, { id: "c" }, { id: "d" }];

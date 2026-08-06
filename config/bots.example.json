@@ -1,7 +1,7 @@
 {
   "bots": [
     {
-      "botId": "replace_with_worktool_bot_id",
+      "botId": "replace_with_omnichannel_bot_id",
       "botName": "A department bot",
       "agentId": "replace_with_dclaw_agent_id",
       "agentName": "A department customer service agent",

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-admin-auth-test-"));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-admin-auth-test-"));
 process.env.DATA_DIR = dataDir;
 
 const adminAuth = await import("../src/admin-auth.js");
@@ -35,7 +35,7 @@ test("admin sessions expire and password changes invalidate active sessions", ()
 });
 
 test("admin password recovery can initialize an empty database", async () => {
-  const emptyDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-admin-recovery-test-"));
+  const emptyDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-admin-recovery-test-"));
   const scriptUrl = new URL("../scripts/reset-admin-password.js", import.meta.url);
   const source = fs.readFileSync(scriptUrl, "utf8");
 

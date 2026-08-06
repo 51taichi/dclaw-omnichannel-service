@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-tag-alerts-test-"));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-tag-alerts-test-"));
 process.env.DATA_DIR = dataDir;
 
 const {
@@ -42,7 +42,7 @@ test("automatic tag outcome stores tags activation work and one durable alert", 
     direction: "inbound",
     senderName: "张三",
     content: "你们老师的水平怎么样",
-    rawPayload: { messageId: "worktool-msg-1" }
+    rawPayload: { messageId: "omnichannel-msg-1" }
   });
   const accepted = [tagChange()];
 

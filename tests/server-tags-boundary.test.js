@@ -30,7 +30,7 @@ test("every Agent call builds channel-scoped tag context", () => {
   assert.doesNotMatch(body, /const tagContext = legacyHistoryAnalysis\?\.text/);
 });
 
-test("validated Agent replies apply tag decisions before empty reply or WorkTool send handling", () => {
+test("validated Agent replies apply tag decisions before empty reply or Channel send handling", () => {
   const body = functionBody("processCoalescedIncomingBatch");
   const validIndex = body.indexOf("if (!strictInvocation.agentReply.valid)");
   const auditIndex = body.indexOf("persistAgentTagAudit");

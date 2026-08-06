@@ -5,7 +5,7 @@ import { buildDclawConversationIdentity } from "../src/dclaw-conversation-identi
 
 const safeExternalId = /^[a-z0-9._:-]+$/;
 
-test("Chinese WorkTool conversations produce stable ASCII DClaw identities", () => {
+test("Chinese Channel conversations produce stable ASCII DClaw identities", () => {
   const input = {
     botId: "bot_中文",
     conversationKey: "bot_中文:private:魔兮",

@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-agent-validation-test-"));
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-agent-validation-test-"));
 
 const {
   insertAgentInvocationStart,

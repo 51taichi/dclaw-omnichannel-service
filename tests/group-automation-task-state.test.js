@@ -39,14 +39,14 @@ test("same-cycle occurrence decision remains current when delivery later fails",
       conditionAchieved: true,
       reason: "客户已经提交作业",
       updatedAt: "2026-08-04T11:00:00.000Z",
-      errorMessage: "WorkTool 发送失败"
+      errorMessage: "Channel 发送失败"
     }
   }), {
     achieved: true,
     reason: "客户已经提交作业",
     evaluatedAt: "2026-08-04T11:00:00.000Z",
     stale: false,
-    lastError: "WorkTool 发送失败"
+    lastError: "Channel 发送失败"
   });
 });
 

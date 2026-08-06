@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-message-key-test-"));
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-message-key-test-"));
 const {
   beginMessageProcessing,
   buildMessageKey,
@@ -32,7 +32,7 @@ test("identical callbacks keep the same message key", () => {
   );
 });
 
-test("different content sharing a WorkTool message id is not deduplicated", () => {
+test("different content sharing a Channel message id is not deduplicated", () => {
   const first = buildMessageKey({
     ...base,
     message: { messageId: "shared-id", textType: 1, roomType: 2, receivedName: "诺", spoken: "3", rawSpoken: "3" }

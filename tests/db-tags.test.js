@@ -6,7 +6,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { dateTagIdFor } from "../src/tags.js";
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-tags-test-"));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-tags-test-"));
 process.env.DATA_DIR = dataDir;
 
 const {

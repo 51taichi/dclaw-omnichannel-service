@@ -1,10 +1,8 @@
 # DClaw Agent Contract
 
-`worktool-bot-service` calls one DClaw OpenAPI publication per WorkTool `botId`.
+The omnichannel service calls one DClaw OpenAPI publication for each configured Bot binding.
 
 ## DClaw OpenAPI
-
-The callback server calls:
 
 ```text
 POST {DClaw Base URL}/api/open/v1/targets/{Public ID}/messages
@@ -12,89 +10,63 @@ Authorization: Bearer <API_KEY>
 Content-Type: application/json
 ```
 
-The response is SSE. The callback server joins all text chunks where:
+The response is an SSE stream. The service joins text chunks whose event payload identifies them as text content, then validates the resulting Agent response before any customer delivery.
 
-```text
-object=content, type=text
-```
+## Standard Channel Message
 
-If the final text is JSON, the callback server tries to extract `reply`.
-
-## WorkTool Message Envelope
-
-The full WorkTool message envelope is embedded into the OpenAPI `message` field.
+The OpenAPI `message` contains instructions followed by a JSON payload with a provider-neutral `channelMessage` object:
 
 ```json
 {
-  "channel": "wecom-worktool",
-  "botId": "worktool-bot-id",
-  "agentId": "dclaw-agent-id",
-  "conversationId": "worktool-bot-id:private:user-name",
-  "sessionId": "worktool-bot-id:private:user-name",
-  "messageId": "worktool-message-id",
-  "message": "user visible message",
-  "rawMessage": "raw WorkTool message",
-  "roomType": 2,
-  "groupName": "",
-  "userId": "customer name",
-  "metadata": {
-    "receivedName": "customer name",
-    "atMe": "false",
-    "textType": 1,
-    "fileName": "",
-    "filePath": "",
-    "payload": {}
-  }
+  "channelMessage": {
+    "channel": "whapi",
+    "eventType": "inbound_message",
+    "botId": "bot-id",
+    "agentId": "dclaw-agent-id",
+    "conversationId": "ch-c-stable-runtime-id",
+    "sessionId": "ch-c-stable-runtime-id",
+    "messageId": "whapi-message-id",
+    "message": "customer-visible message",
+    "rawMessage": "raw inbound message",
+    "roomType": 2,
+    "groupName": "",
+    "userId": "stable participant id",
+    "metadata": {
+      "localConversationId": "whapi:account-id:private:participant-id",
+      "receivedName": "customer display name",
+      "atMe": "false",
+      "textType": 1,
+      "fileName": "",
+      "filePath": "",
+      "inboundAttachments": [],
+      "payload": {}
+    }
+  },
+  "generalRule": "",
+  "conversationReset": false
 }
 ```
+
+Depending on the active business features, the payload can also include `flow`, `groupContext`, `groupTurns`, `tagRules`, and `tagEvidenceCandidates`.
 
 ## Agent Response
 
-Preferred output from the DClaw Agent is plain text:
-
-```text
-您好，可以的。您想了解加盟条件、费用，还是门店支持？
-```
-
-JSON text is also accepted:
-
-The response may use any of these text fields:
+The Agent must return exactly one JSON object. A basic response is:
 
 ```json
 {
-  "reply": "message to send back",
-  "sessionId": "ignored-by-callback-server",
-  "handoff": false,
-  "metadata": {}
+  "reply": "message to send to the customer",
+  "attachments": [],
+  "sources": []
 }
 ```
 
-Text extraction priority:
+Flow-enabled requests additionally require `flowDecision`. Tag-enabled requests additionally require `tagEvaluation` and `tagDecision`. The service validates and, when appropriate, retries malformed output before delivery. It never forwards unvalidated raw Agent output to WhatsApp.
 
-```text
-reply
-content
-message
-text
-data.reply
-data.content
-data.message
-```
+An authorized customer request must contain either non-empty `reply` text or at least one valid attachment. Background tasks that explicitly allow silence may return empty reply and attachment arrays.
 
-If no text is returned, the callback server records the invocation but sends no WorkTool reply.
+## Conversation Isolation
 
-## Conversation Key
+The service derives conversation identity from the provider, channel account, chat type, and stable external chat or participant ID. Display names are never identity keys.
 
-The callback server owns the stable external conversation key:
-
-```text
-Private chat: botId:private:receivedName
-Group chat:   botId:group:groupName
-```
-
-The callback server owns session isolation. It always sends `conversation_key` as
-both `external_session_id` and the embedded WorkTool `sessionId`.
-
-DClaw may return its own `sessionId` / `session_id`, but the callback server does
-not store or reuse it for later turns. This prevents DClaw publication-level
-sessions from mixing different WorkTool private chats or groups.
+The derived runtime identity is sent as both `external_session_id` and `channelMessage.sessionId`. A session identifier returned by DClaw is not reused for later turns, preventing conversations from different accounts, private chats, or groups from mixing.

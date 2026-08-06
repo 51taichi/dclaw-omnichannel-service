@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-cockpit-db-"));
+process.env.DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-cockpit-db-"));
 const db = await import("../src/db.js");
 
 function seedBot(botId) {

@@ -13,7 +13,6 @@ test("flow session detail reads session data through the selected Bot boundary",
 test("Whapi status delivery correlation is scoped to the webhook account Bot", () => {
   assert.match(serverSource, /updateOutgoingMessageChannelStatus\(\{[\s\S]{0,180}?channelAccountId: event\.channelAccountId/);
   assert.match(serverSource, /updateGroupAutomationOccurrenceFromChannelStatus\(\{[\s\S]{0,180}?botId: envelope\.botId/);
-  assert.doesNotMatch(serverSource, /app\.post\("\/worktool\/command-callback"/);
 });
 
 test("console upload requires and preserves selected Bot ownership", () => {

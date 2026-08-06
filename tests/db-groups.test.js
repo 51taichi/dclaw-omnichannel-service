@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-managed-groups-test-"));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-managed-groups-test-"));
 process.env.DATA_DIR = dataDir;
 
 const db = await import("../src/db.js");
@@ -229,7 +229,7 @@ test("a managed group conversation receives the group creation date tag", () => 
   const group = db.createOrGetGroup({
     botId,
     currentName: "历史项目群",
-    source: "worktool_list",
+    source: "omnichannel_list",
     discoveredAt: "2026-07-29T08:00:00.000Z",
     createdAt: "2026-07-04T03:00:00.000Z"
   });
@@ -254,7 +254,7 @@ test("a managed group conversation receives the group creation date tag", () => 
   assert.equal(tags.find((tag) => tag.tagType === "date")?.tagId, "20260704");
 });
 
-test("a timezone-free WorkTool group creation time is interpreted in Beijing", () => {
+test("a timezone-free Channel group creation time is interpreted in Beijing", () => {
   const botId = "managed_bot_beijing_date";
   const agentId = "managed_agent_beijing_date";
   db.upsertBotBinding({ botId, botName: "北京时间 Bot", agentId, enabled: true });
@@ -265,7 +265,7 @@ test("a timezone-free WorkTool group creation time is interpreted in Beijing", (
   const group = db.createOrGetGroup({
     botId,
     currentName: "北京时间项目群",
-    source: "worktool_list",
+    source: "omnichannel_list",
     discoveredAt: "2026-07-30T03:00:00.000Z",
     createdAt: "2026-07-29 20:00:00"
   });
@@ -296,7 +296,7 @@ test("a timezone-free WorkTool group creation time is interpreted in Beijing", (
   }
 });
 
-test("WorkTool refresh corrects a first-discovered group date and its date tag", () => {
+test("Channel refresh corrects a first-discovered group date and its date tag", () => {
   const botId = "managed_bot_date_correction";
   const agentId = "managed_agent_date_correction";
   db.upsertBotBinding({ botId, botName: "日期纠正 Bot", agentId, enabled: true });
@@ -335,7 +335,7 @@ test("WorkTool refresh corrects a first-discovered group date and its date tag",
   const refreshed = db.createOrGetGroup({
     botId,
     currentName: discovered.currentName,
-    source: "worktool_list",
+    source: "omnichannel_list",
     createdAt: "2026-07-04 11:00:00"
   });
 
@@ -359,7 +359,7 @@ test("existing managed group conversations backfill their creation date tags", (
   const group = db.createOrGetGroup({
     botId,
     currentName: "存量项目群",
-    source: "worktool_list",
+    source: "omnichannel_list",
     discoveredAt: "2026-07-29T08:00:00.000Z",
     createdAt: "2026-06-18T03:00:00.000Z"
   });

@@ -45,7 +45,7 @@ test("skips non-text callbacks with only unavailable local attachment paths", ()
       textType: 2,
       spoken: "",
       rawSpoken: "",
-      filePath: "/tmp/worktool/image.png",
+      filePath: "/tmp/omnichannel/image.png",
       fileName: "截图.png"
     }),
     false

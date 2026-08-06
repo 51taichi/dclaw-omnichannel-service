@@ -53,7 +53,7 @@ test("resolveRuntimePaths preserves an absolute DATABASE_PATH", () => {
 test("database initialization creates the new database without touching a legacy sentinel", () => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), "dclaw-runtime-paths-"));
   const dataDir = path.join(cwd, "data");
-  const sentinelPath = path.join(dataDir, "worktool-bot-service.sqlite");
+  const sentinelPath = path.join(dataDir, "omnichannel-bot-service.sqlite");
   const databasePath = path.join(dataDir, "dclaw-omnichannel-service.sqlite");
   fs.mkdirSync(dataDir, { recursive: true });
   fs.writeFileSync(sentinelPath, "");

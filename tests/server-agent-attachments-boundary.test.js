@@ -4,7 +4,7 @@ import test from "node:test";
 
 const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 
-test("server sends supported agent attachments as WorkTool media and links as text", () => {
+test("server sends supported agent attachments as Channel media and links as text", () => {
   assert.equal(source.includes("sendAgentAttachments({"), true);
   assert.equal(source.includes("sendMediaMessage({"), true);
   assert.equal(source.includes("formatLinkAttachmentsForText"), true);
@@ -19,7 +19,7 @@ test("server stores agent reply sources in conversation message raw payload", ()
   assert.equal(source.includes("sources,"), true);
 });
 
-test("server logs agent attachment urls on WorkTool send success", () => {
+test("server logs agent attachment urls on Channel send success", () => {
   assert.equal(source.includes("attachmentUrls:"), true);
   assert.match(source, /sentAttachments\.map\(\(part\) => part\.attachment\?\.url/);
 });

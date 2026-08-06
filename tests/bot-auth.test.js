@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-bot-auth-test-"));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-bot-auth-test-"));
 process.env.DATA_DIR = dataDir;
 
 const auth = await import("../src/auth.js");

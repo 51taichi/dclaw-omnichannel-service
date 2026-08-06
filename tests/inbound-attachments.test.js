@@ -6,7 +6,7 @@ import {
   inboundAttachmentPlaceholder
 } from "../src/inbound-attachments.js";
 
-test("normalizes public WorkTool file callbacks", () => {
+test("normalizes public Channel file callbacks", () => {
   const message = {
     textType: 6,
     fileUrl: "https://cdn.example.test/resume.pdf",
@@ -27,10 +27,10 @@ test("normalizes public WorkTool file callbacks", () => {
   assert.equal(inboundAttachmentPlaceholder(message), "[文件] 张三简历.pdf");
 });
 
-test("keeps non-public WorkTool paths unavailable", () => {
+test("keeps non-public Channel paths unavailable", () => {
   const message = {
     textType: 2,
-    filePath: "/tmp/worktool/image.png",
+    filePath: "/tmp/omnichannel/image.png",
     fileName: "截图.png"
   };
 
@@ -48,7 +48,7 @@ test("keeps non-public WorkTool paths unavailable", () => {
   assert.equal(inboundAttachmentPlaceholder(message), "[图片] 截图.png");
 });
 
-test("recognizes WorkTool filename size text as an unavailable file", () => {
+test("recognizes Channel filename size text as an unavailable file", () => {
   const message = {
     textType: 1,
     rawSpoken: "公司就业项目汇总\n(2026).xlsx###42K"

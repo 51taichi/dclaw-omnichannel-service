@@ -109,7 +109,6 @@ test("example environment documents isolated data and encrypted channel credenti
   assert.equal(environment.CHANNEL_TOKEN_ENCRYPTION_KEY, "");
   assert.equal(environment.DATA_DIR, "./data");
   assert.equal(environment.DATABASE_PATH, "");
-  assert.equal("ROBOT_ID" in environment, false);
 });
 
 test("health endpoint identifies the running omnichannel service", async (t) => {

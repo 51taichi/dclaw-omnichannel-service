@@ -621,7 +621,7 @@ test("chat bubbles can show agent attachment urls for audit logs", () => {
   assert.equal(css.includes(".chat-attachment-link"), true);
 });
 
-test("live inbound image callbacks remain visible when WorkTool omits text content", () => {
+test("live inbound image callbacks remain visible when Channel omits text content", () => {
   assert.equal(app.includes("function resolveInboundImageMessage"), true);
   assert.match(app, /Number\(rawPayload\.textType\)\s*===\s*2/);
   assert.match(app, /rawPayload\.(?:fileUrl|filePath)/);

@@ -9,5 +9,4 @@ test("production removes external contact tag synchronization", () => {
   assert.doesNotMatch(source, /createTagSyncWorker/);
   assert.doesNotMatch(source, /tagSyncWorker/);
   assert.doesNotMatch(source, /syncFriendTags/);
-  assert.doesNotMatch(source, /\/worktool\//);
 });

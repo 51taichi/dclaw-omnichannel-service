@@ -5,7 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-group-automation-db-test-"));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-group-automation-db-test-"));
 process.env.DATA_DIR = dataDir;
 
 const db = await import("../src/db.js");

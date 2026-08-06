@@ -5,7 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
-const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "worktool-bot-isolation-test-"));
+const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-bot-isolation-test-"));
 process.env.DATA_DIR = dataDir;
 
 const db = await import("../src/db.js");
@@ -106,7 +106,7 @@ test("Bot A cannot read or mutate Bot B conversation by supplying Bot B conversa
 });
 
 test("command callbacks only update delivery rows owned by the callback Bot", () => {
-  const sharedMessageId = "worktool-message-shared";
+  const sharedMessageId = "omnichannel-message-shared";
   db.insertOutgoingMessage({
     botId: "bot_callback_a",
     agentId: "agent_a",
