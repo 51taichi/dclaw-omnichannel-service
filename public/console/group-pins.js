@@ -1,5 +1,5 @@
 (function exposeGroupPins(global) {
-  const STORAGE_PREFIX = "worktool_console_group_pins";
+  const STORAGE_PREFIX = "dclaw_omnichannel_console_group_pins";
 
   function storageKey(workspaceSlug, botId) {
     return `${STORAGE_PREFIX}:${String(workspaceSlug || "default")}:${String(botId || "none")}`;

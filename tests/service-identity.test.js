@@ -101,15 +101,15 @@ test("compose identifies the omnichannel deployment service and container", () =
   assert.equal(containerMatch?.[1], "dclaw-omnichannel-service");
 });
 
-test("example environment makes BOT_ID canonical and documents isolated data paths", () => {
+test("example environment documents isolated data and encrypted channel credentials", () => {
   const source = readArtifact(".env.example");
   const environment = parseExampleEnvironment(source);
 
-  assert.equal(environment.BOT_ID, "replace_with_your_bot_id");
-  assert.equal(environment.ROBOT_ID, "");
+  assert.equal(environment.BOT_ID, "");
+  assert.equal(environment.CHANNEL_TOKEN_ENCRYPTION_KEY, "");
   assert.equal(environment.DATA_DIR, "./data");
   assert.equal(environment.DATABASE_PATH, "");
-  assert.match(source, /# Temporary fallback for older deployments only\.\nROBOT_ID=/u);
+  assert.equal("ROBOT_ID" in environment, false);
 });
 
 test("health endpoint identifies the running omnichannel service", async (t) => {
@@ -191,48 +191,4 @@ test("single-bot configuration prefers BOT_ID and falls back to ROBOT_ID", () =>
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
-});
-
-test("WorkTool requests use BOT_ID when no explicit robot id is supplied", async (t) => {
-  const originalFetch = globalThis.fetch;
-  const originalBotId = process.env.BOT_ID;
-  const originalRobotId = process.env.ROBOT_ID;
-  let requestUrl;
-  globalThis.fetch = async (url) => {
-    requestUrl = new URL(url);
-    return new Response(JSON.stringify({ code: 0 }), { status: 200 });
-  };
-  process.env.BOT_ID = "runtime-bot";
-  process.env.ROBOT_ID = "";
-  t.after(() => {
-    globalThis.fetch = originalFetch;
-    if (originalBotId === undefined) delete process.env.BOT_ID;
-    else process.env.BOT_ID = originalBotId;
-    if (originalRobotId === undefined) delete process.env.ROBOT_ID;
-    else process.env.ROBOT_ID = originalRobotId;
-  });
-
-  const { requestWorkTool } = await import("../src/worktool.js");
-  await requestWorkTool("/robot/robotInfo/get");
-
-  assert.equal(requestUrl.searchParams.get("robotId"), "runtime-bot");
-});
-
-test("WorkTool missing-ID diagnostic documents BOT_ID and legacy ROBOT_ID", async (t) => {
-  const originalBotId = process.env.BOT_ID;
-  const originalRobotId = process.env.ROBOT_ID;
-  process.env.BOT_ID = "";
-  process.env.ROBOT_ID = "";
-  t.after(() => {
-    if (originalBotId === undefined) delete process.env.BOT_ID;
-    else process.env.BOT_ID = originalBotId;
-    if (originalRobotId === undefined) delete process.env.ROBOT_ID;
-    else process.env.ROBOT_ID = originalRobotId;
-  });
-
-  const { requestWorkTool } = await import("../src/worktool.js");
-  await assert.rejects(
-    requestWorkTool("/robot/robotInfo/get"),
-    /BOT_ID.*ROBOT_ID/
-  );
 });

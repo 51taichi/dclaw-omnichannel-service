@@ -57,9 +57,7 @@ test("visible configuration labels and switches are icon-led", () => {
   for (const [icon, label] of [
     ["send", "发送日报"],
     ["send", "发送周报"],
-    ["send", "发送月报"],
-    ["refresh", "夜间自动同步"],
-    ["calendar", "同步添加日期标签"]
+    ["send", "发送月报"]
   ]) {
     assert.match(
       configMarkup,

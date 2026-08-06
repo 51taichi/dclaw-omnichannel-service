@@ -1,480 +1,95 @@
 # DClaw Omnichannel Service
 
-独立的 DClaw 客服与销售中台：统一维护 Bot、客户会话、自动化任务和 Agent 调用边界。服务本身不承载具体业务回复逻辑；业务知识、话术和工具调用由 DClaw Agent 负责。
+面向 WhatsApp 的 DClaw 客服与销售服务。当前渠道由 Whapi.Cloud 提供，支持多 Bot、多 WhatsApp 账号、私聊、群聊、媒体、消息状态、主动触达、状态机、人工接管和群自动化。
 
-- 入站消息由渠道适配器标准化后交给服务。
-- 业务系统可通过服务发起主动消息与自动化任务。
-- Agent 网关根据 `botId -> DClaw agent` 配置路由请求。
+本仓库是独立海外渠道服务，不提供 WorkTool、微信或企业微信兼容接口，也不能与旧服务共用数据库和数据目录。完整的架构边界与迁移记录见 [迁移计划](docs/whapi-cloud-channel-adapter-migration-plan.md)。
 
-> **迁移说明（WorkTool）**：仓库仍保留既有 WorkTool/企业微信适配器与操作说明，仅用于从旧 WorkTool 部署迁移和维持现有集成；它不是新的渠道承诺。当前版本尚未接入 Whapi，也不应据此配置或假定 Whapi 可用。
+## 运行要求
 
-## 架构边界
+- Node.js 22 或更高版本
+- 可被 Whapi.Cloud 访问的 HTTPS 域名
+- 每个 Bot 一个已连接的 Whapi Channel、Channel ID 和 API Token
+- 可用的 DClaw Agent
 
-```text
-DClaw 渠道适配器
-  -> dclaw-omnichannel-service
-  -> DClaw Agent
-  -> dclaw-omnichannel-service
-  -> 渠道适配器
-```
-
-`dclaw-omnichannel-service` 负责：
-
-```text
-接收回调、识别 botId、维护会话、调用 Agent、发送回复、记录日志
-```
-
-DClaw Agent 负责：
-
-```text
-业务知识、回复逻辑、转人工规则、话术风格、工具调用
-```
-
-## 1. 准备环境
-
-需要本机安装 Node.js 18 或更高版本。
+## 本地启动
 
 ```bash
-cd "/Users/moxi/Desktop/codex space/agent create/dclaw-omnichannel-service"
 npm install
 cp .env.example .env
+openssl rand -hex 32
 ```
 
-编辑 `.env`：
+把生成值写入 `.env` 的 `CHANNEL_TOKEN_ENCRYPTION_KEY`，再至少配置：
+
+```dotenv
+PUBLIC_BASE_URL=https://whatsapp.example.com
+CHANNEL_TOKEN_ENCRYPTION_KEY=生成的密钥
+ADMIN_API_KEY=管理员初始密码
+```
+
+启动：
 
 ```bash
-PORT=8765
-HOST=0.0.0.0
-BOT_ID=你的默认botId
-DCLAW_BASE_URL=https://你的dclaw域名
-DCLAW_PUBLIC_ID=openapi_public_id
-CALLBACK_SECRET=自己生成一串随机字符串
-ADMIN_API_KEY=自己生成一串管理密钥
-ADMIN_SESSION_TTL_HOURS=8
-BOT_SESSION_TTL_HOURS=8
-UPLOAD_MAX_MB=100
-UPLOAD_ALLOWED_ORIGINS=https://你的外部应用域名
-```
-
-`BOT_ID` 是单 Bot 配置的首选变量；迁移期间也接受 `ROBOT_ID`。若两者同时设置，`BOT_ID` 优先。多 Bot 部署继续使用 `BOTS_CONFIG_JSON` 或 `BOTS_CONFIG_PATH`，其行为不变。
-
-默认数据库为 `data/dclaw-omnichannel-service.sqlite`。使用 `DATABASE_PATH` 可指定独立数据库文件；该变量优先于 `DATA_DIR`。如果外部应用在浏览器里直接调用上传接口，把页面 Origin 写入 `UPLOAD_ALLOWED_ORIGINS`；多个域名用英文逗号分隔。
-
-DClaw 调用默认 120 秒超时，超时或 DClaw 网关返回 `502/503/504` 会快速重试 1 次。Agent 回复格式不合规时，服务端会先尝试从返回文本中提取唯一 JSON；提取失败才发起一次短超时格式修复。如果最终仍失败，私聊会发送一条兜底提示，避免客户侧完全无响应：
-
-```bash
-DCLAW_AGENT_TIMEOUT_MS=120000
-DCLAW_AGENT_FORMAT_RETRY_TIMEOUT_MS=30000
-DCLAW_AGENT_MAX_ATTEMPTS=2
-AGENT_FAILURE_FALLBACK_REPLY=刚刚这边有点卡，我稍后回复你哈
-```
-
-人工接手是服务端会话状态，不需要 WorkTool 做额外配置。控制台把某个私聊切到“人工接手”后，本服务仍会接收并保存 WorkTool 回调，也会把记录同步给 DClaw 作为历史，但不会再把 Agent 回复发送给客户；恢复 AI 后，新消息重新进入正常 Agent 回复链路。
-
-节点激活用于私聊任务状态机：每个节点可以配置提醒话术，以及是否交给 Agent 美化。每条话术独立设置间隔和次数；话术按顺序推进；客户回复只取消当前倒计时；AI 回复重启当前未完成话术；节点变化会作废旧节点进度。无需选择触发时机：入口节点在新增好友后计时（这是首次计时）；后续计时以最后一条有效机器人消息的发送时间为准；所有启用激活且有话术的私聊节点在 AI 成功回复后计时。WorkTool 回调 `textType=22` 且 `type=105` 时，服务端会从 `friendName` 建立或重置到入口私聊会话；入口激活已配置时才会创建提醒任务。该路径不调用 Agent，也不会重复发送欢迎语。
-
-企微系统欢迎语和 WorkTool `textType=22,type=105` 好友事件可能针对同一次添加先后到达。服务端会按 `botId + conversationKey` 在 30 秒内吸收第二个信号，只保留原始回调审计，不重复重置会话或创建入口激活任务；可通过 `FRIEND_ADDED_SIGNAL_DEDUPE_SECONDS` 调整这个技术去重窗口。
-
-超过信号去重窗口后，可选的业务重入冷却由 `FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES` 控制；代码默认不限制，`.env.example` 示例为 10 分钟。超过业务冷却后再次收到新增好友信号，会重新进入入口节点并重新启动首条激活话术。这个重入只重置状态机进度和 AI 接待状态，不会删除聊天记录或已收集的客户资产。
-
-后台 worker 默认每 10 秒扫描一次到期任务；如果客户回复、人工接手、清空会话或节点变化，旧激活任务会自动失效。这个能力不需要重新上传 Agent，只要服务端和控制台更新即可。
-
-```bash
-ACTIVATION_WORKER_ENABLED=true
-ACTIVATION_WORKER_INTERVAL_MS=10000
-ACTIVATION_WORKER_BATCH_SIZE=20
-ACTIVATION_WORKER_STALE_PROCESSING_MS=300000
-ACTIVATION_SEND_DELAY_MS=500
-ACTIVATION_MAX_CONCURRENT_AGENT_CALLS=2
-```
-
-## 企微标签夜间同步
-
-服务端可以把中台已打上的客户标签追加同步到企业微信原生标签，不修改客户备注，也不删除企业微信已有标签。每个 Bot 独立配置，夜间自动同步默认开启；Bot 管理员可在“配置”页的“企微标签同步”区域关闭自动同步、查看待同步与失败数量，或点击“立即同步”清空当前待同步记录。
-
-自动同步统一使用北京时间，只允许设置在 `22:00` 到次日 `08:00` 的夜间范围内，默认窗口为 `03:00–06:00`，同一夜间窗口最多自动启动一次。手动立即同步不受自动开关和夜间窗口限制。同步任务使用 SQLite 持久化 Outbox，服务重启后会继续处理未完成记录；客户消息处理期间只暂停领取新的标签同步指令，不改变消息回复、节点激活、人工推送或群聊等原有链路。
-
-可选 worker 参数如下，默认值通常无需修改：
-
-```bash
-TAG_SYNC_WORKER_INTERVAL_MS=2000
-TAG_SYNC_WORKER_LEASE_MS=120000
-TAG_SYNC_REALTIME_ACTIVITY_TTL_MS=900000
-```
-
-## AI 经营驾驶舱
-
-解锁任意 Bot 后会默认进入该 Bot 独立的“驾驶舱”页。页面提供日报、周报和月报视图，包括新增客户、成功邀约、邀约转化、有效沟通、从未回复、中途未回复、等待中、转人工、任务节点占比和动态标签变化。
-
-驾驶舱只读取凌晨生成的快照，不会因为频繁打开页面而实时扫描会话，也不会阻塞或改变核心消息回复链路。事件记录采用失败开放方式；统计与 AI 报告在独立夜间流水线执行：
-
-```text
-01:00 聚合 -> 02:00 对账 -> 03:00 生成报告 -> 09:00 发送
-```
-
-报告使用固定信息结构，数字来自冻结快照，AI 只生成经营结论、问题总结和行动建议；AI 不可用时仍会保留可阅读的统计报告。任务节点或标签配置变更后会保存语义版本，历史报告不会随当前配置变化而改写。
-
-在最后一个“配置” Tab 的“驾驶舱报告”卡片中，可以按 Bot 配置时区、未回复阈值、日报/周报/月报接收人和发送开关。企微消息只发送隐私安全的摘要与完整报告入口。夜间 worker 默认开启：
-
-```bash
-COCKPIT_WORKER_ENABLED=true
-```
-
-## 群定时任务
-
-“群管理”中的每个群可以单独维护群定时任务，支持：
-
-- 每天、每周、每月或月底按北京时间执行；
-- 条件推送：到点后依据该群普通 Agent 会话中本周期已有记忆判断条件，达成才发送用户配置的固定内容；
-- 周期汇总：用 `{{白话描述及统计规则}}` 编写模板，到点后生成日、周或月度复盘，周期汇总不设置达成条件且必定生成结果；
-- 同时原生 `@` 多个已配置群角色；
-- 在任务卡片查看下次执行倒计时、当前执行阶段、最近结果和历史记录；
-- 从执行依据直接定位到“会话”中的原始群消息，即使该消息尚未出现在当前分页中也能按锚点加载；
-- WorkTool 返回不明确时停止自动重试，由员工确认后人工重试。
-
-任务状态含义：`倒计时`表示等待下次执行；`执行中`表示本次 Agent 判断或发送尚未结束；`已发送`与`未发送`分别表示本次已经推送，或条件不成立而跳过；`发送待确认`表示上游发送结果不明确，需要人工核对；`执行失败`表示本次 Agent 调用、结果校验或明确发送失败；`执行不可用`表示当前 Bot 未启用或未完成 DClaw Agent 配置；`已取消`和`已停用`不会继续自动执行。
-
-中台仍会保存收到的群消息供“会话”查看，但只把实际触发 Agent 的群消息放入该群普通 Agent 会话。`始终回复`、`仅 @ 回复`和`从不回复`同时决定日常回复与 Agent 记忆覆盖；未触发 Agent 的消息不会另行上传，也不会建设完整群历史备份。进入 Agent 的每条群消息都携带独立的中台消息 ID、发言人和时间，避免多人连续发言被错误归到最后一人。
-
-任务在目标时间前只创建持久化执行记录并冻结任务、群背景、角色配置和 `@` 名单；到点后才在与日常群回复相同的 Bot、会话 Key 和会话版本中调用 Agent。中台不把整段历史重新拼入提示词，也不读取或上传完整群历史；Agent 直接使用该普通会话已有记忆完成条件判断或周期汇总。
-
-群背景和群角色只用于内部理解；对外生成内容不得提及或暗示这些后台配置、内部提示或分析过程。群定时任务与私聊任务状态机、私聊资产完全隔离。条件推送命中后发送用户配置的固定原文；周期汇总发送 Agent 生成的 Review。每次执行的 Agent 调用首次加两次重试，共最多三次；发送前冻结最终内容和 `@` 名单，上游 WorkTool 明确拒绝时同一载荷最多尝试三次，发送结果不明确时禁止自动重发。
-
-相关 Worker 默认开启，可通过以下环境变量调整本地队列处理频率和租约；这些间隔不是外部消息轮询：
-
-```bash
-GROUP_AUTOMATION_WORKER_ENABLED=true
-GROUP_AUTOMATION_OCCURRENCE_INTERVAL_MS=2000
-GROUP_AUTOMATION_LEASE_MS=300000
-GROUP_AUTOMATION_BATCH_SIZE=10
-```
-
-本功能只需部署中台代码，不要求修改 DClaw 服务端、不新增历史接口，也不需要额外的群历史读取权限或跨仓库部署顺序。升级后旧的群历史同步、分段分析和账本表会被幂等清理，群任务直接复用现有普通会话。
-
-## 2. 启动服务
-
-```bash
-npm run dev
-```
-
-看到下面输出就说明本地服务已启动：
-
-```text
-{"event":"service.started","service":"DClaw omnichannel service","host":"0.0.0.0","port":8765}
-```
-
-本地健康检查：
-
-```bash
-curl http://localhost:8765/health
-```
-
-## 3. 多 Bot / Agent 配置
-
-第一版支持一个 `botId` 绑定一个 DClaw Agent。复制配置模板：
-
-```bash
-mkdir -p config
-cp config/bots.example.json config/bots.json
-```
-
-编辑 `config/bots.json`：
-
-```json
-{
-  "bots": [
-    {
-      "botId": "你的WorkTool botId",
-      "botName": "A部门机器人",
-      "agentId": "xzj_business_manager",
-      "agentName": "A部门客服",
-      "dclawBaseUrl": "https://你的dclaw域名",
-      "dclawPublicId": "openapi_public_id",
-      "agentApiKey": "qp_live_xxx",
-      "enabled": true
-    }
-  ]
-}
-```
-
-也可以用管理 API 写入：
-
-```bash
-curl -X PUT http://127.0.0.1:8765/api/bots/你的botId \
-  -H 'Content-Type: application/json' \
-  -H 'x-api-key: 你的ADMIN_API_KEY' \
-  -d '{
-    "botName": "A部门机器人",
-    "agentId": "xzj_business_manager",
-    "agentName": "A部门客服",
-    "dclawBaseUrl": "https://你的dclaw域名",
-    "dclawPublicId": "openapi_public_id",
-    "agentApiKey": "qp_live_xxx",
-    "enabled": true
-  }'
-```
-
-## 4. 本地暴露公网地址
-
-如果你还没有服务器，可以临时用 ngrok：
-
-```bash
-ngrok http 8765
-```
-
-拿到类似这样的地址：
-
-```text
-https://xxxx.ngrok-free.app
-```
-
-把它写入 `.env`：
-
-```bash
-PUBLIC_BASE_URL=https://xxxx.ngrok-free.app
-```
-
-然后重启服务。
-
-## 5. WorkTool 迁移：配置旧回调
-
-启动服务后执行：
-
-```bash
-curl -X POST http://localhost:8765/api/config/你的botId/message-callback
-```
-
-这个接口会把消息回调地址配置到 WorkTool：
-
-```text
-https://你的公网域名/worktool/你的botId/message-callback?secret=你的密钥
-```
-
-再执行：
-
-```bash
-curl -X POST http://localhost:8765/api/config/你的botId/command-callback
-```
-
-这个接口会把主动指令结果回调地址配置到 WorkTool：
-
-```text
-https://你的公网域名/worktool/你的botId/command-callback?secret=你的密钥
-```
-
-查看机器人信息：
-
-```bash
-curl http://localhost:8765/api/robot/你的botId
-```
-
-查看指令回调配置：
-
-```bash
-curl http://localhost:8765/api/callback-config/你的botId
-```
-
-## 6. 测试被动触发
-
-在企微里给机器人发一条消息，几秒后查看本地日志：
-
-```bash
-curl http://localhost:8765/api/logs/incoming-messages
-```
-
-也可以直接看文件：
-
-```bash
-tail -f data/incoming-messages.jsonl
-```
-
-## 7. 测试主动发送
-
-把 `客户昵称或群名` 换成真实接收者名称：
-
-```bash
-curl -X POST http://localhost:8765/api/send \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "botId": "你的botId",
-    "targets": ["客户昵称或群名"],
-    "content": "这是一条来自 WorkTool bot service 的测试消息"
-  }'
-```
-
-成功后查看主动发送记录：
-
-```bash
-curl http://localhost:8765/api/logs/outgoing-commands
-```
-
-查看 WorkTool 主动指令结果回调：
-
-```bash
-curl http://localhost:8765/api/logs/command-callbacks
-```
-
-## 8. 真实环境部署建议
-
-### Docker 部署
-
-服务器上进入项目目录后：
-
-```bash
-cp .env.example .env
-```
-
-编辑 `.env`：
-
-```bash
-PORT=8765
-HOST=0.0.0.0
-BOT_ID=你的真实botid
-WORKTOOL_BASE_URL=https://api.worktool.ymdyes.cn
-PUBLIC_BASE_URL=https://worktool.deepmega.cn
-CALLBACK_SECRET=自己生成一串随机字符串
-ADMIN_API_KEY=自己生成一串管理密钥
-BOTS_CONFIG_PATH=./config/bots.json
-```
-
-启动 Docker 服务：
-
-```bash
-docker compose up -d --build
-```
-
-检查服务：
-
-```bash
-docker ps
-curl http://127.0.0.1:18765/health
-```
-
-### 非 Docker 部署
-
-第一阶段也可以这样跑：
-
-```bash
-npm install --omit=dev
 npm start
 ```
 
-生产环境建议再加：
+默认监听 `0.0.0.0:8765`。管理后台为 `/admin/`，员工工作区入口为 `/console/<workspace-slug>`。
 
-- 使用 PM2 或 systemd 守护进程。
-- 使用 Nginx 反向代理 HTTPS 到本服务的 `3000` 端口。
-- 评估备份与迁移策略；当前运行数据默认保存在 SQLite 数据库 `data/dclaw-omnichannel-service.sqlite`。
-- 对 `/api/send` 增加你自己系统的鉴权，避免任何人都能调用你的机器人发消息。
-- 若继续使用旧 WorkTool 适配器，按其文档评估主动发送的队列、限流与频率限制。
+## 配置 Whapi Bot
 
-Nginx 应代理到：
+1. 登录 `/admin/`。
+2. 先创建或确认 DClaw Agent。
+3. 在 Bots 页面填写 Bot ID、名称、Agent、Whapi Channel ID 和 API Token。
+4. Webhook Secret 可以留空，由系统生成；首次保存后只显示一次，应立即妥善保存。
+5. 保存时系统自动把 Webhook 配置到 Whapi；随后点击“检查 Whapi 连接”。
 
-```text
-http://127.0.0.1:18765
-```
-
-## 9. 管理后台与独立入口
-
-后台页面和回调服务共用同一个容器和端口：
+系统为每个账号生成独立地址：
 
 ```text
-全局管理员：https://worktool.deepmega.cn/admin/
-员工入口：https://worktool.deepmega.cn/console/管理员设置的尾巴
+POST /webhooks/whapi/:channelAccountId
 ```
 
-首次升级启动时，服务会用 `.env` 的 `ADMIN_API_KEY` 初始化数据库中的唯一管理员密码。初始化完成后，管理员密码以数据库为准；后续修改 `.env` 不会覆盖它。管理员可以在 `/admin/` 的系统设置中修改密码，也可以在服务器执行：
+Webhook 至少订阅消息新增、更新、删除，消息状态，以及群与 Channel 状态事件。Webhook Secret 只保存哈希，Whapi API Token 使用 `CHANNEL_TOKEN_ENCRYPTION_KEY` 加密后写入 SQLite，不会返回浏览器或写入普通日志。
+
+## 主要接口
+
+- `POST /webhooks/whapi/:channelAccountId`：Whapi Webhook
+- `GET /health`：进程健康检查
+- `GET /api/bots`：管理员读取 Bot 与渠道账号状态
+- `PUT /api/bots/:botId`：保存 Bot、Whapi 账号并自动配置 Webhook
+- `POST /api/bots/:botId/channel/health-check`：主动检查 Whapi 连接
+
+业务接口需要管理员会话、工作区会话或 Bot 会话；不得将管理接口直接暴露为无认证公网 API。
+
+## 数据与隔离
+
+- SQLite 默认位于 `DATA_DIR`；也可用 `DATABASE_PATH` 指定完整路径。
+- 一个控制台 Bot 对应一个 Whapi Channel。
+- Token、Webhook Secret、会话、消息、标签、任务、群和 DClaw Session 均按 Bot/渠道账号隔离。
+- Whapi Webhook 可能重试，接收链路按外部事件和消息 ID 幂等入库。
+- Whapi 媒体保存期有限，需要长期展示的媒体由本服务及时转存。
+
+## 私聊节点激活
+
+WhatsApp 没有新增好友事件。系统在账号第一次收到某位客户的私聊消息时发现客户并进入入口节点；入口节点配置了激活话术时，从首次发现开始计时。之后每次 AI 成功回复都会重新锚定当前节点尚未完成的话术。每条话术可独立配置间隔和次数，客户回复会取消当前倒计时，节点变化会让旧节点任务失效。
+
+## 测试
 
 ```bash
-npm run admin:reset-password
+npm test
 ```
 
-全局管理员页面负责：
+上线前还应使用真实 Whapi 测试账号完成私聊、群聊、媒体、引用、mention、消息状态、断线恢复和 Webhook 重试验收。
 
-```text
-创建、停用和删除独立入口
-设置 URL 尾巴和上下句口令
-分配、移除或转移 Bot（一个 Bot 只能属于一个入口）
-维护全部 Bot 和 Agent
-修改唯一管理员密码
-```
+## 部署检查
 
-员工首次打开独立入口时，需要根据上半句输入下半句口令。验证成功会倒计时 3 秒进入，浏览器会保存 30 天入口会话。进入后只显示分配给该入口的 Bot，不会显示其他入口的数据。
+- 使用全新数据库与数据目录，不挂载旧服务数据。
+- `PUBLIC_BASE_URL` 是公网 HTTPS origin，且反向代理允许 Whapi POST。
+- `CHANNEL_TOKEN_ENCRYPTION_KEY` 已持久化并备份；丢失后无法解密已保存 Token。
+- 管理后台成功保存 Bot，并显示 Whapi Webhook 配置成功。
+- 健康检查为 connected；收发消息和状态回执均已验证。
+- 日志和监控中没有 API Token、Webhook Secret 或客户敏感媒体内容。
 
-每个 Bot 仍保持原有的独立密码和权限逻辑。Bot 默认是灰色锁定状态，点击 Bot 后输入“当前 Bot 独立密钥”或管理员密码：
+## 回滚
 
-- 输入 Bot 独立密钥：只解锁当前 Bot，不显示配置 Tab。
-- 输入当前管理员密码：以管理员身份解锁当前 Bot，显示配置 Tab，并可以修改当前 Bot 独立密钥。
-- 点击“上锁”会清除当前 Bot 的本地 token，恢复锁定态。
-
-员工页面保持原有的会话、任务、标签、推送和日志能力。Agent 属于全局资源，因此 Agent 的新增、编辑和删除统一放在 `/admin/`，Bot 配置仍可选择已经维护好的 Agent。
-
-### 现有环境升级步骤
-
-1. 更新代码并重新构建容器，原有 Bot、会话、任务、标签和推送数据不会迁移或重建。
-2. 打开 `/admin/`，使用升级前 `.env` 中的 `ADMIN_API_KEY` 登录。
-3. 创建所需入口，设置自定义 URL 尾巴与上下句口令。
-4. 将现有 Bot 分配到对应入口。分配只改变可见范围，不改 Bot 配置、密码或业务数据。
-5. 把 `/console/自定义尾巴` 发给负责人或员工。
-
-`/console` 和 `/console/` 会跳转到 `/admin/`，不再作为员工兼容入口。
-
-员工页面支持：
-
-```text
-查看 bot 绑定
-一键绑定 WorkTool 消息回调和指令回调
-配置调试自动回复的开关、触发词和回复内容
-查看最近消息、会话、Agent 调用、指令回调
-```
-
-## 10. 当前接口说明
-
-本服务提供：
-
-```text
-GET  /health
-POST /worktool/:botId/message-callback
-POST /worktool/:botId/command-callback
-POST /api/send
-POST /api/uploads
-GET  /api/bots
-PUT  /api/bots/:botId
-POST /api/config/:botId/message-callback
-POST /api/config/:botId/command-callback
-GET  /api/robot/:botId
-GET  /api/callback-config/:botId
-GET  /api/logs/incoming-messages
-GET  /api/logs/outgoing-commands
-GET  /api/logs/command-callbacks
-GET  /api/logs/agent-invocations
-GET  /api/logs/conversations
-```
-
-其中 `/worktool/*` 是给 WorkTool 调用的公网回调接口，`/api/*` 是给你自己使用的管理和测试接口。
-
-### 上传接口给外部应用调用
-
-`POST /api/uploads?botId=你的botId` 使用 `multipart/form-data`，文件字段名必须是 `file`，请求头带当前 Bot 的 `x-bot-session-token` 或管理员 `x-api-key: 你的ADMIN_API_KEY`。`botId` 必填，上传文件会保存到该 Bot 的独立缓存目录。默认最大上传 `100MB`，返回的 `file.url` 是公网可访问地址，可直接作为媒体消息的 `fileUrl`。
-
-浏览器端示例：
-
-```js
-const form = new FormData();
-form.append("file", file);
-
-const botId = "你的botId";
-const response = await fetch(`https://你的公网域名/api/uploads?botId=${encodeURIComponent(botId)}`, {
-  method: "POST",
-  headers: {
-    "x-api-key": "你的ADMIN_API_KEY"
-  },
-  body: form
-});
-
-const data = await response.json();
-if (!response.ok || data.ok === false) {
-  throw new Error(data.message || `HTTP ${response.status}`);
-}
-
-console.log(data.file.url);
-```
+部署前备份本服务 SQLite 和上传目录。应用回滚时保持原 `CHANNEL_TOKEN_ENCRYPTION_KEY`，回退应用版本并恢复匹配的数据库备份。不要把流量切回旧微信服务或复用旧服务数据库。

@@ -12,7 +12,6 @@ import {
 } from "./conversation-message-dedupe.js";
 import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags.js";
 import { normalizeTagSyncConfig } from "./tag-sync.js";
-import { normalizeWorktoolTimestamp } from "./worktool-history.js";
 import {
   groupAutomationCycleWindow,
   nextGroupAutomationRunAt,
@@ -1196,8 +1195,20 @@ const groupRoleReplyPolicies = new Set(["inherit", ...groupReplyPolicies]);
 function normalizeManagedGroupCreatedAt(value) {
   const raw = String(value || "").trim();
   if (!raw) return "";
-  const worktoolTimestamp = normalizeWorktoolTimestamp(raw);
-  const parsed = new Date(worktoolTimestamp || raw);
+  const legacyBeijingMatch = raw.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})$/
+  );
+  const legacyBeijingTimestamp = legacyBeijingMatch
+    ? new Date(Date.UTC(
+      Number(legacyBeijingMatch[1]),
+      Number(legacyBeijingMatch[2]) - 1,
+      Number(legacyBeijingMatch[3]),
+      Number(legacyBeijingMatch[4]) - 8,
+      Number(legacyBeijingMatch[5]),
+      Number(legacyBeijingMatch[6])
+    )).toISOString()
+    : "";
+  const parsed = new Date(legacyBeijingTimestamp || raw);
   return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString();
 }
 

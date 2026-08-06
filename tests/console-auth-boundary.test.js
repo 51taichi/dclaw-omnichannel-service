@@ -7,17 +7,14 @@ const app = fs.readFileSync(new URL("../public/console/app.js", import.meta.url)
 const css = fs.readFileSync(new URL("../public/console/styles.css", import.meta.url), "utf8");
 
 test("console header uses the AI sales and customer service platform title", () => {
-  assert.match(html, /<title>微信AI销售客服管理中台<\/title>/);
-  assert.equal(html.includes("微信AI销售客服管理中台"), true);
+  assert.match(html, /<title>WhatsApp AI 销售客服管理中台<\/title>/);
+  assert.equal(html.includes("WhatsApp AI 销售客服管理中台"), true);
   assert.equal(html.includes("AI销售/客服机器人管理中台"), false);
   assert.equal(html.includes("微信机器人管理控制台"), false);
-  assert.equal(html.includes('aria-label="微信"'), true);
-  assert.equal(html.includes('aria-label="企业微信"'), true);
-  assert.match(html, /class="platform-logo wechat"[\s\S]*src="\.\/assets\/wechat\.png"/);
-  assert.match(html, /class="platform-logo wecom"[\s\S]*src="\.\/assets\/compay_wechat\.png"/);
+  assert.equal(html.includes('aria-label="WhatsApp / Whapi.Cloud"'), true);
+  assert.match(html, /class="platform-logo whatsapp"/);
   assert.equal(css.includes(".topbar-platforms"), true);
-  assert.equal(css.includes(".platform-logo.wechat"), true);
-  assert.equal(css.includes(".platform-logo.wecom"), true);
+  assert.equal(css.includes(".platform-logo.whatsapp"), true);
   assert.match(css, /\.platform-logo\s*\{[\s\S]*width:\s*42px[\s\S]*height:\s*42px[\s\S]*border-radius:\s*12px[\s\S]*border:\s*1px solid/);
   assert.match(css, /\.platform-logo img\s*\{[\s\S]*width:\s*29px[\s\S]*height:\s*29px/);
 });
@@ -38,7 +35,7 @@ test("console has unified unlock and relock controls", () => {
 });
 
 test("console stores bot scoped tokens and sends x-bot-session-token", () => {
-  assert.equal(app.includes("worktool_console_bot_sessions"), true);
+  assert.equal(app.includes("dclaw_omnichannel_console_bot_sessions"), true);
   assert.equal(app.includes('"x-bot-session-token"'), true);
   assert.equal(app.includes("state.currentRole"), true);
 });
@@ -68,7 +65,7 @@ test("config tab is available to every unlocked Bot without owning global mainte
   assert.equal(app.includes('switchWorkspaceTab("sessions", { force: true })'), false);
   assert.match(app, /async function loadReplyWait[\s\S]*if \(!botId \|\| !els\.replyWaitForm\) return/);
   assert.match(app, /async function loadHistoryAnalysis[\s\S]*if \(!botId \|\| !els\.replyWaitForm\) return/);
-  assert.match(app, /async function loadTagSyncConfig[\s\S]*if \(!botId \|\| !els\.tagSyncForm\) return/);
+  assert.equal(app.includes("loadTagSyncConfig"), false);
   assert.equal(app.includes("/access-key"), true);
   assert.equal(app.includes("settings/debug-reply"), false);
   assert.equal(css.includes(".bot-card.is-locked"), true);

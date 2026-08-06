@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>微信AI销售客服管理后台</title>
+    <title>WhatsApp AI 销售客服管理后台</title>
     <link rel="stylesheet" href="/shared/auth-shell.css" />
     <link rel="stylesheet" href="/admin/styles.css" />
   </head>
@@ -42,16 +42,11 @@
           <div class="brand">
             <img class="brand-logo" src="/console/assets/deepmega-dclaw-logo-cropped.png" alt="DeepMega DClaw" />
             <div class="brand-copy">
-              <h1>微信AI销售客服管理后台</h1>
+              <h1>WhatsApp AI 销售客服管理后台</h1>
             </div>
           </div>
           <div class="topbar-platforms" aria-label="支持平台">
-            <span class="platform-logo wechat" aria-label="微信" role="img">
-              <img src="/console/assets/wechat.png" alt="" />
-            </span>
-            <span class="platform-logo wecom" aria-label="企业微信" role="img">
-              <img src="/console/assets/compay_wechat.png" alt="" />
-            </span>
+            <span class="platform-logo whatsapp" aria-label="WhatsApp / Whapi.Cloud">WhatsApp</span>
           </div>
         </div>
       </header>
@@ -105,6 +100,9 @@
             <label><span><svg><use href="#admin-icon-id"></use></svg>Bot ID</span><input name="botId" required /></label>
             <label><span><svg><use href="#admin-icon-name"></use></svg>Bot 名称</span><input name="botName" /></label>
             <label><span><svg><use href="#admin-icon-user"></use></svg>Agent</span><select name="agentId" required></select></label>
+            <label><span><svg><use href="#admin-icon-link"></use></svg>Whapi Channel ID</span><input name="channelId" required placeholder="例如 HULKBR-KVR3C" /></label>
+            <label><span><svg><use href="#admin-icon-key"></use></svg>Whapi API Token</span><input name="apiToken" type="password" autocomplete="new-password" placeholder="编辑时留空则保持不变" /></label>
+            <label><span><svg><use href="#admin-icon-key"></use></svg>Webhook Secret</span><input name="webhookSecret" type="password" autocomplete="new-password" placeholder="新建时留空自动生成" /></label>
             <div class="admin-form-control-row">
               <label class="toggle-line admin-switch-field switch-toggle">
                 <svg><use href="#admin-icon-power"></use></svg>
@@ -113,6 +111,7 @@
                 <span class="switch-slider" aria-hidden="true"></span>
               </label>
               <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>保存 Bot</button>
+              <button id="checkChannelHealthButton" class="secondary" type="button" hidden><svg><use href="#admin-icon-check"></use></svg>检查 Whapi 连接</button>
             </div>
           </form>
           <section id="botMaintenancePanel" class="admin-bot-maintenance" hidden>

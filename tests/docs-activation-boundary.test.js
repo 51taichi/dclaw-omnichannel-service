@@ -19,13 +19,9 @@ test("activation tasks are visible in logs", () => {
 });
 
 test("automatic activation scope is documented", () => {
-  assert.equal(readme.includes("无需选择触发时机"), true);
-  assert.equal(readme.includes("入口节点在新增好友后计时"), true);
-  assert.equal(readme.includes("所有启用激活且有话术的私聊节点在 AI 成功回复后计时"), true);
-  assert.equal(readme.includes("新增好友后和 AI 回复后都会计时"), false);
-  assert.equal(readme.includes("textType=22"), true);
-  assert.equal(readme.includes("type=105"), true);
-  assert.equal(readme.includes("每条话术独立设置间隔和次数"), true);
-  assert.equal(readme.includes("节点变化会作废旧节点进度"), true);
-  assert.equal(readme.includes("后续计时以最后一条有效机器人消息的发送时间为准"), true);
+  assert.equal(readme.includes("第一次收到某位客户的私聊消息时发现客户"), true);
+  assert.equal(readme.includes("AI 成功回复都会重新锚定"), true);
+  assert.equal(readme.includes("每条话术可独立配置间隔和次数"), true);
+  assert.equal(readme.includes("节点变化会让旧节点任务失效"), true);
+  assert.equal(readme.includes("textType=22"), false);
 });

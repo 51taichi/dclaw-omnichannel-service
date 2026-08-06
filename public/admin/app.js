@@ -1,5 +1,5 @@
-const ADMIN_SESSION_KEY = "worktool_admin_session";
-const WORKSPACE_SESSION_KEY = "worktool_workspace_sessions";
+const ADMIN_SESSION_KEY = "dclaw_omnichannel_admin_session";
+const WORKSPACE_SESSION_KEY = "dclaw_omnichannel_workspace_sessions";
 
 const state = {
   session: readJson(ADMIN_SESSION_KEY),
@@ -31,6 +31,7 @@ const els = {
   deleteWorkspace: document.querySelector("#deleteWorkspaceButton"),
   assignBots: document.querySelector("#assignBotsButton"),
   botForm: document.querySelector("#botForm"),
+  checkChannelHealth: document.querySelector("#checkChannelHealthButton"),
   botList: document.querySelector("#botList"),
   botMaintenancePanel: document.querySelector("#botMaintenancePanel"),
   botMaintenanceName: document.querySelector("#botMaintenanceName"),
@@ -457,6 +458,7 @@ function clearBotMaintenance() {
   state.debugReplyLoadVersion += 1;
   state.selectedBotId = "";
   els.botMaintenancePanel.hidden = true;
+  els.checkChannelHealth.hidden = true;
   els.botMaintenanceName.textContent = "";
   els.debugReplyForm.reset();
   els.debugReplyForm.trigger.value = "ping";
@@ -502,7 +504,11 @@ async function selectBotForEditing(botId) {
   els.botForm.botId.value = bot.botId;
   els.botForm.botName.value = bot.botName || "";
   els.botForm.agentId.value = bot.agentId || "";
+  els.botForm.channelId.value = bot.channelAccount?.channelId || "";
+  els.botForm.apiToken.value = "";
+  els.botForm.webhookSecret.value = "";
   els.botForm.enabled.checked = bot.botEnabled !== false;
+  els.checkChannelHealth.hidden = !bot.channelAccount;
   els.botMaintenanceName.textContent = bot.botName || bot.botId;
   els.botMaintenancePanel.hidden = false;
   els.debugReplyForm.reset();
@@ -550,21 +556,43 @@ async function saveBot(event) {
   event.preventDefault();
   const form = new FormData(els.botForm);
   const botId = String(form.get("botId") || "").trim();
-  await adminRequest(`/api/bots/${encodeURIComponent(botId)}`, {
+  const result = await adminRequest(`/api/bots/${encodeURIComponent(botId)}`, {
     method: "PUT",
     body: JSON.stringify({
       botName: form.get("botName"),
       agentId: form.get("agentId"),
+      channelId: form.get("channelId"),
+      apiToken: form.get("apiToken"),
+      webhookSecret: form.get("webhookSecret"),
+      configureWebhook: true,
       enabled: form.get("enabled") === "on"
     })
   });
+  if (result.channelSetup?.ok === false) {
+    throw new Error(`Bot 已保存，但 Whapi 配置失败：${result.channelSetup.error}`);
+  }
   await loadGlobalData();
   try {
     await selectBotForEditing(botId);
-    toast("Bot 已保存");
+    if (result.channelSetup?.webhookSecret) {
+      window.prompt("Webhook Secret 只显示一次，请立即复制保存：", result.channelSetup.webhookSecret);
+    }
+    toast("Bot 与 Whapi 配置已保存");
   } catch {
     toast("Bot 已保存，但调试配置加载失败");
   }
+}
+
+async function checkChannelHealth() {
+  const botId = state.selectedBotId;
+  if (!botId) return;
+  const data = await adminRequest(`/api/bots/${encodeURIComponent(botId)}/channel/health-check`, {
+    method: "POST",
+    body: JSON.stringify({})
+  });
+  await loadGlobalData();
+  const status = data.health?.status || data.account?.healthStatus || "unknown";
+  toast(`Whapi 连接状态：${status}`);
 }
 
 function openBotPasswordDialog(botId, trigger = null) {
@@ -750,6 +778,7 @@ els.assignmentSearch.addEventListener("input", renderAssignmentBots);
 els.assignmentCancel.addEventListener("click", () => { els.assignmentModal.hidden = true; });
 els.assignmentConfirm.addEventListener("click", () => confirmAssignment().catch((error) => toast(error.message)));
 els.botForm.addEventListener("submit", (event) => saveBot(event).catch((error) => toast(error.message)));
+els.checkChannelHealth.addEventListener("click", () => checkChannelHealth().catch((error) => toast(error.message)));
 els.botForm.botId.addEventListener("input", () => {
   if (state.selectedBotId && els.botForm.botId.value.trim() !== state.selectedBotId) {
     clearBotMaintenance();

@@ -86,10 +86,9 @@ test("friend-added signal time persists after successful handling without a flow
   assert.equal(flowEntryIndex < flowEntryMarkIndex, true);
 });
 
-test("friend-added signal dedupe configuration is documented separately", () => {
-  assert.match(envExample, /^FRIEND_ADDED_SIGNAL_DEDUPE_SECONDS=30$/m);
-  assert.match(readme, /FRIEND_ADDED_SIGNAL_DEDUPE_SECONDS/);
-  assert.match(readme, /30 秒/);
+test("Whapi documentation does not expose the retired friend-added callback configuration", () => {
+  assert.doesNotMatch(envExample, /FRIEND_ADDED_SIGNAL_DEDUPE_SECONDS/);
+  assert.match(readme, /WhatsApp 没有新增好友事件/);
 });
 
 test("friend-added re-entry happens even when the entry node has no activation script", () => {

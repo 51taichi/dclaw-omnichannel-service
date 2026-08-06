@@ -1,5 +1,5 @@
 (function initializeWorkspaceEntry(global) {
-  const SESSION_KEY = "worktool_workspace_sessions";
+  const SESSION_KEY = "dclaw_omnichannel_workspace_sessions";
   const pathMatch = global.location.pathname.match(/^\/console\/([a-z0-9-]{3,32})\/?$/);
   const slug = pathMatch?.[1] || "";
   const authRoot = document.querySelector("#workspaceAuthRoot");

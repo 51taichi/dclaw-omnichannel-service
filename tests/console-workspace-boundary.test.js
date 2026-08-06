@@ -23,7 +23,7 @@ test("workspace entry requires an exact console slug and stores scoped sessions"
   const entry = fs.readFileSync(entryUrl, "utf8");
 
   assert.match(entry, /location\.pathname\.match\(\/\^\\\/console\\\/\(\[a-z0-9-\]\{3,32\}\)\\\/\?\$\/\)/);
-  assert.equal(entry.includes("worktool_workspace_sessions"), true);
+  assert.equal(entry.includes("dclaw_omnichannel_workspace_sessions"), true);
   assert.equal(entry.includes("/api/workspaces/${encodeURIComponent(slug)}/challenge"), true);
   assert.equal(entry.includes("/api/workspaces/${encodeURIComponent(slug)}/unlock"), true);
   assert.equal(entry.includes("/api/workspaces/${encodeURIComponent(slug)}/bots"), true);

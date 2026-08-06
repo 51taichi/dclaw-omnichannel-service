@@ -8,11 +8,10 @@ const css = fs.readFileSync(new URL("../public/admin/styles.css", import.meta.ur
 
 test("admin console exposes global management tabs without user management", () => {
   assert.equal(html.includes("/console/assets/deepmega-dclaw-logo-cropped.png"), true);
-  assert.match(html, /<title>微信AI销售客服管理后台<\/title>/);
+  assert.match(html, /<title>WhatsApp AI 销售客服管理后台<\/title>/);
   assert.match(html, /class="topbar admin-topbar"[\s\S]*class="topbar-inner"[\s\S]*class="brand"/);
-  assert.match(html, /<h1>微信AI销售客服管理后台<\/h1>/);
-  assert.equal(html.includes("/console/assets/wechat.png"), true);
-  assert.equal(html.includes("/console/assets/compay_wechat.png"), true);
+  assert.match(html, /<h1>WhatsApp AI 销售客服管理后台<\/h1>/);
+  assert.equal(html.includes('class="platform-logo whatsapp"'), true);
   for (const label of ["工作区", "Bots", "Agents", "系统设置", "退出"]) {
     assert.equal(html.includes(label), true, `missing ${label}`);
   }
@@ -22,7 +21,7 @@ test("admin console exposes global management tabs without user management", () 
 });
 
 test("admin console uses singleton session authentication", () => {
-  assert.equal(app.includes("worktool_admin_session"), true);
+  assert.equal(app.includes("dclaw_omnichannel_admin_session"), true);
   assert.equal(app.includes('"x-admin-session-token"'), true);
   for (const path of [
     "/api/admin/login",
@@ -49,7 +48,7 @@ test("admin workspace UI supports assignment transfer removal and direct opening
   assert.equal(app.includes("/transfer"), true);
   assert.equal(app.includes("targetWorkspaceId"), true);
   assert.equal(app.includes("原入口"), true);
-  assert.equal(app.includes("worktool_workspace_sessions"), true);
+  assert.equal(app.includes("dclaw_omnichannel_workspace_sessions"), true);
   assert.equal(app.includes("?bot="), true);
   assert.match(app, /window\.open\("about:blank",\s*"_blank"\)/);
   assert.match(app, /workspaceTab\.location\.replace\(targetUrl\)/);
