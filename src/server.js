@@ -311,13 +311,6 @@ import {
 import { parseGroupSummaryTemplate } from "./group-summary-template.js";
 import { createGroupAutomationStreamHub } from "./group-automation-stream.js";
 import {
-  claimNextTagSyncBatch,
-  ensureTagSyncInitialBackfill,
-  finishTagSyncRunIfDrained,
-  resolveTagSyncCommandCallback,
-  startTagSyncRun
-} from "./db.js";
-import {
   buildGroupAgentContext,
   buildGroupTagContext,
   resolveGroupReplyDecision
@@ -343,8 +336,6 @@ import { createTagAlertStreamHub } from "./tag-alert-stream.js";
 import { normalizeHistoryAnalysisConfig } from "./history-analysis.js";
 import { createKeyedSingleFlight, isLegacyCustomerCandidate } from "./legacy-history.js";
 import { filterConfiguredCollectedDataPatch } from "./flow-assets.js";
-import { getTagSyncWindowState } from "./tag-sync.js";
-import { createTagSyncWorker } from "./tag-sync-worker.js";
 import {
   adjudicateTagDecision,
   compactTagRulesForAgent,
@@ -382,18 +373,6 @@ const channelWebhookWorkerEnabled = process.env.CHANNEL_WEBHOOK_WORKER_ENABLED !
 const channelWebhookWorkerIntervalMs = Math.max(
   100,
   Number(process.env.CHANNEL_WEBHOOK_WORKER_INTERVAL_MS || 500)
-);
-const TAG_SYNC_WORKER_INTERVAL_MS = Math.max(
-  500,
-  Number(process.env.TAG_SYNC_WORKER_INTERVAL_MS || 2000)
-);
-const TAG_SYNC_WORKER_LEASE_MS = Math.max(
-  30_000,
-  Number(process.env.TAG_SYNC_WORKER_LEASE_MS || 120_000)
-);
-const TAG_SYNC_REALTIME_ACTIVITY_TTL_MS = Math.max(
-  60_000,
-  Number(process.env.TAG_SYNC_REALTIME_ACTIVITY_TTL_MS || 15 * 60 * 1000)
 );
 fs.mkdirSync(uploadDir, { recursive: true });
 
@@ -653,49 +632,6 @@ const migratedLegacyHistorySenderCount = migrateLegacyHistoryOutboundSenderNames
 logInfo("legacy_history.outbound_senders_migrated", {
   messageCount: migratedLegacyHistorySenderCount
 });
-const migratedTagSyncConfigCount = migrateTagSyncNightlyDefaultEnabled();
-logInfo("tag_sync.default_enabled_migrated", {
-  configCount: migratedTagSyncConfigCount
-});
-
-const tagSyncWorker = createTagSyncWorker({
-  getConfig: getTagSyncConfig,
-  listConfigs: listRunnableTagSyncConfigs,
-  getActiveRun: getActiveTagSyncRun,
-  startRun: startTagSyncRun,
-  setRunStatus: updateTagSyncRunStatus,
-  hasRealtimeActivity(botId) {
-    return hasRecentBotMessageProcessing({
-      botId,
-      sinceIso: new Date(Date.now() - TAG_SYNC_REALTIME_ACTIVITY_TTL_MS).toISOString()
-    });
-  },
-  claimBatch: claimNextTagSyncBatch,
-  markSubmitted: markTagSyncCommandSubmitted,
-  markSubmitFailed: markTagSyncCommandSubmitFailed,
-  getSubmittedCommand: getSubmittedTagSyncCommand,
-  resolveCallback: resolveTagSyncCommandCallback,
-  finishRunIfDrained: finishTagSyncRunIfDrained,
-  recoverLeases: recoverExpiredTagSyncLeases,
-  sendTags: async () => {
-    throw new Error("external contact tag synchronization is not supported by Whapi");
-  },
-  getWindowState: getTagSyncWindowState,
-  leaseMs: TAG_SYNC_WORKER_LEASE_MS,
-  log(event, fields) {
-    if (event.endsWith("failed")) logWarn(event, fields);
-    else logInfo(event, fields);
-  }
-});
-
-const recoveredTagSyncLeaseCount = tagSyncWorker.recover(new Date());
-logInfo("tag_sync.leases.recovered", { count: recoveredTagSyncLeaseCount });
-setInterval(() => {
-  void tagSyncWorker.tick(new Date()).catch((error) => {
-    logWarn("tag_sync.worker.failed", { error });
-  });
-}, TAG_SYNC_WORKER_INTERVAL_MS).unref();
-
 const legacyCustomerHistory = Object.freeze({
   async prepareLegacyCustomer() {},
   buildStoredLegacyAnalysis() { return null; }
@@ -6817,73 +6753,6 @@ app.delete(
       deleted: deleted.deleted
     });
     res.json({ ok: true, deleted, removedSessions });
-  })
-);
-
-app.get(
-  "/api/bots/:botId/tag-sync/config",
-  asyncHandler(async (req, res) => {
-    assertBotAccess(req, req.params.botId);
-    res.json({
-      ok: true,
-      config: getTagSyncConfig(req.params.botId)
-    });
-  })
-);
-
-app.put(
-  "/api/bots/:botId/tag-sync/config",
-  asyncHandler(async (req, res) => {
-    assertBotAccess(req, req.params.botId);
-    let config;
-    try {
-      config = saveTagSyncConfig({
-        botId: req.params.botId,
-        config: req.body || {}
-      });
-    } catch (error) {
-      if (/night window|invalid night/i.test(String(error?.message || ""))) {
-        error.status = 400;
-      }
-      throw error;
-    }
-    if (config.nightlyEnabled && !config.initialBackfillAt) {
-      const backfill = ensureTagSyncInitialBackfill({ botId: req.params.botId });
-      logInfo("tag_sync.backfill.completed", backfill);
-      config = getTagSyncConfig(req.params.botId);
-    }
-    res.json({ ok: true, config });
-  })
-);
-
-app.get(
-  "/api/bots/:botId/tag-sync/status",
-  asyncHandler(async (req, res) => {
-    assertBotAccess(req, req.params.botId);
-    res.json({ ok: true, status: getTagSyncStatus(req.params.botId) });
-  })
-);
-
-app.post(
-  "/api/bots/:botId/tag-sync/run",
-  asyncHandler(async (req, res) => {
-    assertBotAccess(req, req.params.botId);
-    const backfill = ensureTagSyncInitialBackfill({ botId: req.params.botId });
-    if (backfill.insertedCount > 0) {
-      logInfo("tag_sync.backfill.completed", backfill);
-    }
-    const run = startTagSyncRun({
-      botId: req.params.botId,
-      triggerType: "manual"
-    });
-    void tagSyncWorker.runBot(req.params.botId, new Date()).catch((error) => {
-      logWarn("tag_sync.worker.failed", { botId: req.params.botId, error });
-    });
-    res.status(202).json({
-      ok: true,
-      run,
-      status: getTagSyncStatus(req.params.botId)
-    });
   })
 );
 
