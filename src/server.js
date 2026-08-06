@@ -3259,7 +3259,8 @@ function normalizeProactiveTargets(targets) {
       }
       return {
         targetType: target.targetType === "group" ? "group" : "private",
-        targetName: String(target.targetName || target.name || "").trim()
+        targetName: String(target.targetName || target.name || "").trim(),
+        conversationKey: String(target.conversationKey || "").trim()
       };
     })
     .filter((target) => target.targetName)
@@ -3465,6 +3466,11 @@ async function sendProactiveTargetMediaAttachments(target) {
 }
 
 function getProactiveConversationKey(target) {
+  if (target.conversationKey) return target.conversationKey;
+  const account = getChannelAccount(target.botId);
+  if (account) {
+    return `${account.provider}:${account.channelId}:${target.targetType === "group" ? "group" : "private"}:${target.targetName}`;
+  }
   return `${target.botId}:${target.targetType === "group" ? "group" : "private"}:${target.targetName}`;
 }
 

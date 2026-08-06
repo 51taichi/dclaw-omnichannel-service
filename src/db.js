@@ -1052,6 +1052,8 @@ ensureColumn("proactive_task_targets", "agent_sync_status", "TEXT NOT NULL DEFAU
 ensureColumn("proactive_task_targets", "agent_sync_error", "TEXT");
 ensureColumn("proactive_task_targets", "agent_sync_response_json", "TEXT");
 ensureColumn("proactive_task_targets", "agent_sync_at", "TEXT");
+ensureColumn("proactive_task_targets", "conversation_key", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("proactive_targets", "conversation_key", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("flow_sessions", "handoff_status", "TEXT NOT NULL DEFAULT 'ai'");
 ensureColumn("flow_sessions", "handoff_at", "TEXT");
 ensureColumn("flow_sessions", "handoff_by", "TEXT");
@@ -4787,6 +4789,7 @@ function rowToProactiveTarget(row) {
     botId: row.bot_id,
     targetType: row.target_type,
     targetName: row.target_name,
+    conversationKey: row.conversation_key || "",
     content: row.content,
     messageType: row.message_type || "text",
     messagePayload: parseJson(row.message_payload_json),
@@ -4813,6 +4816,7 @@ function rowToProactiveAddressBookTarget(row) {
     botId: row.bot_id,
     targetType: row.target_type,
     targetName: row.target_name,
+    conversationKey: row.conversation_key || "",
     displayName: row.display_name || row.target_name,
     source: row.source,
     enabled: Boolean(row.enabled),
@@ -9012,6 +9016,7 @@ export function upsertProactiveAddressBookTarget({
   targetType,
   targetName,
   displayName,
+  conversationKey = "",
   source = "manual",
   enabled = true,
   lastSeenAt
@@ -9023,12 +9028,13 @@ export function upsertProactiveAddressBookTarget({
   const timestamp = now();
   db.prepare(`
     INSERT INTO proactive_targets (
-      bot_id, target_type, target_name, display_name, source, enabled,
+      bot_id, target_type, target_name, display_name, conversation_key, source, enabled,
       last_seen_at, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(bot_id, target_type, target_name) DO UPDATE SET
       display_name = COALESCE(NULLIF(excluded.display_name, ''), proactive_targets.display_name),
+      conversation_key = COALESCE(NULLIF(excluded.conversation_key, ''), proactive_targets.conversation_key),
       source = CASE
         WHEN proactive_targets.source = 'manual' THEN proactive_targets.source
         ELSE excluded.source
@@ -9041,6 +9047,7 @@ export function upsertProactiveAddressBookTarget({
     normalizedType,
     normalizedName,
     displayName || normalizedName,
+    String(conversationKey || ""),
     source,
     enabled === false ? 0 : 1,
     lastSeenAt || timestamp,
@@ -9068,14 +9075,16 @@ export function syncProactiveTargetsFromIncoming(botId) {
           WHEN room_type IN (1, 3) THEN 'group'
           ELSE 'private'
         END AS target_type,
-        CASE
-          WHEN room_type IN (1, 3) THEN group_name
-          ELSE received_name
-        END AS target_name,
+        COALESCE(
+          NULLIF(json_extract(payload_json, '$.metadata.externalChatId'), ''),
+          CASE WHEN room_type IN (1, 3) THEN group_name ELSE received_name END
+        ) AS target_name,
+        CASE WHEN room_type IN (1, 3) THEN group_name ELSE received_name END AS display_name,
+        COALESCE(NULLIF(json_extract(payload_json, '$.metadata.conversationKey'), ''), '') AS conversation_key,
         MAX(created_at) AS last_seen_at
       FROM incoming_messages
       ${botFilter}
-      GROUP BY bot_id, target_type, target_name
+      GROUP BY bot_id, target_type, target_name, display_name, conversation_key
     `)
     .all(...params);
 
@@ -9085,7 +9094,8 @@ export function syncProactiveTargetsFromIncoming(botId) {
       botId: row.bot_id,
       targetType: row.target_type,
       targetName: row.target_name,
-      displayName: row.target_name,
+      displayName: row.display_name || row.target_name,
+      conversationKey: row.conversation_key,
       source: "incoming",
       lastSeenAt: row.last_seen_at
     });
@@ -9134,7 +9144,7 @@ export function listProactiveTargetTags({ botId = "" } = {}) {
     JOIN conversation_tags ct
       ON ct.bot_id = pt.bot_id
      AND ct.agent_id = bab.agent_id
-     AND ct.conversation_key = pt.bot_id || ':private:' || pt.target_name
+     AND ct.conversation_key = COALESCE(NULLIF(pt.conversation_key, ''), pt.bot_id || ':private:' || pt.target_name)
     WHERE ${filters.join(" AND ")}
     ORDER BY CASE WHEN ct.tag_type = 'date' THEN 0 ELSE 1 END,
              ct.group_name ASC,
@@ -9217,7 +9227,7 @@ function proactiveAddressBookTargetsWhere({ botId = "", targetType = "", query =
         JOIN conversation_tags ct
           ON ct.bot_id = proactive_targets.bot_id
          AND ct.agent_id = bab.agent_id
-         AND ct.conversation_key = proactive_targets.bot_id || ':private:' || proactive_targets.target_name
+         AND ct.conversation_key = COALESCE(NULLIF(proactive_targets.conversation_key, ''), proactive_targets.bot_id || ':private:' || proactive_targets.target_name)
         WHERE bab.bot_id = proactive_targets.bot_id
           AND bab.enabled = 1
           AND (${clauses.join(" OR ")})
@@ -9300,7 +9310,8 @@ export function createProactiveTask({
   const timestamp = now();
   const normalizedTargets = targets.map((target) => ({
     targetType: target.targetType === "group" ? "group" : "private",
-    targetName: String(target.targetName || "").trim()
+    targetName: String(target.targetName || "").trim(),
+    conversationKey: String(target.conversationKey || "").trim()
   }));
   const normalizedMessageType = ["text", "media"].includes(messageType)
     ? messageType
@@ -9330,10 +9341,10 @@ export function createProactiveTask({
   const taskId = result.lastInsertRowid;
   const insertTarget = db.prepare(`
     INSERT INTO proactive_task_targets (
-      task_id, bot_id, target_type, target_name, content, message_type,
+      task_id, bot_id, target_type, target_name, conversation_key, content, message_type,
       message_payload_json, status, created_at, updated_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   for (const target of normalizedTargets) {
@@ -9342,6 +9353,7 @@ export function createProactiveTask({
       botId,
       target.targetType,
       target.targetName,
+      target.conversationKey,
       content,
       normalizedMessageType,
       json(messagePayload),
