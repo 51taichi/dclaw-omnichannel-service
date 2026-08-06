@@ -71,7 +71,10 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
   const payload = {
     channel_id: "CHAN-A",
     event: { type: "messages", event: "post" },
-    messages: [{ id: "message-1", chat_id: "123@s.whatsapp.net" }]
+    messages: [{
+      id: "message-1", type: "text", chat_id: "123@s.whatsapp.net", from: "123",
+      from_name: "Ada", from_me: false, timestamp: 1786000000, text: { body: "hello" }
+    }]
   };
   const send = (secret) => fetch(`http://127.0.0.1:${port}/webhooks/whapi/public-a`, {
     method: "POST",
@@ -87,10 +90,21 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
   assert.deepEqual(await first.json(), { ok: true, duplicate: false });
   assert.deepEqual(await duplicate.json(), { ok: true, duplicate: true });
 
-  const inspect = spawnSync(process.execPath, ["--input-type=module", "--eval", `
-    import { listChannelWebhookEvents } from "./src/db.js";
-    console.log(JSON.stringify(listChannelWebhookEvents("bot-a")));
-  `], { cwd: projectRoot, env: { ...process.env, DATABASE_PATH: databasePath }, encoding: "utf8" });
-  assert.equal(inspect.status, 0, inspect.stderr);
-  assert.equal(JSON.parse(inspect.stdout).length, 1);
+  let inspected;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const inspect = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+      import { getConversation, listChannelWebhookEvents } from "./src/db.js";
+      console.log(JSON.stringify({
+        events: listChannelWebhookEvents("bot-a"),
+        conversation: getConversation("whapi:CHAN-A:private:123@s.whatsapp.net")
+      }));
+    `], { cwd: projectRoot, env: { ...process.env, DATABASE_PATH: databasePath }, encoding: "utf8" });
+    assert.equal(inspect.status, 0, inspect.stderr);
+    inspected = JSON.parse(inspect.stdout);
+    if (inspected.events[0]?.state === "completed") break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(inspected.events.length, 1);
+  assert.equal(inspected.events[0].state, "completed");
+  assert.equal(inspected.conversation.conversationKey, "whapi:CHAN-A:private:123@s.whatsapp.net");
 });

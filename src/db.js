@@ -4106,6 +4106,10 @@ export function deleteWorkspaceSessions(workspaceId) {
 }
 
 export function getConversationKey(botId, message) {
+  const explicitKey = message?.metadata?.conversationKey;
+  if (typeof explicitKey === "string" && explicitKey.length > 0) {
+    return explicitKey;
+  }
   const roomType = Number(message.roomType);
   if ((roomType === 1 || roomType === 3) && message.groupName) {
     return `${botId}:group:${message.groupName}`;

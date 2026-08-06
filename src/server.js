@@ -260,11 +260,21 @@ import {
   saveCockpitAggregationState,
   saveCockpitSnapshot,
   claimDueCockpitDeliveries,
+  claimChannelWebhookEvents,
+  completeChannelWebhookEvent,
+  failChannelWebhookEvent,
   finishCockpitDelivery,
+  recoverExpiredChannelWebhookLeases,
+  updateChannelAccountHealth,
   upsertWorktoolApiMessageCache
 } from "./db.js";
 import { verifyWebhookSecret } from "./channels/credentials.js";
 import { createWebhookIntake } from "./channels/webhook-intake.js";
+import { createChannelWebhookWorker } from "./channels/webhook-worker.js";
+import { toCoreMessage } from "./channels/core-message-bridge.js";
+import { normalizeWhapiWebhook } from "./channels/whapi/mapper.js";
+import { mapWhapiHealth } from "./channels/whapi/health.js";
+import { CHANNEL_ERROR_CODES, ChannelError } from "./channels/errors.js";
 import { createGroupAutomationWorker } from "./group-automation-worker.js";
 import {
   nextGroupAutomationRunAt,
@@ -362,6 +372,11 @@ const agentFailureFallbackReply =
 const uploadRetentionMs = Number(process.env.UPLOAD_RETENTION_HOURS || 24) * 60 * 60 * 1000;
 const uploadCleanupIntervalMs =
   Number(process.env.UPLOAD_CLEANUP_INTERVAL_MINUTES || 60) * 60 * 1000;
+const channelWebhookWorkerEnabled = process.env.CHANNEL_WEBHOOK_WORKER_ENABLED !== "false";
+const channelWebhookWorkerIntervalMs = Math.max(
+  100,
+  Number(process.env.CHANNEL_WEBHOOK_WORKER_INTERVAL_MS || 500)
+);
 const worktoolHistoryCacheIntervalMs =
   Number(process.env.WORKTOOL_HISTORY_CACHE_INTERVAL_MINUTES || 10) * 60 * 1000;
 const TAG_SYNC_WORKER_INTERVAL_MS = Math.max(
@@ -8098,6 +8113,53 @@ async function recoverCockpitReportAnalysis() {
     }
   }
   return { recovered };
+}
+
+async function dispatchChannelWebhookEvent(event, envelope) {
+  if (event.eventType === "account.health") {
+    const health = mapWhapiHealth(event.rawPayload);
+    updateChannelAccountHealth({
+      botId: envelope.botId,
+      healthStatus: health.status,
+      providerStatus: health.providerStatus,
+      checkedAt: event.occurredAt
+    });
+    return;
+  }
+  if (event.eventType.startsWith("status.")) {
+    return;
+  }
+  if (event.chat.type === "group") {
+    throw new ChannelError(CHANNEL_ERROR_CODES.TEMPORARY_PROVIDER_FAILURE, undefined, {
+      provider: event.provider,
+      channelAccountId: event.channelAccountId,
+      operation: "process_group_webhook",
+      retryable: true
+    });
+  }
+  const message = toCoreMessage(event);
+  if (message) await processIncomingMessage({ botId: envelope.botId, message });
+}
+
+const channelWebhookWorker = createChannelWebhookWorker({
+  owner: `channel-webhook:${process.pid}:${crypto.randomUUID()}`,
+  claim: claimChannelWebhookEvents,
+  normalize: (envelope) => normalizeWhapiWebhook({
+    channelAccountId: envelope.channelAccountId,
+    payload: envelope.payload
+  }),
+  dispatch: dispatchChannelWebhookEvent,
+  complete: completeChannelWebhookEvent,
+  fail: failChannelWebhookEvent
+});
+
+if (channelWebhookWorkerEnabled) {
+  recoverExpiredChannelWebhookLeases();
+  setInterval(() => {
+    void channelWebhookWorker.tick().catch((error) => {
+      logError("channel.webhook.worker_failed", { error });
+    });
+  }, channelWebhookWorkerIntervalMs).unref();
 }
 
 const cockpitWorkerEnabled = process.env.COCKPIT_WORKER_ENABLED !== "false";

@@ -25,6 +25,10 @@ test("only a first ordinary private message is a legacy candidate", () => {
   }), false);
   assert.equal(isLegacyCustomerCandidate({
     ...base,
+    message: { roomType: 2, textType: 1, spoken: "hello", metadata: { provider: "whapi" } }
+  }), false);
+  assert.equal(isLegacyCustomerCandidate({
+    ...base,
     hadConversation: true,
     message: { roomType: 2, textType: 1, spoken: "在吗" }
   }), false);

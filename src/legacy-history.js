@@ -9,6 +9,7 @@ export function isLegacyCustomerCandidate({
   const roomType = Number(message?.roomType);
   return Boolean(
     binding?.enabled &&
+    !message?.metadata?.provider &&
     (roomType === 2 || roomType === 4) &&
     !hadConversation &&
     !hadFlowSession &&
