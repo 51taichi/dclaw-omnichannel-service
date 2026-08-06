@@ -1,5 +1,5 @@
 const counterByEventType = Object.freeze({
-  friend_added: "new_customer",
+  first_contact: "new_customer",
   successful_invitation: "successful_invitation",
   effective_conversation: "effective_conversation"
 });

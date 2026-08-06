@@ -178,7 +178,7 @@ test("canceling proactive task cancels only unclaimed targets", () => {
   const botId = "cancel_bot";
   const task = createTaskWithTargets(botId, ["客户A", "客户B"]);
   const first = db.claimNextProactiveTarget({ nowIso: new Date().toISOString() });
-  db.markProactiveTargetSent({ id: first.id, messageId: "sent-1", worktoolResponse: {} });
+  db.markProactiveTargetSent({ id: first.id, messageId: "sent-1", channelResponse: {} });
 
   const canceled = db.cancelProactiveTask({ id: task.id, reason: "console" });
   const targets = db.listProactiveTaskTargets(task.id);

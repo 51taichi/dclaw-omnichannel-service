@@ -19,7 +19,7 @@ test("normalizes public WorkTool file callbacks", () => {
       url: "https://cdn.example.test/resume.pdf",
       name: "张三简历.pdf",
       textType: 6,
-      source: "worktool_callback",
+      source: "channel_webhook",
       available: true
     }
   ]);
@@ -40,7 +40,7 @@ test("keeps non-public WorkTool paths unavailable", () => {
       url: "",
       name: "截图.png",
       textType: 2,
-      source: "worktool_callback",
+      source: "channel_webhook",
       available: false
     }
   ]);
@@ -60,7 +60,7 @@ test("recognizes WorkTool filename size text as an unavailable file", () => {
       url: "",
       name: "公司就业项目汇总 (2026).xlsx",
       textType: 1,
-      source: "worktool_callback",
+      source: "channel_webhook",
       available: false
     }
   ]);

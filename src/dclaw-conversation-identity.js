@@ -15,7 +15,7 @@ export function buildDclawConversationIdentity({
   purpose = "conversation"
 }) {
   const localScope = [
-    "worktool-dclaw-identity-v1",
+    "channel-dclaw-identity-v1",
     String(botId || "").trim(),
     String(conversationKey || "").trim()
   ].join("\n");
@@ -29,8 +29,8 @@ export function buildDclawConversationIdentity({
   ].join("\n");
 
   return {
-    externalUserId: `wt-u-${digest(localScope, 24)}`,
-    runtimeConversationId: `wt-c-${digest(epochScope, 32)}`,
-    externalSessionId: `wt-s-${digest(purposeScope, 32)}`
+    externalUserId: `ch-u-${digest(localScope, 24)}`,
+    runtimeConversationId: `ch-c-${digest(epochScope, 32)}`,
+    externalSessionId: `ch-s-${digest(purposeScope, 32)}`
   };
 }

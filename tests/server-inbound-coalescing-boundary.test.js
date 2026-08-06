@@ -49,26 +49,23 @@ test("Whapi webhook persists before acknowledging the provider", () => {
   assert.doesNotMatch(source, /app\.post\("\/worktool\/[^\"]*message-callback"/);
 });
 
-test("friend-added signals, unsupported, human handoff, and debug replies finish before buffering", () => {
-  const handlerStart = source.indexOf("async function processIncomingMessage");
-  const push = source.indexOf("inboundCoalescer.push", handlerStart);
-  assert.ok(source.indexOf("friendAddedSignal", handlerStart) < push);
-  assert.ok(source.indexOf("non_text_or_empty_message", handlerStart) < push);
-  assert.ok(source.indexOf('status: "human_handoff"', handlerStart) < push);
-  assert.ok(source.indexOf("handleDebugPing", handlerStart) < push);
-});
-
-test("normalized friend signals trigger handling without canceling activation or invoking the Agent", () => {
+test("the first Whapi private message initializes the entry flow without skipping Agent work", () => {
   const handlerStart = source.indexOf("async function processIncomingMessage");
   const handlerEnd = source.indexOf("async function processCoalescedIncomingBatch", handlerStart);
   const handler = source.slice(handlerStart, handlerEnd);
-  const signal = handler.indexOf("friendAddedSignal");
-  const invalidation = handler.indexOf("invalidateFlowActivation");
-  const push = handler.indexOf("inboundCoalescer.push");
-  assert.ok(signal >= 0 && signal < invalidation && signal < push);
-  assert.match(handler, /handleFriendAddedEvent\(\{[\s\S]*message: friendAddedSignal\.message/);
-  assert.match(handler, /trigger: friendAddedSignal\.trigger/);
-  assert.match(handler, /status: "friend_added"/);
+  assert.match(handler, /isPrivateMessage\(message\) && !hadConversation/);
+  assert.match(handler, /initializeFirstPrivateContact\(\{/);
+  assert.ok(handler.indexOf("initializeFirstPrivateContact") < handler.indexOf("inboundCoalescer.push"));
+  assert.doesNotMatch(handler, /initializeFirstPrivateContact[\s\S]*status: "first_contact"/);
+  assert.match(source, /function initializeFirstPrivateContact[\s\S]*beginFirstContactFlowEntry/);
+});
+
+test("unsupported messages, human handoff, and debug replies finish before buffering", () => {
+  const handlerStart = source.indexOf("async function processIncomingMessage");
+  const push = source.indexOf("inboundCoalescer.push", handlerStart);
+  assert.ok(source.indexOf("non_text_or_empty_message", handlerStart) < push);
+  assert.ok(source.indexOf('status: "human_handoff"', handlerStart) < push);
+  assert.ok(source.indexOf("handleDebugPing", handlerStart) < push);
 });
 
 test("a mention-required group continuation may only join an existing eligible batch", () => {

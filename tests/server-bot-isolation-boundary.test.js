@@ -28,11 +28,8 @@ test("console upload requires and preserves selected Bot ownership", () => {
 });
 
 test("missing service secrets fail closed instead of granting cross-Bot access", () => {
-  const callbackStart = serverSource.indexOf("function assertCallbackSecret");
-  const callbackEnd = serverSource.indexOf("function assertAdmin", callbackStart);
-  const callbackBody = serverSource.slice(callbackStart, callbackEnd);
-  assert.match(callbackBody, /callback secret is not configured/);
-  assert.doesNotMatch(callbackBody, /if \(!expected\) \{\s*return;\s*\}/);
+  assert.doesNotMatch(serverSource, /function assertCallbackSecret/);
+  assert.match(serverSource, /verifyWebhookSecret/);
 
   const adminStart = serverSource.indexOf("function isAdminKey");
   const adminEnd = serverSource.indexOf("function getRequestBotSession", adminStart);

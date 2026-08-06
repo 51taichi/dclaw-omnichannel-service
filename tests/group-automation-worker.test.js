@@ -132,7 +132,7 @@ test("condition true validates evidence, freezes fixed content, and safely queue
   assert.deepEqual(sends[0].targets, [context.group.currentName]);
   assert.deepEqual(sends[0].atList, ["王女士"]);
   assert.equal(result.stage, "awaiting_confirmation");
-  assert.equal(result.worktoolMessageId, "wt-true-1");
+  assert.equal(result.channelMessageId, "wt-true-1");
   assert.deepEqual(result.evidenceMessageIds, [context.evidence.id]);
 });
 

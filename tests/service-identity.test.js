@@ -124,8 +124,6 @@ test("health endpoint identifies the running omnichannel service", async (t) => 
       DATABASE_PATH: path.join(dataDir, "service.sqlite"),
       BOTS_CONFIG_JSON: '{"bots":[]}',
       BOT_ID: "runtime-bot",
-      ROBOT_ID: "",
-      CALLBACK_SECRET: "test-callback-secret",
       PROACTIVE_WORKER_ENABLED: "false",
       ACTIVATION_WORKER_ENABLED: "false",
       TAG_ACTIVATION_WORKER_ENABLED: "false",
@@ -150,15 +148,10 @@ test("health endpoint identifies the running omnichannel service", async (t) => 
   assert.deepEqual(health.ok, true);
   assert.equal(health.service, "dclaw-omnichannel-service");
   assert.match(stdout, /DClaw omnichannel service/);
-  const callback = await fetch(
-    `http://127.0.0.1:${port}/worktool/command-callback?secret=test-callback-secret`,
-    { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
-  );
-  assert.equal(callback.status, 404);
   assert.equal(child.exitCode, null, stderr);
 });
 
-test("single-bot configuration prefers BOT_ID and falls back to ROBOT_ID", () => {
+test("single-bot configuration uses BOT_ID", () => {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "dclaw-service-config-"));
   const configUrl = new URL("../src/config.js", import.meta.url).href;
   const runConfig = (env) => spawnSync(process.execPath, ["--input-type=module", "--eval", `
@@ -171,7 +164,7 @@ test("single-bot configuration prefers BOT_ID and falls back to ROBOT_ID", () =>
       ...env,
       BOTS_CONFIG_PATH: "",
       BOTS_CONFIG_JSON: "",
-      DATABASE_PATH: path.join(dataDir, `${env.BOT_ID || env.ROBOT_ID}.sqlite`)
+      DATABASE_PATH: path.join(dataDir, `${env.BOT_ID}.sqlite`)
     },
     encoding: "utf8"
   });
@@ -181,13 +174,10 @@ test("single-bot configuration prefers BOT_ID and falls back to ROBOT_ID", () =>
       DCLAW_BASE_URL: "https://dclaw.example.test",
       DCLAW_PUBLIC_ID: "sales-agent"
     };
-    const preferred = runConfig({ ...common, BOT_ID: "new-bot", ROBOT_ID: "legacy-bot" });
-    const fallback = runConfig({ ...common, ROBOT_ID: "legacy-bot" });
+    const configured = runConfig({ ...common, BOT_ID: "new-bot" });
 
-    assert.equal(preferred.status, 0, preferred.stderr);
-    assert.equal(fallback.status, 0, fallback.stderr);
-    assert.equal(JSON.parse(preferred.stdout)[0].botId, "new-bot");
-    assert.equal(JSON.parse(fallback.stdout)[0].botId, "legacy-bot");
+    assert.equal(configured.status, 0, configured.stderr);
+    assert.equal(JSON.parse(configured.stdout)[0].botId, "new-bot");
   } finally {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }

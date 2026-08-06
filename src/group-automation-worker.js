@@ -7,18 +7,18 @@ function instantFrom(value) {
   return instant;
 }
 
-function assertWorktoolAccepted(response) {
+function assertChannelAccepted(response) {
   if (response?.code == null) return;
   const code = Number(response.code);
   if (code === 0 || code === 200) return;
   const error = new Error(
-    `WorkTool explicitly rejected the command: ${response.code} ${response.message || ""}`.trim()
+    `Channel provider explicitly rejected the command: ${response.code} ${response.message || ""}`.trim()
   );
-  error.worktoolExplicitRejection = true;
+  error.channelExplicitRejection = true;
   throw error;
 }
 
-function extractWorktoolMessageId(response) {
+function extractChannelMessageId(response) {
   const candidates = [
     response?.messageId,
     typeof response?.data === "string" || typeof response?.data === "number"
@@ -163,7 +163,7 @@ export function createGroupAutomationWorker({
           atList: frozenPayload.atList || [],
           occurrenceId: current.id
         });
-        assertWorktoolAccepted(response);
+        assertChannelAccepted(response);
         return publish(db.transitionGroupAutomationOccurrence({
           occurrenceId: current.id,
           owner: current.leaseOwner,
@@ -171,8 +171,8 @@ export function createGroupAutomationWorker({
           toStage: "awaiting_confirmation",
           patch: {
             deliveryState: "awaiting_confirmation",
-            worktoolMessageId: extractWorktoolMessageId(response),
-            worktoolResponse: response,
+            channelMessageId: extractChannelMessageId(response),
+            channelResponse: response,
             retryMetadata: {
               ...(current.retryMetadata || {}),
               sendAttempts: attempt
@@ -181,7 +181,7 @@ export function createGroupAutomationWorker({
           now: currentIso()
         }));
       } catch (error) {
-        if (error?.worktoolExplicitRejection === true) {
+        if (error?.channelExplicitRejection === true) {
           if (attempt < 3) continue;
           return publish(db.transitionGroupAutomationOccurrence({
             occurrenceId: current.id,

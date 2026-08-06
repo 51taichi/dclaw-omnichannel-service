@@ -85,7 +85,7 @@ test("getAgentReplySendabilityIssue accepts attachments backed by trusted source
 test("buildDclawAttachmentSourceRetryRequest asks agent to regenerate a self-contained reply", () => {
   const original = {
     message: "客户说：可以发客服微信吗？",
-    metadata: { source: "worktool" }
+    metadata: { source: "whapi" }
   };
 
   const retry = buildDclawAttachmentSourceRetryRequest(original, {

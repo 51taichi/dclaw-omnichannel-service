@@ -17,8 +17,8 @@ test("proactive sync uses the current conversation-purpose identity", () => {
       content: "您好",
       messageType: "text"
     },
-    worktoolMessageId: "message-1",
-    worktoolResponse: { code: 200 }
+    channelMessageId: "message-1",
+    channelResponse: { code: 200 }
   });
   const identity = buildDclawConversationIdentity({
     botId: "bot_1",
@@ -31,7 +31,7 @@ test("proactive sync uses the current conversation-purpose identity", () => {
   assert.equal(request.metadata.conversationId, identity.runtimeConversationId);
   assert.equal(request.metadata.localConversationId, conversation.conversationKey);
   assert.equal(
-    request.metadata.worktool.metadata.localConversationId,
+    request.metadata.channel.metadata.localConversationId,
     conversation.conversationKey
   );
 });

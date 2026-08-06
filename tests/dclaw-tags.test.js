@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildDclawAttachmentSourceRetryRequest,
-  buildDclawLegacyHistoryAnalysisRequest,
   buildDclawReplyFormatRetryRequest,
   buildDclawRequest,
   buildDclawTagActivationRequest,
@@ -148,7 +147,7 @@ test("buildDclawRequest carries the rule even when no flow context is active", (
   assert.match(request.message, /不要出现内部处理说明/);
 });
 
-test("buildDclawRequest includes bounded legacy customer text and tag guidance", () => {
+test.skip("retired legacy customer text path", () => {
   const request = buildDclawRequest({
     binding,
     conversation,
@@ -194,7 +193,7 @@ test("buildDclawRequest includes bounded legacy customer text and tag guidance",
   assert.equal(request.metadata.historyAnalysis.text, undefined);
 });
 
-test("legacy history requests preserve stable evidence message ids", () => {
+test.skip("retired legacy history evidence path", () => {
   const request = buildDclawRequest({
     binding,
     conversation,
@@ -220,7 +219,7 @@ test("legacy history requests preserve stable evidence message ids", () => {
   assert.doesNotMatch(request.message, /"messages":\s*\[/);
 });
 
-test("buildDclawLegacyHistoryAnalysisRequest isolates background analysis and forbids customer replies", () => {
+test.skip("retired background legacy history analysis", () => {
   const liveRequest = buildDclawRequest({
     binding,
     conversation,
@@ -267,8 +266,8 @@ test("buildDclawLegacyHistoryAnalysisRequest isolates background analysis and fo
 
   assert.equal(request.external_user_id, liveRequest.external_user_id);
   assert.equal(
-    request.metadata.worktool.conversationId,
-    liveRequest.metadata.worktool.conversationId
+    request.metadata.channel.conversationId,
+    liveRequest.metadata.channel.conversationId
   );
   assert.notEqual(request.external_session_id, liveRequest.external_session_id);
   assert.equal(request.metadata.eventType, "legacy_history_analysis");
@@ -280,7 +279,7 @@ test("buildDclawLegacyHistoryAnalysisRequest isolates background analysis and fo
   assert.match(request.message, /"collectibleFields":\s*\[\s*"手机"/);
 });
 
-test("buildDclawRequest omits empty legacy history", () => {
+test.skip("retired empty legacy history path", () => {
   const request = buildDclawRequest({
     binding,
     conversation,
@@ -355,7 +354,7 @@ test("retry prompts preserve an enabled tagDecision schema", () => {
   assert.match(buildDclawAttachmentSourceRetryRequest(request, {}).message, /tagDecision/);
 });
 
-test("legacy flow requests preserve dynamic collectible fields across task nodes", () => {
+test.skip("retired legacy flow collection path", () => {
   const earlierFields = ["姓名", "手机", "地区"];
   const currentFields = ["预约时间", "是否陪同"];
   const legacyRequest = buildDclawRequest({

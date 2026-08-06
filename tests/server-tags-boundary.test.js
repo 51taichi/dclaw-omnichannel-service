@@ -80,10 +80,6 @@ test("flow asset patches are constrained by current task configuration", () => {
     coalescedBody,
     /applyFlowDecision\(\{[\s\S]*fillOnlyMissing: false/
   );
-  assert.match(
-    functionBody("runLegacyHistoryAnalysis"),
-    /filterConfiguredCollectedDataPatch\(\{[\s\S]*fillOnlyMissing: true/
-  );
 });
 
 test("private inbound messages persist their session before coalesced agent work", () => {
@@ -142,9 +138,9 @@ test("group manual tags are limited to tag groups bound to that managed group", 
   assert.match(detailRoute, /publicSession\.manualTagGroupIds = manualTagGroupIdsForConversation\(\{/);
 });
 
-test("friend-added event can create date tags", () => {
+test("first private contact can create date tags", () => {
   assert.match(source, /applySystemDateTag/);
-  assert.match(source, /friend_added\.date_tag\.applied/);
+  assert.match(functionBody("applySystemDateTag"), /source:\s*"first_contact"/);
   assert.match(
     functionBody("applySystemDateTag"),
     /ensureConversationDateTag\(\{[\s\S]*firstSeenAt:/

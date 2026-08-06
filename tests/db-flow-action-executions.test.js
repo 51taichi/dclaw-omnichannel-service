@@ -138,12 +138,12 @@ test("flow action execution reservation is idempotent by action scope", () => {
 
   const succeeded = db.markFlowActionExecutionSucceeded({
     id: first.execution.id,
-    worktoolMessageId: "wt_1",
-    worktoolResponse: { code: 200, data: "wt_1" }
+    channelMessageId: "wt_1",
+    channelResponse: { code: 200, data: "wt_1" }
   });
   assert.equal(succeeded.status, "success");
-  assert.equal(succeeded.worktoolMessageId, "wt_1");
-  assert.deepEqual(succeeded.worktoolResponse, { code: 200, data: "wt_1" });
+  assert.equal(succeeded.channelMessageId, "wt_1");
+  assert.deepEqual(succeeded.channelResponse, { code: 200, data: "wt_1" });
 });
 
 test("activation action reservations are scoped by activation task id", () => {

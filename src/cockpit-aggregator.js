@@ -22,7 +22,7 @@ function periodNodeDistribution({ events, period, definitions = [] }) {
   const activeCustomers = new Set(
     periodEvents
       .filter((event) => (
-        ["friend_added", "customer_message", "bot_message"].includes(event.eventType)
+        ["first_contact", "customer_message", "bot_message"].includes(event.eventType)
       ))
       .map((event) => event.customerKey)
       .filter(Boolean)
@@ -155,7 +155,7 @@ export function createCockpitAggregator({
       const metrics = aggregateOccurrenceMetrics({ events, period });
       const cohortKeys = new Set(
         events
-          .filter((event) => event.eventType === "friend_added"
+          .filter((event) => event.eventType === "first_contact"
             && event.occurredAt >= period.start
             && event.occurredAt < period.end)
           .map((event) => event.customerKey)

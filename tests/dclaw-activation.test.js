@@ -29,7 +29,7 @@ test("buildDclawActivationRequest creates a flow activation event without histor
   });
 
   assert.equal(request.metadata.eventType, "flow_activation_due");
-  assert.equal(request.metadata.worktool.eventType, "flow_activation_due");
+  assert.equal(request.metadata.channel.eventType, "flow_activation_due");
   const identity = buildDclawConversationIdentity({
     botId: "bot_1",
     ...conversation,

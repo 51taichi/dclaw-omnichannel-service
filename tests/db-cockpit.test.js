@@ -118,11 +118,11 @@ test("deleteBotData removes only that Bot cockpit records", () => {
       botId,
       conversationKey: `${botId}:private:alice`,
       customerKey: "alice",
-      eventType: "friend_added",
+      eventType: "first_contact",
       occurredAt: "2026-07-30T00:00:00.000Z",
       receivedAt: "2026-07-30T00:00:00.000Z",
       payload: {},
-      sourceRef: { type: "friend_added", id: "f-1" }
+      sourceRef: { type: "first_contact", id: "f-1" }
     });
   }
 
@@ -245,11 +245,11 @@ test("aggregation state is replaced atomically per Bot", () => {
   assert.deepEqual(db.getCockpitAggregationState("bot-a"), { events: [] });
   db.saveCockpitAggregationState({
     botId: "bot-a",
-    state: { events: [{ id: 1, eventType: "friend_added" }] },
+    state: { events: [{ id: 1, eventType: "first_contact" }] },
     lastEventId: 1
   });
   assert.deepEqual(db.getCockpitAggregationState("bot-a"), {
-    events: [{ id: 1, eventType: "friend_added" }]
+    events: [{ id: 1, eventType: "first_contact" }]
   });
   assert.deepEqual(db.getCockpitAggregationState("bot-b"), { events: [] });
 });
@@ -383,7 +383,7 @@ test("cockpit backfill projects committed replies nodes and tag changes", () => 
     messageId: "reply-1",
     targetName: "alice",
     content: "您好",
-    worktoolResponse: { code: 0 }
+    channelResponse: { code: 0 }
   });
   db.applyConversationTagChanges({
     botId: binding.botId,
@@ -417,7 +417,7 @@ test("cockpit backfill projects committed replies nodes and tag changes", () => 
   assert.equal(result.inserted >= 3, true);
   assert.deepEqual(
     events.map((event) => event.eventType).sort(),
-    ["bot_message", "customer_message", "friend_added", "node_reached", "tag_added"]
+    ["bot_message", "customer_message", "first_contact", "node_reached", "tag_added"]
   );
   assert.equal(events.find((event) => event.eventType === "node_reached").nodeId, "qualified");
   assert.equal(events.find((event) => event.eventType === "tag_added").tagId, "hot");

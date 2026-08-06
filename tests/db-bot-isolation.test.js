@@ -563,7 +563,7 @@ test("deleteBotData removes the bot binding and bot scoped records", () => {
     targetName: "待删除客户",
     content: "reply",
     messageId: "delete-out",
-    worktoolResponse: {}
+    channelResponse: {}
   });
   db.insertCommandCallback({
     botId,

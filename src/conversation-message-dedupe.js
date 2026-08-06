@@ -1,12 +1,12 @@
 const importedSources = new Set([
-  "worktool_customer_history",
-  "worktool_api_history"
+  "legacy_customer_history",
+  "legacy_api_history"
 ]);
 
 const sourceRank = new Map([
   ["local", 0],
-  ["worktool_customer_history", 1],
-  ["worktool_api_history", 2]
+  ["legacy_customer_history", 1],
+  ["legacy_api_history", 2]
 ]);
 
 export function normalizeConversationMessageContent(value) {

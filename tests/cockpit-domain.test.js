@@ -114,7 +114,7 @@ test("cockpit period candidates prefer Shanghai and retain legacy UTC dates", ()
 test("reply risk applies node override and distinguishes never from stopped", () => {
   assert.equal(classifyReplyRisk({
     events: [
-      { eventType: "friend_added", occurredAt: "2026-07-29T00:00:00.000Z" },
+      { eventType: "first_contact", occurredAt: "2026-07-29T00:00:00.000Z" },
       { eventType: "bot_message", occurredAt: "2026-07-29T00:01:00.000Z", nodeId: "node-1" }
     ],
     now: "2026-07-30T01:00:00.000Z",
@@ -135,12 +135,12 @@ test("reply risk applies node override and distinguishes never from stopped", ()
 
 test("occurrence metrics use universal message counts while funnels use cohorts", () => {
   const events = [
-    { customerKey: "old", eventType: "friend_added", occurredAt: "2026-07-20T00:00:00.000Z" },
+    { customerKey: "old", eventType: "first_contact", occurredAt: "2026-07-20T00:00:00.000Z" },
     { customerKey: "old", eventType: "successful_invitation", occurredAt: "2026-07-30T05:00:00.000Z" },
     { customerKey: "old", eventType: "customer_message", occurredAt: "2026-07-30T05:01:00.000Z" },
     { customerKey: "old", eventType: "customer_message", occurredAt: "2026-07-30T05:02:00.000Z" },
     { customerKey: "old", eventType: "bot_message", occurredAt: "2026-07-30T05:03:00.000Z" },
-    { customerKey: "new", eventType: "friend_added", occurredAt: "2026-07-30T01:00:00.000Z" },
+    { customerKey: "new", eventType: "first_contact", occurredAt: "2026-07-30T01:00:00.000Z" },
     { customerKey: "new", eventType: "node_reached", nodeId: "node-1", flowVersionId: 1, occurredAt: "2026-07-30T02:00:00.000Z" },
     { customerKey: "new", eventType: "node_reached", nodeId: "node-1", flowVersionId: 1, occurredAt: "2026-07-30T03:00:00.000Z" }
   ];

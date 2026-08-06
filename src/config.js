@@ -4,7 +4,7 @@ import { getBotBinding, upsertAgent, upsertBotBinding } from "./db.js";
 
 function normalizeBinding(binding) {
   return {
-    botId: binding.botId || binding.robotId,
+    botId: binding.botId,
     botName: binding.botName || binding.name || "",
     agentId: binding.agentId,
     agentName: binding.agentName || "",
@@ -30,14 +30,14 @@ export async function loadBotBindingsFromConfig() {
 
   if (
     !config &&
-    (process.env.BOT_ID || process.env.ROBOT_ID) &&
+    process.env.BOT_ID &&
     process.env.DCLAW_BASE_URL &&
     (process.env.DCLAW_PUBLIC_ID || process.env.DCLAW_AGENT_ID)
   ) {
     config = {
       bots: [
         {
-          botId: process.env.BOT_ID || process.env.ROBOT_ID,
+          botId: process.env.BOT_ID,
           botName: process.env.BOT_NAME || "",
           agentId: process.env.DCLAW_AGENT_ID || "default",
           agentName: process.env.DCLAW_AGENT_NAME || "",

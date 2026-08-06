@@ -1,4 +1,4 @@
-const SOURCE = "worktool_callback";
+const SOURCE = "channel_webhook";
 
 const typeByTextType = {
   2: "image",
@@ -56,11 +56,11 @@ function attachmentName(message = {}) {
     message.filename ||
     message.objectName ||
     message.name ||
-    filenameFromWorktoolText(message.rawSpoken || message.spoken || message.rawMessage)
+    filenameFromLegacyEncodedText(message.rawSpoken || message.spoken || message.rawMessage)
   );
 }
 
-function filenameFromWorktoolText(value) {
+function filenameFromLegacyEncodedText(value) {
   const text = cleanText(value);
   const match = text.match(/^([\s\S]{1,300}?)###\s*[\d.]+\s*(?:B|K|KB|M|MB|G|GB)?$/i);
   return match ? match[1].replace(/\s+/g, " ").trim() : "";

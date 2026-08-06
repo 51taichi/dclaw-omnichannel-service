@@ -152,7 +152,7 @@ export function aggregateOccurrenceMetrics({ events, period }) {
     inPeriod.filter((event) => event.eventType === eventType).map((event) => event.customerKey)
   ).size;
   return {
-    newCustomers: unique("friend_added"),
+    newCustomers: unique("first_contact"),
     customerMessages: inPeriod.filter((event) => event.eventType === "customer_message").length,
     replyMessages: inPeriod.filter((event) => event.eventType === "bot_message").length,
     effectiveConversations: unique("effective_conversation")
@@ -162,7 +162,7 @@ export function aggregateOccurrenceMetrics({ events, period }) {
 export function aggregateCohortFunnels({ events, period }) {
   const cohort = new Set(
     events
-      .filter((event) => event.eventType === "friend_added" && insidePeriod(event.occurredAt, period))
+      .filter((event) => event.eventType === "first_contact" && insidePeriod(event.occurredAt, period))
       .map((event) => event.customerKey)
   );
   const versions = new Map();

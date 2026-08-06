@@ -12,7 +12,7 @@ test("aggregation advances cursor only after saving a ready snapshot", async () 
       return [{
         id: 5,
         customerKey: "alice",
-        eventType: "friend_added",
+        eventType: "first_contact",
         occurredAt: "2026-07-30T01:00:00.000Z"
       }];
     },
@@ -77,7 +77,7 @@ test("aggregation failure leaves state and cursor unchanged", async () => {
   const aggregator = createCockpitAggregator({
     getConfig: () => ({ timezone: "Asia/Shanghai" }),
     getCursor: () => ({ lastEventId: 0 }),
-    listEvents: () => [{ id: 1, eventType: "friend_added", customerKey: "a", occurredAt: "2026-07-30T01:00:00.000Z" }],
+    listEvents: () => [{ id: 1, eventType: "first_contact", customerKey: "a", occurredAt: "2026-07-30T01:00:00.000Z" }],
     loadState: () => ({ events: [] }),
     saveState: () => calls.push("state"),
     saveSnapshot: () => {
@@ -100,7 +100,7 @@ test("aggregation failure leaves state and cursor unchanged", async () => {
 test("snapshot includes universal message metrics, reply risks, nodes and tags", async () => {
   let saved;
   const events = [
-    { id: 1, customerKey: "a", eventType: "friend_added", occurredAt: "2026-07-30T01:00:00.000Z" },
+    { id: 1, customerKey: "a", eventType: "first_contact", occurredAt: "2026-07-30T01:00:00.000Z" },
     { id: 2, customerKey: "a", eventType: "bot_message", nodeId: "node1", occurredAt: "2026-07-30T02:00:00.000Z" },
     { id: 3, customerKey: "a", eventType: "node_reached", nodeId: "node1", flowVersionId: 1, occurredAt: "2026-07-30T02:00:00.000Z" },
     { id: 4, customerKey: "a", eventType: "tag_added", groupId: "intent", tagId: "hot", occurredAt: "2026-07-30T03:00:00.000Z" }
@@ -137,7 +137,7 @@ test("snapshot includes universal message metrics, reply risks, nodes and tags",
 test("waiting customers remain part of the exhaustive effective outcome", async () => {
   let saved;
   const events = [
-    { id: 1, customerKey: "a", eventType: "friend_added", occurredAt: "2026-07-30T01:00:00.000Z" },
+    { id: 1, customerKey: "a", eventType: "first_contact", occurredAt: "2026-07-30T01:00:00.000Z" },
     { id: 2, customerKey: "a", eventType: "customer_message", occurredAt: "2026-07-30T01:10:00.000Z" },
     { id: 3, customerKey: "a", eventType: "bot_message", occurredAt: "2026-07-30T01:20:00.000Z" }
   ];

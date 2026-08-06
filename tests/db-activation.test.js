@@ -84,7 +84,7 @@ test("legacy string messages retain the containing activation timing defaults", 
 test("activation normalization ignores legacy trigger values", () => {
   const normalized = db.normalizeActivationConfig({
     enabled: true,
-    trigger: "friend_added",
+    trigger: "first_contact",
     messages: ["提醒"]
   });
   assert.equal("trigger" in normalized, false);
@@ -162,10 +162,10 @@ test("activation tasks can be scheduled, claimed, sent, failed, and canceled", (
 
   const sent = db.markFlowActivationTaskSent({
     id: claimed[0].id,
-    worktoolMessageIds: ["wt_1", "wt_2"]
+    channelMessageIds: ["wt_1", "wt_2"]
   });
   assert.equal(sent.status, "sent");
-  assert.deepEqual(sent.worktoolMessageIds, ["wt_1", "wt_2"]);
+  assert.deepEqual(sent.channelMessageIds, ["wt_1", "wt_2"]);
 
   db.scheduleFlowActivationTask({
     botId,
@@ -221,11 +221,11 @@ test("canceled processing activation tasks persist completed delivery", () => {
   assert.equal(db.isFlowActivationTaskProcessing({ id: sentTask.id }), false);
   const delivered = db.markFlowActivationTaskSent({
     id: sentTask.id,
-    worktoolMessageIds: ["wt_delivered_after_cancel"]
+    channelMessageIds: ["wt_delivered_after_cancel"]
   });
   assert.equal(delivered.status, "sent");
   assert.equal(delivered.wasCanceled, true);
-  assert.deepEqual(delivered.worktoolMessageIds, ["wt_delivered_after_cancel"]);
+  assert.deepEqual(delivered.channelMessageIds, ["wt_delivered_after_cancel"]);
   assert.equal(db.markFlowActivationTaskFailed({ id: failedTask.id, error: "late worker" }), null);
 
   const tasks = db.listFlowActivationTasks({ conversationKey });

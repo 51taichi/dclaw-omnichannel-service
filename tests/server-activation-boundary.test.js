@@ -14,7 +14,7 @@ test("server schedules activation after successful private flow replies", () => 
   assert.equal(dbSource.includes("advanceFlowActivationProgress"), true);
   assert.equal(source.includes("activationSourceNode"), false);
   assert.equal(
-    source.slice(source.indexOf("worktool.send.success")).includes("scheduleActivationAfterFlowReply({"),
+    source.slice(source.indexOf("channel.send.success")).includes("scheduleActivationAfterFlowReply({"),
     true
   );
 });
@@ -54,8 +54,9 @@ test("private non-text customer interactions cancel activation before agent filt
   );
 });
 
-test("entry activation schedules after both new friends and AI replies", () => {
-  assert.equal(source.includes("handleFriendAddedEvent"), true);
+test("entry activation schedules after both first private contacts and AI replies", () => {
+  assert.equal(source.includes("initializeFirstPrivateContact"), true);
+  assert.equal(source.includes("beginFirstContactFlowEntry({"), true);
   assert.equal(source.includes("scheduleActivationAfterFlowReply({"), true);
   assert.equal(source.includes('reason: "customer_replied"'), true);
 });

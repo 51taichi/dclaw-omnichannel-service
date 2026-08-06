@@ -20,7 +20,6 @@ import {
   buildDclawConversationMemoryClearRequest,
   buildDclawConversationResetRequest,
   buildDclawHandoffTranscriptRequest,
-  buildDclawLegacyHistoryAnalysisRequest,
   buildDclawProactiveEventRequest,
   buildDclawRequest,
   buildDclawTagActivationRequest,
@@ -78,7 +77,7 @@ import {
 } from "./workspaces.js";
 import {
   beginMessageProcessing,
-  beginFriendAddedFlowEntry,
+  beginFirstContactFlowEntry,
   buildMessageKey,
   cancelFlowActivationTasks,
   cancelTagActivationTasks,
@@ -92,7 +91,6 @@ import {
   completeConversationResetTask,
   createOrGetGroup,
   createGroupAutomationTask,
-  createLegacyFlowSession,
   createProactiveTask,
   createCockpitJob,
   createCockpitDelivery,
@@ -120,12 +118,7 @@ import {
   getConversationKey,
   getConversationResetPending,
   getConversationAssets,
-  getActiveTagSyncRun,
-  getSubmittedTagSyncCommand,
-  getTagSyncConfig,
-  getTagSyncStatus,
   backfillManagedGroupConversationDateTags,
-  ensureLegacyHistoryDateTag,
   ensureManagedGroupConversationDateTag,
   getFlowMachineForBot,
   getFlowActivationProgress,
@@ -135,8 +128,6 @@ import {
   getGroupById,
   getGroupAutomationTask,
   getGroupAutomationOccurrence,
-  hasCachedWorktoolMessageId,
-  hasRecentBotMessageProcessing,
   ensureConversationDateTag,
   ensureCockpitDefinitionVersion,
   initializeLegacyDateTagRuleEffectiveTimes,
@@ -154,7 +145,6 @@ import {
   insertAgentTagEvaluations,
   updateAgentResponseValidationRetryOutcome,
   insertConversationMessage as insertConversationMessageDb,
-  insertImportedConversationMessages,
   insertCommandCallback,
   insertIncomingMessage,
   appendCockpitEvent,
@@ -164,7 +154,6 @@ import {
   resolveManagedGroupMentionIds,
   insertMockProactiveTargets,
   resetBotFlowStateForAgentRebind,
-  resetConversationForFriendGreeting,
   resolveGroupByAddress,
   applyAgentTagOutcome,
   applyConversationTagChanges,
@@ -180,12 +169,9 @@ import {
   listGroupAutomationOccurrences,
   listGroupsPage,
   listUnreadTagAlerts,
-  listCachedApiMessages,
   listFlowMachines,
   listFlowSessionsPage,
   listFlowStateEvents,
-  listImportedConversationMessages,
-  listLegacyFlowSessionTargets,
   listTagActivationTasks,
   listProactiveAddressBookTargetsPage,
   listProactiveTargetTags,
@@ -194,7 +180,6 @@ import {
   listAgents,
   listBotBindings,
   listChannelAccounts,
-  listRunnableTagSyncConfigs,
   listUnassignedBotBindings,
   listWorkspaceBots,
   listWorkspaces,
@@ -206,25 +191,18 @@ import {
   markFlowActivationTaskFailed,
   markTagActivationTaskFailed,
   markTagActivationTaskSent,
-  markTagSyncCommandSubmitted,
-  markTagSyncCommandSubmitFailed,
-  markConversationFriendAddedSignal,
   markCockpitStageCompleted,
   markChannelAccountWebhookSuccess,
   markConversationResetHandledForEpoch,
-  markLegacyHistoryContextSent,
   markTagAlertRead,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
   mergeFlowSessionData,
-  migrateLegacyHistoryOutboundSenderNames,
-  migrateTagSyncNightlyDefaultEnabled,
   normalizeActivationConfig,
   prepareConversationResetForNewActivity,
   resetInterruptedProactiveTargets,
   recordChannelWebhookEvent,
-  recoverExpiredTagSyncLeases,
   reserveFlowActionExecution,
   reserveTagActivationTaskForSend,
   resolveConversationMessageEvidence,
@@ -246,14 +224,11 @@ import {
   updateGroupAutomationTask,
   duplicateGroupAutomationTask,
   softDeleteGroupAutomationTask,
-  saveTagSyncConfig,
   setSetting,
   setBotAccessKey,
   touchFlowSession,
   updateFlowSessionHandoff,
   updateFlowSessionNode,
-  updateLegacyHistorySync,
-  updateTagSyncRunStatus,
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
   updateGroupAutomationOccurrenceFromCommandCallback,
@@ -277,8 +252,7 @@ import {
   updateChannelAccountHealth,
   updateChannelAccount,
   updateChannelAccountToken,
-  updateOutgoingMessageChannelStatus,
-  upsertWorktoolApiMessageCache
+  updateOutgoingMessageChannelStatus
 } from "./db.js";
 import {
   decryptChannelToken,
@@ -325,16 +299,9 @@ import {
   shouldProcessInboundForAgent
 } from "./message-rules.js";
 import { inboundAttachmentPlaceholder } from "./inbound-attachments.js";
-import {
-  DEFAULT_FRIEND_ADDED_SIGNAL_DEDUPE_MS,
-  isFriendAddedSignalDuplicate,
-  resolveFriendAddedSignal
-} from "./friend-added-signals.js";
 import { normalizeUploadedFilename } from "./filenames.js";
 import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
 import { createTagAlertStreamHub } from "./tag-alert-stream.js";
-import { normalizeHistoryAnalysisConfig } from "./history-analysis.js";
-import { createKeyedSingleFlight, isLegacyCustomerCandidate } from "./legacy-history.js";
 import { filterConfiguredCollectedDataPatch } from "./flow-assets.js";
 import {
   adjudicateTagDecision,
@@ -628,28 +595,6 @@ if (!adminAuthState.ready) {
   logWarn("admin_auth.not_ready", { reason: adminAuthState.reason });
 }
 resetInterruptedProactiveTargets();
-const migratedLegacyHistorySenderCount = migrateLegacyHistoryOutboundSenderNames();
-logInfo("legacy_history.outbound_senders_migrated", {
-  messageCount: migratedLegacyHistorySenderCount
-});
-const legacyCustomerHistory = Object.freeze({
-  async prepareLegacyCustomer() {},
-  buildStoredLegacyAnalysis() { return null; }
-});
-
-function assertCallbackSecret(req) {
-  const expected = process.env.CALLBACK_SECRET;
-  if (!expected) {
-    const error = new Error("callback secret is not configured");
-    error.status = 503;
-    throw error;
-  }
-  if (req.query.secret !== expected) {
-    const error = new Error("invalid callback secret");
-    error.status = 401;
-    throw error;
-  }
-}
 
 function assertAdmin(req) {
   if (!adminAuthState.ready) {
@@ -817,40 +762,6 @@ function shouldRecordConversationHistory(message) {
   return isPrivateMessage(message) || isGroupMessage(message);
 }
 
-function recordSystemFriendGreeting({ botId, binding, conversationKey, message }) {
-  const conversation = upsertConversation({
-    botId,
-    agentId: binding?.agentId || "",
-    conversationKey,
-    message
-  });
-  insertConversationMessage({
-    botId,
-    conversationKey,
-    direction: "inbound",
-    senderName: message.receivedName || "",
-    content: message.spoken || message.rawSpoken || "",
-    rawPayload: {
-      ...message,
-      systemMessageType: "friend_greeting"
-    }
-  });
-  return conversation;
-}
-
-function existingFriendAddedInCooldown({ botId, conversationKey, occurredAt }) {
-  if (friendAddedReentryCooldownMs <= 0) return false;
-  const session = getFlowSessionForBot({ botId, conversationKey });
-  const lastFriendAddedAtMs = Date.parse(session?.lastFriendAddedAt || "");
-  const occurredAtMs = Date.parse(occurredAt || "");
-  return (
-    Number.isFinite(lastFriendAddedAtMs) &&
-    Number.isFinite(occurredAtMs) &&
-    occurredAtMs - lastFriendAddedAtMs >= 0 &&
-    occurredAtMs - lastFriendAddedAtMs < friendAddedReentryCooldownMs
-  );
-}
-
 function isPrivateConversationKey(conversationKey) {
   return String(conversationKey || "").includes(":private:");
 }
@@ -916,7 +827,7 @@ function applySystemDateTag({ botId, binding, conversationKey, firstSeenAt }) {
     agentId: binding.agentId,
     conversationKey,
     firstSeenAt: firstSeenAt || new Date(),
-    source: "friend_added"
+    source: "first_contact"
   });
 }
 
@@ -1209,18 +1120,8 @@ function buildTagContext({ binding, conversationKey, group = null }) {
   return compactTagRulesForAgent({ schema, currentTags });
 }
 
-function buildTagEvidenceCandidates({ items = [], legacyHistoryAnalysis = null }) {
+function buildTagEvidenceCandidates({ items = [] }) {
   const candidates = [];
-  for (const historyMessage of legacyHistoryAnalysis?.selectedMessages || []) {
-    const conversationMessageId = Number(historyMessage?.id);
-    const text = String(historyMessage?.content || "").trim();
-    if (!Number.isInteger(conversationMessageId) || conversationMessageId <= 0 || !text) continue;
-    candidates.push({
-      id: String(conversationMessageId),
-      conversationMessageId,
-      text
-    });
-  }
   for (const item of items) {
     const conversationMessageId = Number(item?.conversationMessageId);
     const text = String(item?.message?.spoken || item?.message?.rawSpoken || "").trim();
@@ -1493,20 +1394,20 @@ async function executeFlowActions({
         resolvedGroup.group.externalGroupId,
         [target.replace(/@s\.whatsapp\.net$/u, "")]
       );
-      const worktoolMessageId = "";
+      const channelMessageId = "";
       const execution = markFlowActionExecutionSucceeded({
         id: reservation.execution.id,
-        worktoolMessageId,
-        worktoolResponse: result
+        channelMessageId,
+        channelResponse: result
       });
       insertOutgoingMessage({
         botId,
         agentId: binding.agentId,
         conversationKey,
-        messageId: worktoolMessageId,
+        messageId: channelMessageId,
         targetName: target,
         content: `拉入群：${target} -> ${action.groupName}`,
-        worktoolResponse: {
+        channelResponse: {
           ...(result || {}),
           source: "flow_action",
           flowActionSource: source,
@@ -1530,8 +1431,8 @@ async function executeFlowActions({
         executionId: execution?.id || reservation.execution.id,
         groupName: action.groupName,
         targetName: target,
-        worktoolMessageId,
-        worktoolCode: result?.code
+        channelMessageId,
+        channelCode: result?.code
       });
       results.push({ action, execution, result });
     } catch (error) {
@@ -1666,23 +1567,11 @@ const groupAutomationWorkerConfig = {
     Math.min(100, Number(process.env.GROUP_AUTOMATION_BATCH_SIZE || 10))
   )
 };
-const friendAddedReentryCooldownMs = Math.max(
-  0,
-  Number(process.env.FRIEND_ADDED_REENTRY_COOLDOWN_MINUTES || 0) * 60 * 1000
-);
-const configuredFriendAddedSignalDedupeSeconds = Number(
-  process.env.FRIEND_ADDED_SIGNAL_DEDUPE_SECONDS || 30
-);
-const friendAddedSignalDedupeMs = Number.isFinite(configuredFriendAddedSignalDedupeSeconds)
-  && configuredFriendAddedSignalDedupeSeconds > 0
-  ? Math.max(1_000, configuredFriendAddedSignalDedupeSeconds * 1000)
-  : DEFAULT_FRIEND_ADDED_SIGNAL_DEDUPE_MS;
-
-const configuredReplyMaxParts = Number(process.env.WORKTOOL_REPLY_MAX_PARTS || 3);
-const configuredReplyPartDelayMs = Number(process.env.WORKTOOL_REPLY_PART_DELAY_MS || 1000);
+const configuredReplyMaxParts = Number(process.env.CHANNEL_REPLY_MAX_PARTS || 3);
+const configuredReplyPartDelayMs = Number(process.env.CHANNEL_REPLY_PART_DELAY_MS || 1000);
 const replySplitConfig = {
-  enabled: process.env.WORKTOOL_SPLIT_AGENT_REPLY !== "false",
-  splitGroup: process.env.WORKTOOL_SPLIT_GROUP_REPLY === "true",
+  enabled: process.env.CHANNEL_SPLIT_AGENT_REPLY !== "false",
+  splitGroup: process.env.CHANNEL_SPLIT_GROUP_REPLY === "true",
   maxParts: Number.isFinite(configuredReplyMaxParts)
     ? Math.max(1, configuredReplyMaxParts)
     : 3,
@@ -2403,9 +2292,6 @@ function getReplyWaitSettingKey(botId) {
   return `reply_wait:${String(botId || "").trim()}`;
 }
 
-function getHistoryAnalysisSettingKey(botId) {
-  return `history_analysis:${String(botId || "").trim()}`;
-}
 
 function normalizeReplyWaitConfig(config = {}) {
   const baseSeconds = Number(config.baseSeconds);
@@ -2422,275 +2308,6 @@ function getReplyWaitConfig(botId) {
   return normalizeReplyWaitConfig(getSetting(getReplyWaitSettingKey(botId), null) || {});
 }
 
-function getHistoryAnalysisConfig(botId) {
-  return normalizeHistoryAnalysisConfig(
-    getSetting(getHistoryAnalysisSettingKey(botId), null) || {}
-  );
-}
-
-const legacyHistoryDynamicAssetsRolloutKey =
-  "legacy_history_dynamic_assets_v1_rollout_at";
-let legacyHistoryDynamicAssetsRolloutAt = "";
-
-function getLegacyHistoryDynamicAssetsRolloutAt() {
-  if (legacyHistoryDynamicAssetsRolloutAt) {
-    return legacyHistoryDynamicAssetsRolloutAt;
-  }
-  const stored = String(
-    getSetting(legacyHistoryDynamicAssetsRolloutKey, "") || ""
-  ).trim();
-  if (Number.isFinite(Date.parse(stored))) {
-    legacyHistoryDynamicAssetsRolloutAt = stored;
-    return stored;
-  }
-  const rolloutAt = new Date().toISOString();
-  setSetting(legacyHistoryDynamicAssetsRolloutKey, rolloutAt);
-  legacyHistoryDynamicAssetsRolloutAt = rolloutAt;
-  return rolloutAt;
-}
-
-function shouldAnalyzeLegacyHistoryForSession(session) {
-  if (
-    !session
-    || session.customerOrigin !== "legacy"
-    || session.historySyncStatus !== "success"
-  ) {
-    return false;
-  }
-  const historyContextSentAt = String(session.historyContextSentAt || "").trim();
-  if (!historyContextSentAt) return true;
-  const historyContextTime = Date.parse(historyContextSentAt);
-  const rolloutTime = Date.parse(getLegacyHistoryDynamicAssetsRolloutAt());
-  if (!Number.isFinite(historyContextTime) || !Number.isFinite(rolloutTime)) {
-    return true;
-  }
-  return historyContextTime < rolloutTime;
-}
-
-const legacyHistoryAnalysisFlights = createKeyedSingleFlight();
-
-async function runLegacyHistoryAnalysis({
-  botId,
-  binding,
-  conversationKey,
-  message,
-  expectedEpoch
-}) {
-  const conversation = getConversation(conversationKey);
-  if (
-    !conversation
-    || conversation.botId !== botId
-    || conversation.conversationEpoch !== expectedEpoch
-  ) {
-    return { status: "stale" };
-  }
-  const flow = buildFlowContext({ botId, conversationKey, message });
-  if (!shouldAnalyzeLegacyHistoryForSession(flow?.session)) {
-    return { status: "not_required" };
-  }
-  const historyAnalysisConfig = getHistoryAnalysisConfig(botId);
-  const legacyHistoryAnalysis = legacyCustomerHistory.buildStoredLegacyAnalysis({
-    botId,
-    conversationKey,
-    maxChars: historyAnalysisConfig.historyCustomerTextMaxChars
-  });
-  if (!legacyHistoryAnalysis?.text) {
-    return { status: "empty" };
-  }
-  const tagContext = buildTagContext({ binding, conversationKey });
-  const tagEvidenceCandidates = buildTagEvidenceCandidates({
-    legacyHistoryAnalysis
-  });
-  const request = buildDclawLegacyHistoryAnalysisRequest({
-    binding,
-    conversation,
-    message,
-    flow,
-    tagContext,
-    tagEvidenceCandidates,
-    legacyHistoryAnalysis,
-    conversationReset: false,
-    generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
-  });
-  const incomingMessageId = `legacy_history_analysis:${message.messageId || Date.now()}`;
-  const invocationId = insertAgentInvocationStart({
-    botId,
-    agentId: binding.agentId,
-    conversationKey,
-    incomingMessageId,
-    request
-  });
-  const startedAt = Date.now();
-  logInfo("legacy_history.background.start", {
-    botId,
-    agentId: binding.agentId,
-    conversationKey,
-    invocationId,
-    selectedCount: Number(legacyHistoryAnalysis.selectedCount || 0),
-    selectedChars: Number(legacyHistoryAnalysis.selectedChars || 0)
-  });
-
-  try {
-    const strictInvocation = await invokeStrictAgentReply({
-      binding,
-      request,
-      queuePriority: "background",
-      queueKey: conversationKey,
-      onRetry: (retry) => {
-        logWarn("legacy_history.background.retry", {
-          botId,
-          agentId: binding.agentId,
-          conversationKey,
-          invocationId,
-          attempt: retry.attempt,
-          maxAttempts: retry.maxAttempts,
-          timeoutMs: retry.timeoutMs,
-          error: retry.error.message
-        });
-      },
-      onValidationFailure: ({
-        attemptNumber,
-        stage,
-        retryRequested,
-        errors,
-        rawReply
-      }) => {
-        recordAgentResponseValidationFailures({
-          invocationId,
-          botId,
-          agentId: binding.agentId,
-          conversationKey,
-          incomingMessageId: message.messageId,
-          attemptNumber,
-          stage,
-          retryRequested,
-          errors,
-          rawReply
-        });
-      },
-      onLocalRepair: ({ attemptNumber, errors, rawReply, repairs }) => {
-        recordAgentResponseLocalRepair({
-          invocationId,
-          botId,
-          agentId: binding.agentId,
-          conversationKey,
-          incomingMessageId: message.messageId,
-          eventPrefix: "legacy_history.background",
-          attemptNumber,
-          errors,
-          rawReply,
-          repairs
-        });
-      },
-      onValidationRetryOutcome: ({ outcome, attemptNumber, error }) => {
-        recordAgentValidationRetryOutcome({
-          invocationId,
-          botId,
-          agentId: binding.agentId,
-          conversationKey,
-          incomingMessageId: message.messageId,
-          eventPrefix: "legacy_history.background",
-          outcome,
-          attemptNumber,
-          error
-        });
-      }
-    });
-    if (!strictInvocation.agentReply.valid) {
-      const error = new Error("invalid_legacy_history_analysis_reply");
-      error.response = strictInvocation.invocation?.response || null;
-      throw error;
-    }
-    if (!isConversationEpochCurrent({ botId, conversationKey, expectedEpoch })) {
-      finishAgentInvocation({
-        id: invocationId,
-        response: strictInvocation.invocation?.response || null,
-        status: "stale",
-        error: "conversation_epoch_changed"
-      });
-      return { status: "stale" };
-    }
-
-    const latestFlow = buildFlowContext({ botId, conversationKey, message });
-    const agentReply = strictInvocation.agentReply;
-    persistAgentTagAudit({
-      invocationId,
-      botId,
-      binding,
-      conversationKey,
-      incomingMessageId,
-      agentReply
-    });
-    const tagResult = tagContext
-      ? applyAgentTagDecision({
-          botId,
-          binding,
-          conversationKey,
-          agentReply,
-          evidenceCandidates: tagEvidenceCandidates
-        })
-      : null;
-    publishCommittedTagAlerts({ botId, invocationId, tagResult });
-    const rawPatch = agentReply.flowDecision?.collectedDataPatch
-      || agentReply.flowDecision?.collectedFields
-      || agentReply.flowDecision?.dataPatch
-      || {};
-    const patch = filterConfiguredCollectedDataPatch({
-      flow: latestFlow,
-      patch: rawPatch,
-      fillOnlyMissing: true
-    });
-    if (Object.keys(patch).length) {
-      mergeFlowSessionData({ conversationKey, patch });
-    }
-    markLegacyHistoryContextSent({ botId, conversationKey });
-    finishAgentInvocation({
-      id: invocationId,
-      response: strictInvocation.invocation.response,
-      status: "success"
-    });
-    logInfo("legacy_history.background.success", {
-      botId,
-      agentId: binding.agentId,
-      conversationKey,
-      invocationId,
-      durationMs: Date.now() - startedAt,
-      acceptedTagCount: Number(tagResult?.accepted?.length || 0),
-      rejectedTagCount: Number(tagResult?.rejected?.length || 0),
-      collectedFieldNames: Object.keys(patch)
-    });
-    return { status: "success" };
-  } catch (error) {
-    finishAgentInvocation({
-      id: invocationId,
-      response: error.response || null,
-      status: "failed",
-      error: error.message
-    });
-    logWarn("legacy_history.background.failed", {
-      botId,
-      agentId: binding.agentId,
-      conversationKey,
-      invocationId,
-      durationMs: Date.now() - startedAt,
-      error: error.message
-    });
-    return { status: "failed", error: error.message };
-  }
-}
-
-function scheduleLegacyHistoryAnalysis(input) {
-  void legacyHistoryAnalysisFlights
-    .run(input.conversationKey, () => runLegacyHistoryAnalysis(input))
-    .catch((error) => {
-      logWarn("legacy_history.background.schedule_failed", {
-        botId: input.botId,
-        agentId: input.binding?.agentId || "",
-        conversationKey: input.conversationKey,
-        error: error.message
-      });
-    });
-}
 
 function getAgentFailureFallbackReply(botId) {
   return getReplyWaitConfig(botId).fallbackReply;
@@ -2708,7 +2325,7 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function splitAgentReplyForWorkTool(reply, { allowSplit = true } = {}) {
+function splitAgentReplyForChannel(reply, { allowSplit = true } = {}) {
   const text = String(reply || "").trim();
   if (!text) return [];
   if (!replySplitConfig.enabled || !allowSplit) return [text];
@@ -2727,7 +2344,7 @@ function splitAgentReplyForWorkTool(reply, { allowSplit = true } = {}) {
 }
 
 async function sendTextReplyParts({ robotId, target, reply, allowSplit, beforeSend = null }) {
-  const parts = splitAgentReplyForWorkTool(reply, { allowSplit });
+  const parts = splitAgentReplyForChannel(reply, { allowSplit });
   const results = [];
   for (const [index, content] of parts.entries()) {
     if (index > 0 && replySplitConfig.delayMs > 0) {
@@ -2824,7 +2441,7 @@ async function sendAgentFailureFallback({
     allowSplit: false,
     beforeSend: () => assertConversationAiControlled({ botId, conversationKey })
   });
-  const worktoolMessageIds = sentParts.map((part) => part.result?.data || "").filter(Boolean);
+  const channelMessageIds = sentParts.map((part) => part.result?.data || "").filter(Boolean);
 
   insertConversationMessage({
     botId,
@@ -2836,8 +2453,8 @@ async function sendAgentFailureFallback({
       fallback: true,
       reason: error?.errorType || "agent_invocation_failed",
       error: error.message,
-      worktoolMessageId: worktoolMessageIds[0] || "",
-      worktoolMessageIds,
+      channelMessageId: channelMessageIds[0] || "",
+      channelMessageIds,
       replyParts: sentParts.map((part) => part.content)
     }
   });
@@ -2850,7 +2467,7 @@ async function sendAgentFailureFallback({
       messageId: part.result?.data || "",
       targetName: target,
       content: part.content,
-      worktoolResponse: {
+      channelResponse: {
         ...(part.result || {}),
         fallback: true,
         replyPartIndex: index,
@@ -2865,7 +2482,7 @@ async function sendAgentFailureFallback({
     agentId: binding?.agentId || "",
     invocationId,
     targetName: target,
-    worktoolMessageIds,
+    channelMessageIds,
     error: error.message
   });
   return true;
@@ -2886,208 +2503,37 @@ function messageLogFields({ botId, conversationKey, message }) {
   };
 }
 
-async function handleFriendAddedEvent({
-  botId,
-  binding,
-  message,
-  trigger,
-  logContext,
-  conversationKey
-}) {
-  const friendName = String(message?.receivedName || message?.groupName || "").trim();
-  logInfo("friend_added.received", {
-    ...logContext,
-    friendName,
-    trigger
-  });
-  if (!friendName) {
-    logInfo("friend_added.skipped", {
-      ...logContext,
-      trigger,
-      reason: "missing_friend_name"
-    });
-    return "skipped";
-  }
-  if (!binding?.enabled) {
-    logInfo("friend_added.skipped", {
-      ...logContext,
-      friendName,
-      trigger,
-      reason: "no_enabled_binding"
-    });
-    return "skipped";
-  }
-
-  const existingConversation = getConversation(conversationKey);
-  const entryAnchorAt = new Date().toISOString();
-  if (isFriendAddedSignalDuplicate({
-    lastFriendAddedAt: existingConversation?.lastFriendAddedSignalAt,
-    occurredAt: entryAnchorAt,
-    dedupeMs: friendAddedSignalDedupeMs
-  })) {
-    logInfo("friend_added.skipped", {
-      ...logContext,
-      friendName,
-      conversationKey,
-      trigger,
-      reason: "friend_added_signal_duplicate",
-      elapsedMs: Date.parse(entryAnchorAt)
-        - Date.parse(existingConversation.lastFriendAddedSignalAt)
-    });
-    return "skipped";
-  }
-  let conversation = existingConversation;
-  if (!conversation) {
-    conversation = upsertConversation({
-      botId,
-      agentId: binding?.agentId || "",
-      conversationKey,
-      message
-    });
-  }
-  if (existingConversation && existingFriendAddedInCooldown({ botId, conversationKey, occurredAt: entryAnchorAt })) {
-    logInfo("friend_added.skipped", {
-      ...logContext,
-      friendName,
-      conversationKey,
-      trigger,
-      reason: "friend_added_cooldown"
-    });
-    return "skipped";
-  }
-  if (existingConversation) {
-    cancelInboundBatch(
-      inboundCoalesceKey(botId, conversationKey),
-      "friend_added_reentry"
-    );
-    void syncConversationResetToAgent({
-      binding,
-      conversationKey,
-      conversationEpoch: existingConversation.conversationEpoch,
-      reason: "friend_added_reentry"
-    });
-    resetConversationForFriendGreeting({
-      botId,
-      agentId: binding.agentId,
-      conversationKey,
-      timestamp: entryAnchorAt
-    });
-    logInfo("friend_added.conversation_reset", {
-      ...logContext,
-      friendName,
-      conversationKey,
-      trigger
-    });
-  }
-  if (trigger === "system_greeting") {
-    conversation = recordSystemFriendGreeting({ botId, binding, conversationKey, message });
-  } else if (existingConversation) {
-    conversation = upsertConversation({
-      botId,
-      agentId: binding?.agentId || "",
-      conversationKey,
-      message
-    });
-  }
-  const dateTags = applySystemDateTag({
-    botId,
-    binding,
-    conversationKey,
-    firstSeenAt: entryAnchorAt || conversation.createdAt
-  });
-  if (dateTags) {
-    logInfo("friend_added.date_tag.applied", {
-      ...logContext,
-      conversationKey,
-      agentId: binding.agentId,
-      trigger,
-      tagCount: dateTags.length
-    });
-  }
-  const machine = getFlowMachineForBot(botId);
-  if (!machine?.enabled) {
-    markConversationFriendAddedSignal({
-      botId,
-      conversationKey,
-      occurredAt: entryAnchorAt
-    });
-    logInfo("friend_added.skipped", {
-      ...logContext,
-      friendName,
-      conversationKey,
-      trigger,
-      reason: "no_enabled_flow_machine"
-    });
-    return "skipped";
-  }
+function initializeFirstPrivateContact({ botId, binding, conversationKey, machine, occurredAt }) {
+  if (!binding?.enabled || !machine?.enabled) return null;
   const entryNode = getFlowNode(machine, machine.entryNodeId);
   const activation = normalizeActivationConfig(entryNode?.activation || {});
   const canScheduleActivation = activation.enabled && activation.messages.length > 0;
-  const entryResult = beginFriendAddedFlowEntry({
+  const entryResult = beginFirstContactFlowEntry({
     botId,
     conversationKey,
     machine,
-    cooldownMs: friendAddedReentryCooldownMs,
-    occurredAt: entryAnchorAt,
-    forceReentry: Boolean(existingConversation),
+    occurredAt,
     activationTask: canScheduleActivation
       ? {
           agentId: binding.agentId,
           activation,
-          anchorAt: entryAnchorAt,
-          dueAt: activationDueAtForAttempt(entryAnchorAt, activation.messages[0].intervalMinutes, 1)
+          anchorAt: occurredAt,
+          dueAt: activationDueAtForAttempt(
+            occurredAt,
+            activation.messages[0].intervalMinutes,
+            1
+          )
         }
       : null
   });
-  markConversationFriendAddedSignal({
+  logInfo("channel.first_private_contact.initialized", {
     botId,
     conversationKey,
-    occurredAt: entryAnchorAt
-  });
-  if (entryResult.status === "cooldown") {
-    logInfo("friend_added.skipped", {
-      ...logContext,
-      friendName,
-      conversationKey,
-      trigger,
-      reason: "friend_added_cooldown"
-    });
-    return "skipped";
-  }
-  if (entryResult.status === "duplicate") {
-    logInfo("friend_added.skipped", {
-      ...logContext,
-      friendName,
-      conversationKey,
-      trigger,
-      reason: "friend_added_duplicate"
-    });
-    return "skipped";
-  }
-  if (!canScheduleActivation) {
-    logInfo("friend_added.skipped", {
-      ...logContext,
-      friendName,
-      conversationKey,
-      trigger,
-      entryStatus: entryResult.status,
-      reason: "entry_activation_not_configured"
-    });
-    return entryResult.status;
-  }
-
-  const task = entryResult.task;
-  logInfo("friend_added.activation.scheduled", {
-    ...logContext,
-    friendName,
-    conversationKey,
-    trigger,
     entryStatus: entryResult.status,
-    activationTaskId: task?.id || "",
-    nodeId: task?.nodeId || entryResult.session.currentNodeId,
-    dueAt: task?.dueAt || ""
+    nodeId: entryResult.session?.currentNodeId || machine.entryNodeId,
+    activationTaskId: entryResult.task?.id || ""
   });
-  return task ? "scheduled" : "skipped";
+  return entryResult;
 }
 
 function commandCallbackLogFields({ botId, payload, outgoingMatched = false }) {
@@ -3131,7 +2577,7 @@ async function handleDebugPing({ botId, message, conversationKey }) {
     targetName: target,
     content,
     messageId: result.data,
-    worktoolResponse: result
+    channelResponse: result
   });
   return true;
 }
@@ -3370,7 +2816,7 @@ function proactiveConversationContent(target) {
   return parts.filter(Boolean).join("\n");
 }
 
-async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse }) {
+async function syncProactiveTargetToAgent({ target, messageId, channelResponse }) {
   const binding = getBotBinding(target.botId);
   if (!binding || !binding.enabled) {
     markProactiveTargetAgentSync({
@@ -3392,8 +2838,8 @@ async function syncProactiveTargetToAgent({ target, messageId, worktoolResponse 
     binding,
     conversation,
     target,
-    worktoolMessageId: messageId,
-    worktoolResponse,
+    channelMessageId: messageId,
+    channelResponse,
     generalRule: getFlowMachineForBot(target.botId)?.config?.generalRule || ""
   });
   const invocationId = insertAgentInvocationStart({
@@ -3513,7 +2959,7 @@ function recordActivationOutbound({ task, binding, target, content, result, rawP
       attemptNumber: task.attemptNumber,
       nodeId: task.nodeId,
       messageId: result?.data || "",
-      worktoolResponse: result || null,
+      channelResponse: result || null,
       ...rawPayload
     }
   });
@@ -3524,7 +2970,7 @@ function recordActivationOutbound({ task, binding, target, content, result, rawP
     messageId: result?.data || "",
     targetName: target,
     content,
-    worktoolResponse: {
+    channelResponse: {
       ...(result || {}),
       source: "flow_activation",
       activationTaskId: task.id,
@@ -3810,10 +3256,10 @@ async function processFlowActivationTask(task) {
   try {
     const activationDelivery = activationDeliveryForTask(task);
     const { mergedActivationActions } = activationDelivery;
-    const worktoolMessageIds = task.polishByAgent
+    const channelMessageIds = task.polishByAgent
       ? await sendActivationPolishedMessage({ task, binding, delivery: activationDelivery })
       : await sendActivationRawMessages({ task, binding, delivery: activationDelivery });
-    const delivery = finalizeFlowActivationTaskDelivery({ id: task.id, worktoolMessageIds });
+    const delivery = finalizeFlowActivationTaskDelivery({ id: task.id, channelMessageIds });
     if (!delivery) {
       logInfo("activation.stale_skipped", {
         activationTaskId: task.id,
@@ -3861,7 +3307,7 @@ async function processFlowActivationTask(task) {
       attemptNumber: task.attemptNumber,
       maxTimes: task.maxTimes,
       polishByAgent: task.polishByAgent,
-      worktoolMessageIds
+      channelMessageIds
     });
   } catch (error) {
     const failedTask = markFlowActivationTaskFailed({ id: task.id, error: error.message });
@@ -3934,7 +3380,7 @@ function recordTagActivationOutbound({ task, binding, target, content, result, r
       groupId: task.groupId,
       tagId: task.tagId,
       messageId: result?.data || "",
-      worktoolResponse: result || null,
+      channelResponse: result || null,
       ...rawPayload
     }
   });
@@ -3945,7 +3391,7 @@ function recordTagActivationOutbound({ task, binding, target, content, result, r
     messageId: result?.data || "",
     targetName: target,
     content,
-    worktoolResponse: {
+    channelResponse: {
       ...(result || {}),
       source: "tag_activation",
       tagActivationTaskId: task.id,
@@ -4200,7 +3646,7 @@ async function processTagActivationTask(task) {
     const result = await sendTextMessage({ robotId: task.botId, targets: [target], content: finalContent });
     const sentTask = markTagActivationTaskSent({
       id: task.id,
-      worktoolMessageIds: [result.data || ""].filter(Boolean)
+      channelMessageIds: [result.data || ""].filter(Boolean)
     });
     recordTagActivationOutbound({
       task,
@@ -4222,7 +3668,7 @@ async function processTagActivationTask(task) {
       groupId: task.groupId,
       tagId: task.tagId,
       polishByAgent: task.polishByAgent,
-      worktoolMessageId: result.data || ""
+      channelMessageId: result.data || ""
     });
     if (sentTask && isTagStillActiveForTask(task)) {
       const nextTask = scheduleNextTagActivationTask({
@@ -4324,13 +3770,13 @@ async function processNextProactiveTarget() {
           content: target.content
         })
         : (mediaResults.push(...await sendProactiveTargetMediaAttachments(target)), mediaResults[0]);
-      const worktoolMessageIds = target.messageType === "media"
+      const channelMessageIds = target.messageType === "media"
         ? mediaResults.map((item) => item?.data || "").filter(Boolean)
         : [result?.data].filter(Boolean);
       markProactiveTargetSent({
         id: target.id,
-        messageId: worktoolMessageIds[0] || "",
-        worktoolResponse: result
+        messageId: channelMessageIds[0] || "",
+        channelResponse: result
       });
       const conversationKey = getProactiveConversationKey(target);
       const binding = getBotBinding(target.botId);
@@ -4365,27 +3811,27 @@ async function processNextProactiveTarget() {
         content: proactiveConversationContent(target),
         rawPayload: {
           source: "proactive",
-          messageId: worktoolMessageIds[0] || "",
-          messageIds: worktoolMessageIds,
+          messageId: channelMessageIds[0] || "",
+          messageIds: channelMessageIds,
           messageType: target.messageType,
           messagePayload: target.messagePayload || {},
-          worktoolResponse: result,
-          worktoolResponses: target.messageType === "media" ? mediaResults : [result]
+          channelResponse: result,
+          channelResponses: target.messageType === "media" ? mediaResults : [result]
         }
       });
       insertOutgoingMessage({
         botId: target.botId,
         agentId: target.agentId || "",
         conversationKey,
-        messageId: worktoolMessageIds[0] || "",
+        messageId: channelMessageIds[0] || "",
         targetName: target.targetName,
         content: target.content,
-        worktoolResponse: result
+        channelResponse: result
       });
       void syncProactiveTargetToAgent({
         target,
-        messageId: worktoolMessageIds[0] || "",
-        worktoolResponse: result
+        messageId: channelMessageIds[0] || "",
+        channelResponse: result
       });
     } catch (error) {
       markProactiveTargetFailed({
@@ -4450,27 +3896,26 @@ if (groupAutomationWorkerConfig.enabled) {
 }
 
 function ingestIncomingMessage({ botId, message }) {
-  const friendAddedSignal = resolveFriendAddedSignal(message);
-  const routingMessage = friendAddedSignal?.message || message;
   const { conversationKey, group } = resolveInboundConversation({
     botId,
-    message: routingMessage
+    message
   });
+  const firstContact = isPrivateMessage(message) && !getConversation(conversationKey);
   const messageKey = buildMessageKey({ botId, conversationKey, message });
-  // Keep every WorkTool callback for audit and recovery, including callbacks
+  // Keep every channel webhook for audit and recovery, including callbacks
   // that are later recognized as duplicates for business processing.
   insertIncomingMessage({ botId, conversationKey, payload: message });
   cockpitEventRecorder.record({
     botId,
     conversationKey,
-    customerKey: routingMessage.receivedName || routingMessage.friendName || "",
-    eventType: friendAddedSignal ? "friend_added" : "customer_message",
-    sourceType: friendAddedSignal ? "friend_added" : "incoming_message",
+    customerKey: message.receivedName || "",
+    eventType: firstContact ? "first_contact" : "customer_message",
+    sourceType: firstContact ? "first_contact" : "incoming_message",
     sourceId: messageKey,
     occurredAt: new Date().toISOString(),
     payload: {
-      roomType: routingMessage.roomType,
-      textType: routingMessage.textType
+      roomType: message.roomType,
+      textType: message.textType
     }
   });
   const accepted = beginMessageProcessing({
@@ -4479,7 +3924,7 @@ function ingestIncomingMessage({ botId, message }) {
     conversationKey,
     messageId: message.messageId
   });
-  return { conversationKey, messageKey, accepted, group, friendAddedSignal };
+  return { conversationKey, messageKey, accepted, group };
 }
 
 async function processIncomingMessage({ botId, message, intake = null }) {
@@ -4489,42 +3934,16 @@ async function processIncomingMessage({ botId, message, intake = null }) {
   const {
     conversationKey,
     messageKey,
-    group = null,
-    friendAddedSignal = null
+    group = null
   } = received;
   const baseLog = messageLogFields({ botId, conversationKey, message });
   const logContext = { ...baseLog, messageKey };
   const hadConversation = Boolean(getConversation(conversationKey));
-  const hadFlowSession = Boolean(getFlowSession(conversationKey));
-  const legacyCandidate = isLegacyCustomerCandidate({
-    message,
-    binding,
-    hadConversation,
-    hadFlowSession
-  });
   const flowMachine = getFlowMachineForBot(botId);
   logInfo("incoming.received", logContext);
 
   if (!received.accepted) {
     logWarn("incoming.duplicate_skipped", logContext);
-    return;
-  }
-
-  if (friendAddedSignal) {
-    await handleFriendAddedEvent({
-      botId,
-      binding,
-      message: friendAddedSignal.message,
-      trigger: friendAddedSignal.trigger,
-      logContext,
-      conversationKey
-    });
-    logInfo("incoming.skipped", {
-      ...logContext,
-      trigger: friendAddedSignal.trigger,
-      reason: "friend_added_signal"
-    });
-    finishMessageProcessing({ messageKey, status: "friend_added" });
     return;
   }
 
@@ -4549,10 +3968,20 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         conversationKey,
         message,
         resetPending: resetState.resetPending,
-        skipFirstSeenDateTag: legacyCandidate,
+        skipFirstSeenDateTag: false,
         managedGroup: group
       })
     : { conversation: null, messageRecord: null };
+
+  if (isPrivateMessage(message) && !hadConversation) {
+    initializeFirstPrivateContact({
+      botId,
+      binding,
+      conversationKey,
+      machine: flowMachine,
+      occurredAt: message.metadata?.occurredAt || new Date().toISOString()
+    });
+  }
 
   if (!shouldProcessInboundForAgent(message)) {
     logInfo("incoming.skipped", {
@@ -4593,25 +4022,6 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     });
     finishMessageProcessing({ messageKey, status: "skipped" });
     return;
-  }
-
-  const legacySession = flowSession;
-  const shouldAwaitLegacySync = legacyCandidate || (
-    legacySession?.customerOrigin === "legacy"
-    && legacySession.historySyncStatus === "loading"
-  );
-  if (
-    shouldAwaitLegacySync
-    && flowMachine?.enabled
-    && Array.isArray(flowMachine.config?.nodes)
-    && flowMachine.config.nodes.some((node) => String(node?.id || "").trim())
-  ) {
-    await legacyCustomerHistory.prepareLegacyCustomer({
-      botId,
-      conversationKey,
-      title: message.receivedName || "",
-      machine: flowMachine
-    });
   }
 
   const conversation = persisted.conversation || getConversation(conversationKey);
@@ -4860,38 +4270,6 @@ async function processCoalescedIncomingBatch(batch) {
   const flow = buildFlowContext({ botId, conversationKey, message });
   const conversationReset = getConversationResetPending(conversationKey);
 
-  const shouldScheduleLegacyHistoryAnalysis = shouldAnalyzeLegacyHistoryForSession(
-    flow?.session
-  );
-  const historyAnalysisConfig = shouldScheduleLegacyHistoryAnalysis
-    ? getHistoryAnalysisConfig(botId)
-    : null;
-  const legacyHistoryAnalysis = shouldScheduleLegacyHistoryAnalysis
-    ? legacyCustomerHistory.buildStoredLegacyAnalysis({
-        botId,
-        conversationKey,
-        maxChars: historyAnalysisConfig.historyCustomerTextMaxChars
-      })
-    : null;
-  if (legacyHistoryAnalysis?.earliestCustomerAt) {
-    ensureLegacyHistoryDateTag({
-      botId,
-      agentId: binding.agentId,
-      conversationKey,
-      firstSeenAt: legacyHistoryAnalysis.earliestCustomerAt
-    });
-  }
-  if (shouldScheduleLegacyHistoryAnalysis) {
-    logInfo("legacy_history.analysis_prepared", {
-      ...logContext,
-      agentId: binding.agentId,
-      selectedCount: Number(legacyHistoryAnalysis?.selectedCount || 0),
-      omittedCount: Number(legacyHistoryAnalysis?.omittedCount || 0),
-      selectedChars: Number(legacyHistoryAnalysis?.selectedChars || 0),
-      configuredLimit: Number(legacyHistoryAnalysis?.configuredLimit || 0),
-      earliestCustomerAt: legacyHistoryAnalysis?.earliestCustomerAt || ""
-    });
-  }
   const managedGroup = isPrivateMessage(message)
     ? null
     : getGroupByConversationKey({ botId, conversationKey });
@@ -4944,7 +4322,6 @@ async function processCoalescedIncomingBatch(batch) {
     groupContext,
     groupTurns,
     tagEvidenceCandidates,
-    legacyHistoryAnalysis: null,
     conversationReset,
     generalRule: getFlowMachineForBot(botId)?.config?.generalRule || ""
   });
@@ -5185,7 +4562,7 @@ async function processCoalescedIncomingBatch(batch) {
 
     const target = getReplyTarget(message);
     if (!target) {
-      throw new Error("missing WorkTool reply target");
+      throw new Error("missing channel reply target");
     }
     if (!isConversationEpochCurrent({
       botId,
@@ -5225,7 +4602,7 @@ async function processCoalescedIncomingBatch(batch) {
     const primaryResult = sentParts[0]?.result || {};
     const textMessageIds = sentParts.map((part) => part.result?.data || "").filter(Boolean);
     const attachmentMessageIds = sentAttachments.map((part) => part.result?.data || "").filter(Boolean);
-    const worktoolMessageIds = [...textMessageIds, ...attachmentMessageIds].filter(Boolean);
+    const channelMessageIds = [...textMessageIds, ...attachmentMessageIds].filter(Boolean);
     if (flow) {
       await applyFlowDecision({
         botId,
@@ -5243,8 +4620,8 @@ async function processCoalescedIncomingBatch(batch) {
         senderName: binding.botName || binding.agentName || "机器人",
         content: replyWithLinkAttachments,
         rawPayload: {
-          worktoolMessageId: worktoolMessageIds[0] || "",
-          worktoolMessageIds,
+          channelMessageId: channelMessageIds[0] || "",
+          channelMessageIds,
           replyParts: sentParts.map((part) => part.content),
           attachments: sentAttachments.map((part) => part.attachment),
           sources,
@@ -5261,8 +4638,8 @@ async function processCoalescedIncomingBatch(batch) {
         senderName: binding.botName || binding.agentName || "机器人",
         content: replyWithLinkAttachments,
         rawPayload: {
-          worktoolMessageId: worktoolMessageIds[0] || "",
-          worktoolMessageIds,
+          channelMessageId: channelMessageIds[0] || "",
+          channelMessageIds,
           replyParts: sentParts.map((part) => part.content),
           attachments: sentAttachments.map((part) => part.attachment),
           sources,
@@ -5271,18 +4648,18 @@ async function processCoalescedIncomingBatch(batch) {
         }
       });
     }
-    logInfo("worktool.send.success", {
+    logInfo("channel.send.success", {
       ...logContext,
       agentId: binding.agentId,
       invocationId,
       targetName: target,
-      worktoolMessageId: worktoolMessageIds[0] || "",
-      worktoolMessageIds,
+      channelMessageId: channelMessageIds[0] || "",
+      channelMessageIds,
       replyPartCount: sentParts.length,
       attachmentCount: sentAttachments.length,
       attachmentUrls: sentAttachments.map((part) => part.attachment?.url || "").filter(Boolean),
-      worktoolCode: primaryResult.code ?? null,
-      worktoolMessage: primaryResult.message || "",
+      channelCode: primaryResult.code ?? null,
+      channelMessage: primaryResult.message || "",
       totalDurationMs: Date.now() - startedAt
     });
     for (const [index, part] of sentParts.entries()) {
@@ -5293,7 +4670,7 @@ async function processCoalescedIncomingBatch(batch) {
         messageId: part.result?.data || "",
         targetName: target,
         content: part.content,
-        worktoolResponse: {
+        channelResponse: {
           ...(part.result || {}),
           replyPartIndex: index,
           replyPartCount: sentParts.length,
@@ -5309,21 +4686,12 @@ async function processCoalescedIncomingBatch(batch) {
         messageId: part.result?.data || "",
         targetName: target,
         content: part.attachment.url,
-        worktoolResponse: {
+        channelResponse: {
           ...(part.result || {}),
           attachmentIndex: index,
           attachmentCount: sentAttachments.length,
           attachment: part.attachment
         }
-      });
-    }
-    if (shouldScheduleLegacyHistoryAnalysis && legacyHistoryAnalysis?.text) {
-      scheduleLegacyHistoryAnalysis({
-        botId,
-        binding,
-        conversationKey,
-        message,
-        expectedEpoch: conversation.conversationEpoch
       });
     }
     const activationTask = scheduleActivationAfterFlowReply({
@@ -5370,8 +4738,8 @@ async function processCoalescedIncomingBatch(batch) {
           senderName: binding.botName || binding.agentName || "机器人",
           content: deliveredContent,
           rawPayload: {
-            worktoolMessageId: deliveredMessageIds[0] || "",
-            worktoolMessageIds: deliveredMessageIds,
+            channelMessageId: deliveredMessageIds[0] || "",
+            channelMessageIds: deliveredMessageIds,
             replyParts: deliveredTextParts.map((part) => part.content),
             attachments: deliveredAttachments.map((part) => part.attachment),
             sources: [],
@@ -5387,7 +4755,7 @@ async function processCoalescedIncomingBatch(batch) {
           messageId: part.result?.data || "",
           targetName: getReplyTarget(message),
           content: part.content,
-          worktoolResponse: {
+          channelResponse: {
             ...(part.result || {}),
             replyPartIndex: index,
             replyPartCount: deliveredTextParts.length,
@@ -5403,7 +4771,7 @@ async function processCoalescedIncomingBatch(batch) {
           messageId: part.result?.data || "",
           targetName: getReplyTarget(message),
           content: part.attachment.url,
-          worktoolResponse: {
+          channelResponse: {
             ...(part.result || {}),
             attachmentIndex: index,
             attachmentCount: deliveredAttachments.length,
@@ -5600,10 +4968,6 @@ function applyManualConversationTagChange({ botId, binding, conversationKey, gro
   };
 }
 
-function resolveLegacyBotId(req) {
-  return req.params.botId || req.query.botId || process.env.BOT_ID || process.env.ROBOT_ID;
-}
-
 function serializeGroupAutomationOccurrence(occurrence) {
   if (!occurrence) return null;
   const retryMetadata = occurrence.retryMetadata || {};
@@ -5626,7 +4990,7 @@ function serializeGroupAutomationOccurrence(occurrence) {
     mentionNames: occurrence.mentionNames,
     warnings: occurrence.warnings,
     deliveryState: occurrence.deliveryState,
-    worktoolMessageId: occurrence.worktoolMessageId,
+    channelMessageId: occurrence.channelMessageId,
     errorMessage: occurrence.errorMessage,
     reason: occurrence.reason,
     startedAt: occurrence.startedAt,
@@ -6260,29 +5624,6 @@ app.post(
   })
 );
 
-app.post(
-  "/api/send",
-  asyncHandler(async (req, res) => {
-    const body = req.body || {};
-    const robotId = body.botId || body.robotId || process.env.BOT_ID || process.env.ROBOT_ID;
-    assertBotAccess(req, robotId);
-    const targets = Array.isArray(body.targets) ? body.targets : [body.target].filter(Boolean);
-    const content = body.content;
-    const socketType = body.socketType || 2;
-
-    const result = await sendTextMessage({ robotId, targets, content, socketType });
-    insertOutgoingMessage({
-      botId: robotId,
-      targetName: targets.join(","),
-      content,
-      messageId: result.data,
-      worktoolResponse: result
-    });
-
-    res.json({ ok: true, result });
-  })
-);
-
 app.get(
   "/api/public/bots",
   asyncHandler(async (req, res) => {
@@ -6795,31 +6136,6 @@ app.put(
       ...(req.body || {})
     });
     setSetting(getReplyWaitSettingKey(req.params.botId), config);
-    res.json({ ok: true, botId: req.params.botId, config });
-  })
-);
-
-app.get(
-  "/api/bots/:botId/settings/history-analysis",
-  asyncHandler(async (req, res) => {
-    assertBotAccess(req, req.params.botId);
-    res.json({
-      ok: true,
-      botId: req.params.botId,
-      config: getHistoryAnalysisConfig(req.params.botId)
-    });
-  })
-);
-
-app.put(
-  "/api/bots/:botId/settings/history-analysis",
-  asyncHandler(async (req, res) => {
-    assertBotAccess(req, req.params.botId);
-    const config = normalizeHistoryAnalysisConfig({
-      ...getHistoryAnalysisConfig(req.params.botId),
-      ...(req.body || {})
-    });
-    setSetting(getHistoryAnalysisSettingKey(req.params.botId), config);
     res.json({ ok: true, botId: req.params.botId, config });
   })
 );
@@ -7395,7 +6711,7 @@ app.post(
     const rawPayload = {
       source: "manual_reply",
       messageId,
-      worktoolResponse: result
+      channelResponse: result
     };
 
     insertConversationMessage({
@@ -7413,7 +6729,7 @@ app.post(
       messageId,
       targetName: target,
       content,
-      worktoolResponse: rawPayload
+      channelResponse: rawPayload
     });
     logInfo("manual_reply.sent", {
       botId,
@@ -7431,7 +6747,7 @@ app.post(
         rawPayload,
         createdAt
       },
-      worktoolResponse: result
+      channelResponse: result
     });
   })
 );

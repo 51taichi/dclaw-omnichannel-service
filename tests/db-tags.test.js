@@ -301,7 +301,7 @@ test("tag activation tasks can be scheduled claimed and finalized", () => {
   assert.equal(task.status, "pending");
   const claimed = claimDueTagActivationTasks({ nowIso: "2026-07-17T00:00:01.000Z", limit: 5 });
   assert.equal(claimed.some((item) => item.id === task.id), true);
-  const sent = markTagActivationTaskSent({ id: task.id, worktoolMessageIds: ["msg_1"] });
+  const sent = markTagActivationTaskSent({ id: task.id, channelMessageIds: ["msg_1"] });
   assert.equal(sent.status, "sent");
 });
 
@@ -473,7 +473,7 @@ test("saving tag schema cancels obsolete pending work without touching valid or 
     dueAt: "2026-07-17T00:00:00.000Z"
   });
   claimDueTagActivationTasks({ nowIso: "2026-07-17T00:00:01.000Z", limit: 10 });
-  markTagActivationTaskSent({ id: sentTask.id, worktoolMessageIds: ["already_sent"] });
+  markTagActivationTaskSent({ id: sentTask.id, channelMessageIds: ["already_sent"] });
 
   upsertAgentTagSchema({
     agentId,

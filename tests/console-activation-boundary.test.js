@@ -112,9 +112,9 @@ test("activation help explains the effective outbound-message timing anchor", ()
 
 test("activation editor hides trigger choice and does not preserve legacy trigger", () => {
   assert.equal(app.includes('data-flow-node-activation-field="trigger"'), false);
-  assert.equal(app.includes('value="friend_added"'), false);
+  assert.equal(app.includes('value="first_contact"'), false);
   assert.equal(app.includes("触发时机"), false);
-  assert.equal(app.includes('trigger: source.trigger === "friend_added"'), false);
+  assert.equal(app.includes('trigger: source.trigger === "first_contact"'), false);
 });
 
 test("flow editor preserves a configured entry node that is not the first node", () => {

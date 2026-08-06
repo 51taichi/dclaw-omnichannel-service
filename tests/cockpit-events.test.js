@@ -85,8 +85,8 @@ test("a newly inserted core event increments its daily counter once", async () =
   });
   const event = {
     botId: "bot-a",
-    eventType: "friend_added",
-    sourceType: "friend_added",
+    eventType: "first_contact",
+    sourceType: "first_contact",
     sourceId: "f-1",
     occurredAt: "2026-07-30T10:00:00.000Z"
   };

@@ -14,12 +14,12 @@ test("Whapi delivery statuses update by provider account and never regress", () 
     insertOutgoingMessage({
       botId: "bot-a", conversationKey: "whapi:CHAN-A:private:123", messageId: "message-1",
       targetName: "123", content: "hello",
-      worktoolResponse: { channelResult: { accepted: true, externalMessageId: "message-1", status: "pending" } }
+      channelResponse: { channelResult: { accepted: true, externalMessageId: "message-1", status: "pending" } }
     });
     insertOutgoingMessage({
       botId: "bot-b", conversationKey: "whapi:CHAN-B:private:123", messageId: "message-1",
       targetName: "123", content: "other", provider: "whapi", channelAccountId: "CHAN-B",
-      deliveryStatus: "pending", worktoolResponse: {}
+      deliveryStatus: "pending", channelResponse: {}
     });
     const delivered = updateOutgoingMessageChannelStatus({ provider: "whapi", channelAccountId: "CHAN-A", messageId: "message-1", status: "delivered" });
     const regressed = updateOutgoingMessageChannelStatus({ provider: "whapi", channelAccountId: "CHAN-A", messageId: "message-1", status: "sent" });

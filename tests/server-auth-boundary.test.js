@@ -62,8 +62,6 @@ test("workspace business config and Bot password routes accept Bot sessions", ()
     ["put", "/api/bots/:botId/access-key"],
     ["get", "/api/bots/:botId/settings/reply-wait"],
     ["put", "/api/bots/:botId/settings/reply-wait"],
-    ["get", "/api/bots/:botId/settings/history-analysis"],
-    ["put", "/api/bots/:botId/settings/history-analysis"],
     ["post", "/api/cockpit/:botId/reports"],
     ["put", "/api/cockpit/:botId/config"]
   ]) {
@@ -71,6 +69,8 @@ test("workspace business config and Bot password routes accept Bot sessions", ()
     assert.match(body, /assertBotAccess\(req, req\.params\.botId\)/, route);
     assert.doesNotMatch(body, /assertAdminForBot/, route);
   }
+
+  assert.doesNotMatch(serverSource, /settings\/history-analysis/);
 
   assert.match(routeBody("put", "/api/bots/:botId"), /assertAdminForBot/);
   assert.match(routeBody("delete", "/api/bots/:botId"), /assertAdminForBot/);

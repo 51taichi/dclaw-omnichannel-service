@@ -340,7 +340,7 @@ test("WorkTool refresh corrects a first-discovered group date and its date tag",
   });
 
   assert.equal(refreshed.groupCreatedAt, "2026-07-04T03:00:00.000Z");
-  assert.equal(refreshed.dateSource, "worktool");
+  assert.equal(refreshed.dateSource, "channel");
   assert.equal(
     db.listConversationTags({ botId, agentId, conversationKey: discovered.conversationKey })
       .find((tag) => tag.tagType === "date")?.tagId,

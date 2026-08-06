@@ -46,12 +46,12 @@ test("buildDclawHandoffTranscriptRequest creates a sync-only handoff event", () 
   });
 
   assert.equal(request.metadata.eventType, "handoff_transcript_message");
-  assert.equal(request.metadata.worktool.eventType, "handoff_transcript_message");
+  assert.equal(request.metadata.channel.eventType, "handoff_transcript_message");
   assert.equal(request.external_user_id, liveRequest.external_user_id);
   assert.equal(request.external_session_id, liveRequest.external_session_id);
   assert.equal(
-    request.metadata.worktool.conversationId,
-    liveRequest.metadata.worktool.conversationId
+    request.metadata.channel.conversationId,
+    liveRequest.metadata.channel.conversationId
   );
   assert.equal(request.metadata.localConversationId, "bot_1:private:张三");
   assert.match(request.message, /不要生成客户可见回复/);
@@ -160,10 +160,10 @@ test("conversation reset request uses a bounded event and exact acknowledgement"
   });
 
   assert.equal(request.metadata.eventType, "conversation_reset");
-  assert.equal(request.metadata.worktool.eventType, "conversation_reset");
-  assert.match(request.external_user_id, /^wt-u-[a-f0-9]+$/);
-  assert.match(request.external_session_id, /^wt-s-[a-f0-9]+$/);
-  assert.match(request.metadata.worktool.conversationId, /^wt-c-[a-f0-9]+$/);
+  assert.equal(request.metadata.channel.eventType, "conversation_reset");
+  assert.match(request.external_user_id, /^ch-u-[a-f0-9]+$/);
+  assert.match(request.external_session_id, /^ch-s-[a-f0-9]+$/);
+  assert.match(request.metadata.channel.conversationId, /^ch-c-[a-f0-9]+$/);
   assert.equal(request.metadata.localConversationId, "bot_1:private:张三");
   assert.match(request.message, /客户档案/);
   assert.match(request.message, /conversationId/);
@@ -184,9 +184,9 @@ test("conversation memory clear targets the customer's existing DClaw session", 
     reason: "console_reset"
   });
 
-  assert.match(request.external_user_id, /^wt-u-[a-f0-9]+$/);
-  assert.match(request.external_session_id, /^wt-s-[a-f0-9]+$/);
-  assert.match(request.metadata.conversationId, /^wt-c-[a-f0-9]+$/);
+  assert.match(request.external_user_id, /^ch-u-[a-f0-9]+$/);
+  assert.match(request.external_session_id, /^ch-s-[a-f0-9]+$/);
+  assert.match(request.metadata.conversationId, /^ch-c-[a-f0-9]+$/);
   assert.equal(request.metadata.localConversationId, "bot_1:private:张三");
   assert.equal(request.message, "/clear");
   assert.equal(request.metadata.eventType, "conversation_memory_clear");

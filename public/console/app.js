@@ -17,7 +17,6 @@ const state = {
   selectedBotId: "",
   botContextVersion: 0,
   replyWaitLoadVersion: 0,
-  historyAnalysisLoadVersion: 0,
   pendingConfirmationResolve: null,
   selectedFlowConversationKey: "",
   loadingFlowConversationKey: "",
@@ -709,7 +708,6 @@ function clearBotScopedContent() {
     els.replyWaitForm.baseSeconds.value = "10";
     els.replyWaitForm.incrementSeconds.value = "5";
     els.replyWaitForm.fallbackReply.value = DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
-    els.replyWaitForm.historyCustomerTextMaxChars.value = "4000";
   }
   els.manualReplyInput.value = "";
   els.proactiveForm.reset();
@@ -779,8 +777,6 @@ async function applyBotContext(bot, { scrollTo = null, tabName = "" } = {}) {
       fillForm(activeBot);
     }
     await loadReplyWait({ contextVersion });
-    if (!isCurrentBotContext(bot.botId, contextVersion)) return;
-    await loadHistoryAnalysis({ contextVersion });
     if (!isCurrentBotContext(bot.botId, contextVersion)) return;
     await loadCockpitConfig({ contextVersion });
     if (!isCurrentBotContext(bot.botId, contextVersion)) return;
@@ -1864,22 +1860,6 @@ async function loadReplyWait({ contextVersion = state.botContextVersion } = {}) 
   els.replyWaitForm.incrementSeconds.value = String(config.incrementSeconds ?? 5);
   els.replyWaitForm.fallbackReply.value =
     config.fallbackReply || DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
-}
-
-async function loadHistoryAnalysis({ contextVersion = state.botContextVersion } = {}) {
-  const botId = state.selectedBotId;
-  if (!botId || !els.replyWaitForm) return;
-  const requestVersion = ++state.historyAnalysisLoadVersion;
-  const data = await request(
-    `/api/bots/${encodeURIComponent(botId)}/settings/history-analysis`
-  );
-  if (
-    requestVersion !== state.historyAnalysisLoadVersion ||
-    state.selectedBotId !== botId ||
-    !isCurrentBotContext(botId, contextVersion)
-  ) return;
-  els.replyWaitForm.historyCustomerTextMaxChars.value =
-    String(data.config?.historyCustomerTextMaxChars ?? 4000);
 }
 
 async function saveBot(event) {
@@ -5330,8 +5310,7 @@ async function saveReplyWait(event) {
     toast("请先解锁 Bot");
     return;
   }
-  const [replyWaitResult, historyAnalysisResult] = await Promise.all([
-    request(`/api/bots/${encodeURIComponent(botId)}/settings/reply-wait`, {
+  const replyWaitResult = await request(`/api/bots/${encodeURIComponent(botId)}/settings/reply-wait`, {
       method: "PUT",
       botId,
       body: JSON.stringify({
@@ -5339,24 +5318,12 @@ async function saveReplyWait(event) {
         incrementSeconds: Number(els.replyWaitForm.incrementSeconds.value),
         fallbackReply: els.replyWaitForm.fallbackReply.value
       })
-    }),
-    request(`/api/bots/${encodeURIComponent(botId)}/settings/history-analysis`, {
-      method: "PUT",
-      botId,
-      body: JSON.stringify({
-        historyCustomerTextMaxChars: Number(
-          els.replyWaitForm.historyCustomerTextMaxChars.value
-        )
-      })
-    })
-  ]);
+    });
   if (!isCurrentBotContext(botId, contextVersion)) return;
   els.replyWaitForm.baseSeconds.value = String(replyWaitResult.config?.baseSeconds ?? 10);
   els.replyWaitForm.incrementSeconds.value = String(replyWaitResult.config?.incrementSeconds ?? 5);
   els.replyWaitForm.fallbackReply.value =
     replyWaitResult.config?.fallbackReply || DEFAULT_REPLY_WAIT_FALLBACK_REPLY;
-  els.replyWaitForm.historyCustomerTextMaxChars.value =
-    String(historyAnalysisResult.config?.historyCustomerTextMaxChars ?? 4000);
   toast("消息/等待回复配置已保存");
 }
 

@@ -11,7 +11,6 @@ import {
   dedupeConversationMessages
 } from "./conversation-message-dedupe.js";
 import { dateTagIdFor, normalizeTagActivation, normalizeTagSchema } from "./tags.js";
-import { normalizeTagSyncConfig } from "./tag-sync.js";
 import {
   groupAutomationCycleWindow,
   nextGroupAutomationRunAt,
@@ -145,7 +144,7 @@ db.exec(`
     delivery_status TEXT NOT NULL DEFAULT '',
     delivery_error TEXT NOT NULL DEFAULT '',
     delivery_updated_at TEXT,
-    worktool_response_json TEXT,
+    channel_response_json TEXT,
     callback_error_code INTEGER,
     callback_error_reason TEXT,
     callback_payload_json TEXT,
@@ -312,7 +311,7 @@ db.exec(`
     attempts INTEGER NOT NULL DEFAULT 0,
     message_id TEXT,
     error_message TEXT,
-    worktool_response_json TEXT,
+    channel_response_json TEXT,
     agent_sync_status TEXT NOT NULL DEFAULT 'pending',
     agent_sync_error TEXT,
     agent_sync_response_json TEXT,
@@ -403,7 +402,7 @@ db.exec(`
     created_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS worktool_api_message_cache (
+  CREATE TABLE IF NOT EXISTS legacy_api_message_cache (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bot_id TEXT NOT NULL,
     message_id TEXT NOT NULL,
@@ -417,8 +416,8 @@ db.exec(`
     UNIQUE(bot_id, message_id, command_index, target_name)
   );
 
-  CREATE INDEX IF NOT EXISTS idx_worktool_api_cache_target
-  ON worktool_api_message_cache (bot_id, target_name, occurred_at);
+  CREATE INDEX IF NOT EXISTS idx_legacy_api_cache_target
+  ON legacy_api_message_cache (bot_id, target_name, occurred_at);
 
   CREATE TABLE IF NOT EXISTS flow_state_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -451,7 +450,7 @@ db.exec(`
     canceled_at TEXT,
     cancel_reason TEXT,
     error_message TEXT,
-    worktool_message_ids_json TEXT,
+    channel_message_ids_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -474,8 +473,8 @@ db.exec(`
     action_type TEXT NOT NULL,
     action_json TEXT NOT NULL,
     status TEXT NOT NULL,
-    worktool_message_id TEXT,
-    worktool_response_json TEXT,
+    channel_message_id TEXT,
+    channel_response_json TEXT,
     error_message TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -567,7 +566,7 @@ db.exec(`
     canceled_at TEXT,
     cancel_reason TEXT,
     error_message TEXT,
-    worktool_message_ids_json TEXT,
+    channel_message_ids_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -736,8 +735,8 @@ db.exec(`
     mention_names_json TEXT NOT NULL DEFAULT '[]',
     warnings_json TEXT NOT NULL DEFAULT '[]',
     rendered_content TEXT NOT NULL DEFAULT '',
-    worktool_message_id TEXT NOT NULL DEFAULT '',
-    worktool_response_json TEXT,
+    channel_message_id TEXT NOT NULL DEFAULT '',
+    channel_response_json TEXT,
     error_message TEXT NOT NULL DEFAULT '',
     started_at TEXT,
     finished_at TEXT,
@@ -899,7 +898,7 @@ db.exec(`
     due_at TEXT NOT NULL,
     sent_at TEXT,
     error_message TEXT,
-    worktool_response_json TEXT,
+    channel_response_json TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -946,65 +945,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_conversation_tag_events_cockpit_backfill
   ON conversation_tag_events (bot_id, accepted, created_at, id);
 
-  CREATE TABLE IF NOT EXISTS bot_tag_sync_configs (
-    bot_id TEXT PRIMARY KEY,
-    nightly_enabled INTEGER NOT NULL DEFAULT 1,
-    sync_date_tags INTEGER NOT NULL DEFAULT 0,
-    window_start TEXT NOT NULL DEFAULT '03:00',
-    window_end TEXT NOT NULL DEFAULT '06:00',
-    initial_backfill_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS tag_sync_runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    bot_id TEXT NOT NULL,
-    trigger_type TEXT NOT NULL,
-    window_key TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL,
-    pending_before INTEGER NOT NULL DEFAULT 0,
-    succeeded_count INTEGER NOT NULL DEFAULT 0,
-    failed_count INTEGER NOT NULL DEFAULT 0,
-    pause_reason TEXT NOT NULL DEFAULT '',
-    last_error TEXT NOT NULL DEFAULT '',
-    started_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    finished_at TEXT
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_tag_sync_runs_active
-  ON tag_sync_runs (bot_id)
-  WHERE status IN ('running', 'paused');
-
-  CREATE TABLE IF NOT EXISTS tag_sync_outbox (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    bot_id TEXT NOT NULL,
-    agent_id TEXT NOT NULL,
-    conversation_key TEXT NOT NULL,
-    target_name TEXT NOT NULL,
-    tag_name TEXT NOT NULL,
-    tag_type TEXT NOT NULL DEFAULT 'normal',
-    status TEXT NOT NULL DEFAULT 'pending',
-    run_id INTEGER,
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    run_attempt_count INTEGER NOT NULL DEFAULT 0,
-    next_retry_at TEXT,
-    claimed_at TEXT,
-    lease_expires_at TEXT,
-    worktool_message_id TEXT,
-    last_error TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    succeeded_at TEXT,
-    UNIQUE(bot_id, conversation_key, tag_name)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_tag_sync_outbox_claim
-  ON tag_sync_outbox (bot_id, status, next_retry_at, id);
-
-  CREATE INDEX IF NOT EXISTS idx_tag_sync_outbox_callback
-  ON tag_sync_outbox (bot_id, worktool_message_id);
 `);
 
 function ensureColumn(table, column, definition) {
@@ -1020,7 +960,6 @@ ensureColumn("bot_agent_bindings", "access_key_hash", "TEXT");
 ensureColumn("bot_agent_bindings", "access_key_updated_at", "TEXT");
 ensureColumn("conversations", "reset_pending", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("conversations", "conversation_epoch", "TEXT NOT NULL DEFAULT ''");
-ensureColumn("conversations", "last_friend_added_signal_at", "TEXT");
 ensureColumn("conversation_reset_tasks", "conversation_epoch", "TEXT NOT NULL DEFAULT ''");
 db.exec(`
   UPDATE conversations
@@ -1119,39 +1058,12 @@ ensureColumn(
 );
 ensureColumn("flow_sessions", "activation_generation", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("flow_sessions", "activation_state_json", "TEXT");
-ensureColumn("flow_sessions", "last_friend_added_at", "TEXT");
 ensureColumn("flow_activation_tasks", "anchor_at", "TEXT");
 ensureColumn("flow_activation_tasks", "message_index", "INTEGER NOT NULL DEFAULT 0");
 ensureColumn("flow_activation_tasks", "message_content", "TEXT");
 ensureColumn("proactive_tasks", "scheduled_at", "TEXT");
 ensureColumn("proactive_tasks", "canceled_at", "TEXT");
 ensureColumn("proactive_tasks", "cancel_reason", "TEXT");
-ensureColumn("bot_tag_sync_configs", "sync_date_tags", "INTEGER NOT NULL DEFAULT 0");
-ensureColumn("tag_sync_outbox", "tag_type", "TEXT NOT NULL DEFAULT 'normal'");
-db.exec(`
-  UPDATE tag_sync_outbox
-  SET tag_type = 'date'
-  WHERE tag_type = 'normal'
-    AND EXISTS (
-      SELECT 1
-      FROM conversation_tags tag
-      WHERE tag.bot_id = tag_sync_outbox.bot_id
-        AND tag.agent_id = tag_sync_outbox.agent_id
-        AND tag.conversation_key = tag_sync_outbox.conversation_key
-        AND tag.tag_name = tag_sync_outbox.tag_name
-        AND tag.tag_type = 'date'
-    )
-`);
-db.exec(`
-  DELETE FROM tag_sync_outbox
-  WHERE tag_type = 'date'
-    AND status IN ('pending', 'failed')
-    AND COALESCE((
-      SELECT config.sync_date_tags
-      FROM bot_tag_sync_configs config
-      WHERE config.bot_id = tag_sync_outbox.bot_id
-    ), 0) = 0
-`);
 
 function now() {
   return new Date().toISOString();
@@ -1515,7 +1427,7 @@ export function createOrGetGroup({
   const authoritativeCreatedAt = normalizeManagedGroupCreatedAt(createdAt);
   if (resolved?.status === "resolved") {
     if (!authoritativeCreatedAt) return resolved.group;
-    const normalizedDateSource = String(dateSource || "worktool");
+    const normalizedDateSource = String(dateSource || "channel");
     if (
       resolved.group.groupCreatedAt !== authoritativeCreatedAt
       || resolved.group.dateSource !== normalizedDateSource
@@ -1563,7 +1475,7 @@ export function createOrGetGroup({
   const normalizedDateSource = String(
     dateSource
       || (authoritativeCreatedAt
-        ? "worktool"
+        ? "channel"
         : source === "created"
           ? "system_created"
           : "first_discovered")
@@ -1946,8 +1858,8 @@ function rowToGroupAutomationOccurrence(row) {
     mentionNames: parseJson(row.mention_names_json) || [],
     warnings: parseJson(row.warnings_json) || [],
     renderedContent: row.rendered_content || "",
-    worktoolMessageId: row.worktool_message_id || "",
-    worktoolResponse: parseJson(row.worktool_response_json),
+    channelMessageId: row.channel_message_id || "",
+    channelResponse: parseJson(row.channel_response_json),
     errorMessage: row.error_message || "",
     startedAt: row.started_at || "",
     finishedAt: row.finished_at || "",
@@ -2661,8 +2573,8 @@ const groupAutomationOccurrencePatchColumns = new Map([
   ["mentionRoleIds", ["mention_role_ids_json", (value) => json(Array.isArray(value) ? value : [])]],
   ["mentionNames", ["mention_names_json", (value) => json(Array.isArray(value) ? value : [])]],
   ["warnings", ["warnings_json", (value) => json(Array.isArray(value) ? value : [])]]
-  , ["worktoolMessageId", ["worktool_message_id", (value) => String(value || "")]]
-  , ["worktoolResponse", ["worktool_response_json", (value) => value == null ? null : json(value)]]
+  , ["channelMessageId", ["channel_message_id", (value) => String(value || "")]]
+  , ["channelResponse", ["channel_response_json", (value) => value == null ? null : json(value)]]
 ]);
 
 export function transitionGroupAutomationOccurrence({
@@ -2801,7 +2713,7 @@ function insertConfirmedGroupAutomationOutbound(occurrence, confirmedAt = now())
       occurrenceId: occurrence.id,
       taskId: occurrence.taskId,
       atList: frozenPayload.atList || occurrence.mentionNames || [],
-      messageId: occurrence.worktoolMessageId
+      messageId: occurrence.channelMessageId
     }),
     new Date(confirmedAt).toISOString()
   );
@@ -2931,7 +2843,7 @@ export function updateGroupAutomationOccurrenceFromCommandCallback({
   const occurrence = rowToGroupAutomationOccurrence(db.prepare(`
     SELECT *
     FROM managed_group_automation_occurrences
-    WHERE bot_id = ? AND worktool_message_id = ?
+    WHERE bot_id = ? AND channel_message_id = ?
     ORDER BY created_at DESC
     LIMIT 1
   `).get(normalizedBotId, normalizedMessageId));
@@ -2942,7 +2854,7 @@ export function updateGroupAutomationOccurrenceFromCommandCallback({
       botId: normalizedBotId,
       occurrenceId: occurrence.id,
       delivered: true,
-      operatorId: "worktool_callback",
+      operatorId: "channel_webhook",
       now: now()
     });
   }
@@ -2954,14 +2866,14 @@ export function updateGroupAutomationOccurrenceFromCommandCallback({
           WHEN stage = 'awaiting_confirmation' THEN 'failed'
           ELSE stage
         END,
-        worktool_response_json = ?,
+        channel_response_json = ?,
         error_message = ?,
         finished_at = COALESCE(finished_at, ?),
         updated_at = ?
     WHERE bot_id = ? AND id = ?
   `).run(
     json(payload),
-    String(payload.errorReason || `WorkTool command failed (${errorCode})`),
+    String(payload.errorReason || `Channel command failed (${errorCode})`),
     timestamp,
     timestamp,
     normalizedBotId,
@@ -2975,7 +2887,7 @@ export function updateGroupAutomationOccurrenceFromCommandCallback({
 export function updateGroupAutomationOccurrenceFromChannelStatus({ botId, messageId, status }) {
   const occurrence = rowToGroupAutomationOccurrence(db.prepare(`
     SELECT * FROM managed_group_automation_occurrences
-    WHERE bot_id = ? AND worktool_message_id = ?
+    WHERE bot_id = ? AND channel_message_id = ?
     ORDER BY created_at DESC LIMIT 1
   `).get(String(botId || ""), String(messageId || "")));
   if (!occurrence) return null;
@@ -3122,8 +3034,7 @@ export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {
 
 export function buildMessageKey({ botId, conversationKey, message, nowMs = Date.now() }) {
   const messageId = String(message?.messageId || "").trim();
-  const isFriendAdded = Number(message?.textType) === 22 && Number(message?.type) === 105;
-  if (messageId && !isFriendAdded) {
+  if (messageId) {
     const contentDigest = crypto
       .createHash("sha256")
       .update(JSON.stringify({
@@ -3144,8 +3055,6 @@ export function buildMessageKey({ botId, conversationKey, message, nowMs = Date.
   const roomType = message?.roomType ?? "";
   const receivedName = message?.receivedName || "";
   const groupName = message?.groupName || "";
-  const friendName = isFriendAdded ? String(message?.friendName || "").trim() : "";
-  const friendRemark = isFriendAdded ? String(message?.friendRemark || "").trim() : "";
   const raw = message?.rawSpoken || message?.rawMessage || message?.spoken || "";
   const bucket = Math.floor((Number(nowMs) || Date.now()) / 10000);
   const digest = crypto
@@ -3158,9 +3067,7 @@ export function buildMessageKey({ botId, conversationKey, message, nowMs = Date.
       groupName,
       textType: message?.textType ?? "",
       eventType: message?.type ?? "",
-      messageId: isFriendAdded ? messageId : "",
-      friendName,
-      friendRemark,
+      messageId: "",
       raw,
       bucket
     }))
@@ -3768,7 +3675,6 @@ export function upsertBotBinding(binding) {
     timestamp,
     timestamp
   );
-  ensureTagSyncConfigRow(binding.botId, timestamp);
   return getBotBinding(binding.botId);
 }
 
@@ -3818,9 +3724,6 @@ export function deleteBotData(botId) {
     "managed_group_aliases",
     "managed_groups",
     "workspace_bots",
-    "tag_sync_outbox",
-    "tag_sync_runs",
-    "bot_tag_sync_configs",
     "cockpit_deliveries",
     "cockpit_reports",
     "cockpit_snapshots",
@@ -3961,7 +3864,7 @@ export function migrateLegacyHistoryOutboundSenderNames() {
         WHERE bindings.bot_id = messages.bot_id
       )
       WHERE messages.direction = 'outbound'
-        AND messages.source IN ('worktool_customer_history', 'worktool_api_history')
+        AND messages.source IN ('legacy_customer_history', 'legacy_api_history')
         AND EXISTS (
           SELECT 1
           FROM bot_agent_bindings AS bindings
@@ -3974,40 +3877,6 @@ export function migrateLegacyHistoryOutboundSenderNames() {
     });
     db.exec("COMMIT");
     return Number(result.changes || 0);
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-}
-
-const tagSyncNightlyDefaultEnabledMigrationKey =
-  "tag_sync_nightly_default_enabled_v1";
-
-export function migrateTagSyncNightlyDefaultEnabled() {
-  if (getSetting(tagSyncNightlyDefaultEnabledMigrationKey)) return 0;
-  const timestamp = now();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const inserted = db.prepare(`
-      INSERT OR IGNORE INTO bot_tag_sync_configs (
-        bot_id, nightly_enabled, window_start, window_end,
-        initial_backfill_at, created_at, updated_at
-      )
-      SELECT bot_id, 1, '03:00', '06:00', NULL, ?, ?
-      FROM bot_agent_bindings
-    `).run(timestamp, timestamp);
-    const updated = db.prepare(`
-      UPDATE bot_tag_sync_configs
-      SET nightly_enabled = 1, updated_at = ?
-      WHERE nightly_enabled = 0
-    `).run(timestamp);
-    const changedCount = Number(inserted.changes || 0) + Number(updated.changes || 0);
-    setSetting(tagSyncNightlyDefaultEnabledMigrationKey, {
-      migratedAt: timestamp,
-      updatedCount: changedCount
-    });
-    db.exec("COMMIT");
-    return changedCount;
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
@@ -4403,34 +4272,10 @@ export function getConversation(conversationKey) {
     roomType: row.room_type,
     receivedName: row.received_name,
     groupName: row.group_name,
-    lastFriendAddedSignalAt: row.last_friend_added_signal_at || "",
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
-}
-
-export function markConversationFriendAddedSignal({
-  botId,
-  conversationKey,
-  occurredAt = now()
-}) {
-  const normalizedBotId = String(botId || "").trim();
-  const normalizedConversationKey = String(conversationKey || "").trim();
-  if (!normalizedBotId || !normalizedConversationKey) {
-    throw new Error("botId and conversationKey are required");
-  }
-  const occurredAtMs = Date.parse(occurredAt);
-  const timestamp = Number.isFinite(occurredAtMs)
-    ? new Date(occurredAtMs).toISOString()
-    : now();
-  const result = db.prepare(`
-    UPDATE conversations
-    SET last_friend_added_signal_at = ?
-    WHERE conversation_key = ? AND bot_id = ?
-  `).run(timestamp, normalizedConversationKey, normalizedBotId);
-  if (!result.changes) throw new Error("conversation not found");
-  return getConversation(normalizedConversationKey);
 }
 
 export function insertIncomingMessage({ botId, conversationKey, payload }) {
@@ -4466,9 +4311,9 @@ export function insertOutgoingMessage({
   provider = "",
   channelAccountId = "",
   deliveryStatus = "",
-  worktoolResponse
+  channelResponse
 }) {
-  const channelResult = worktoolResponse?.channelResult;
+  const channelResult = channelResponse?.channelResult;
   const channelIdentity = String(conversationKey || "").match(/^([^:]+):([^:]+):(private|group):/);
   const resolvedProvider = provider || (channelResult ? channelIdentity?.[1] || "" : "");
   const resolvedChannelAccountId = channelAccountId || (channelResult ? channelIdentity?.[2] || "" : "");
@@ -4479,7 +4324,7 @@ export function insertOutgoingMessage({
     INSERT INTO outgoing_messages (
       bot_id, agent_id, conversation_key, message_id, target_name, content,
       provider, channel_account_id, delivery_status, delivery_updated_at,
-      worktool_response_json, created_at
+      channel_response_json, created_at
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
@@ -4493,7 +4338,7 @@ export function insertOutgoingMessage({
     resolvedChannelAccountId,
     resolvedDeliveryStatus,
     resolvedDeliveryStatus ? now() : null,
-    json(worktoolResponse),
+    json(channelResponse),
     now()
   );
 }
@@ -4847,7 +4692,7 @@ function rowToProactiveTarget(row) {
     attempts: row.attempts,
     messageId: row.message_id,
     errorMessage: row.error_message,
-    worktoolResponse: parseJson(row.worktool_response_json),
+    channelResponse: parseJson(row.channel_response_json),
     agentSyncStatus: row.agent_sync_status || "pending",
     agentSyncError: row.agent_sync_error || "",
     agentSyncResponse: parseJson(row.agent_sync_response_json),
@@ -4960,7 +4805,6 @@ function rowToFlowSession(row) {
     historyContextSentAt: row.history_context_sent_at || "",
     activationGeneration: Number(row.activation_generation || 0),
     activationState: parseJson(row.activation_state_json),
-    lastFriendAddedAt: row.last_friend_added_at || "",
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
@@ -4991,7 +4835,7 @@ function rowToFlowActivationTask(row) {
     canceledAt: row.canceled_at || "",
     cancelReason: row.cancel_reason || "",
     errorMessage: row.error_message || "",
-    worktoolMessageIds: parseJson(row.worktool_message_ids_json) || [],
+    channelMessageIds: parseJson(row.channel_message_ids_json) || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -5011,8 +4855,8 @@ function rowToFlowActionExecution(row) {
     actionType: row.action_type,
     action: parseJson(row.action_json),
     status: row.status,
-    worktoolMessageId: row.worktool_message_id || "",
-    worktoolResponse: parseJson(row.worktool_response_json),
+    channelMessageId: row.channel_message_id || "",
+    channelResponse: parseJson(row.channel_response_json),
     errorMessage: row.error_message || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -5046,75 +4890,6 @@ function rowToConversationTag(row) {
     source: row.source,
     createdAt: row.created_at,
     updatedAt: row.updated_at
-  };
-}
-
-function rowToTagSyncConfig(row, botId = "") {
-  if (!row) {
-    return {
-      botId: String(botId || ""),
-      nightlyEnabled: true,
-      syncDateTags: false,
-      windowStart: "03:00",
-      windowEnd: "06:00",
-      initialBackfillAt: "",
-      createdAt: "",
-      updatedAt: ""
-    };
-  }
-  return {
-    botId: row.bot_id,
-    nightlyEnabled: Boolean(row.nightly_enabled),
-    syncDateTags: Boolean(row.sync_date_tags),
-    windowStart: row.window_start,
-    windowEnd: row.window_end,
-    initialBackfillAt: row.initial_backfill_at || "",
-    createdAt: row.created_at,
-    updatedAt: row.updated_at
-  };
-}
-
-function rowToTagSyncRun(row) {
-  if (!row) return null;
-  return {
-    id: Number(row.id),
-    botId: row.bot_id,
-    triggerType: row.trigger_type,
-    windowKey: row.window_key || "",
-    status: row.status,
-    pendingBefore: Number(row.pending_before || 0),
-    succeededCount: Number(row.succeeded_count || 0),
-    failedCount: Number(row.failed_count || 0),
-    pauseReason: row.pause_reason || "",
-    lastError: row.last_error || "",
-    startedAt: row.started_at,
-    updatedAt: row.updated_at,
-    finishedAt: row.finished_at || ""
-  };
-}
-
-function rowToTagSyncOutbox(row) {
-  if (!row) return null;
-  return {
-    id: Number(row.id),
-    botId: row.bot_id,
-    agentId: row.agent_id,
-    conversationKey: row.conversation_key,
-    targetName: row.target_name,
-    tagName: row.tag_name,
-    tagType: row.tag_type || "normal",
-    status: row.status,
-    runId: row.run_id == null ? null : Number(row.run_id),
-    attemptCount: Number(row.attempt_count || 0),
-    runAttemptCount: Number(row.run_attempt_count || 0),
-    nextRetryAt: row.next_retry_at || "",
-    claimedAt: row.claimed_at || "",
-    leaseExpiresAt: row.lease_expires_at || "",
-    worktoolMessageId: row.worktool_message_id || "",
-    lastError: row.last_error || "",
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-    succeededAt: row.succeeded_at || ""
   };
 }
 
@@ -5162,7 +4937,7 @@ function rowToTagActivationTask(row) {
     canceledAt: row.canceled_at || "",
     cancelReason: row.cancel_reason || "",
     errorMessage: row.error_message || "",
-    worktoolMessageIds: parseJson(row.worktool_message_ids_json) || [],
+    channelMessageIds: parseJson(row.channel_message_ids_json) || [],
     createdAt: row.created_at,
     updatedAt: row.updated_at
   };
@@ -5603,103 +5378,12 @@ export function markLegacyHistoryContextSent({ botId, conversationKey }) {
   return getFlowSessionForBot({ botId, conversationKey });
 }
 
-export function resetConversationForFriendGreeting({
-  botId,
-  agentId,
-  conversationKey,
-  timestamp = now()
-}) {
-  const normalizedBotId = String(botId || "").trim();
-  const normalizedAgentId = String(agentId || "").trim();
-  const normalizedConversationKey = String(conversationKey || "").trim();
-  if (!normalizedBotId || !normalizedAgentId || !normalizedConversationKey) {
-    throw new Error("botId, agentId, and conversationKey are required");
-  }
-
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ? AND bot_id = ?")
-      .run(normalizedConversationKey, normalizedBotId);
-    db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
-      .run(normalizedConversationKey, normalizedBotId);
-    db.prepare(`
-      DELETE FROM conversation_tags
-      WHERE bot_id = ?
-        AND agent_id = ?
-        AND conversation_key = ?
-    `).run(normalizedBotId, normalizedAgentId, normalizedConversationKey);
-    db.prepare(`
-      UPDATE flow_activation_tasks
-      SET status = 'canceled',
-          canceled_at = ?,
-          cancel_reason = 'friend_added_reentry',
-          updated_at = ?
-      WHERE conversation_key = ?
-        AND bot_id = ?
-        AND status IN ('pending', 'processing')
-    `).run(timestamp, timestamp, normalizedConversationKey, normalizedBotId);
-    db.prepare(`
-      UPDATE tag_activation_tasks
-      SET status = 'canceled',
-          canceled_at = ?,
-          cancel_reason = 'friend_added_reentry',
-          updated_at = ?
-      WHERE bot_id = ?
-        AND agent_id = ?
-        AND conversation_key = ?
-        AND status IN ('pending', 'processing')
-    `).run(timestamp, timestamp, normalizedBotId, normalizedAgentId, normalizedConversationKey);
-    db.prepare(`
-      UPDATE flow_sessions
-      SET collected_data_json = ?,
-          status = 'active',
-          handoff_status = 'ai',
-          handoff_at = NULL,
-          handoff_by = '',
-          handoff_reason = '',
-          customer_origin = 'new',
-          history_sync_status = 'not_required',
-          history_imported_count = 0,
-          history_synced_at = NULL,
-          history_sync_error = NULL,
-          history_context_sent_at = NULL,
-          activation_state_json = NULL,
-          last_message_at = ?,
-          updated_at = ?
-      WHERE conversation_key = ?
-        AND bot_id = ?
-    `).run(json({}), timestamp, timestamp, normalizedConversationKey, normalizedBotId);
-    db.prepare(`
-      UPDATE conversations
-      SET conversation_epoch = ?,
-          dclaw_session_id = NULL,
-          reset_pending = 1,
-          last_message_at = ?,
-          updated_at = ?
-      WHERE conversation_key = ?
-        AND bot_id = ?
-    `).run(
-      crypto.randomUUID(),
-      timestamp,
-      timestamp,
-      normalizedConversationKey,
-      normalizedBotId
-    );
-    db.exec("COMMIT");
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-}
-
-export function beginFriendAddedFlowEntry({
+export function beginFirstContactFlowEntry({
   botId,
   conversationKey,
   machine,
-  cooldownMs = 0,
   occurredAt = now(),
-  activationTask = null,
-  forceReentry = false
+  activationTask = null
 }) {
   const normalizedBotId = String(botId || "").trim();
   const normalizedConversationKey = String(conversationKey || "").trim();
@@ -5710,8 +5394,6 @@ export function beginFriendAddedFlowEntry({
 
   const occurredAtMs = Date.parse(occurredAt);
   const timestamp = Number.isFinite(occurredAtMs) ? new Date(occurredAtMs).toISOString() : now();
-  const timestampMs = Date.parse(timestamp);
-  const normalizedCooldownMs = Math.max(0, Number(cooldownMs) || 0);
 
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -5721,16 +5403,15 @@ export function beginFriendAddedFlowEntry({
       db.prepare(`
         INSERT INTO flow_sessions (
           bot_id, conversation_key, current_node_id, collected_data_json, status,
-          handoff_status, activation_generation, activation_state_json, last_friend_added_at,
+          handoff_status, activation_generation, activation_state_json,
           last_message_at, created_at, updated_at
         )
-        VALUES (?, ?, ?, ?, 'active', 'ai', 1, NULL, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, 'active', 'ai', 1, NULL, ?, ?, ?)
       `).run(
         normalizedBotId,
         normalizedConversationKey,
         entryNodeId,
         json({}),
-        timestamp,
         timestamp,
         timestamp,
         timestamp
@@ -5752,82 +5433,8 @@ export function beginFriendAddedFlowEntry({
     }
     if (row.bot_id !== normalizedBotId) throw new Error("flow session not found");
 
-    const lastFriendAddedAtMs = Date.parse(row.last_friend_added_at || "");
-    if (
-      Number.isFinite(lastFriendAddedAtMs) &&
-      timestampMs - lastFriendAddedAtMs >= 0 &&
-      timestampMs - lastFriendAddedAtMs < normalizedCooldownMs
-    ) {
-      db.exec("COMMIT");
-      return { status: "cooldown", session: rowToFlowSession(row), task: null };
-    }
-    if (row.current_node_id === entryNodeId && !forceReentry) {
-      db.exec("COMMIT");
-      return { status: "duplicate", session: rowToFlowSession(row), task: null };
-    }
-
-    db.prepare(`
-      UPDATE flow_activation_tasks
-      SET status = 'canceled',
-          canceled_at = ?,
-          cancel_reason = 'friend_added_reentry',
-          updated_at = ?
-      WHERE conversation_key = ?
-        AND status IN ('pending', 'processing')
-    `).run(timestamp, timestamp, normalizedConversationKey);
-
-    db.prepare(`
-      UPDATE flow_sessions
-      SET current_node_id = ?,
-          collected_data_json = ?,
-          status = 'active',
-          handoff_status = 'ai',
-          handoff_at = NULL,
-          handoff_by = '',
-          handoff_reason = '',
-          activation_generation = COALESCE(activation_generation, 0) + 1,
-          activation_state_json = NULL,
-          last_friend_added_at = ?,
-          last_message_at = ?,
-          updated_at = ?
-      WHERE conversation_key = ?
-        AND bot_id = ?
-    `).run(
-      entryNodeId,
-      json({}),
-      timestamp,
-      timestamp,
-      timestamp,
-      normalizedConversationKey,
-      normalizedBotId
-    );
-    db.prepare(`
-      INSERT INTO flow_state_events (
-        bot_id, conversation_key, from_node_id, to_node_id, reason, agent_decision_json, created_at
-      )
-      VALUES (?, ?, ?, ?, 'friend_added_reentry', ?, ?)
-    `).run(
-      normalizedBotId,
-      normalizedConversationKey,
-      row.current_node_id,
-      entryNodeId,
-      json(null),
-      timestamp
-    );
-    row = db.prepare("SELECT * FROM flow_sessions WHERE conversation_key = ?")
-      .get(normalizedConversationKey);
-    const session = rowToFlowSession(row);
-    const task = activationTask
-      ? scheduleFlowActivationTask({
-          ...activationTask,
-          botId: normalizedBotId,
-          conversationKey: normalizedConversationKey,
-          nodeId: entryNodeId,
-          generation: session.activationGeneration
-        })
-      : null;
     db.exec("COMMIT");
-    return { status: "reentered", session, task };
+    return { status: "existing", session: rowToFlowSession(row), task: null };
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
@@ -6377,7 +5984,7 @@ export function isFlowActivationTaskProcessing({ id }) {
   `).get(id));
 }
 
-export function markFlowActivationTaskSent({ id, worktoolMessageIds = [] }) {
+export function markFlowActivationTaskSent({ id, channelMessageIds = [] }) {
   const timestamp = now();
   const task = db.prepare("SELECT status FROM flow_activation_tasks WHERE id = ?").get(id);
   if (!task || !["processing", "canceled"].includes(task.status)) return null;
@@ -6386,11 +5993,11 @@ export function markFlowActivationTaskSent({ id, worktoolMessageIds = [] }) {
     SET status = 'sent',
         sent_at = ?,
         error_message = '',
-        worktool_message_ids_json = ?,
+        channel_message_ids_json = ?,
         updated_at = ?
     WHERE id = ?
       AND status IN ('processing', 'canceled')
-  `).run(timestamp, json(worktoolMessageIds), timestamp, id);
+  `).run(timestamp, json(channelMessageIds), timestamp, id);
   if (result.changes === 0) return null;
   return {
     ...rowToFlowActivationTask(
@@ -6485,19 +6092,19 @@ export function reserveFlowActionExecution({
   return { reserved: result.changes > 0, execution };
 }
 
-export function markFlowActionExecutionSucceeded({ id, worktoolMessageId = "", worktoolResponse = null }) {
+export function markFlowActionExecutionSucceeded({ id, channelMessageId = "", channelResponse = null }) {
   const timestamp = now();
   const result = db.prepare(`
     UPDATE flow_action_executions
     SET status = 'success',
-        worktool_message_id = ?,
-        worktool_response_json = ?,
+        channel_message_id = ?,
+        channel_response_json = ?,
         error_message = '',
         finished_at = ?,
         updated_at = ?
     WHERE id = ?
       AND status = 'processing'
-  `).run(String(worktoolMessageId || ""), json(worktoolResponse), timestamp, timestamp, id);
+  `).run(String(channelMessageId || ""), json(channelResponse), timestamp, timestamp, id);
   if (result.changes === 0) return rowToFlowActionExecution(
     db.prepare("SELECT * FROM flow_action_executions WHERE id = ?").get(id)
   );
@@ -6506,18 +6113,18 @@ export function markFlowActionExecutionSucceeded({ id, worktoolMessageId = "", w
   );
 }
 
-export function markFlowActionExecutionFailed({ id, errorMessage = "", worktoolResponse = null }) {
+export function markFlowActionExecutionFailed({ id, errorMessage = "", channelResponse = null }) {
   const timestamp = now();
   const result = db.prepare(`
     UPDATE flow_action_executions
     SET status = 'failed',
-        worktool_response_json = ?,
+        channel_response_json = ?,
         error_message = ?,
         finished_at = ?,
         updated_at = ?
     WHERE id = ?
       AND status = 'processing'
-  `).run(json(worktoolResponse), String(errorMessage || ""), timestamp, timestamp, id);
+  `).run(json(channelResponse), String(errorMessage || ""), timestamp, timestamp, id);
   if (result.changes === 0) return rowToFlowActionExecution(
     db.prepare("SELECT * FROM flow_action_executions WHERE id = ?").get(id)
   );
@@ -6686,10 +6293,10 @@ function advanceFlowActivationProgressInTransaction({
   return progress;
 }
 
-export function finalizeFlowActivationTaskDelivery({ id, worktoolMessageIds = [] }) {
+export function finalizeFlowActivationTaskDelivery({ id, channelMessageIds = [] }) {
   db.exec("BEGIN IMMEDIATE");
   try {
-    const task = markFlowActivationTaskSent({ id, worktoolMessageIds });
+    const task = markFlowActivationTaskSent({ id, channelMessageIds });
     if (!task) {
       db.exec("ROLLBACK");
       return null;
@@ -6885,747 +6492,6 @@ export function listConversationTags({ botId, agentId, conversationKey }) {
   `).all(botId, agentId, conversationKey).map(rowToConversationTag);
 }
 
-function requireTagSyncBotId(botId) {
-  const normalized = String(botId || "").trim();
-  if (!normalized) throw new Error("botId is required");
-  return normalized;
-}
-
-function ensureTagSyncConfigRow(botId, timestamp = now()) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  db.prepare(`
-    INSERT OR IGNORE INTO bot_tag_sync_configs (
-      bot_id, nightly_enabled, sync_date_tags, window_start, window_end,
-      initial_backfill_at, created_at, updated_at
-    )
-    VALUES (?, 1, 0, '03:00', '06:00', NULL, ?, ?)
-  `).run(normalizedBotId, timestamp, timestamp);
-  return normalizedBotId;
-}
-
-export function getTagSyncConfig(botId) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const config = rowToTagSyncConfig(
-    db.prepare("SELECT * FROM bot_tag_sync_configs WHERE bot_id = ?")
-      .get(normalizedBotId),
-    normalizedBotId
-  );
-  try {
-    normalizeTagSyncConfig(config);
-    return config;
-  } catch {
-    return {
-      ...config,
-      windowStart: "03:00",
-      windowEnd: "06:00"
-    };
-  }
-}
-
-export function saveTagSyncConfig({ botId, config }) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const normalized = normalizeTagSyncConfig(config);
-  const timestamp = now();
-  ensureTagSyncConfigRow(normalizedBotId, timestamp);
-  const previous = getTagSyncConfig(normalizedBotId);
-  db.prepare(`
-    UPDATE bot_tag_sync_configs
-    SET nightly_enabled = ?, sync_date_tags = ?, window_start = ?, window_end = ?, updated_at = ?
-    WHERE bot_id = ?
-  `).run(
-    normalized.nightlyEnabled ? 1 : 0,
-    normalized.syncDateTags ? 1 : 0,
-    normalized.windowStart,
-    normalized.windowEnd,
-    timestamp,
-    normalizedBotId
-  );
-  if (!normalized.syncDateTags) {
-    db.prepare(`
-      DELETE FROM tag_sync_outbox
-      WHERE bot_id = ?
-        AND tag_type = 'date'
-        AND status IN ('pending', 'failed')
-    `).run(normalizedBotId);
-  } else if (!previous.syncDateTags && previous.initialBackfillAt) {
-    db.prepare(`
-      INSERT OR IGNORE INTO tag_sync_outbox (
-        bot_id, agent_id, conversation_key, target_name, tag_name, tag_type,
-        status, created_at, updated_at
-      )
-      SELECT
-        tag.bot_id,
-        tag.agent_id,
-        tag.conversation_key,
-        conversation.received_name,
-        tag.tag_name,
-        'date',
-        'pending',
-        ?,
-        ?
-      FROM conversation_tags tag
-      JOIN conversations conversation
-        ON conversation.bot_id = tag.bot_id
-       AND conversation.conversation_key = tag.conversation_key
-      WHERE tag.bot_id = ?
-        AND tag.tag_type = 'date'
-        AND conversation.room_type IN (2, 4)
-        AND trim(COALESCE(conversation.received_name, '')) != ''
-    `).run(timestamp, timestamp, normalizedBotId);
-  }
-  return getTagSyncConfig(normalizedBotId);
-}
-
-function registerTagSyncOutboxRows({
-  botId,
-  agentId,
-  conversationKey,
-  tags = [],
-  timestamp = now()
-}) {
-  const config = db.prepare(`
-    SELECT initial_backfill_at, sync_date_tags
-    FROM bot_tag_sync_configs
-    WHERE bot_id = ?
-  `).get(botId);
-  if (!config?.initial_backfill_at) return 0;
-  const conversation = db.prepare(`
-    SELECT room_type, received_name
-    FROM conversations
-    WHERE bot_id = ? AND conversation_key = ?
-  `).get(botId, conversationKey);
-  if (!conversation || ![2, 4].includes(Number(conversation.room_type))) return 0;
-  const targetName = String(conversation.received_name || "").trim();
-  if (!targetName) return 0;
-  let insertedCount = 0;
-  const uniqueTags = new Map();
-  for (const tag of tags) {
-    const tagName = String(tag?.tagName || tag?.name || "").trim();
-    const tagType = String(tag?.tagType || "normal").trim() || "normal";
-    if (!tagName || (tagType === "date" && !config.sync_date_tags)) continue;
-    uniqueTags.set(`${tagType}:${tagName}`, { tagName, tagType });
-  }
-  for (const { tagName, tagType } of uniqueTags.values()) {
-    insertedCount += Number(db.prepare(`
-      INSERT OR IGNORE INTO tag_sync_outbox (
-        bot_id, agent_id, conversation_key, target_name, tag_name, tag_type,
-        status, created_at, updated_at
-      )
-      VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-    `).run(
-      botId,
-      agentId,
-      conversationKey,
-      targetName,
-      tagName,
-      tagType,
-      timestamp,
-      timestamp
-    ).changes || 0);
-  }
-  return insertedCount;
-}
-
-export function ensureTagSyncInitialBackfill({ botId }) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const timestamp = now();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    ensureTagSyncConfigRow(normalizedBotId, timestamp);
-    const config = db.prepare(`
-      SELECT initial_backfill_at, sync_date_tags
-      FROM bot_tag_sync_configs
-      WHERE bot_id = ?
-    `).get(normalizedBotId);
-    if (config?.initial_backfill_at) {
-      db.exec("COMMIT");
-      return {
-        botId: normalizedBotId,
-        insertedCount: 0,
-        initialBackfillAt: config.initial_backfill_at
-      };
-    }
-
-    const rows = db.prepare(`
-      SELECT
-        ct.agent_id,
-        ct.conversation_key,
-        c.received_name,
-        ct.tag_name,
-        ct.tag_type
-      FROM conversation_tags ct
-      JOIN conversations c
-        ON c.bot_id = ct.bot_id
-       AND c.conversation_key = ct.conversation_key
-      WHERE ct.bot_id = ?
-        AND c.room_type IN (2, 4)
-        AND trim(COALESCE(c.received_name, '')) != ''
-        AND trim(COALESCE(ct.tag_name, '')) != ''
-        AND (ct.tag_type != 'date' OR ? = 1)
-      ORDER BY ct.id ASC
-    `).all(normalizedBotId, config.sync_date_tags ? 1 : 0);
-    let insertedCount = 0;
-    for (const row of rows) {
-      insertedCount += Number(db.prepare(`
-        INSERT OR IGNORE INTO tag_sync_outbox (
-          bot_id, agent_id, conversation_key, target_name, tag_name, tag_type,
-          status, created_at, updated_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?)
-      `).run(
-        normalizedBotId,
-        row.agent_id,
-        row.conversation_key,
-        row.received_name,
-        row.tag_name,
-        row.tag_type || "normal",
-        timestamp,
-        timestamp
-      ).changes || 0);
-    }
-    db.prepare(`
-      UPDATE bot_tag_sync_configs
-      SET initial_backfill_at = ?, updated_at = ?
-      WHERE bot_id = ?
-    `).run(timestamp, timestamp, normalizedBotId);
-    db.exec("COMMIT");
-    return {
-      botId: normalizedBotId,
-      insertedCount,
-      initialBackfillAt: timestamp
-    };
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-}
-
-export function listRunnableTagSyncConfigs() {
-  return db.prepare(`
-    SELECT config.*
-    FROM bot_tag_sync_configs config
-    JOIN bot_agent_bindings binding ON binding.bot_id = config.bot_id
-    WHERE binding.enabled = 1
-      AND (
-        config.nightly_enabled = 1
-        OR EXISTS (
-          SELECT 1
-          FROM tag_sync_runs run
-          WHERE run.bot_id = config.bot_id
-            AND run.status IN ('running', 'paused')
-        )
-      )
-    ORDER BY config.bot_id ASC
-  `).all().map((row) => rowToTagSyncConfig(row));
-}
-
-export function getActiveTagSyncRun(botId) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  return rowToTagSyncRun(db.prepare(`
-    SELECT *
-    FROM tag_sync_runs
-    WHERE bot_id = ? AND status IN ('running', 'paused')
-    ORDER BY id DESC
-    LIMIT 1
-  `).get(normalizedBotId));
-}
-
-export function startTagSyncRun({
-  botId,
-  triggerType,
-  windowKey = "",
-  startedAt = now()
-}) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const normalizedTrigger = String(triggerType || "").trim();
-  if (!new Set(["manual", "scheduled"]).has(normalizedTrigger)) {
-    throw new Error("triggerType must be manual or scheduled");
-  }
-  const normalizedWindowKey = String(windowKey || "");
-  const existing = getActiveTagSyncRun(normalizedBotId);
-  if (existing) return existing;
-  if (normalizedTrigger === "scheduled" && normalizedWindowKey) {
-    const completedWindow = db.prepare(`
-      SELECT 1
-      FROM tag_sync_runs
-      WHERE bot_id = ?
-        AND trigger_type = 'scheduled'
-        AND window_key = ?
-      LIMIT 1
-    `).get(normalizedBotId, normalizedWindowKey);
-    if (completedWindow) return null;
-  }
-  ensureTagSyncInitialBackfill({ botId: normalizedBotId });
-
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    db.prepare(`
-      UPDATE tag_sync_outbox
-      SET run_attempt_count = 0,
-          next_retry_at = NULL,
-          updated_at = ?
-      WHERE bot_id = ? AND status = 'failed'
-    `).run(startedAt, normalizedBotId);
-    const pendingBefore = Number(db.prepare(`
-      SELECT COUNT(*) AS count
-      FROM tag_sync_outbox
-      WHERE bot_id = ? AND status IN ('pending', 'failed')
-    `).get(normalizedBotId)?.count || 0);
-    const result = db.prepare(`
-      INSERT INTO tag_sync_runs (
-        bot_id, trigger_type, window_key, status, pending_before,
-        started_at, updated_at
-      )
-      VALUES (?, ?, ?, 'running', ?, ?, ?)
-    `).run(
-      normalizedBotId,
-      normalizedTrigger,
-      normalizedWindowKey,
-      pendingBefore,
-      startedAt,
-      startedAt
-    );
-    db.exec("COMMIT");
-    return rowToTagSyncRun(
-      db.prepare("SELECT * FROM tag_sync_runs WHERE id = ?").get(result.lastInsertRowid)
-    );
-  } catch (error) {
-    db.exec("ROLLBACK");
-    const active = getActiveTagSyncRun(normalizedBotId);
-    if (active) return active;
-    throw error;
-  }
-}
-
-export function hasRecentBotMessageProcessing({ botId, sinceIso }) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  return Boolean(db.prepare(`
-    SELECT 1
-    FROM message_processing
-    WHERE bot_id = ?
-      AND status = 'processing'
-      AND updated_at >= ?
-    LIMIT 1
-  `).get(normalizedBotId, sinceIso || ""));
-}
-
-function tagSyncEligibilitySql() {
-  return `(
-    status = 'pending'
-    OR (
-      status = 'failed'
-      AND run_attempt_count < 3
-      AND (next_retry_at IS NULL OR next_retry_at <= ?)
-    )
-  )`;
-}
-
-export function claimNextTagSyncBatch({
-  botId,
-  runId,
-  nowIso = now(),
-  leaseExpiresAt,
-  limit = 5
-}) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const normalizedLimit = Math.max(1, Math.min(5, Number.parseInt(limit, 10) || 5));
-  const normalizedRunId = Number(runId);
-  if (!Number.isFinite(normalizedRunId)) throw new Error("runId is required");
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const run = db.prepare(`
-      SELECT id
-      FROM tag_sync_runs
-      WHERE id = ? AND bot_id = ? AND status IN ('running', 'paused')
-    `).get(normalizedRunId, normalizedBotId);
-    if (!run) {
-      db.exec("COMMIT");
-      return null;
-    }
-    const inFlight = db.prepare(`
-      SELECT 1
-      FROM tag_sync_outbox
-      WHERE bot_id = ? AND status = 'processing'
-      LIMIT 1
-    `).get(normalizedBotId);
-    if (inFlight) {
-      db.exec("COMMIT");
-      return null;
-    }
-    const oldest = db.prepare(`
-      SELECT outbox.conversation_key, c.received_name
-      FROM tag_sync_outbox outbox
-      JOIN conversations c
-        ON c.bot_id = outbox.bot_id
-       AND c.conversation_key = outbox.conversation_key
-      WHERE outbox.bot_id = ?
-        AND c.room_type IN (2, 4)
-        AND ${tagSyncEligibilitySql().replaceAll("status", "outbox.status").replaceAll("run_attempt_count", "outbox.run_attempt_count").replaceAll("next_retry_at", "outbox.next_retry_at")}
-      ORDER BY outbox.id ASC
-      LIMIT 1
-    `).get(normalizedBotId, nowIso);
-    if (!oldest) {
-      db.exec("COMMIT");
-      return null;
-    }
-    const rows = db.prepare(`
-      SELECT *
-      FROM tag_sync_outbox
-      WHERE bot_id = ?
-        AND conversation_key = ?
-        AND ${tagSyncEligibilitySql()}
-      ORDER BY id ASC
-      LIMIT ?
-    `).all(normalizedBotId, oldest.conversation_key, nowIso, normalizedLimit);
-    if (!rows.length) {
-      db.exec("COMMIT");
-      return null;
-    }
-    const ids = rows.map((row) => Number(row.id));
-    const placeholders = ids.map(() => "?").join(", ");
-    db.prepare(`
-      UPDATE tag_sync_outbox
-      SET status = 'processing',
-          run_id = ?,
-          attempt_count = attempt_count + 1,
-          run_attempt_count = run_attempt_count + 1,
-          claimed_at = ?,
-          lease_expires_at = ?,
-          worktool_message_id = NULL,
-          last_error = '',
-          updated_at = ?
-      WHERE id IN (${placeholders})
-        AND bot_id = ?
-    `).run(
-      normalizedRunId,
-      nowIso,
-      leaseExpiresAt || nowIso,
-      nowIso,
-      ...ids,
-      normalizedBotId
-    );
-    db.prepare(`
-      UPDATE tag_sync_runs
-      SET status = 'running', pause_reason = '', updated_at = ?
-      WHERE id = ? AND bot_id = ?
-    `).run(nowIso, normalizedRunId, normalizedBotId);
-    const claimed = db.prepare(`
-      SELECT *
-      FROM tag_sync_outbox
-      WHERE id IN (${placeholders})
-      ORDER BY id ASC
-    `).all(...ids).map(rowToTagSyncOutbox);
-    db.exec("COMMIT");
-    return {
-      botId: normalizedBotId,
-      runId: normalizedRunId,
-      conversationKey: oldest.conversation_key,
-      targetName: String(oldest.received_name || rows[0].target_name || "").trim(),
-      rows: claimed,
-      tagNames: claimed.map((row) => row.tagName)
-    };
-  } catch (error) {
-    db.exec("ROLLBACK");
-    throw error;
-  }
-}
-
-function normalizeOutboxIds(outboxIds) {
-  return [...new Set((outboxIds || [])
-    .map((id) => Number(id))
-    .filter((id) => Number.isFinite(id) && id > 0))];
-}
-
-export function markTagSyncCommandSubmitted({ botId, outboxIds, worktoolMessageId }) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const ids = normalizeOutboxIds(outboxIds);
-  const messageId = String(worktoolMessageId || "").trim();
-  if (!ids.length || !messageId) throw new Error("outboxIds and worktoolMessageId are required");
-  const placeholders = ids.map(() => "?").join(", ");
-  const timestamp = now();
-  const result = db.prepare(`
-    UPDATE tag_sync_outbox
-    SET worktool_message_id = ?, updated_at = ?
-    WHERE bot_id = ?
-      AND status = 'processing'
-      AND id IN (${placeholders})
-  `).run(messageId, timestamp, normalizedBotId, ...ids);
-  return Number(result.changes || 0);
-}
-
-export function getSubmittedTagSyncCommand({ botId, worktoolMessageId }) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const messageId = String(worktoolMessageId || "").trim();
-  if (!messageId) return null;
-  const row = db.prepare(`
-    SELECT
-      outbox.bot_id,
-      outbox.worktool_message_id,
-      outbox.conversation_key,
-      COALESCE(NULLIF(trim(conversation.received_name), ''), outbox.target_name) AS target_name,
-      MAX(outbox.run_attempt_count) AS attempt_number
-    FROM tag_sync_outbox outbox
-    LEFT JOIN conversations conversation
-      ON conversation.bot_id = outbox.bot_id
-     AND conversation.conversation_key = outbox.conversation_key
-    WHERE outbox.bot_id = ?
-      AND outbox.worktool_message_id = ?
-      AND outbox.status = 'processing'
-    GROUP BY
-      outbox.bot_id,
-      outbox.worktool_message_id,
-      outbox.conversation_key,
-      target_name
-    LIMIT 1
-  `).get(normalizedBotId, messageId);
-  if (!row) return null;
-  return {
-    botId: row.bot_id,
-    worktoolMessageId: row.worktool_message_id,
-    conversationKey: row.conversation_key,
-    targetName: row.target_name,
-    attemptNumber: Number(row.attempt_number || 1)
-  };
-}
-
-export function markTagSyncCommandSubmitFailed({
-  botId,
-  outboxIds,
-  error = "",
-  nextRetryAt = now()
-}) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const ids = normalizeOutboxIds(outboxIds);
-  if (!ids.length) return 0;
-  const placeholders = ids.map(() => "?").join(", ");
-  const timestamp = now();
-  const rows = db.prepare(`
-    SELECT DISTINCT run_id
-    FROM tag_sync_outbox
-    WHERE bot_id = ? AND status = 'processing' AND id IN (${placeholders})
-  `).all(normalizedBotId, ...ids);
-  const result = db.prepare(`
-    UPDATE tag_sync_outbox
-    SET status = 'failed',
-        next_retry_at = ?,
-        lease_expires_at = NULL,
-        worktool_message_id = NULL,
-        last_error = ?,
-        updated_at = ?
-    WHERE bot_id = ?
-      AND status = 'processing'
-      AND id IN (${placeholders})
-  `).run(nextRetryAt, String(error || ""), timestamp, normalizedBotId, ...ids);
-  for (const row of rows) {
-    if (row.run_id == null) continue;
-    db.prepare(`
-      UPDATE tag_sync_runs
-      SET failed_count = failed_count + ?, last_error = ?, updated_at = ?
-      WHERE id = ?
-    `).run(Number(result.changes || 0), String(error || ""), timestamp, row.run_id);
-  }
-  return Number(result.changes || 0);
-}
-
-export function resolveTagSyncCommandCallback({
-  botId,
-  worktoolMessageId,
-  succeeded,
-  error = "",
-  nextRetryAt = now()
-}) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const messageId = String(worktoolMessageId || "").trim();
-  if (!messageId) return { succeededCount: 0, failedCount: 0, rows: [] };
-  const timestamp = now();
-  db.exec("BEGIN IMMEDIATE");
-  try {
-    const rows = db.prepare(`
-      SELECT *
-      FROM tag_sync_outbox
-      WHERE bot_id = ?
-        AND worktool_message_id = ?
-        AND status = 'processing'
-      ORDER BY id ASC
-    `).all(normalizedBotId, messageId);
-    if (!rows.length) {
-      db.exec("COMMIT");
-      return { succeededCount: 0, failedCount: 0, rows: [] };
-    }
-    const ids = rows.map((row) => Number(row.id));
-    const placeholders = ids.map(() => "?").join(", ");
-    if (succeeded) {
-      db.prepare(`
-        UPDATE tag_sync_outbox
-        SET status = 'succeeded',
-            next_retry_at = NULL,
-            lease_expires_at = NULL,
-            last_error = ?,
-            succeeded_at = ?,
-            updated_at = ?
-        WHERE id IN (${placeholders})
-      `).run(String(error || ""), timestamp, timestamp, ...ids);
-    } else {
-      db.prepare(`
-        UPDATE tag_sync_outbox
-        SET status = 'failed',
-            next_retry_at = ?,
-            lease_expires_at = NULL,
-            last_error = ?,
-            updated_at = ?
-        WHERE id IN (${placeholders})
-      `).run(nextRetryAt, String(error || ""), timestamp, ...ids);
-    }
-    const runCounts = new Map();
-    for (const row of rows) {
-      if (row.run_id == null) continue;
-      runCounts.set(row.run_id, (runCounts.get(row.run_id) || 0) + 1);
-    }
-    for (const [runId, count] of runCounts) {
-      db.prepare(`
-        UPDATE tag_sync_runs
-        SET succeeded_count = succeeded_count + ?,
-            failed_count = failed_count + ?,
-            last_error = ?,
-            updated_at = ?
-        WHERE id = ?
-      `).run(
-        succeeded ? count : 0,
-        succeeded ? 0 : count,
-        succeeded ? "" : String(error || ""),
-        timestamp,
-        runId
-      );
-    }
-    const updatedRows = db.prepare(`
-      SELECT * FROM tag_sync_outbox WHERE id IN (${placeholders}) ORDER BY id ASC
-    `).all(...ids).map(rowToTagSyncOutbox);
-    db.exec("COMMIT");
-    return {
-      succeededCount: succeeded ? rows.length : 0,
-      failedCount: succeeded ? 0 : rows.length,
-      rows: updatedRows
-    };
-  } catch (callbackError) {
-    db.exec("ROLLBACK");
-    throw callbackError;
-  }
-}
-
-export function recoverExpiredTagSyncLeases({ nowIso = now(), nextRetryAt = nowIso }) {
-  const timestamp = now();
-  const discarded = Number(db.prepare(`
-    DELETE FROM tag_sync_outbox
-    WHERE status = 'processing'
-      AND tag_type = 'date'
-      AND lease_expires_at IS NOT NULL
-      AND lease_expires_at <= ?
-      AND COALESCE((
-        SELECT config.sync_date_tags
-        FROM bot_tag_sync_configs config
-        WHERE config.bot_id = tag_sync_outbox.bot_id
-      ), 0) = 0
-  `).run(nowIso).changes || 0);
-  const rows = db.prepare(`
-    SELECT id
-    FROM tag_sync_outbox
-    WHERE status = 'processing'
-      AND lease_expires_at IS NOT NULL
-      AND lease_expires_at <= ?
-  `).all(nowIso);
-  if (!rows.length) return discarded;
-  const ids = rows.map((row) => Number(row.id));
-  const placeholders = ids.map(() => "?").join(", ");
-  const result = db.prepare(`
-    UPDATE tag_sync_outbox
-    SET status = 'failed',
-        next_retry_at = ?,
-        lease_expires_at = NULL,
-        worktool_message_id = NULL,
-        last_error = 'processing lease expired',
-        updated_at = ?
-    WHERE id IN (${placeholders}) AND status = 'processing'
-  `).run(nextRetryAt, timestamp, ...ids);
-  return discarded + Number(result.changes || 0);
-}
-
-export function updateTagSyncRunStatus({
-  runId,
-  status,
-  reason = "",
-  error = ""
-}) {
-  const normalizedStatus = String(status || "").trim();
-  if (!new Set(["running", "paused", "completed", "stopped", "failed"]).has(normalizedStatus)) {
-    throw new Error("invalid tag sync run status");
-  }
-  const timestamp = now();
-  const terminal = new Set(["completed", "stopped", "failed"]).has(normalizedStatus);
-  db.prepare(`
-    UPDATE tag_sync_runs
-    SET status = ?,
-        pause_reason = ?,
-        last_error = ?,
-        updated_at = ?,
-        finished_at = ?
-    WHERE id = ?
-  `).run(
-    normalizedStatus,
-    String(reason || ""),
-    String(error || ""),
-    timestamp,
-    terminal ? timestamp : null,
-    runId
-  );
-  return rowToTagSyncRun(db.prepare("SELECT * FROM tag_sync_runs WHERE id = ?").get(runId));
-}
-
-export function finishTagSyncRunIfDrained({ botId, runId }) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const processing = Number(db.prepare(`
-    SELECT COUNT(*) AS count
-    FROM tag_sync_outbox
-    WHERE bot_id = ? AND status = 'processing'
-  `).get(normalizedBotId)?.count || 0);
-  const remaining = Number(db.prepare(`
-    SELECT COUNT(*) AS count
-    FROM tag_sync_outbox
-    WHERE bot_id = ?
-      AND (
-        status = 'pending'
-        OR (status = 'failed' AND run_attempt_count < 3)
-      )
-  `).get(normalizedBotId)?.count || 0);
-  if (processing || remaining) return null;
-  return updateTagSyncRunStatus({ runId, status: "completed" });
-}
-
-export function getTagSyncStatus(botId) {
-  const normalizedBotId = requireTagSyncBotId(botId);
-  const counts = db.prepare(`
-    SELECT
-      SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_count,
-      SUM(CASE WHEN status = 'processing' THEN 1 ELSE 0 END) AS processing_count,
-      SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_count,
-      SUM(CASE WHEN status = 'succeeded' THEN 1 ELSE 0 END) AS succeeded_count
-    FROM tag_sync_outbox
-    WHERE bot_id = ?
-  `).get(normalizedBotId) || {};
-  const lastRun = rowToTagSyncRun(db.prepare(`
-    SELECT * FROM tag_sync_runs WHERE bot_id = ? ORDER BY id DESC LIMIT 1
-  `).get(normalizedBotId));
-  return {
-    botId: normalizedBotId,
-    config: getTagSyncConfig(normalizedBotId),
-    pendingCount: Number(counts.pending_count || 0),
-    processingCount: Number(counts.processing_count || 0),
-    failedCount: Number(counts.failed_count || 0),
-    succeededCount: Number(counts.succeeded_count || 0),
-    activeRun: getActiveTagSyncRun(normalizedBotId),
-    lastRun
-  };
-}
-
 export function applyConversationTagChanges({
   botId,
   agentId,
@@ -7687,13 +6553,6 @@ export function applyConversationTagChanges({
         timestamp
       );
     }
-    registerTagSyncOutboxRows({
-      botId,
-      agentId,
-      conversationKey,
-      tags: nextTags,
-      timestamp
-    });
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -7921,13 +6780,6 @@ export function applyAgentTagOutcome({
     for (const event of rejected) {
       rejectedEvents.push(insertEvent(event, false));
     }
-    registerTagSyncOutboxRows({
-      botId,
-      agentId,
-      conversationKey,
-      tags: nextTags,
-      timestamp
-    });
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -7976,8 +6828,8 @@ export function upsertSystemDateTag({
   agentId,
   conversationKey,
   dateTagId,
-  source = "friend_added",
-  reason = "新增好友日期"
+  source = "first_contact",
+  reason = "首次联系日期"
 }) {
   const existing = listConversationTags({ botId, agentId, conversationKey })
     .find((tag) => tag.tagType === "date");
@@ -8006,13 +6858,6 @@ export function upsertSystemDateTag({
       timestamp,
       timestamp
     );
-    registerTagSyncOutboxRows({
-      botId,
-      agentId,
-      conversationKey,
-      tags: [{ tagName: dateTagId, tagType: "date" }],
-      timestamp
-    });
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
@@ -8267,18 +7112,18 @@ export function cancelTagActivationTasks({ botId, agentId, conversationKey, grou
   `).run(timestamp, reason || "", timestamp, ...params).changes;
 }
 
-export function markTagActivationTaskSent({ id, worktoolMessageIds = [] }) {
+export function markTagActivationTaskSent({ id, channelMessageIds = [] }) {
   const timestamp = now();
   const result = db.prepare(`
     UPDATE tag_activation_tasks
     SET status = 'sent',
         sent_at = ?,
         error_message = '',
-        worktool_message_ids_json = ?,
+        channel_message_ids_json = ?,
         updated_at = ?
     WHERE id = ?
       AND status IN ('processing', 'sending')
-  `).run(timestamp, json(worktoolMessageIds), timestamp, id);
+  `).run(timestamp, json(channelMessageIds), timestamp, id);
   if (result.changes === 0) return null;
   return rowToTagActivationTask(
     db.prepare("SELECT * FROM tag_activation_tasks WHERE id = ?").get(id)
@@ -8386,7 +7231,7 @@ export function insertImportedConversationMessages({
   source,
   messages = []
 }) {
-  if (!["worktool_customer_history", "worktool_api_history"].includes(source)) {
+  if (!["legacy_customer_history", "legacy_api_history"].includes(source)) {
     throw new Error("invalid imported conversation message source");
   }
   const insert = db.prepare(`
@@ -8455,7 +7300,7 @@ export function insertImportedConversationMessages({
         createdAt
       ).changes || 0);
     }
-    if (inserted > 0 && source === "worktool_customer_history") {
+    if (inserted > 0 && source === "legacy_customer_history") {
       db.prepare(`
         UPDATE flow_sessions
         SET history_context_sent_at = NULL, updated_at = ?
@@ -8476,14 +7321,14 @@ export function listImportedConversationMessages({ botId, conversationKey }) {
     FROM conversation_messages
     WHERE bot_id = ?
       AND conversation_key = ?
-      AND source IN ('worktool_customer_history', 'worktool_api_history')
+      AND source IN ('legacy_customer_history', 'legacy_api_history')
     ORDER BY created_at ASC, id ASC
   `).all(botId, conversationKey).map(rowToConversationMessage);
 }
 
-export function upsertWorktoolApiMessageCache({ botId, items = [] }) {
+export function upsertLegacyApiMessageCache({ botId, items = [] }) {
   const insert = db.prepare(`
-    INSERT INTO worktool_api_message_cache (
+    INSERT INTO legacy_api_message_cache (
       bot_id, message_id, command_index, target_name, message_type,
       content, occurred_at, raw_payload_json, cached_at
     )
@@ -8520,9 +7365,9 @@ export function upsertWorktoolApiMessageCache({ botId, items = [] }) {
   return changed;
 }
 
-export function hasCachedWorktoolMessageId({ botId, messageId }) {
+export function hasCachedChannelMessageId({ botId, messageId }) {
   return Boolean(db.prepare(`
-    SELECT 1 FROM worktool_api_message_cache
+    SELECT 1 FROM legacy_api_message_cache
     WHERE bot_id = ? AND message_id = ?
     LIMIT 1
   `).get(botId, messageId));
@@ -8533,7 +7378,7 @@ export function listCachedApiMessages({ botId, targetNames = [] }) {
   if (!names.length) return [];
   const placeholders = names.map(() => "?").join(", ");
   return db.prepare(`
-    SELECT * FROM worktool_api_message_cache
+    SELECT * FROM legacy_api_message_cache
     WHERE bot_id = ? AND target_name IN (${placeholders})
     ORDER BY occurred_at ASC, id ASC
   `).all(botId, ...names).map((row) => ({
@@ -8862,8 +7707,6 @@ export function clearConversationForReset({ botId, conversationKey, reason = "�
     db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
       .run(conversationKey, botId);
     db.prepare("DELETE FROM conversation_tags WHERE conversation_key = ? AND bot_id = ?")
-      .run(conversationKey, botId);
-    db.prepare("DELETE FROM tag_sync_outbox WHERE conversation_key = ? AND bot_id = ?")
       .run(conversationKey, botId);
     db.prepare(`
       UPDATE flow_activation_tasks
@@ -9555,7 +8398,7 @@ export function resetInterruptedProactiveTargets() {
   `).run(timestamp);
 }
 
-export function markProactiveTargetSent({ id, messageId, worktoolResponse }) {
+export function markProactiveTargetSent({ id, messageId, channelResponse }) {
   const timestamp = now();
   const target = db.prepare("SELECT task_id FROM proactive_task_targets WHERE id = ?").get(id);
   db.prepare(`
@@ -9563,11 +8406,11 @@ export function markProactiveTargetSent({ id, messageId, worktoolResponse }) {
     SET status = 'sent',
         message_id = ?,
         error_message = '',
-        worktool_response_json = ?,
+        channel_response_json = ?,
         finished_at = ?,
         updated_at = ?
     WHERE id = ?
-  `).run(messageId || "", json(worktoolResponse), timestamp, timestamp, id);
+  `).run(messageId || "", json(channelResponse), timestamp, timestamp, id);
   if (target) refreshProactiveTaskStatus(target.task_id);
 }
 
@@ -9643,13 +8486,13 @@ export function updateProactiveTargetFromCommandCallback({ botId, messageId, pay
     UPDATE proactive_task_targets
     SET status = ?,
         error_message = ?,
-        worktool_response_json = ?,
+        channel_response_json = ?,
         finished_at = ?,
         updated_at = ?
     WHERE id = ?
   `).run(
     failed ? "failed" : "sent",
-    failed ? payload.errorReason || payload.errorMsg || "WorkTool command failed" : "",
+    failed ? payload.errorReason || payload.errorMsg || "Channel command failed" : "",
     json(payload),
     timestamp,
     timestamp,
@@ -9753,7 +8596,7 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
       table: "outgoing_messages",
       mapper: (row) => ({
         ...row,
-        worktoolResponse: parseJson(row.worktool_response_json),
+        channelResponse: parseJson(row.channel_response_json),
         callbackPayload: parseJson(row.callback_payload_json)
       })
     },
@@ -9761,7 +8604,7 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
       table: "outgoing_messages",
       mapper: (row) => ({
         ...row,
-        worktoolResponse: parseJson(row.worktool_response_json),
+        channelResponse: parseJson(row.channel_response_json),
         callbackPayload: parseJson(row.callback_payload_json)
       })
     },
@@ -9966,7 +8809,7 @@ export function backfillCockpitEventsFromBusiness({ botId, throughAt }) {
     WHERE bot_id = ? AND event_type = ?
   `).get(botId, eventType)?.occurred_at || throughAt;
 
-  const firstFriendEventAt = firstCockpitOccurrence("friend_added");
+  const firstContactEventAt = firstCockpitOccurrence("first_contact");
   const conversations = db.prepare(`
     SELECT conversation.*, conversation.rowid AS source_id
     FROM conversations conversation
@@ -9980,14 +8823,14 @@ export function backfillCockpitEventsFromBusiness({ botId, throughAt }) {
       )
     ORDER BY conversation.created_at ASC, conversation.rowid ASC
     LIMIT 1000
-  `).all(botId, firstFriendEventAt, throughAt);
+  `).all(botId, firstContactEventAt, throughAt);
   for (const row of conversations) {
     inserted += appendCockpitEvent({
       eventKey: `business:conversation:${row.source_id}`,
       botId,
       conversationKey: row.conversation_key,
       customerKey: row.received_name || row.conversation_key,
-      eventType: "friend_added",
+      eventType: "first_contact",
       occurredAt: row.created_at,
       receivedAt: row.created_at,
       sourceRef: { type: "conversation", id: row.conversation_key }
@@ -10711,7 +9554,7 @@ function rowToCockpitDelivery(row) {
     dueAt: row.due_at,
     sentAt: row.sent_at || "",
     errorMessage: row.error_message || "",
-    worktoolResponse: parseJson(row.worktool_response_json),
+    channelResponse: parseJson(row.channel_response_json),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   } : null;
@@ -10781,7 +9624,7 @@ export function finishCockpitDelivery({
   db.prepare(`
     UPDATE cockpit_deliveries
     SET status = ?, sent_at = ?, error_message = ?,
-        worktool_response_json = ?, updated_at = ?
+        channel_response_json = ?, updated_at = ?
     WHERE id = ?
   `).run(
     normalizedStatus,
