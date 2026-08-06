@@ -4,18 +4,16 @@ import { CHANNEL_ERROR_CODES, ChannelError } from "./errors.js";
 export function createChannelSender({
   findAccount,
   delivery,
-  legacySendText,
-  legacySendMedia = null,
   idempotencyKey = () => crypto.randomUUID()
 }) {
-  if (typeof findAccount !== "function" || typeof delivery?.send !== "function" || typeof legacySendText !== "function") {
+  if (typeof findAccount !== "function" || typeof delivery?.send !== "function") {
     throw new Error("channel sender dependencies are required");
   }
   return Object.freeze({
     async sendText({ botId, target, content, mentions = [], replyToExternalMessageId = "", metadata = {} }) {
       const account = await findAccount(botId);
       if (!account) {
-        return legacySendText({ robotId: botId, targets: [target], content, atList: mentions });
+        missingAccount(botId, "send_text");
       }
       if (!account.enabled || account.healthStatus !== "connected") {
         throw new ChannelError(CHANNEL_ERROR_CODES.AUTHENTICATION_REQUIRED, undefined, {
@@ -46,15 +44,7 @@ export function createChannelSender({
     async sendMedia({ botId, target, fileUrl, fileName = "", fileType, caption = "", mentions = [] }) {
       const account = await findAccount(botId);
       if (!account) {
-        if (typeof legacySendMedia !== "function") throw new Error("legacy media sender is required");
-        return legacySendMedia({
-          robotId: botId,
-          targets: [target],
-          fileUrl,
-          objectName: fileName,
-          fileType,
-          extraText: caption
-        });
+        missingAccount(botId, "send_media");
       }
       assertConnected(account);
       const result = await delivery.send({
@@ -75,6 +65,14 @@ export function createChannelSender({
         channelResult: result
       });
     }
+  });
+}
+
+function missingAccount(botId, operation) {
+  throw new ChannelError(CHANNEL_ERROR_CODES.AUTHENTICATION_REQUIRED, undefined, {
+    channelAccountId: String(botId || ""),
+    operation,
+    retryable: false
   });
 }
 

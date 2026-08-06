@@ -3290,6 +3290,25 @@ export function updateChannelAccountToken({ botId, encryptedToken }) {
   return getChannelAccount(normalizedBotId);
 }
 
+export function updateChannelAccount({ botId, enabled, webhookSecretHash }) {
+  const account = getChannelAccount(requiredString(botId, "botId"));
+  if (!account) throw new Error("channel account not found");
+  const credentials = getChannelAccountCredentials(botId);
+  db.prepare(`
+    UPDATE channel_accounts
+    SET enabled = ?, webhook_secret_hash = ?, updated_at = ?
+    WHERE bot_id = ?
+  `).run(
+    enabled === undefined ? (account.enabled ? 1 : 0) : (enabled === false ? 0 : 1),
+    webhookSecretHash === undefined
+      ? credentials.webhookSecretHash
+      : requiredString(webhookSecretHash, "webhookSecretHash"),
+    now(),
+    botId
+  );
+  return getChannelAccount(botId);
+}
+
 export function getChannelAccount(botId) {
   return rowToChannelAccount(
     db.prepare("SELECT * FROM channel_accounts WHERE bot_id = ?").get(botId)

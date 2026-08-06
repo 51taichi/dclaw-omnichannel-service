@@ -93,6 +93,22 @@ test("channel accounts enforce provider-channel uniqueness and isolate health by
   assert.equal(result.b.tokenSuffix, "9999");
 });
 
+test("channel accounts can be disabled and replace their webhook credential without exposing it", () => {
+  const result = runDatabaseScenario(`
+    import { createChannelAccount, getChannelAccountCredentials, updateChannelAccount } from "./src/db.js";
+    createChannelAccount({
+      botId: "bot-a", provider: "whapi", channelId: "CHAN-A",
+      encryptedToken: { ciphertext: "cipher", iv: "iv", authTag: "tag", suffix: "1234" },
+      webhookSecretHash: "old-hash"
+    });
+    const account = updateChannelAccount({ botId: "bot-a", enabled: false, webhookSecretHash: "new-hash" });
+    console.log(JSON.stringify({ account, credentials: getChannelAccountCredentials("bot-a") }));
+  `);
+  assert.equal(result.account.enabled, false);
+  assert.equal(JSON.stringify(result.account).includes("new-hash"), false);
+  assert.equal(result.credentials.webhookSecretHash, "new-hash");
+});
+
 test("channel webhook envelopes are durable and idempotent per account", () => {
   const result = runDatabaseScenario(`
     import { listChannelWebhookEvents, recordChannelWebhookEvent } from "./src/db.js";

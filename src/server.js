@@ -98,6 +98,7 @@ import {
   createCockpitDelivery,
   createCockpitReport,
   createCockpitReportRevision,
+  createChannelAccount,
   deleteAgent,
   deleteBotData,
   finishAgentInvocation,
@@ -191,6 +192,7 @@ import {
   listProactiveTaskTargets,
   listAgents,
   listBotBindings,
+  listChannelAccounts,
   listRunnableTagSyncConfigs,
   listUnassignedBotBindings,
   listWorkspaceBots,
@@ -271,11 +273,16 @@ import {
   finishCockpitDelivery,
   recoverExpiredChannelWebhookLeases,
   updateChannelAccountHealth,
+  updateChannelAccount,
+  updateChannelAccountToken,
   updateOutgoingMessageChannelStatus,
   upsertWorktoolApiMessageCache
 } from "./db.js";
 import {
   decryptChannelToken,
+  encryptChannelToken,
+  generateWebhookSecret,
+  hashWebhookSecret,
   resolveTokenEncryptionKey,
   verifyWebhookSecret
 } from "./channels/credentials.js";
@@ -288,6 +295,7 @@ import { createChannelSender } from "./channels/sender.js";
 import { createWhapiAdapter } from "./channels/whapi/adapter.js";
 import { createWhapiClient } from "./channels/whapi/client.js";
 import { normalizeWhapiWebhook } from "./channels/whapi/mapper.js";
+import { buildWhapiWebhookSettings, buildWhapiWebhookUrl } from "./channels/whapi/webhook.js";
 import { mapWhapiHealth } from "./channels/whapi/health.js";
 import { CHANNEL_ERROR_CODES, ChannelError } from "./channels/errors.js";
 import { createGroupAutomationWorker } from "./group-automation-worker.js";
@@ -319,18 +327,12 @@ import {
   unassignBotFromWorkspace
 } from "./db.js";
 import {
-  buildRawMediaCommand,
   bindCommandCallback,
   bindMessageCallback,
-  createExternalGroup,
   getCallbackConfig,
   getRobotInfo,
-  listWorkToolGroups,
   sendGroupInviteCommand,
-  sendRawCommand,
-  sendMediaMessage as sendWorkToolMediaMessage,
   syncFriendTags,
-  sendTextMessage as sendWorkToolTextMessage,
   unbindCommandCallback,
   unbindMessageCallback
 } from "./worktool.js";
@@ -468,16 +470,73 @@ const channelDelivery = createChannelDelivery({
 });
 const channelSender = createChannelSender({
   findAccount: getChannelAccount,
-  delivery: channelDelivery,
-  legacySendText: sendWorkToolTextMessage,
-  legacySendMedia: sendWorkToolMediaMessage
+  delivery: channelDelivery
 });
 
-async function sendTextMessage({ robotId, targets, content, atList = [], socketType = 2 }) {
-  const account = getChannelAccount(robotId);
-  if (!account) {
-    return sendWorkToolTextMessage({ robotId, targets, content, atList, socketType });
+async function saveWhapiAccount({ botId, body }) {
+  const existing = getChannelAccount(botId);
+  const channelId = String(body.channelId || existing?.channelId || "").trim();
+  const apiToken = String(body.apiToken || "").trim();
+  if (!channelId) throw Object.assign(new Error("channelId is required"), { status: 400 });
+  if (existing && existing.channelId !== channelId) {
+    throw Object.assign(new Error("channelId cannot be changed; create a new Bot instead"), { status: 409 });
   }
+  if (!existing && !apiToken) {
+    throw Object.assign(new Error("apiToken is required"), { status: 400 });
+  }
+  const encryptionKey = resolveTokenEncryptionKey(process.env.CHANNEL_TOKEN_ENCRYPTION_KEY);
+  const webhookSecret = String(body.webhookSecret || "").trim() || (!existing ? generateWebhookSecret() : "");
+  let account;
+  if (!existing) {
+    account = createChannelAccount({
+      botId,
+      provider: "whapi",
+      channelId,
+      encryptedToken: encryptChannelToken({
+        token: apiToken,
+        key: encryptionKey,
+        provider: "whapi",
+        channelAccountId: channelId
+      }),
+      webhookSecretHash: hashWebhookSecret(webhookSecret),
+      enabled: body.enabled !== false
+    });
+  } else {
+    if (apiToken) {
+      account = updateChannelAccountToken({
+        botId,
+        encryptedToken: encryptChannelToken({
+          token: apiToken,
+          key: encryptionKey,
+          provider: "whapi",
+          channelAccountId: channelId
+        })
+      });
+    }
+    account = updateChannelAccount({
+      botId,
+      enabled: body.enabled,
+      ...(webhookSecret ? { webhookSecretHash: hashWebhookSecret(webhookSecret) } : {})
+    });
+  }
+
+  let webhook = null;
+  if (process.env.PUBLIC_BASE_URL) {
+    const url = buildWhapiWebhookUrl({ publicBaseUrl: process.env.PUBLIC_BASE_URL, publicId: account.publicId });
+    webhook = { url, configured: false };
+    if (webhookSecret && body.configureWebhook !== false && account.enabled) {
+      const adapter = channelRegistry.get("whapi");
+      const configured = await adapter.configureWebhook({
+        channelAccountId: account.channelId,
+        webhookSettings: buildWhapiWebhookSettings({ url, secret: webhookSecret })
+      });
+      webhook = { url, ...configured };
+    }
+  }
+  return { account, webhook, ...(webhookSecret ? { webhookSecret } : {}) };
+}
+
+async function sendTextMessage({ robotId, targets, content, atList = [], socketType = 2 }) {
   const results = [];
   for (const target of targets || []) {
     const mentions = String(target).endsWith("@g.us")
@@ -499,12 +558,6 @@ async function sendMediaMessage({
   sendType = 0,
   socketType = 2
 }) {
-  const account = getChannelAccount(robotId);
-  if (!account) {
-    return sendWorkToolMediaMessage({
-      robotId, targets, fileUrl, objectName, fileType, extraText, sendType, socketType
-    });
-  }
   const results = [];
   for (const target of targets || []) {
     results.push(await channelSender.sendMedia({
@@ -838,54 +891,6 @@ function applyUploadCors(req, res, next) {
   }
 
   next();
-}
-
-function buildPublicCallbackUrl(botId, pathname) {
-  const baseUrl = process.env.PUBLIC_BASE_URL;
-  if (!baseUrl) {
-    throw new Error("PUBLIC_BASE_URL is required for callback binding");
-  }
-  const fullPath = `/worktool/${encodeURIComponent(botId)}${pathname}`;
-  const url = new URL(fullPath, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
-  if (process.env.CALLBACK_SECRET) {
-    url.searchParams.set("secret", process.env.CALLBACK_SECRET);
-  }
-  return url.toString();
-}
-
-async function bindBotCallbacks(botId, { replyAll = 1 } = {}) {
-  const messageCallbackUrl = buildPublicCallbackUrl(botId, "/message-callback");
-  const commandCallbackUrl = buildPublicCallbackUrl(botId, "/command-callback");
-  const messageResult = await bindMessageCallback({
-    robotId: botId,
-    callbackUrl: messageCallbackUrl,
-    replyAll
-  });
-  const commandResult = await bindCommandCallback({
-    robotId: botId,
-    callBackUrl: commandCallbackUrl
-  });
-
-  return {
-    ok: true,
-    messageCallbackUrl,
-    commandCallbackUrl,
-    messageResult,
-    commandResult
-  };
-}
-
-async function unbindBotCallbacks(botId) {
-  const [messageResult, commandResult] = await Promise.all([
-    unbindMessageCallback({ robotId: botId }),
-    unbindCommandCallback({ robotId: botId })
-  ]);
-
-  return {
-    ok: true,
-    messageResult,
-    commandResult
-  };
 }
 
 function buildPublicFileUrl(botId, filename) {
@@ -3348,13 +3353,10 @@ function normalizeProactiveMessage(body) {
       sendType: Number(body.sendType || 0)
     };
     if (!attachments.length) throw new Error("attachments is required");
-    for (const [index, attachment] of attachments.entries()) {
-      buildRawMediaCommand({
-        targets: ["validate"],
-        ...attachment,
-        extraText: index === 0 ? payload.extraText : "",
-        sendType: payload.sendType
-      });
+    for (const attachment of attachments) {
+      if (!["image", "file", "video", "audio"].includes(attachment.fileType)) {
+        throw new Error("fileType must be image, file, video, or audio");
+      }
     }
     const firstAttachment = attachments[0];
     const messagePayload = { ...payload, attachments };
@@ -3433,17 +3435,6 @@ function proactiveTagFiltersFromRequest(req) {
   }];
 }
 
-function buildCommandForTarget(target) {
-  const payload = target.messagePayload || {};
-  if (target.messageType === "media") {
-    return buildRawMediaCommand({
-      targets: [target.targetName],
-      ...payload
-    });
-  }
-  return null;
-}
-
 async function sendProactiveTargetMediaAttachments(target) {
   const payload = target.messagePayload || {};
   const attachments = Array.isArray(payload.attachments) && payload.attachments.length
@@ -3451,14 +3442,14 @@ async function sendProactiveTargetMediaAttachments(target) {
     : [payload];
   const results = [];
   for (const [index, attachment] of attachments.entries()) {
-    const result = await sendRawCommand({
+    const result = await sendMediaMessage({
       robotId: target.botId,
-      command: buildRawMediaCommand({
-        targets: [target.targetName],
-        ...attachment,
-        extraText: index === 0 ? payload.extraText : "",
-        sendType: payload.sendType
-      })
+      targets: [target.targetName],
+      fileUrl: attachment.fileUrl,
+      objectName: attachment.objectName,
+      fileType: attachment.fileType,
+      extraText: index === 0 ? payload.extraText : "",
+      sendType: payload.sendType
     });
     results.push(result);
   }
@@ -6097,21 +6088,27 @@ app.post(
     assertBotAccess(req, botId);
     const groupName = String(body.groupName || "").trim();
     const selectList = Array.isArray(body.selectList) ? body.selectList : [];
-    const result = await createExternalGroup({
-      robotId: botId,
-      groupName,
-      selectList,
-      groupAnnouncement: body.announcement || ""
+    const account = getChannelAccount(botId);
+    if (!account) throw new Error("channel account not found");
+    const result = await channelRegistry.get(account.provider).createGroup(account, {
+      subject: groupName,
+      participants: selectList.map((item) => String(item?.externalId || item?.id || item)).filter(Boolean)
     });
+    const externalGroupId = String(result?.group?.id || result?.id || "").trim();
+    if (!externalGroupId) throw new Error("Whapi group response is missing id");
     const group = createOrGetGroup({
       botId,
+      provider: account.provider,
+      channelAccountId: account.channelId,
+      externalGroupId,
       currentName: groupName,
-      source: "created"
+      source: "created",
+      dateSource: "whapi"
     });
     res.status(201).json({
       ok: true,
       group,
-      command: { accepted: Number(result?.code || 0) === 0, response: result }
+      command: { accepted: true, response: result }
     });
   })
 );
@@ -6153,23 +6150,7 @@ app.get(
           });
         }
       } else {
-        const remote = await listWorkToolGroups({
-          robotId: botId,
-          groupName: req.query.search || "",
-          page: Number(req.query.page || 1),
-          size: Number(req.query.pageSize || 100)
-        });
-        for (const item of remote.items) {
-          const currentName = String(item.groupName || item.name || "").trim();
-          if (!currentName) continue;
-          createOrGetGroup({
-            botId,
-            currentName,
-            currentRemark: item.groupRemark || item.remark || "",
-            source: "worktool_list",
-            createdAt: item.createTime || item.createdAt || ""
-          });
-        }
+        throw new Error("channel account not found");
       }
     }
     const result = listGroupsPage({
@@ -6876,7 +6857,14 @@ app.get(
   "/api/bots",
   asyncHandler(async (req, res) => {
     assertAdminAccess(req);
-    res.json({ ok: true, bots: listBotBindings() });
+    const accounts = new Map(listChannelAccounts().map((account) => [account.botId, account]));
+    res.json({
+      ok: true,
+      bots: listBotBindings().map((binding) => ({
+        ...binding,
+        channelAccount: accounts.get(binding.botId) || null
+      }))
+    });
   })
 );
 
@@ -6974,22 +6962,50 @@ app.put(
         ...rebindReset
       });
     }
-    let callbackBinding;
+    let channelSetup;
     try {
-      callbackBinding = await bindBotCallbacks(req.params.botId, {
-        replyAll: body.replyAll ?? 1
-      });
+      channelSetup = await saveWhapiAccount({ botId: req.params.botId, body });
     } catch (error) {
-      callbackBinding = {
+      channelSetup = {
         ok: false,
         error: error.message
       };
-      logWarn("bot.callback_bind_failed", {
+      logWarn("bot.channel_setup_failed", {
         botId: req.params.botId,
         error: error.message
       });
     }
-    res.json({ ok: true, binding, callbackBinding, rebindReset });
+    res.json({ ok: true, binding, channelSetup, rebindReset });
+  })
+);
+
+app.post(
+  "/api/bots/:botId/channel/health-check",
+  asyncHandler(async (req, res) => {
+    assertAdminForBot(req, req.params.botId);
+    const account = getChannelAccount(req.params.botId);
+    if (!account) {
+      res.status(404).json({ ok: false, message: "channel account not found" });
+      return;
+    }
+    try {
+      const health = await channelRegistry.get(account.provider).getAccountHealth(account);
+      const updated = updateChannelAccountHealth({
+        botId: account.botId,
+        healthStatus: health.status,
+        providerStatus: health.providerStatus,
+        lastError: health.reason || ""
+      });
+      res.json({ ok: true, account: updated, health });
+    } catch (error) {
+      updateChannelAccountHealth({
+        botId: account.botId,
+        healthStatus: "disconnected",
+        providerStatus: "",
+        lastError: error.message
+      });
+      throw error;
+    }
   })
 );
 
@@ -8002,101 +8018,6 @@ app.post(
       ok: true,
       targets: insertMockProactiveTargets(botId)
     });
-  })
-);
-
-app.post(
-  "/api/config/:botId/message-callback",
-  asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
-    const body = req.body || {};
-    const callbackUrl = body.callbackUrl || buildPublicCallbackUrl(req.params.botId, "/message-callback");
-    const replyAll = body.replyAll ?? 1;
-    const result = await bindMessageCallback({
-      robotId: req.params.botId,
-      callbackUrl,
-      replyAll
-    });
-    res.json({ ok: true, callbackUrl, result });
-  })
-);
-
-app.post(
-  "/api/config/:botId/command-callback",
-  asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
-    const body = req.body || {};
-    const callBackUrl = body.callBackUrl || buildPublicCallbackUrl(req.params.botId, "/command-callback");
-    const result = await bindCommandCallback({
-      robotId: req.params.botId,
-      callBackUrl
-    });
-    res.json({ ok: true, callBackUrl, result });
-  })
-);
-
-app.post(
-  "/api/config/message-callback",
-  asyncHandler(async (req, res) => {
-    const botId = req.body?.botId || process.env.BOT_ID || process.env.ROBOT_ID;
-    if (!botId) throw new Error("botId is required");
-    assertAdminForBot(req, botId);
-    const callbackUrl =
-      req.body?.callbackUrl || buildPublicCallbackUrl(botId, "/message-callback");
-    const replyAll = req.body?.replyAll ?? 1;
-    const result = await bindMessageCallback({ robotId: botId, callbackUrl, replyAll });
-    res.json({ ok: true, callbackUrl, result });
-  })
-);
-
-app.post(
-  "/api/config/command-callback",
-  asyncHandler(async (req, res) => {
-    const botId = req.body?.botId || process.env.BOT_ID || process.env.ROBOT_ID;
-    if (!botId) throw new Error("botId is required");
-    assertAdminForBot(req, botId);
-    const callBackUrl =
-      req.body?.callBackUrl || buildPublicCallbackUrl(botId, "/command-callback");
-    const result = await bindCommandCallback({ robotId: botId, callBackUrl });
-    res.json({ ok: true, callBackUrl, result });
-  })
-);
-
-app.get(
-  "/api/robot",
-  asyncHandler(async (req, res) => {
-    const botId = req.query.botId || process.env.BOT_ID || process.env.ROBOT_ID;
-    assertBotAccess(req, botId);
-    const robotInfo = await getRobotInfo(botId);
-    res.json({ ok: true, robotInfo });
-  })
-);
-
-app.get(
-  "/api/robot/:botId",
-  asyncHandler(async (req, res) => {
-    assertBotAccess(req, req.params.botId);
-    const robotInfo = await getRobotInfo(req.params.botId);
-    res.json({ ok: true, robotInfo });
-  })
-);
-
-app.get(
-  "/api/callback-config",
-  asyncHandler(async (req, res) => {
-    const botId = req.query.botId || process.env.BOT_ID || process.env.ROBOT_ID;
-    assertAdminForBot(req, botId);
-    const callbackConfig = await getCallbackConfig(botId);
-    res.json({ ok: true, callbackConfig });
-  })
-);
-
-app.get(
-  "/api/callback-config/:botId",
-  asyncHandler(async (req, res) => {
-    assertAdminForBot(req, req.params.botId);
-    const callbackConfig = await getCallbackConfig(req.params.botId);
-    res.json({ ok: true, callbackConfig });
   })
 );
 

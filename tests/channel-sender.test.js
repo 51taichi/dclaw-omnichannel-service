@@ -13,7 +13,6 @@ test("channel sender routes configured Bots through standard delivery with compa
       commands.push(command);
       return { accepted: true, externalMessageId: "whapi-message-1", status: "pending" };
     } },
-    legacySendText: () => assert.fail("legacy send must not run"),
     idempotencyKey: () => "send-key-1"
   });
   const result = await sender.sendText({ botId: "bot-a", target: "123@s.whatsapp.net", content: "hello", mentions: ["456"] });
@@ -30,15 +29,15 @@ test("channel sender routes configured Bots through standard delivery with compa
   });
 });
 
-test("channel sender retains legacy behavior only for Bots without a channel account", async () => {
+test("channel sender rejects Bots without a channel account", async () => {
   const sender = createChannelSender({
     findAccount: () => null,
-    delivery: { send: () => assert.fail("channel delivery must not run") },
-    legacySendText: async (input) => ({ legacy: input })
+    delivery: { send: () => assert.fail("channel delivery must not run") }
   });
-  assert.deepEqual(await sender.sendText({ botId: "legacy", target: "Ada", content: "hello" }), {
-    legacy: { robotId: "legacy", targets: ["Ada"], content: "hello", atList: [] }
-  });
+  await assert.rejects(
+    () => sender.sendText({ botId: "missing", target: "Ada", content: "hello" }),
+    { code: "authentication_required" }
+  );
 });
 
 test("channel sender maps core media files to standard attachment commands", async () => {
@@ -49,8 +48,6 @@ test("channel sender maps core media files to standard attachment commands", asy
       commands.push(command);
       return { accepted: true, externalMessageId: "media-1", status: "pending" };
     } },
-    legacySendText: () => {},
-    legacySendMedia: () => assert.fail("legacy media must not run"),
     idempotencyKey: () => "media-key-1"
   });
   const result = await sender.sendMedia({
@@ -74,7 +71,6 @@ test("disabled or disconnected channel accounts fail closed without legacy fallb
     const sender = createChannelSender({
       findAccount: () => account,
       delivery: { send: () => assert.fail("must not send") },
-      legacySendText: () => assert.fail("must not fall back")
     });
     await assert.rejects(() => sender.sendText({ botId: "bot-a", target: "123", content: "hello" }), {
       code: "authentication_required"
