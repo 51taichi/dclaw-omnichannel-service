@@ -165,6 +165,7 @@ import {
   insertMockProactiveTargets,
   resetBotFlowStateForAgentRebind,
   resetConversationForFriendGreeting,
+  resolveGroupByAddress,
   applyAgentTagOutcome,
   applyConversationTagChanges,
   getAgentTagSchema,
@@ -256,6 +257,7 @@ import {
   updateProactiveTargetFromCommandCallback,
   updateOutgoingMessageFromCommandCallback,
   updateGroupAutomationOccurrenceFromCommandCallback,
+  updateGroupAutomationOccurrenceFromChannelStatus,
   upsertAgent,
   upsertAgentTagSchema,
   upsertFlowMachine,
@@ -327,16 +329,6 @@ import {
   unassignBotFromWorkspace
 } from "./db.js";
 import {
-  bindCommandCallback,
-  bindMessageCallback,
-  getCallbackConfig,
-  getRobotInfo,
-  sendGroupInviteCommand,
-  syncFriendTags,
-  unbindCommandCallback,
-  unbindMessageCallback
-} from "./worktool.js";
-import {
   shouldProcessInboundForAgent
 } from "./message-rules.js";
 import { inboundAttachmentPlaceholder } from "./inbound-attachments.js";
@@ -349,10 +341,7 @@ import { normalizeUploadedFilename } from "./filenames.js";
 import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
 import { createTagAlertStreamHub } from "./tag-alert-stream.js";
 import { normalizeHistoryAnalysisConfig } from "./history-analysis.js";
-import { createLegacyCustomerHistoryService } from "./legacy-customer-history.js";
 import { createKeyedSingleFlight, isLegacyCustomerCandidate } from "./legacy-history.js";
-import { listApiCommandPage, listCustomerHistory } from "./worktool-history.js";
-import { createWorktoolHistoryCache } from "./worktool-history-cache.js";
 import { filterConfiguredCollectedDataPatch } from "./flow-assets.js";
 import { getTagSyncWindowState } from "./tag-sync.js";
 import { createTagSyncWorker } from "./tag-sync-worker.js";
@@ -394,8 +383,6 @@ const channelWebhookWorkerIntervalMs = Math.max(
   100,
   Number(process.env.CHANNEL_WEBHOOK_WORKER_INTERVAL_MS || 500)
 );
-const worktoolHistoryCacheIntervalMs =
-  Number(process.env.WORKTOOL_HISTORY_CACHE_INTERVAL_MINUTES || 10) * 60 * 1000;
 const TAG_SYNC_WORKER_INTERVAL_MS = Math.max(
   500,
   Number(process.env.TAG_SYNC_WORKER_INTERVAL_MS || 2000)
@@ -690,7 +677,9 @@ const tagSyncWorker = createTagSyncWorker({
   resolveCallback: resolveTagSyncCommandCallback,
   finishRunIfDrained: finishTagSyncRunIfDrained,
   recoverLeases: recoverExpiredTagSyncLeases,
-  sendTags: syncFriendTags,
+  sendTags: async () => {
+    throw new Error("external contact tag synchronization is not supported by Whapi");
+  },
   getWindowState: getTagSyncWindowState,
   leaseMs: TAG_SYNC_WORKER_LEASE_MS,
   log(event, fields) {
@@ -707,57 +696,10 @@ setInterval(() => {
   });
 }, TAG_SYNC_WORKER_INTERVAL_MS).unref();
 
-const legacyCustomerHistory = createLegacyCustomerHistoryService({
-  listCustomerHistory,
-  createLegacyFlowSession,
-  updateLegacyHistorySync,
-  insertImportedConversationMessages,
-  listImportedConversationMessages,
-  listCachedApiMessages,
-  listLegacyFlowSessionTargets,
-  resolveBotSenderName(botId) {
-    const binding = getBotBinding(botId);
-    return binding?.botName || binding?.agentName || "机器人";
-  },
-  onEvent(event, fields) {
-    if (event === "failed") {
-      logWarn("legacy_history.failed", fields);
-      return;
-    }
-    logInfo(`legacy_history.${event}`, fields);
-  }
+const legacyCustomerHistory = Object.freeze({
+  async prepareLegacyCustomer() {},
+  buildStoredLegacyAnalysis() { return null; }
 });
-
-const worktoolHistoryCache = createWorktoolHistoryCache({
-  listPage: listApiCommandPage,
-  upsertItems: upsertWorktoolApiMessageCache,
-  hasMessageId: hasCachedWorktoolMessageId,
-  async onRefreshed({ robotId }) {
-    const backfill = await legacyCustomerHistory.backfillCachedHistoryForBot({ botId: robotId });
-    logInfo("worktool_history_cache.backfilled", { botId: robotId, ...backfill });
-  }
-});
-
-async function refreshWorktoolHistoryCaches() {
-  for (const binding of listBotBindings().filter((item) => item.enabled)) {
-    try {
-      const result = await worktoolHistoryCache.refreshBot({ robotId: binding.botId });
-      logInfo("worktool_history_cache.refreshed", { botId: binding.botId, ...result });
-    } catch (error) {
-      logWarn("worktool_history_cache.failed", {
-        botId: binding.botId,
-        error: error.message
-      });
-    }
-  }
-}
-
-void refreshWorktoolHistoryCaches();
-if (Number.isFinite(worktoolHistoryCacheIntervalMs) && worktoolHistoryCacheIntervalMs > 0) {
-  setInterval(() => {
-    void refreshWorktoolHistoryCaches();
-  }, worktoolHistoryCacheIntervalMs).unref();
-}
 
 function assertCallbackSecret(req) {
   const expected = process.env.CALLBACK_SECRET;
@@ -1605,13 +1547,17 @@ async function executeFlowActions({
     }
 
     try {
-      const result = await sendGroupInviteCommand({
-        robotId: botId,
-        groupName: action.groupName,
-        targets: [target],
-        showMessageHistory: false
-      });
-      const worktoolMessageId = String(result?.data || "");
+      const account = getChannelAccount(botId);
+      const resolvedGroup = resolveGroupByAddress({ botId, groupName: action.groupName });
+      if (!account || resolvedGroup?.status !== "resolved" || !resolvedGroup.group.externalGroupId) {
+        throw new Error("Whapi group target is unavailable");
+      }
+      const result = await channelRegistry.get(account.provider).addGroupParticipants(
+        account,
+        resolvedGroup.group.externalGroupId,
+        [target.replace(/@s\.whatsapp\.net$/u, "")]
+      );
+      const worktoolMessageId = "";
       const execution = markFlowActionExecutionSucceeded({
         id: reservation.execution.id,
         worktoolMessageId,
@@ -5918,168 +5864,6 @@ app.post(
   }
 );
 
-app.post("/worktool/:botId/message-callback", (req, res) => {
-  try {
-    assertCallbackSecret(req);
-  } catch (error) {
-    res.status(error.status || 500).json({ code: -1, message: error.message });
-    return;
-  }
-
-  const botId = req.params.botId;
-  const message = req.body || {};
-  let intake;
-  try {
-    intake = ingestIncomingMessage({ botId, message });
-  } catch (error) {
-    logError("message_callback.persist_failed", { botId, messageId: message.messageId || "", error });
-    res.status(500).json({ code: -1, message: "消息入库失败" });
-    return;
-  }
-  res.json({ code: 0, message: "参数接收成功" });
-
-  void processIncomingMessage({
-    botId,
-    message,
-    intake
-  }).catch((error) => {
-    logError("message_callback.process_failed", {
-      botId,
-      messageId: message.messageId || "",
-      error
-    });
-  });
-});
-
-app.post("/worktool/message-callback", (req, res) => {
-  try {
-    assertCallbackSecret(req);
-  } catch (error) {
-    res.status(error.status || 500).json({ code: -1, message: error.message });
-    return;
-  }
-
-  const botId = resolveLegacyBotId(req);
-  if (!botId) {
-    res.status(400).json({ code: -1, message: "missing botId" });
-    return;
-  }
-
-  const message = req.body || {};
-  let intake;
-  try {
-    intake = ingestIncomingMessage({ botId, message });
-  } catch (error) {
-    logError("message_callback.persist_failed", { botId, messageId: message.messageId || "", error });
-    res.status(500).json({ code: -1, message: "消息入库失败" });
-    return;
-  }
-  res.json({ code: 0, message: "参数接收成功" });
-
-  void processIncomingMessage({
-    botId,
-    message,
-    intake
-  }).catch((error) => {
-    logError("message_callback.process_failed", {
-      botId,
-      messageId: message.messageId || "",
-      error
-    });
-  });
-});
-
-app.post("/worktool/:botId/command-callback", (req, res) => {
-  try {
-    assertCallbackSecret(req);
-  } catch (error) {
-    res.status(error.status || 500).json({ code: -1, message: error.message });
-    return;
-  }
-
-  insertCommandCallback({
-    botId: req.params.botId,
-    payload: req.body || {}
-  });
-  const outgoingMatched = updateOutgoingMessageFromCommandCallback({
-    botId: req.params.botId,
-    messageId: req.body?.messageId,
-    payload: req.body || {}
-  });
-  const groupAutomationOccurrence = updateGroupAutomationOccurrenceFromCommandCallback({
-    botId: req.params.botId,
-    messageId: req.body?.messageId,
-    payload: req.body || {}
-  });
-  publishGroupAutomationCallbackResult(groupAutomationOccurrence);
-  logInfo("worktool.command_callback.received", commandCallbackLogFields({
-    botId: req.params.botId,
-    payload: req.body || {},
-    outgoingMatched
-  }));
-  updateProactiveTargetFromCommandCallback({
-    botId: req.params.botId,
-    messageId: req.body?.messageId,
-    payload: req.body || {}
-  });
-  if (Number(req.body?.type) === 213) {
-    void tagSyncWorker.handleCommandCallback({
-      botId: req.params.botId,
-      messageId: req.body?.messageId,
-      payload: req.body || {}
-    }).catch((error) => {
-      logWarn("tag_sync.callback.failed", { botId: req.params.botId, error });
-    });
-  }
-  res.json({ code: 0, message: "参数接收成功" });
-});
-
-app.post("/worktool/command-callback", (req, res) => {
-  try {
-    assertCallbackSecret(req);
-  } catch (error) {
-    res.status(error.status || 500).json({ code: -1, message: error.message });
-    return;
-  }
-  const botId = resolveLegacyBotId(req);
-  if (!botId) {
-    res.status(400).json({ code: -1, message: "missing botId" });
-    return;
-  }
-  insertCommandCallback({ botId, payload: req.body || {} });
-  const outgoingMatched = updateOutgoingMessageFromCommandCallback({
-    botId,
-    messageId: req.body?.messageId,
-    payload: req.body || {}
-  });
-  const groupAutomationOccurrence = updateGroupAutomationOccurrenceFromCommandCallback({
-    botId,
-    messageId: req.body?.messageId,
-    payload: req.body || {}
-  });
-  publishGroupAutomationCallbackResult(groupAutomationOccurrence);
-  logInfo("worktool.command_callback.received", commandCallbackLogFields({
-    botId,
-    payload: req.body || {},
-    outgoingMatched
-  }));
-  updateProactiveTargetFromCommandCallback({
-    botId,
-    messageId: req.body?.messageId,
-    payload: req.body || {}
-  });
-  if (Number(req.body?.type) === 213) {
-    void tagSyncWorker.handleCommandCallback({
-      botId,
-      messageId: req.body?.messageId,
-      payload: req.body || {}
-    }).catch((error) => {
-      logWarn("tag_sync.callback.failed", { botId, error });
-    });
-  }
-  res.json({ code: 0, message: "参数接收成功" });
-});
-
 app.post(
   "/api/groups/create",
   asyncHandler(async (req, res) => {
@@ -7019,20 +6803,6 @@ app.delete(
       return;
     }
 
-    let callbackUnbinding;
-    try {
-      callbackUnbinding = await unbindBotCallbacks(req.params.botId);
-    } catch (error) {
-      callbackUnbinding = {
-        ok: false,
-        error: error.message
-      };
-      logWarn("bot.callback_unbind_failed", {
-        botId: req.params.botId,
-        error: error.message
-      });
-    }
-
     cancelInboundBatchesForBot(req.params.botId, "bot_deleted");
     const deleted = deleteBotData(req.params.botId);
     if (!deleted) {
@@ -7046,7 +6816,7 @@ app.delete(
       removedSessions,
       deleted: deleted.deleted
     });
-    res.json({ ok: true, deleted, removedSessions, callbackUnbinding });
+    res.json({ ok: true, deleted, removedSessions });
   })
 );
 
@@ -8192,6 +7962,12 @@ async function dispatchChannelWebhookEvent(event, envelope) {
       status: event.message.text,
       errorMessage: event.message.text === "failed" ? "provider_rejected" : ""
     });
+    const occurrence = updateGroupAutomationOccurrenceFromChannelStatus({
+      botId: envelope.botId,
+      messageId: event.message.externalId,
+      status: event.message.text
+    });
+    if (occurrence) publishGroupAutomationCallbackResult(occurrence);
     return;
   }
   if (event.eventType === "group.created" || event.eventType === "group.updated") {

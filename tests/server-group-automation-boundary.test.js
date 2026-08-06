@@ -67,9 +67,9 @@ test("server executes group tasks from the existing conversation without full-hi
   assert.doesNotMatch(workerSource, /historySyncWorker|listDclawHistory|analyzeChunk|mergeAnalyses/);
 });
 
-test("both WorkTool command callbacks reconcile group automation delivery and publish the result", () => {
-  assert.equal((source.match(/updateGroupAutomationOccurrenceFromCommandCallback\(\{/g) || []).length, 2);
-  assert.equal((source.match(/publishGroupAutomationCallbackResult\(/g) || []).length >= 3, true);
+test("Whapi status callbacks reconcile group automation delivery and publish the result", () => {
+  assert.equal((source.match(/updateGroupAutomationOccurrenceFromChannelStatus\(\{/g) || []).length, 1);
+  assert.equal((source.match(/publishGroupAutomationCallbackResult\(/g) || []).length >= 1, true);
 });
 
 test("manual delivery resolution verifies group ownership and records the authenticated operator", () => {

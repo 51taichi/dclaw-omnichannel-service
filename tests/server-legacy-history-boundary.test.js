@@ -96,12 +96,10 @@ test("legacy asset rollout reopens old analysis exactly once", () => {
   );
 });
 
-test("bot-wide API history cache refreshes in the background only", () => {
-  assert.match(source, /createWorktoolHistoryCache\(\{/);
-  assert.match(source, /listBotBindings\(\)[\s\S]*refreshBot\(\{ robotId: binding\.botId \}\)/);
-  assert.match(source, /WORKTOOL_HISTORY_CACHE_INTERVAL_MINUTES/);
-  const incoming = asyncFunctionBody("processIncomingMessage", "processCoalescedIncomingBatch");
-  assert.doesNotMatch(incoming, /worktoolHistoryCache\.refreshBot/);
+test("production no longer refreshes WorkTool history", () => {
+  assert.doesNotMatch(source, /createWorktoolHistoryCache\(\{/);
+  assert.doesNotMatch(source, /WORKTOOL_HISTORY_CACHE_INTERVAL_MINUTES/);
+  assert.doesNotMatch(source, /worktoolHistoryCache\.refreshBot/);
 });
 
 test("flow session list does not expose raw legacy history errors", () => {

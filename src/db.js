@@ -25,6 +25,7 @@ fs.mkdirSync(dataDir, { recursive: true });
 const db = new DatabaseSync(dbPath);
 
 db.exec(`
+  PRAGMA busy_timeout = 5000;
   PRAGMA journal_mode = WAL;
 
   CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -2958,6 +2959,25 @@ export function updateGroupAutomationOccurrenceFromCommandCallback({
   return rowToGroupAutomationOccurrence(db.prepare(`
     SELECT * FROM managed_group_automation_occurrences WHERE bot_id = ? AND id = ?
   `).get(normalizedBotId, occurrence.id));
+}
+
+export function updateGroupAutomationOccurrenceFromChannelStatus({ botId, messageId, status }) {
+  const occurrence = rowToGroupAutomationOccurrence(db.prepare(`
+    SELECT * FROM managed_group_automation_occurrences
+    WHERE bot_id = ? AND worktool_message_id = ?
+    ORDER BY created_at DESC LIMIT 1
+  `).get(String(botId || ""), String(messageId || "")));
+  if (!occurrence) return null;
+  const normalizedStatus = String(status || "").toLowerCase();
+  if (["delivered", "read", "played"].includes(normalizedStatus)) {
+    return confirmGroupAutomationDelivery({
+      botId,
+      occurrenceId: occurrence.id,
+      delivered: true,
+      operatorId: `whapi_status:${normalizedStatus}`
+    });
+  }
+  return occurrence;
 }
 
 export function mergeGroupAlias({ botId, sourceGroupId, targetGroupId }) {

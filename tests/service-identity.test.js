@@ -154,7 +154,7 @@ test("health endpoint identifies the running omnichannel service", async (t) => 
     `http://127.0.0.1:${port}/worktool/command-callback?secret=test-callback-secret`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }
   );
-  assert.equal(callback.status, 200);
+  assert.equal(callback.status, 404);
   assert.equal(child.exitCode, null, stderr);
 });
 

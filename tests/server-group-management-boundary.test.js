@@ -17,7 +17,8 @@ test("group management routes are Bot-authorized and keep refresh explicit", () 
   assert.doesNotMatch(server, /"\/api\/groups\/:groupId\/external"/);
   assert.match(server, /assertBotAccess\(req, botId\)/);
   assert.match(server, /String\(req\.query\.refresh[^]*=== "1"/);
-  assert.match(server, /listWorkToolGroups/);
+  assert.match(server, /adapter\.listGroups/);
+  assert.doesNotMatch(server, /listWorkToolGroups/);
 });
 
 test("group management no longer sends external group rename or member remark commands", () => {

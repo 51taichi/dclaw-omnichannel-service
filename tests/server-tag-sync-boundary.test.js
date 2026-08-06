@@ -34,24 +34,9 @@ test("tag sync APIs accept the current unlocked Bot session", () => {
   assert.equal(source.match(/"\/api\/bots\/:botId\/tag-sync\/config"/g)?.length, 2);
 });
 
-test("both command callbacks preserve old updates and finalize tag sync afterward", () => {
-  const scoped = section(
-    'app.post("/worktool/:botId/command-callback"',
-    'app.post("/worktool/command-callback"'
-  );
-  const legacy = section(
-    'app.post("/worktool/command-callback"',
-    'app.post(\n  "/api/groups/create"'
-  );
-  for (const body of [scoped, legacy]) {
-    const outgoing = body.indexOf("updateOutgoingMessageFromCommandCallback");
-    const proactive = body.indexOf("updateProactiveTargetFromCommandCallback");
-    const tagSync = body.indexOf("tagSyncWorker.handleCommandCallback");
-    assert.ok(outgoing >= 0);
-    assert.ok(proactive > outgoing);
-    assert.ok(tagSync > proactive);
-    assert.match(body, /Number\(req\.body\?\.type\) === 213/);
-  }
+test("WorkTool command callback routes are removed", () => {
+  assert.doesNotMatch(source, /app\.post\("\/worktool\/[^\"]*command-callback"/);
+  assert.doesNotMatch(source, /tagSyncWorker\.handleCommandCallback/);
 });
 
 test("tag sync worker observes message processing without wrapping old sends", () => {

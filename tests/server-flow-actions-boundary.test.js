@@ -5,11 +5,12 @@ import test from "node:test";
 const source = fs.readFileSync(new URL("../src/server.js", import.meta.url), "utf8");
 const dbSource = fs.readFileSync(new URL("../src/db.js", import.meta.url), "utf8");
 
-test("server imports flow action persistence and WorkTool group invite sender", () => {
+test("server persists flow actions and adds the current contact through the channel adapter", () => {
   assert.equal(source.includes("reserveFlowActionExecution"), true);
   assert.equal(source.includes("markFlowActionExecutionSucceeded"), true);
   assert.equal(source.includes("markFlowActionExecutionFailed"), true);
-  assert.equal(source.includes("sendGroupInviteCommand"), true);
+  assert.equal(source.includes("addGroupParticipants"), true);
+  assert.equal(source.includes("sendGroupInviteCommand"), false);
   assert.equal(dbSource.includes("CREATE TABLE IF NOT EXISTS flow_action_executions"), true);
 });
 
@@ -22,7 +23,7 @@ test("flow actions execute only for private conversations and current contact", 
   assert.equal(helper.includes("isPrivateConversationKey(conversationKey)"), true);
   assert.equal(helper.includes("privateTargetNameFromConversationKey(conversationKey)"), true);
   assert.equal(helper.includes('action.target !== "current_contact"'), true);
-  assert.equal(helper.includes("sendGroupInviteCommand({"), true);
+  assert.equal(helper.includes("addGroupParticipants("), true);
   assert.equal(helper.includes("insertOutgoingMessage({"), true);
   assert.equal(helper.includes('source: "flow_action"'), true);
 });

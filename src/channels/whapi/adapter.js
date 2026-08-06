@@ -70,6 +70,10 @@ export function createWhapiAdapter({ resolveAccountClient }) {
     async createGroup(account, input) {
       const client = await clientFor(account);
       return client.createGroup(input);
+    },
+    async addGroupParticipants(account, externalGroupId, participants) {
+      const client = await clientFor(account);
+      return client.addGroupParticipants(externalGroupId, participants);
     }
   };
   assertChannelAdapter(adapter);

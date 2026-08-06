@@ -10,22 +10,16 @@ test("flow session detail reads session data through the selected Bot boundary",
   assert.match(serverSource, /listFlowStateEvents\(\{\s*botId,\s*conversationKey/);
 });
 
-test("command callbacks scope delivery correlation to their callback Bot", () => {
-  const scopedCallbackCalls = serverSource.match(/updateOutgoingMessageFromCommandCallback\(\{[\s\S]{0,140}?botId/g) || [];
-  assert.equal(scopedCallbackCalls.length, 2);
-  const scopedTargetCalls = serverSource.match(/updateProactiveTargetFromCommandCallback\(\{[\s\S]{0,140}?botId/g) || [];
-  assert.equal(scopedTargetCalls.length, 2);
-  const legacyRoute = serverSource.slice(
-    serverSource.indexOf('app.post("/worktool/command-callback"'),
-    serverSource.indexOf('app.get(\n  "/api/public/bots"')
-  );
-  assert.match(legacyRoute, /assertCallbackSecret\(req\)/);
+test("Whapi status delivery correlation is scoped to the webhook account Bot", () => {
+  assert.match(serverSource, /updateOutgoingMessageChannelStatus\(\{[\s\S]{0,180}?channelAccountId: event\.channelAccountId/);
+  assert.match(serverSource, /updateGroupAutomationOccurrenceFromChannelStatus\(\{[\s\S]{0,180}?botId: envelope\.botId/);
+  assert.doesNotMatch(serverSource, /app\.post\("\/worktool\/command-callback"/);
 });
 
 test("console upload requires and preserves selected Bot ownership", () => {
   const uploadRoute = serverSource.slice(
     serverSource.indexOf('app.post(\n  "/api/uploads"'),
-    serverSource.indexOf('app.post("/worktool/:botId/message-callback"')
+    serverSource.indexOf('app.post(\n  "/api/groups/create"')
   );
   assert.match(uploadRoute, /const botId = String\(req\.query\.botId \|\| ""\)\.trim\(\)/);
   assert.match(uploadRoute, /assertBotAccess\(req, botId\)/);

@@ -38,19 +38,15 @@ test("callbacks persist and cancel old activation before entering the buffer", (
   assert.ok(source.indexOf("invalidateFlowActivation", handlerStart) < push);
 });
 
-test("message callback persists before acknowledging WorkTool", () => {
+test("Whapi webhook persists before acknowledging the provider", () => {
   assert.match(source, /function ingestIncomingMessage\(\{ botId, message \}\)/);
   assert.match(source, /function ingestIncomingMessage\([\s\S]*insertIncomingMessage\([\s\S]*beginMessageProcessing\(/);
-  for (const route of [
-    'app.post("/worktool/:botId/message-callback"',
-    'app.post("/worktool/message-callback"'
-  ]) {
-    const start = source.indexOf(route);
-    const end = source.indexOf("\n});", start);
-    const handler = source.slice(start, end);
-    assert.ok(start >= 0 && end > start);
-    assert.ok(handler.indexOf("ingestIncomingMessage") < handler.indexOf("res.json"));
-  }
+  const start = source.indexOf("const receiveWhapiWebhook = (req, res) => {");
+  const end = source.indexOf("\n};", start);
+  const handler = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.ok(handler.indexOf("whapiWebhookIntake.handle") < handler.indexOf("res.json"));
+  assert.doesNotMatch(source, /app\.post\("\/worktool\/[^\"]*message-callback"/);
 });
 
 test("friend-added signals, unsupported, human handoff, and debug replies finish before buffering", () => {

@@ -19,8 +19,8 @@ test("server exposes public bot list and unified unlock routes", () => {
   assert.equal(serverSource.includes('"/api/bots/:botId"'), true);
   assert.equal(serverSource.includes("deleteBotData"), true);
   assert.equal(serverSource.includes("getBotUploadDir(req.params.botId)"), true);
-  assert.equal(serverSource.includes("unbindBotCallbacks(req.params.botId)"), true);
-  assert.equal(serverSource.includes("bot.callback_unbind_failed"), true);
+  assert.equal(serverSource.includes('"/api/bots/:botId/channel/health-check"'), true);
+  assert.equal(serverSource.includes("unbindBotCallbacks(req.params.botId)"), false);
 });
 
 test("server supports bot scoped session authorization", () => {

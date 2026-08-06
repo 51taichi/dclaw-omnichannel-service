@@ -65,7 +65,12 @@ export function createWhapiClient({
     listChats: (options = {}) => request("list_chats", "/chats", { query: pagination(options) }),
     listGroups: (options = {}) => request("list_groups", "/groups", { query: pagination(options) }),
     getGroup: (groupId) => request("get_group", `/groups/${encodeURIComponent(requiredId(groupId, "groupId"))}`),
-    createGroup: (group) => request("create_group", "/groups", { method: "POST", body: group })
+    createGroup: (group) => request("create_group", "/groups", { method: "POST", body: group }),
+    addGroupParticipants: (groupId, participants) => request(
+      "add_group_participants",
+      `/groups/${encodeURIComponent(requiredId(groupId, "groupId"))}/participants`,
+      { method: "POST", body: { participants } }
+    )
   });
 }
 
