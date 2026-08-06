@@ -26,6 +26,7 @@ test("channel accounts expose redacted identity while credentials require an int
       getChannelAccount,
       getChannelAccountCredentials,
       getChannelAccountByPublicId,
+      getChannelAccountByChannelId,
       listChannelAccounts
     } from "./src/db.js";
     const encryptedToken = { ciphertext: "cipher", iv: "iv", authTag: "tag", suffix: "1234" };
@@ -37,12 +38,13 @@ test("channel accounts expose redacted identity while credentials require an int
       created,
       direct: getChannelAccount("bot-a"),
       byPublic: getChannelAccountByPublicId(created.publicId),
+      byChannel: getChannelAccountByChannelId("whapi", "CHAN-A"),
       listed: listChannelAccounts(),
       credentials: getChannelAccountCredentials("bot-a")
     }));
   `);
 
-  for (const account of [result.created, result.direct, result.byPublic, result.listed[0]]) {
+  for (const account of [result.created, result.direct, result.byPublic, result.byChannel, result.listed[0]]) {
     assert.equal(account.botId, "bot-a");
     assert.equal(account.provider, "whapi");
     assert.equal(account.channelId, "CHAN-A");

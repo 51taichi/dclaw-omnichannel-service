@@ -140,6 +140,11 @@ db.exec(`
     message_id TEXT,
     target_name TEXT,
     content TEXT NOT NULL,
+    provider TEXT NOT NULL DEFAULT '',
+    channel_account_id TEXT NOT NULL DEFAULT '',
+    delivery_status TEXT NOT NULL DEFAULT '',
+    delivery_error TEXT NOT NULL DEFAULT '',
+    delivery_updated_at TEXT,
     worktool_response_json TEXT,
     callback_error_code INTEGER,
     callback_error_reason TEXT,
@@ -1012,6 +1017,11 @@ ensureColumn("outgoing_messages", "callback_error_code", "INTEGER");
 ensureColumn("outgoing_messages", "callback_error_reason", "TEXT");
 ensureColumn("outgoing_messages", "callback_payload_json", "TEXT");
 ensureColumn("outgoing_messages", "callback_at", "TEXT");
+ensureColumn("outgoing_messages", "provider", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("outgoing_messages", "channel_account_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("outgoing_messages", "delivery_status", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("outgoing_messages", "delivery_error", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("outgoing_messages", "delivery_updated_at", "TEXT");
 ensureColumn("proactive_tasks", "message_type", "TEXT NOT NULL DEFAULT 'text'");
 ensureColumn("proactive_tasks", "message_payload_json", "TEXT");
 ensureColumn("proactive_task_targets", "message_type", "TEXT NOT NULL DEFAULT 'text'");
@@ -3155,6 +3165,13 @@ export function getChannelAccountByPublicId(publicId) {
   );
 }
 
+export function getChannelAccountByChannelId(provider, channelId) {
+  return rowToChannelAccount(
+    db.prepare("SELECT * FROM channel_accounts WHERE provider = ? AND channel_id = ?")
+      .get(provider, channelId)
+  );
+}
+
 export function getChannelAccountCredentials(botId) {
   const row = db.prepare("SELECT * FROM channel_accounts WHERE bot_id = ?").get(botId);
   if (!row) return null;
@@ -4259,14 +4276,25 @@ export function insertOutgoingMessage({
   messageId,
   targetName,
   content,
+  provider = "",
+  channelAccountId = "",
+  deliveryStatus = "",
   worktoolResponse
 }) {
+  const channelResult = worktoolResponse?.channelResult;
+  const channelIdentity = String(conversationKey || "").match(/^([^:]+):([^:]+):(private|group):/);
+  const resolvedProvider = provider || (channelResult ? channelIdentity?.[1] || "" : "");
+  const resolvedChannelAccountId = channelAccountId || (channelResult ? channelIdentity?.[2] || "" : "");
+  const resolvedDeliveryStatus = deliveryStatus || (
+    typeof channelResult?.status === "string" ? channelResult.status.toLowerCase() : ""
+  );
   db.prepare(`
     INSERT INTO outgoing_messages (
       bot_id, agent_id, conversation_key, message_id, target_name, content,
+      provider, channel_account_id, delivery_status, delivery_updated_at,
       worktool_response_json, created_at
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     botId,
     agentId || "",
@@ -4274,9 +4302,66 @@ export function insertOutgoingMessage({
     messageId || "",
     targetName || "",
     content,
+    resolvedProvider,
+    resolvedChannelAccountId,
+    resolvedDeliveryStatus,
+    resolvedDeliveryStatus ? now() : null,
     json(worktoolResponse),
     now()
   );
+}
+
+const CHANNEL_DELIVERY_STATUS_RANK = Object.freeze({
+  "": 0,
+  pending: 1,
+  sent: 2,
+  delivered: 3,
+  read: 4,
+  played: 5,
+  failed: 100
+});
+
+export function updateOutgoingMessageChannelStatus({
+  provider,
+  channelAccountId,
+  messageId,
+  status,
+  errorMessage = ""
+}) {
+  const normalizedStatus = String(status || "").toLowerCase();
+  if (!Object.hasOwn(CHANNEL_DELIVERY_STATUS_RANK, normalizedStatus) || !normalizedStatus) {
+    throw new Error("channel delivery status is invalid");
+  }
+  const row = db.prepare(`
+    SELECT * FROM outgoing_messages
+    WHERE provider = ? AND channel_account_id = ? AND message_id = ?
+    ORDER BY id DESC LIMIT 1
+  `).get(provider, channelAccountId, messageId);
+  if (!row) return null;
+  const current = row.delivery_status || "";
+  if (CHANNEL_DELIVERY_STATUS_RANK[normalizedStatus] > CHANNEL_DELIVERY_STATUS_RANK[current]) {
+    db.prepare(`
+      UPDATE outgoing_messages
+      SET delivery_status = ?, delivery_error = ?, delivery_updated_at = ?
+      WHERE id = ?
+    `).run(
+      normalizedStatus,
+      normalizedStatus === "failed" ? String(errorMessage || "").slice(0, 160) : "",
+      now(),
+      row.id
+    );
+  }
+  const updated = db.prepare("SELECT * FROM outgoing_messages WHERE id = ?").get(row.id);
+  return {
+    id: updated.id,
+    botId: updated.bot_id,
+    messageId: updated.message_id,
+    provider: updated.provider,
+    channelAccountId: updated.channel_account_id,
+    deliveryStatus: updated.delivery_status,
+    deliveryError: updated.delivery_error || "",
+    deliveryUpdatedAt: updated.delivery_updated_at || ""
+  };
 }
 
 export function insertCommandCallback({ botId, payload }) {

@@ -104,6 +104,8 @@ import {
   finishMessageProcessing,
   getAgent,
   getBotBinding,
+  getChannelAccount,
+  getChannelAccountByChannelId,
   getChannelAccountByPublicId,
   getChannelAccountCredentials,
   getConversation,
@@ -266,12 +268,22 @@ import {
   finishCockpitDelivery,
   recoverExpiredChannelWebhookLeases,
   updateChannelAccountHealth,
+  updateOutgoingMessageChannelStatus,
   upsertWorktoolApiMessageCache
 } from "./db.js";
-import { verifyWebhookSecret } from "./channels/credentials.js";
+import {
+  decryptChannelToken,
+  resolveTokenEncryptionKey,
+  verifyWebhookSecret
+} from "./channels/credentials.js";
 import { createWebhookIntake } from "./channels/webhook-intake.js";
 import { createChannelWebhookWorker } from "./channels/webhook-worker.js";
 import { toCoreMessage } from "./channels/core-message-bridge.js";
+import { createChannelRegistry } from "./channels/registry.js";
+import { createChannelDelivery } from "./channels/delivery.js";
+import { createChannelSender } from "./channels/sender.js";
+import { createWhapiAdapter } from "./channels/whapi/adapter.js";
+import { createWhapiClient } from "./channels/whapi/client.js";
 import { normalizeWhapiWebhook } from "./channels/whapi/mapper.js";
 import { mapWhapiHealth } from "./channels/whapi/health.js";
 import { CHANNEL_ERROR_CODES, ChannelError } from "./channels/errors.js";
@@ -313,9 +325,9 @@ import {
   listWorkToolGroups,
   sendGroupInviteCommand,
   sendRawCommand,
-  sendMediaMessage,
+  sendMediaMessage as sendWorkToolMediaMessage,
   syncFriendTags,
-  sendTextMessage,
+  sendTextMessage as sendWorkToolTextMessage,
   unbindCommandCallback,
   unbindMessageCallback
 } from "./worktool.js";
@@ -427,6 +439,80 @@ const whapiWebhookIntake = createWebhookIntake({
   verifySecret: verifyWebhookSecret,
   recordEvent: recordChannelWebhookEvent
 });
+
+const channelRegistry = createChannelRegistry();
+channelRegistry.register(createWhapiAdapter({
+  async resolveAccountClient(channelAccountId) {
+    const account = getChannelAccountByChannelId("whapi", channelAccountId);
+    if (!account) throw new Error("channel account not found");
+    const credentials = getChannelAccountCredentials(account.botId);
+    const key = resolveTokenEncryptionKey(process.env.CHANNEL_TOKEN_ENCRYPTION_KEY);
+    const token = decryptChannelToken({
+      encrypted: credentials.encryptedToken,
+      key,
+      provider: account.provider,
+      channelAccountId: account.channelId
+    });
+    return createWhapiClient({ token, channelAccountId: account.channelId });
+  }
+}));
+const channelDelivery = createChannelDelivery({
+  registry: channelRegistry,
+  resolveAccount: async (channelAccountId) => {
+    const account = getChannelAccountByChannelId("whapi", channelAccountId);
+    return account ? { provider: account.provider, channelAccountId: account.channelId } : null;
+  }
+});
+const channelSender = createChannelSender({
+  findAccount: getChannelAccount,
+  delivery: channelDelivery,
+  legacySendText: sendWorkToolTextMessage,
+  legacySendMedia: sendWorkToolMediaMessage
+});
+
+async function sendTextMessage({ robotId, targets, content, atList = [], socketType = 2 }) {
+  const account = getChannelAccount(robotId);
+  if (!account) {
+    return sendWorkToolTextMessage({ robotId, targets, content, atList, socketType });
+  }
+  const results = [];
+  for (const target of targets || []) {
+    results.push(await channelSender.sendText({ botId: robotId, target, content, mentions: atList }));
+  }
+  if (results.length === 0) throw new Error("targets must be a non-empty array");
+  return results.length === 1 ? results[0] : { ...results.at(-1), results };
+}
+
+async function sendMediaMessage({
+  robotId,
+  targets,
+  fileUrl,
+  objectName,
+  fileType,
+  extraText = "",
+  sendType = 0,
+  socketType = 2
+}) {
+  const account = getChannelAccount(robotId);
+  if (!account) {
+    return sendWorkToolMediaMessage({
+      robotId, targets, fileUrl, objectName, fileType, extraText, sendType, socketType
+    });
+  }
+  const results = [];
+  for (const target of targets || []) {
+    results.push(await channelSender.sendMedia({
+      botId: robotId,
+      target,
+      fileUrl,
+      fileName: objectName,
+      fileType,
+      caption: extraText
+    }));
+  }
+  if (results.length === 0) throw new Error("targets must be a non-empty array");
+  return results.length === 1 ? results[0] : { ...results.at(-1), results };
+}
 
 const whapiWebhookJson = express.json({ limit: "512kb", strict: true });
 const receiveWhapiWebhook = (req, res) => {
@@ -819,6 +905,9 @@ function asyncHandler(handler) {
 }
 
 function getReplyTarget(message) {
+  if (message?.metadata?.externalChatId) {
+    return message.metadata.externalChatId;
+  }
   if (isGroupMessage(message) && message.groupName) {
     return message.groupName;
   }
@@ -8127,6 +8216,13 @@ async function dispatchChannelWebhookEvent(event, envelope) {
     return;
   }
   if (event.eventType.startsWith("status.")) {
+    updateOutgoingMessageChannelStatus({
+      provider: event.provider,
+      channelAccountId: event.channelAccountId,
+      messageId: event.message.externalId,
+      status: event.message.text,
+      errorMessage: event.message.text === "failed" ? "provider_rejected" : ""
+    });
     return;
   }
   if (event.chat.type === "group") {
