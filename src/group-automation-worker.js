@@ -106,7 +106,7 @@ export function createGroupAutomationWorker({
         id: occurrence.groupId,
         currentName: snapshot.group?.currentName || currentGroup.currentName
       },
-      deliveryGroupName: currentGroup.currentName
+      deliveryGroupName: currentGroup.externalGroupId || currentGroup.currentName
     };
   }
 

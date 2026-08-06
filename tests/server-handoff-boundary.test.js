@@ -117,6 +117,7 @@ test("server exposes manual reply route for private and group human handoff", ()
   assert.doesNotMatch(serverSource, /manual reply only supports private conversations/);
   const targetBody = functionBody("manualReplyTargetForConversation");
   assert.match(targetBody, /getGroupByConversationKey\(\{ botId, conversationKey \}\)/);
+  assert.match(targetBody, /managedGroup\?\.externalGroupId/);
   assert.match(targetBody, /managedGroup\?\.currentName/);
   assert.match(targetBody, /privateTargetNameFromConversationKey\(conversationKey\)/);
 });

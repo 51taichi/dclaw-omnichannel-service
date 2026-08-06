@@ -617,6 +617,20 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_managed_groups_bot_name
   ON managed_groups (bot_id, current_name);
 
+  CREATE TABLE IF NOT EXISTS managed_group_members (
+    group_id TEXT NOT NULL,
+    bot_id TEXT NOT NULL,
+    external_id TEXT NOT NULL,
+    display_name TEXT NOT NULL DEFAULT '',
+    member_role TEXT NOT NULL DEFAULT 'member',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (group_id, external_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_managed_group_members_bot
+  ON managed_group_members (bot_id, group_id);
+
   CREATE TABLE IF NOT EXISTS managed_group_aliases (
     group_id TEXT NOT NULL,
     bot_id TEXT NOT NULL,
@@ -1022,6 +1036,14 @@ ensureColumn("outgoing_messages", "channel_account_id", "TEXT NOT NULL DEFAULT '
 ensureColumn("outgoing_messages", "delivery_status", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("outgoing_messages", "delivery_error", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("outgoing_messages", "delivery_updated_at", "TEXT");
+ensureColumn("managed_groups", "provider", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("managed_groups", "channel_account_id", "TEXT NOT NULL DEFAULT ''");
+ensureColumn("managed_groups", "external_group_id", "TEXT NOT NULL DEFAULT ''");
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_managed_groups_external_identity
+  ON managed_groups (provider, channel_account_id, external_group_id)
+  WHERE external_group_id <> ''
+`);
 ensureColumn("proactive_tasks", "message_type", "TEXT NOT NULL DEFAULT 'text'");
 ensureColumn("proactive_tasks", "message_payload_json", "TEXT");
 ensureColumn("proactive_task_targets", "message_type", "TEXT NOT NULL DEFAULT 'text'");
@@ -1194,6 +1216,9 @@ function rowToManagedGroup(row) {
   return {
     id: row.id,
     botId: row.bot_id,
+    provider: row.provider || "",
+    channelAccountId: row.channel_account_id || "",
+    externalGroupId: row.external_group_id || "",
     conversationKey: row.conversation_key,
     currentName: row.current_name,
     currentRemark: row.current_remark || "",
@@ -1290,6 +1315,84 @@ export function getGroupByConversationKey({ botId, conversationKey }) {
   );
 }
 
+export function getGroupByExternalId({ botId, provider, channelAccountId, externalGroupId }) {
+  return rowToManagedGroup(
+    db.prepare(`
+      SELECT *
+      FROM managed_groups
+      WHERE bot_id = ? AND provider = ? AND channel_account_id = ? AND external_group_id = ?
+    `).get(botId, provider, channelAccountId, externalGroupId)
+  );
+}
+
+export function listManagedGroupMembers({ botId, groupId }) {
+  return db.prepare(`
+    SELECT * FROM managed_group_members
+    WHERE bot_id = ? AND group_id = ?
+    ORDER BY display_name ASC, external_id ASC
+  `).all(botId, groupId).map((row) => ({
+    groupId: row.group_id,
+    botId: row.bot_id,
+    externalId: row.external_id,
+    displayName: row.display_name || "",
+    role: row.member_role || "member",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }));
+}
+
+export function replaceManagedGroupMembers({ botId, groupId, members = [] }) {
+  if (!getGroupById({ botId, groupId })) throw new Error("managed group not found");
+  const normalized = new Map();
+  for (const member of members) {
+    const externalId = String(member?.externalId || member?.id || "").trim();
+    if (!externalId) continue;
+    normalized.set(externalId, {
+      externalId,
+      displayName: String(member?.displayName || member?.name || "").trim(),
+      role: String(member?.role || member?.rank || "member").trim() || "member"
+    });
+  }
+  const timestamp = now();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare("DELETE FROM managed_group_members WHERE bot_id = ? AND group_id = ?")
+      .run(botId, groupId);
+    const insert = db.prepare(`
+      INSERT INTO managed_group_members (
+        group_id, bot_id, external_id, display_name, member_role, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    for (const member of normalized.values()) {
+      insert.run(groupId, botId, member.externalId, member.displayName, member.role, timestamp, timestamp);
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+  return listManagedGroupMembers({ botId, groupId });
+}
+
+export function resolveManagedGroupMentionIds({ botId, externalGroupId, names = [] }) {
+  const group = rowToManagedGroup(db.prepare(`
+    SELECT * FROM managed_groups
+    WHERE bot_id = ? AND external_group_id = ?
+    ORDER BY updated_at DESC LIMIT 1
+  `).get(botId, externalGroupId));
+  if (!group) return [];
+  const members = listManagedGroupMembers({ botId, groupId: group.id });
+  const requested = new Set(names
+    .map((name) => String(name || "").replace(/^@/u, "").trim())
+    .filter(Boolean));
+  if (requested.has("所有人") || requested.has("all")) {
+    return members.map((member) => member.externalId);
+  }
+  return members
+    .filter((member) => requested.has(member.displayName) || requested.has(member.externalId))
+    .map((member) => member.externalId);
+}
+
 export function listGroupsPage({ botId, search = "", page = 1, pageSize = 50 }) {
   const normalizedPage = Math.max(1, Number(page) || 1);
   const normalizedPageSize = Math.max(1, Math.min(100, Number(pageSize) || 50));
@@ -1359,6 +1462,9 @@ export function resolveGroupByAddress({ botId, groupName, groupRemark = "" }) {
 
 export function createOrGetGroup({
   botId,
+  provider = "",
+  channelAccountId = "",
+  externalGroupId = "",
   currentName,
   currentRemark = "",
   source,
@@ -1368,6 +1474,29 @@ export function createOrGetGroup({
 }) {
   const name = String(currentName || "").trim();
   if (!botId || !name) throw new Error("botId and currentName are required");
+  const normalizedProvider = String(provider || "").trim();
+  const normalizedChannelAccountId = String(channelAccountId || "").trim();
+  const normalizedExternalGroupId = String(externalGroupId || "").trim();
+  const externalGroup = normalizedExternalGroupId
+    ? getGroupByExternalId({
+        botId,
+        provider: normalizedProvider,
+        channelAccountId: normalizedChannelAccountId,
+        externalGroupId: normalizedExternalGroupId
+      })
+    : null;
+  if (externalGroup) {
+    if (externalGroup.currentName !== name || externalGroup.currentRemark !== String(currentRemark || "").trim()) {
+      updateGroupExternalSnapshot({
+        botId,
+        groupId: externalGroup.id,
+        expectedVersion: externalGroup.version,
+        currentName: name,
+        currentRemark
+      });
+    }
+    return getGroupById({ botId, groupId: externalGroup.id });
+  }
   const resolved = resolveGroupByAddress({ botId, groupName: name, groupRemark: currentRemark });
   const authoritativeCreatedAt = normalizeManagedGroupCreatedAt(createdAt);
   if (resolved?.status === "resolved") {
@@ -1411,7 +1540,9 @@ export function createOrGetGroup({
   }
   const timestamp = String(discoveredAt || now());
   const groupId = crypto.randomUUID();
-  const conversationKey = canonicalGroupConversationKey({ botId, groupId });
+  const conversationKey = normalizedExternalGroupId
+    ? `${normalizedProvider}:${normalizedChannelAccountId}:group:${normalizedExternalGroupId}`
+    : canonicalGroupConversationKey({ botId, groupId });
   const groupCreatedAt = authoritativeCreatedAt
     || normalizeManagedGroupCreatedAt(timestamp)
     || timestamp;
@@ -1427,14 +1558,18 @@ export function createOrGetGroup({
   try {
     db.prepare(`
       INSERT INTO managed_groups (
-        id, bot_id, conversation_key, current_name, current_remark,
+        id, bot_id, provider, channel_account_id, external_group_id,
+        conversation_key, current_name, current_remark,
         reply_policy, background, source, lifecycle_status,
         group_created_at, date_source, config_version, created_at, updated_at
       )
-      VALUES (?, ?, ?, ?, ?, 'mention_only', '', ?, ?, ?, ?, 1, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'mention_only', '', ?, ?, ?, ?, 1, ?, ?)
     `).run(
       groupId,
       botId,
+      normalizedProvider,
+      normalizedChannelAccountId,
+      normalizedExternalGroupId,
       conversationKey,
       name,
       String(currentRemark || "").trim(),

@@ -76,10 +76,10 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
       from_name: "Ada", from_me: false, timestamp: 1786000000, text: { body: "hello" }
     }]
   };
-  const send = (secret) => fetch(`http://127.0.0.1:${port}/webhooks/whapi/public-a`, {
+  const send = (secret, body = payload) => fetch(`http://127.0.0.1:${port}/webhooks/whapi/public-a`, {
     method: "POST",
     headers: { "content-type": "application/json", "x-dclaw-webhook-secret": secret },
-    body: JSON.stringify(payload)
+    body: JSON.stringify(body)
   });
   const invalid = await send("wrong-secret");
   assert.equal(invalid.status, 401);
@@ -107,4 +107,35 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
   assert.equal(inspected.events.length, 1);
   assert.equal(inspected.events[0].state, "completed");
   assert.equal(inspected.conversation.conversationKey, "whapi:CHAN-A:private:123@s.whatsapp.net");
+
+  const groupPayload = {
+    channel_id: "CHAN-A",
+    event: { type: "messages", event: "post" },
+    messages: [{
+      id: "group-message-1", type: "text", chat_id: "12001@g.us", chat_name: "Support",
+      from: "15550001", from_name: "Grace", from_me: false, timestamp: 1786000001,
+      text: { body: "hello group" }
+    }]
+  };
+  const groupResponse = await send("valid-secret", groupPayload);
+  assert.equal(groupResponse.status, 200, stderr);
+
+  let groupInspected;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const inspect = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+      import { getConversation, getGroupByExternalId, listChannelWebhookEvents } from "./src/db.js";
+      console.log(JSON.stringify({
+        events: listChannelWebhookEvents("bot-a"),
+        conversation: getConversation("whapi:CHAN-A:group:12001@g.us"),
+        group: getGroupByExternalId({ botId: "bot-a", provider: "whapi", channelAccountId: "CHAN-A", externalGroupId: "12001@g.us" })
+      }));
+    `], { cwd: projectRoot, env: { ...process.env, DATABASE_PATH: databasePath }, encoding: "utf8" });
+    assert.equal(inspect.status, 0, inspect.stderr);
+    groupInspected = JSON.parse(inspect.stdout);
+    if (groupInspected.events.find((event) => event.externalId === "group-message-1")?.state === "completed") break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(groupInspected.conversation.conversationKey, "whapi:CHAN-A:group:12001@g.us");
+  assert.equal(groupInspected.group.currentName, "Support");
+  assert.equal(groupInspected.group.externalGroupId, "12001@g.us");
 });

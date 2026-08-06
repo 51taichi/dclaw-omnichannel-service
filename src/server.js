@@ -159,6 +159,8 @@ import {
   appendCockpitEvent,
   backfillCockpitEventsFromBusiness,
   insertOutgoingMessage,
+  replaceManagedGroupMembers,
+  resolveManagedGroupMentionIds,
   insertMockProactiveTargets,
   resetBotFlowStateForAgentRebind,
   resetConversationForFriendGreeting,
@@ -171,6 +173,7 @@ import {
   listConversationMessagesAround,
   listConversationTags,
   listGroupRoles,
+  listManagedGroupMembers,
   listGroupAutomationTasks,
   listGroupAutomationOccurrences,
   listGroupsPage,
@@ -477,7 +480,10 @@ async function sendTextMessage({ robotId, targets, content, atList = [], socketT
   }
   const results = [];
   for (const target of targets || []) {
-    results.push(await channelSender.sendText({ botId: robotId, target, content, mentions: atList }));
+    const mentions = String(target).endsWith("@g.us")
+      ? resolveManagedGroupMentionIds({ botId: robotId, externalGroupId: target, names: atList })
+      : atList;
+    results.push(await channelSender.sendText({ botId: robotId, target, content, mentions }));
   }
   if (results.length === 0) throw new Error("targets must be a non-empty array");
   return results.length === 1 ? results[0] : { ...results.at(-1), results };
@@ -989,7 +995,8 @@ function privateTargetNameFromConversationKey(conversationKey) {
 function manualReplyTargetForConversation({ botId, conversationKey }) {
   const managedGroup = getGroupByConversationKey({ botId, conversationKey });
   return String(
-    managedGroup?.currentName
+    managedGroup?.externalGroupId
+    || managedGroup?.currentName
     || privateTargetNameFromConversationKey(conversationKey)
     || ""
   ).trim();
@@ -1060,6 +1067,9 @@ function resolveInboundConversation({ botId, message }) {
   }
   const group = createOrGetGroup({
     botId,
+    provider: message.metadata?.provider || "",
+    channelAccountId: message.metadata?.channelAccountId || "",
+    externalGroupId: message.metadata?.externalChatId || "",
     currentName: message.groupName || message.groupRemark || "unknown",
     currentRemark: message.groupRemark || "",
     source: "callback"
@@ -6107,22 +6117,53 @@ app.get(
     assertBotAccess(req, botId);
     const refresh = String(req.query.refresh || "") === "1";
     if (refresh) {
-      const remote = await listWorkToolGroups({
-        robotId: botId,
-        groupName: req.query.search || "",
-        page: Number(req.query.page || 1),
-        size: Number(req.query.pageSize || 100)
-      });
-      for (const item of remote.items) {
-        const currentName = String(item.groupName || item.name || "").trim();
-        if (!currentName) continue;
-        createOrGetGroup({
-          botId,
-          currentName,
-          currentRemark: item.groupRemark || item.remark || "",
-          source: "worktool_list",
-          createdAt: item.createTime || item.createdAt || ""
+      const account = getChannelAccount(botId);
+      if (account) {
+        const adapter = channelRegistry.get(account.provider);
+        const remoteGroups = await adapter.listGroups(account, {
+          count: Number(req.query.pageSize || 100),
+          offset: Math.max(0, (Number(req.query.page || 1) - 1) * Number(req.query.pageSize || 100))
         });
+        for (const item of remoteGroups) {
+          const externalGroupId = String(item.id || item.chat_id || "").trim();
+          if (!externalGroupId) continue;
+          const snapshot = Array.isArray(item.participants)
+            ? item
+            : await adapter.getGroup(account, externalGroupId);
+          const group = createOrGetGroup({
+            botId,
+            provider: account.provider,
+            channelAccountId: account.channelId,
+            externalGroupId,
+            currentName: String(snapshot.name || snapshot.subject || item.name || externalGroupId),
+            source: "whapi_list",
+            createdAt: snapshot.created_at || snapshot.timestamp || "",
+            dateSource: "whapi"
+          });
+          replaceManagedGroupMembers({
+            botId,
+            groupId: group.id,
+            members: Array.isArray(snapshot.participants) ? snapshot.participants : []
+          });
+        }
+      } else {
+        const remote = await listWorkToolGroups({
+          robotId: botId,
+          groupName: req.query.search || "",
+          page: Number(req.query.page || 1),
+          size: Number(req.query.pageSize || 100)
+        });
+        for (const item of remote.items) {
+          const currentName = String(item.groupName || item.name || "").trim();
+          if (!currentName) continue;
+          createOrGetGroup({
+            botId,
+            currentName,
+            currentRemark: item.groupRemark || item.remark || "",
+            source: "worktool_list",
+            createdAt: item.createTime || item.createdAt || ""
+          });
+        }
       }
     }
     const result = listGroupsPage({
@@ -6153,6 +6194,7 @@ app.get(
       ok: true,
       group,
       roles: listGroupRoles({ botId, groupId: group.id }),
+      members: listManagedGroupMembers({ botId, groupId: group.id }),
       tagGroupIds: group.tagGroupIds,
       availableTagGroups: schema.groups
     });
@@ -8225,13 +8267,28 @@ async function dispatchChannelWebhookEvent(event, envelope) {
     });
     return;
   }
-  if (event.chat.type === "group") {
-    throw new ChannelError(CHANNEL_ERROR_CODES.TEMPORARY_PROVIDER_FAILURE, undefined, {
+  if (event.eventType === "group.created" || event.eventType === "group.updated") {
+    const group = createOrGetGroup({
+      botId: envelope.botId,
       provider: event.provider,
       channelAccountId: event.channelAccountId,
-      operation: "process_group_webhook",
-      retryable: true
+      externalGroupId: event.chat.externalId,
+      currentName: event.chat.displayName || event.chat.externalId,
+      source: "whapi",
+      discoveredAt: event.occurredAt
     });
+    if (Array.isArray(event.rawPayload?.participants)) {
+      replaceManagedGroupMembers({
+        botId: envelope.botId,
+        groupId: group.id,
+        members: event.rawPayload.participants.map((participant) => ({
+          externalId: participant.id || participant.contact_id || participant.phone,
+          displayName: participant.name || participant.push_name || participant.short_name || "",
+          role: participant.rank || participant.role || "member"
+        }))
+      });
+    }
+    return;
   }
   const message = toCoreMessage(event);
   if (message) await processIncomingMessage({ botId: envelope.botId, message });

@@ -91,6 +91,26 @@ test("Whapi mapper normalizes statuses and account health and ignores unknown ev
   } }), []);
 });
 
+test("Whapi mapper normalizes group lifecycle snapshots", () => {
+  const [event] = normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
+    event: { type: "groups", event: "patch" },
+    groups: [{
+      id: "12001@g.us", name: "Renamed support", timestamp: 1786000000,
+      participants: [
+        { id: "15550001", name: "Ada", rank: "admin" },
+        { id: "15550002", name: "Grace", rank: "member" }
+      ]
+    }]
+  } });
+
+  assert.equal(event.eventType, "group.updated");
+  assert.deepEqual(event.chat, {
+    externalId: "12001@g.us", type: "group", displayName: "Renamed support"
+  });
+  assert.equal(event.message, null);
+  assert.deepEqual(event.rawPayload.participants.map((item) => item.id), ["15550001", "15550002"]);
+});
+
 test("Whapi mapper rejects a channel mismatch and malformed documented events", () => {
   assert.throws(() => normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
     channel_id: "CHAN-B", event: { type: "messages", event: "post" }, messages: []

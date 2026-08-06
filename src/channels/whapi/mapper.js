@@ -23,10 +23,31 @@ export function normalizeWhapiWebhook({ channelAccountId, payload }) {
     events = payload.statuses.map((status) => normalizeStatus(channelAccountId, action, status));
   } else if (type === "channel" && isRecord(payload.health)) {
     events = [normalizeHealth(channelAccountId, action, payload.health)];
+  } else if (type === "groups") {
+    if (!Array.isArray(payload.groups)) invalidResponse();
+    events = payload.groups.map((group) => normalizeGroup(channelAccountId, action, group));
   } else {
     return Object.freeze([]);
   }
   return assertInboundEvents(events);
+}
+
+function normalizeGroup(channelAccountId, action, group) {
+  if (!isRecord(group)) invalidResponse();
+  const externalId = requiredString(group.id || group.chat_id);
+  const displayName = optionalString(group.name || group.subject || group.chat_name);
+  const eventType = action === "post" ? "group.created" : "group.updated";
+  return {
+    provider: "whapi",
+    channelAccountId,
+    eventId: `groups.${action}:${externalId}`,
+    eventType,
+    occurredAt: timestampToIso(group.timestamp ?? group.updated_at ?? Math.floor(Date.now() / 1000)),
+    chat: { externalId, type: "group", displayName },
+    sender: { externalId: "system", displayName: "" },
+    message: null,
+    rawPayload: group
+  };
 }
 
 function normalizeMessage(channelAccountId, action, message) {
