@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-manual-delivery-status-test-"));
@@ -203,4 +204,88 @@ test("manual reply delivery status is attached in anchored message windows", () 
     after: 0
   });
   assert.equal(message.deliveryStatus, "played");
+});
+
+test("manual reply delivery lookup has a matching scoped index", () => {
+  const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
+  const columns = sqlite.prepare("PRAGMA index_xinfo(idx_outgoing_messages_delivery_lookup)").all()
+    .filter((column) => column.key === 1)
+    .map((column) => ({ name: column.name, descending: column.desc }));
+  const plan = sqlite.prepare(`
+    EXPLAIN QUERY PLAN
+    SELECT message_id, delivery_status, delivery_error, delivery_updated_at
+    FROM outgoing_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND message_id IN (?, ?)
+    ORDER BY message_id ASC, id DESC
+  `).all("bot-index", "whapi:channel-a:private:customer-index", "first", "second")
+    .map((row) => row.detail)
+    .join("\n");
+  sqlite.close();
+
+  assert.deepEqual(columns, [
+    { name: "bot_id", descending: 0 },
+    { name: "conversation_key", descending: 0 },
+    { name: "message_id", descending: 0 },
+    { name: "id", descending: 1 }
+  ]);
+  assert.match(plan, /USING INDEX idx_outgoing_messages_delivery_lookup/);
+});
+
+test("anchored message windows expose failed manual delivery errors after collecting neighbors", () => {
+  const botId = "bot-around-failed";
+  const conversationKey = "whapi:channel-a:private:customer-around-failed";
+  insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: "customer-around-failed",
+    content: "前一条消息",
+    rawPayload: { messageId: "before-around-message" }
+  });
+  const manualMessage = insertManualReply({
+    botId,
+    conversationKey,
+    messageId: "failed-around-message"
+  });
+  insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: "customer-around-failed",
+    content: "后一条消息",
+    rawPayload: { messageId: "after-around-message" }
+  });
+  insertOutgoingMessage({
+    botId,
+    conversationKey,
+    messageId: "failed-around-message",
+    targetName: "customer-around-failed",
+    content: "人工回复",
+    provider: "whapi",
+    channelAccountId: "channel-a",
+    deliveryStatus: "pending",
+    channelResponse: {}
+  });
+  updateOutgoingMessageChannelStatus({
+    provider: "whapi",
+    channelAccountId: "channel-a",
+    messageId: "failed-around-message",
+    status: "failed",
+    errorMessage: "provider rejected message"
+  });
+
+  const messages = listConversationMessagesAround({
+    botId,
+    conversationKey,
+    anchorMessageId: manualMessage.id,
+    before: 1,
+    after: 1
+  });
+  const manual = messageById(messages, manualMessage.id);
+  assert.equal(messages.length, 3);
+  assert.equal(manual.deliveryStatus, "failed");
+  assert.equal(manual.deliveryError, "provider rejected message");
+  assert.ok(manual.deliveryUpdatedAt);
 });

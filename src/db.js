@@ -939,6 +939,9 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_outgoing_messages_cockpit_backfill
   ON outgoing_messages (bot_id, created_at, id);
 
+  CREATE INDEX IF NOT EXISTS idx_outgoing_messages_delivery_lookup
+  ON outgoing_messages (bot_id, conversation_key, message_id, id DESC);
+
   CREATE INDEX IF NOT EXISTS idx_flow_sessions_cockpit_backfill
   ON flow_sessions (bot_id, last_message_at, id);
 
@@ -7499,7 +7502,7 @@ function attachManualMessageDeliveryStatuses(messages, { botId, conversationKey 
     WHERE bot_id = ?
       AND conversation_key = ?
       AND message_id IN (${placeholders})
-    ORDER BY id DESC
+    ORDER BY message_id ASC, id DESC
   `).all(botId, conversationKey, ...messageIds);
   const latestByMessageId = new Map();
   for (const row of rows) {
