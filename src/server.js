@@ -153,6 +153,7 @@ import {
   appendCockpitEvent,
   backfillCockpitEventsFromBusiness,
   insertOutgoingMessage,
+  persistReconciledOutboundMessage,
   replaceManagedGroupMembers,
   resolveManagedGroupMentionIds,
   insertMockProactiveTargets,
@@ -7253,6 +7254,16 @@ async function dispatchChannelWebhookEvent(event, envelope) {
         }))
       });
     }
+    return;
+  }
+  if (event.eventType === "message.sent") {
+    const binding = getBotBinding(envelope.botId);
+    reconcileOutboundWebhookMessage({
+      botId: envelope.botId,
+      event,
+      senderName: binding?.botName || binding?.agentName || "机器人",
+      persist: persistReconciledOutboundMessage
+    });
     return;
   }
   const message = toCoreMessage(event);
