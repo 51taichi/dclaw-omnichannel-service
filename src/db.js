@@ -7509,10 +7509,11 @@ function deliveryIdentityForConversationMessage(message, channelIdentity) {
   }
   const declaredIds = Array.isArray(message.rawPayload?.channelMessageIds)
     ? message.rawPayload.channelMessageIds
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
     : [];
   const messageIds = [...new Set(
-    declaredIds
-      .concat(message.rawPayload?.channelMessageId || [])
+    (declaredIds.length ? declaredIds : [message.rawPayload?.channelMessageId])
       .map((value) => String(value || "").trim())
       .filter(Boolean)
   )];

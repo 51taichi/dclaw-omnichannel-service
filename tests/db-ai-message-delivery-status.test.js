@@ -128,6 +128,26 @@ test("legacy AI replies use channelMessageId", () => {
   assert.equal(loadMessage(botId, conversationKey, message.id).deliveryStatus, "delivered");
 });
 
+test("AI channelMessageIds stay authoritative when a legacy primary id differs", () => {
+  const botId = "authoritative-array-bot";
+  const conversationKey = "whapi:channel-a:private:authoritative-array-customer";
+  const message = insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "outbound",
+    senderName: "AI",
+    content: "AI 自动回复",
+    rawPayload: {
+      source: "agent_reply",
+      channelMessageId: "stale-primary-id",
+      channelMessageIds: ["actual-part-id"]
+    }
+  });
+  insertOutgoing({ botId, conversationKey, messageId: "actual-part-id", status: "read" });
+
+  assert.equal(loadMessage(botId, conversationKey, message.id).deliveryStatus, "read");
+});
+
 test("AI aggregation isolates provider/account and exposes failed error plus latest update time", () => {
   const botId = "scope-bot";
   const conversationKey = "whapi:channel-a:private:scope-customer";
