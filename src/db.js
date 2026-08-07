@@ -4336,7 +4336,7 @@ export function insertOutgoingMessage({
   );
   if (channelResult && resolvedProvider && resolvedChannelAccountId && messageId) {
     const existing = db.prepare(`
-      SELECT id FROM outgoing_messages
+      SELECT * FROM outgoing_messages
       WHERE bot_id = ? AND conversation_key = ?
         AND provider = ? AND channel_account_id = ? AND message_id = ?
       ORDER BY id DESC LIMIT 1
@@ -4347,7 +4347,34 @@ export function insertOutgoingMessage({
       resolvedChannelAccountId,
       messageId
     );
-    if (existing) return;
+    if (existing) {
+      const existingResponse = parseJson(existing.channel_response_json) || {};
+      if (existingResponse.source === "channel_outbound_webhook") {
+        const currentStatus = String(existing.delivery_status || "").toLowerCase();
+        const canonicalStatus = String(resolvedDeliveryStatus || "").toLowerCase();
+        const keepCanonicalStatus = (
+          Object.hasOwn(CHANNEL_DELIVERY_STATUS_RANK, canonicalStatus)
+          && CHANNEL_DELIVERY_STATUS_RANK[canonicalStatus] > (CHANNEL_DELIVERY_STATUS_RANK[currentStatus] || 0)
+        );
+        db.prepare(`
+          UPDATE outgoing_messages
+          SET agent_id = ?, target_name = ?, content = ?,
+              delivery_status = ?, delivery_error = ?, delivery_updated_at = ?,
+              channel_response_json = ?
+          WHERE id = ?
+        `).run(
+          agentId || existing.agent_id || "",
+          targetName || existing.target_name || "",
+          content,
+          keepCanonicalStatus ? canonicalStatus : currentStatus,
+          keepCanonicalStatus ? "" : existing.delivery_error || "",
+          keepCanonicalStatus ? now() : existing.delivery_updated_at,
+          json(channelResponse),
+          existing.id
+        );
+      }
+      return;
+    }
   }
   db.prepare(`
     INSERT INTO outgoing_messages (
@@ -7394,8 +7421,9 @@ export function insertConversationMessage({
       rawPayload?.channelMessageId,
       rawPayload?.messageId
     ].map((value) => String(value || "").trim()).filter(Boolean);
+    const matchingRows = new Map();
     for (const messageId of new Set(declaredIds)) {
-      const existing = db.prepare(`
+      const existingRows = db.prepare(`
         SELECT * FROM conversation_messages
         WHERE bot_id = ? AND conversation_key = ? AND direction = 'outbound'
           AND (
@@ -7410,9 +7438,29 @@ export function insertConversationMessage({
               WHERE value = ?
             )
           )
-        ORDER BY id DESC LIMIT 1
-      `).get(botId, conversationKey, messageId, messageId, messageId, messageId);
-      if (existing) return rowToConversationMessage(existing);
+        ORDER BY id ASC
+      `).all(botId, conversationKey, messageId, messageId, messageId, messageId);
+      for (const row of existingRows) matchingRows.set(Number(row.id), row);
+    }
+    if (matchingRows.size) {
+      const matches = [...matchingRows.values()].sort((left, right) => Number(left.id) - Number(right.id));
+      const canonicalExisting = matches.find((row) => (
+        parseJson(row.raw_payload_json)?.source !== "channel_outbound_webhook"
+      ));
+      if (canonicalExisting) return rowToConversationMessage(canonicalExisting);
+
+      const retained = matches[0];
+      db.prepare(`
+        UPDATE conversation_messages
+        SET sender_name = ?, content = ?, raw_payload_json = ?
+        WHERE id = ?
+      `).run(senderName || retained.sender_name || "", content || "", json(rawPayload), retained.id);
+      for (const duplicate of matches.slice(1)) {
+        db.prepare("DELETE FROM conversation_messages WHERE id = ?").run(duplicate.id);
+      }
+      return rowToConversationMessage(
+        db.prepare("SELECT * FROM conversation_messages WHERE id = ?").get(retained.id)
+      );
     }
   }
   const result = db.prepare(`

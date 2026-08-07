@@ -253,6 +253,73 @@ test("a later standard-send persistence converges on an earlier webhook echo", (
   assert.equal(count, 1);
 });
 
+test("a standard manual attachment upgrades earlier webhook conversation and outgoing metadata", () => {
+  const scope = createConversation({
+    botId: "multi-race-bot",
+    conversationKey: "whapi:CHAN-A:private:multi-race-customer"
+  });
+  persistReconciledOutboundMessage(persistedInput({
+    ...scope,
+    messageId: "multi-part-2",
+    content: "第二段"
+  }));
+
+  const standard = insertConversationMessage({
+    ...scope,
+    direction: "outbound",
+    senderName: "机器人",
+    content: "报价单\n[文件] quote.pdf",
+    rawPayload: {
+      source: "manual_reply",
+      messageId: "multi-part-1",
+      messageIds: ["multi-part-1", "multi-part-2"],
+      provider: "whapi",
+      channelAccountId: "CHAN-A",
+      attachments: [{
+        fileUrl: "https://cdn.example.com/quote.pdf",
+        objectName: "quote.pdf",
+        fileType: "file",
+        messageId: "multi-part-2"
+      }]
+    }
+  });
+  insertOutgoingMessage({
+    ...scope,
+    agentId: "agent-canonical",
+    messageId: "multi-part-2",
+    targetName: "multi-race-customer",
+    content: "报价单\n[文件] quote.pdf",
+    channelResponse: {
+      accepted: true,
+      data: "multi-part-2",
+      channelResult: { accepted: true, data: "multi-part-2", status: "sent" }
+    }
+  });
+
+  const messages = listConversationMessages({ ...scope, limit: 20 });
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].id, standard.id);
+  assert.equal(messages[0].content, "报价单\n[文件] quote.pdf");
+  assert.equal(messages[0].rawPayload.source, "manual_reply");
+  assert.deepEqual(messages[0].rawPayload.messageIds, ["multi-part-1", "multi-part-2"]);
+  assert.equal(messages[0].rawPayload.attachments[0].objectName, "quote.pdf");
+
+  const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"), {
+    readOnly: true
+  });
+  const outgoing = sqlite.prepare(`
+    SELECT agent_id, target_name, content, channel_response_json
+    FROM outgoing_messages
+    WHERE bot_id = ? AND message_id = ?
+    ORDER BY id DESC LIMIT 1
+  `).get("multi-race-bot", "multi-part-2");
+  sqlite.close();
+  assert.equal(outgoing.agent_id, "agent-canonical");
+  assert.equal(outgoing.target_name, "multi-race-customer");
+  assert.equal(outgoing.content, "报价单\n[文件] quote.pdf");
+  assert.equal(JSON.parse(outgoing.channel_response_json).channelResult.status, "sent");
+});
+
 test("existing conversation identity repairs only the missing outgoing row", () => {
   const scope = createConversation({
     botId: "bot-conversation-only",
