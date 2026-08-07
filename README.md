@@ -90,6 +90,20 @@ npm test
 - 健康检查为 connected；收发消息和状态回执均已验证。
 - 日志和监控中没有 API Token、Webhook Secret 或客户敏感媒体内容。
 
+## 已确认出站消息回填
+
+2026-08-07 确认有三条由其他 API 路径发出的 Whapi 出站消息已收到 Webhook、但未写入会话。部署包含出站 Webhook 对账的版本后，在服务容器内执行一次限定回填：
+
+```bash
+npm run backfill:outbound-webhooks -- \
+  --bot-id whatsapp-sales-01 \
+  --message-id 'Psq87jVFbilb.xs-wNID1VW9yQ' \
+  --message-id 'PsqlbmrN6JN3Z0M-wFwD1VW9yQ' \
+  --message-id 'PspJAVWgozw4Nyg-wOAD1VW9yQ'
+```
+
+首次成功执行应输出 `{"inserted":3,"existing":0,"ignored":0}`；再次执行应输出 `{"inserted":0,"existing":3,"ignored":0}`，不会产生重复气泡。随后在管理后台会话中点击“刷新”，三条内容应按 Whapi 原始发送时间出现。
+
 ## 回滚
 
 部署前备份本服务 SQLite 和上传目录。应用回滚时保持原 `CHANNEL_TOKEN_ENCRYPTION_KEY`，回退应用版本并恢复匹配的数据库备份。不要把流量切回旧微信服务或复用旧服务数据库。
