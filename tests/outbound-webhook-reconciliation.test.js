@@ -320,6 +320,52 @@ test("a standard manual attachment upgrades earlier webhook conversation and out
   assert.equal(JSON.parse(outgoing.channel_response_json).channelResult.status, "sent");
 });
 
+test("a canonical retry cleans up a webhook duplicate left by an interrupted multi-ID collapse", () => {
+  const scope = createConversation({
+    botId: "collapse-recovery-bot",
+    conversationKey: "whapi:CHAN-A:private:collapse-recovery-customer"
+  });
+  const canonical = {
+    ...scope,
+    direction: "outbound",
+    senderName: "销售客服",
+    content: "报价单\n[文件] quote.pdf",
+    rawPayload: {
+      source: "manual_reply",
+      messageId: "collapse-part-1",
+      messageIds: ["collapse-part-1", "collapse-part-2"],
+      attachments: [{ name: "quote.pdf", messageId: "collapse-part-2" }]
+    }
+  };
+  const retained = insertConversationMessage(canonical);
+
+  const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
+  sqlite.prepare(`
+    INSERT INTO conversation_messages (
+      bot_id, conversation_key, direction, sender_name, content, raw_payload_json, created_at
+    ) VALUES (?, ?, 'outbound', ?, ?, ?, ?)
+  `).run(
+    scope.botId,
+    scope.conversationKey,
+    "销售客服",
+    "[文件] quote.pdf",
+    JSON.stringify({
+      source: "channel_outbound_webhook",
+      messageId: "collapse-part-2",
+      channelMessageIds: ["collapse-part-2"]
+    }),
+    "2026-08-07T14:12:37.000Z"
+  );
+  sqlite.close();
+
+  const retried = insertConversationMessage(canonical);
+  const messages = listConversationMessages({ ...scope, limit: 20 });
+  assert.equal(retried.id, retained.id);
+  assert.equal(messages.length, 1);
+  assert.equal(messages[0].rawPayload.source, "manual_reply");
+  assert.deepEqual(messages[0].rawPayload.messageIds, ["collapse-part-1", "collapse-part-2"]);
+});
+
 test("existing conversation identity repairs only the missing outgoing row", () => {
   const scope = createConversation({
     botId: "bot-conversation-only",

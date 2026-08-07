@@ -7447,7 +7447,17 @@ export function insertConversationMessage({
       const canonicalExisting = matches.find((row) => (
         parseJson(row.raw_payload_json)?.source !== "channel_outbound_webhook"
       ));
-      if (canonicalExisting) return rowToConversationMessage(canonicalExisting);
+      if (canonicalExisting) {
+        for (const duplicate of matches) {
+          if (
+            duplicate.id !== canonicalExisting.id
+            && parseJson(duplicate.raw_payload_json)?.source === "channel_outbound_webhook"
+          ) {
+            db.prepare("DELETE FROM conversation_messages WHERE id = ?").run(duplicate.id);
+          }
+        }
+        return rowToConversationMessage(canonicalExisting);
+      }
 
       const retained = matches[0];
       db.prepare(`
