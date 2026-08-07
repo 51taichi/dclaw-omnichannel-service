@@ -72,6 +72,34 @@ test("Whapi history does not duplicate an already persisted realtime provider me
   assert.equal(db.listConversationMessages({ botId, conversationKey }).length, 1);
 });
 
+test("Whapi history recognizes outbound scalar and array provider identities", () => {
+  const cases = [
+    { id: "out-scalar", rawPayload: { channelMessageId: "out-scalar" } },
+    { id: "out-array", rawPayload: { channelMessageIds: ["out-array"] } },
+    { id: "manual-array", rawPayload: { messageIds: ["manual-array"] } }
+  ];
+  for (const item of cases) {
+    const conversationKey = `whapi:chan:private:${item.id}`;
+    db.insertConversationMessage({
+      botId: "outbound-history-bot",
+      conversationKey,
+      direction: "outbound",
+      senderName: "Sales",
+      content: item.id,
+      rawPayload: item.rawPayload
+    });
+    assert.equal(db.insertImportedConversationMessages({
+      botId: "outbound-history-bot",
+      conversationKey,
+      source: "whapi_chat_history",
+      messages: [{
+        sourceKey: item.id, direction: "outbound", senderName: "Sales",
+        content: item.id, createdAt: new Date().toISOString(), rawPayload: {}
+      }]
+    }), 0);
+  }
+});
+
 test("first-discovery tagging uses historical time and preserves an existing date tag", () => {
   const botId = "history-tag-bot";
   const agentId = "history-tag-agent";

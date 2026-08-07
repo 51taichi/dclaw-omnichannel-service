@@ -7719,6 +7719,15 @@ export function insertImportedConversationMessages({
         source_key = ?
         OR json_extract(raw_payload_json, '$.messageId') = ?
         OR json_extract(raw_payload_json, '$.channelEvent.message.externalId') = ?
+        OR json_extract(raw_payload_json, '$.channelMessageId') = ?
+        OR EXISTS (
+          SELECT 1 FROM json_each(json_extract(raw_payload_json, '$.channelMessageIds'))
+          WHERE value = ?
+        )
+        OR EXISTS (
+          SELECT 1 FROM json_each(json_extract(raw_payload_json, '$.messageIds'))
+          WHERE value = ?
+        )
       )
     LIMIT 1
   `);
@@ -7733,6 +7742,9 @@ export function insertImportedConversationMessages({
       if (providerMessageAlreadyPersisted.get(
         botId,
         conversationKey,
+        sourceKey,
+        sourceKey,
+        sourceKey,
         sourceKey,
         sourceKey,
         sourceKey
