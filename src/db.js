@@ -939,14 +939,6 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_outgoing_messages_cockpit_backfill
   ON outgoing_messages (bot_id, created_at, id);
 
-  CREATE INDEX IF NOT EXISTS idx_outgoing_messages_manual_delivery_lookup
-  ON outgoing_messages (
-    bot_id, conversation_key, provider, channel_account_id, message_id, id DESC
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_outgoing_messages_callback_lookup
-  ON outgoing_messages (bot_id, provider, channel_account_id, message_id, id DESC);
-
   CREATE INDEX IF NOT EXISTS idx_flow_sessions_cockpit_backfill
   ON flow_sessions (bot_id, last_message_at, id);
 
@@ -983,6 +975,15 @@ ensureColumn("outgoing_messages", "channel_account_id", "TEXT NOT NULL DEFAULT '
 ensureColumn("outgoing_messages", "delivery_status", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("outgoing_messages", "delivery_error", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("outgoing_messages", "delivery_updated_at", "TEXT");
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_outgoing_messages_manual_delivery_lookup
+  ON outgoing_messages (
+    bot_id, conversation_key, provider, channel_account_id, message_id, id DESC
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_outgoing_messages_callback_lookup
+  ON outgoing_messages (bot_id, provider, channel_account_id, message_id, id DESC);
+`);
 ensureColumn("managed_groups", "provider", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("managed_groups", "channel_account_id", "TEXT NOT NULL DEFAULT ''");
 ensureColumn("managed_groups", "external_group_id", "TEXT NOT NULL DEFAULT ''");
