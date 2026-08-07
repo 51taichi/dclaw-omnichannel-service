@@ -206,6 +206,53 @@ test("untracked outbound webhooks atomically create one conversation and outgoin
   assert.equal(listConversationMessages({ ...scope, limit: 20 }).length, 1);
 });
 
+test("a later standard-send persistence converges on an earlier webhook echo", () => {
+  const scope = createConversation({
+    botId: "echo-race-bot",
+    conversationKey: "whapi:CHAN-A:private:echo-race-customer"
+  });
+  const input = persistedInput({
+    ...scope,
+    messageId: "echo-race-id",
+    content: "竞态消息"
+  });
+  const reconciled = persistReconciledOutboundMessage(input);
+
+  const standardConversation = insertConversationMessage({
+    ...scope,
+    direction: "outbound",
+    senderName: "机器人",
+    content: "竞态消息",
+    rawPayload: {
+      channelMessageId: "echo-race-id",
+      channelMessageIds: ["echo-race-id"]
+    }
+  });
+  insertOutgoingMessage({
+    ...scope,
+    messageId: "echo-race-id",
+    targetName: "echo-race-customer",
+    content: "竞态消息",
+    channelResponse: {
+      accepted: true,
+      data: "echo-race-id",
+      channelResult: { accepted: true, data: "echo-race-id", status: "sent" }
+    }
+  });
+
+  assert.equal(standardConversation.id, reconciled.conversationMessageId);
+  assert.equal(listConversationMessages({ ...scope, limit: 20 }).length, 1);
+  const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"), {
+    readOnly: true
+  });
+  const count = sqlite.prepare(`
+    SELECT COUNT(*) AS count FROM outgoing_messages
+    WHERE bot_id = ? AND provider = ? AND channel_account_id = ? AND message_id = ?
+  `).get("echo-race-bot", "whapi", "CHAN-A", "echo-race-id").count;
+  sqlite.close();
+  assert.equal(count, 1);
+});
+
 test("existing conversation identity repairs only the missing outgoing row", () => {
   const scope = createConversation({
     botId: "bot-conversation-only",

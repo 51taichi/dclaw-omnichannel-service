@@ -47,17 +47,33 @@ export async function backfillOutboundWebhooks({
   onResult = null
 }) {
   const requested = new Set(messageIds);
-  const found = new Set();
   const summary = { inserted: 0, existing: 0, ignored: 0 };
-  const ordered = [...envelopes].sort((left, right) => Number(left.id) - Number(right.id));
+  const ordered = [...envelopes]
+    .filter((envelope) => envelope.state === "completed")
+    .sort((left, right) => Number(left.id) - Number(right.id));
+  const replayEvents = [];
 
   for (const envelope of ordered) {
     const events = normalize(envelope);
     for (const event of events) {
       const messageId = event?.message?.externalId;
       if (!requested.has(messageId)) continue;
-      if (event.eventType === "message.sent") {
-        found.add(messageId);
+      replayEvents.push(event);
+    }
+  }
+
+  const found = new Set(replayEvents
+    .filter((event) => event.eventType === "message.sent")
+    .map((event) => event.message.externalId));
+  const missing = [...requested].filter((messageId) => !found.has(messageId));
+  if (missing.length) throw new Error(`requested messages not found in completed webhook history: ${missing.join(", ")}`);
+
+  const reconciled = new Set();
+  for (const event of replayEvents) {
+    const messageId = event.message.externalId;
+    if (event.eventType === "message.sent") {
+      if (!reconciled.has(messageId)) {
+        reconciled.add(messageId);
         const result = await reconcile({ botId, event });
         if (result.outcome === "inserted") summary.inserted += 1;
         else if (["existing_outgoing", "existing_conversation"].includes(result.outcome)) {
@@ -66,23 +82,20 @@ export async function backfillOutboundWebhooks({
           summary.ignored += 1;
         }
         onResult?.({ messageId, outcome: result.outcome });
-        continue;
       }
-      if (event.eventType.startsWith("status.")) {
-        updateStatus({
-          botId,
-          provider: event.provider,
-          channelAccountId: event.channelAccountId,
-          messageId,
-          status: event.message.text,
-          errorMessage: event.message.text === "failed" ? "provider_rejected" : ""
-        });
-      }
+      continue;
+    }
+    if (event.eventType.startsWith("status.")) {
+      updateStatus({
+        botId,
+        provider: event.provider,
+        channelAccountId: event.channelAccountId,
+        messageId,
+        status: event.message.text,
+        errorMessage: event.message.text === "failed" ? "provider_rejected" : ""
+      });
     }
   }
-
-  const missing = [...requested].filter((messageId) => !found.has(messageId));
-  if (missing.length) throw new Error(`requested messages not found in webhook history: ${missing.join(", ")}`);
   return summary;
 }
 

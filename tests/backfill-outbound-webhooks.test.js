@@ -10,13 +10,14 @@ import { normalizeWhapiWebhook } from "../src/channels/whapi/mapper.js";
 
 const approvedIds = [...APPROVED_MESSAGE_IDS];
 
-function messageEnvelope({ id, messageId, body, timestamp }) {
+function messageEnvelope({ id, messageId, body, timestamp, state = "completed" }) {
   return {
     id,
     provider: "whapi",
     botId: "whatsapp-sales-01",
     channelAccountId: "HULKBR-KVR3C",
     eventKind: "messages.post",
+    state,
     payload: {
       channel_id: "HULKBR-KVR3C",
       event: { type: "messages", method: "post" },
@@ -35,13 +36,14 @@ function messageEnvelope({ id, messageId, body, timestamp }) {
   };
 }
 
-function statusEnvelope({ id, messageId, status, timestamp }) {
+function statusEnvelope({ id, messageId, status, timestamp, state = "completed" }) {
   return {
     id,
     provider: "whapi",
     botId: "whatsapp-sales-01",
     channelAccountId: "HULKBR-KVR3C",
     eventKind: "statuses.post",
+    state,
     payload: {
       channel_id: "HULKBR-KVR3C",
       event: { type: "statuses", method: "post" },
@@ -121,15 +123,59 @@ test("backfill replays confirmed messages before their statuses and is idempoten
 });
 
 test("backfill fails when an explicitly requested message is absent from webhook history", async () => {
+  let reconcileCalls = 0;
   await assert.rejects(
     backfillOutboundWebhooks({
       botId: "whatsapp-sales-01",
-      messageIds: [approvedIds[0]],
-      envelopes: [],
-      normalize: () => [],
-      reconcile: () => assert.fail("missing messages must not reconcile"),
+      messageIds: [approvedIds[0], approvedIds[1]],
+      envelopes: [messageEnvelope({
+        id: 55,
+        messageId: approvedIds[0],
+        body: "价格表",
+        timestamp: 1786093006
+      })],
+      normalize: (envelope) => normalizeWhapiWebhook({
+        channelAccountId: envelope.channelAccountId,
+        payload: envelope.payload
+      }),
+      reconcile: () => { reconcileCalls += 1; return { outcome: "inserted" }; },
       updateStatus: () => {}
     }),
-    new RegExp(approvedIds[0].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    new RegExp(approvedIds[1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
   );
+  assert.equal(reconcileCalls, 0);
+});
+
+test("backfill ignores webhook envelopes that are not completed", async () => {
+  const calls = [];
+  const summary = await backfillOutboundWebhooks({
+    botId: "whatsapp-sales-01",
+    messageIds: [approvedIds[0]],
+    envelopes: [
+      messageEnvelope({
+        id: 54,
+        messageId: approvedIds[0],
+        body: "尚未完成的错误版本",
+        timestamp: 1786093005,
+        state: "processing"
+      }),
+      messageEnvelope({
+        id: 55,
+        messageId: approvedIds[0],
+        body: "已完成版本",
+        timestamp: 1786093006
+      })
+    ],
+    normalize: (envelope) => normalizeWhapiWebhook({
+      channelAccountId: envelope.channelAccountId,
+      payload: envelope.payload
+    }),
+    reconcile: ({ event }) => {
+      calls.push(event.message.text);
+      return { outcome: "inserted" };
+    },
+    updateStatus: () => {}
+  });
+  assert.deepEqual(summary, { inserted: 1, existing: 0, ignored: 0 });
+  assert.deepEqual(calls, ["已完成版本"]);
 });

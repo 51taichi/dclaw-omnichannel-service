@@ -4334,6 +4334,21 @@ export function insertOutgoingMessage({
   const resolvedDeliveryStatus = deliveryStatus || (
     typeof channelResult?.status === "string" ? channelResult.status.toLowerCase() : ""
   );
+  if (channelResult && resolvedProvider && resolvedChannelAccountId && messageId) {
+    const existing = db.prepare(`
+      SELECT id FROM outgoing_messages
+      WHERE bot_id = ? AND conversation_key = ?
+        AND provider = ? AND channel_account_id = ? AND message_id = ?
+      ORDER BY id DESC LIMIT 1
+    `).get(
+      botId,
+      conversationKey || "",
+      resolvedProvider,
+      resolvedChannelAccountId,
+      messageId
+    );
+    if (existing) return;
+  }
   db.prepare(`
     INSERT INTO outgoing_messages (
       bot_id, agent_id, conversation_key, message_id, target_name, content,
@@ -7372,6 +7387,34 @@ export function insertConversationMessage({
   content,
   rawPayload
 }) {
+  if (direction === "outbound") {
+    const declaredIds = [
+      ...(Array.isArray(rawPayload?.channelMessageIds) ? rawPayload.channelMessageIds : []),
+      ...(Array.isArray(rawPayload?.messageIds) ? rawPayload.messageIds : []),
+      rawPayload?.channelMessageId,
+      rawPayload?.messageId
+    ].map((value) => String(value || "").trim()).filter(Boolean);
+    for (const messageId of new Set(declaredIds)) {
+      const existing = db.prepare(`
+        SELECT * FROM conversation_messages
+        WHERE bot_id = ? AND conversation_key = ? AND direction = 'outbound'
+          AND (
+            json_extract(raw_payload_json, '$.messageId') = ?
+            OR json_extract(raw_payload_json, '$.channelMessageId') = ?
+            OR EXISTS (
+              SELECT 1 FROM json_each(json_extract(raw_payload_json, '$.channelMessageIds'))
+              WHERE value = ?
+            )
+            OR EXISTS (
+              SELECT 1 FROM json_each(json_extract(raw_payload_json, '$.messageIds'))
+              WHERE value = ?
+            )
+          )
+        ORDER BY id DESC LIMIT 1
+      `).get(botId, conversationKey, messageId, messageId, messageId, messageId);
+      if (existing) return rowToConversationMessage(existing);
+    }
+  }
   const result = db.prepare(`
     INSERT INTO conversation_messages (
       bot_id, conversation_key, direction, sender_name, content, raw_payload_json, created_at
