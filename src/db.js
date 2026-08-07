@@ -6041,7 +6041,10 @@ export function listFlowSessionsPage({
       fm.name AS flow_name
     ${from}
     ${where}
-    ORDER BY fs.last_message_at DESC, fs.id DESC
+    ORDER BY
+      CASE WHEN fs.handoff_status = 'human' THEN 0 ELSE 1 END ASC,
+      fs.last_message_at DESC,
+      fs.id DESC
     LIMIT ? OFFSET ?
   `).all(...values, pagination.pageSize, offset).map((row) => ({
     ...rowToFlowSession(row),

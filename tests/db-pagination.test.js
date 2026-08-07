@@ -80,6 +80,45 @@ test("listFlowSessionsPage applies type and query filters before pagination", ()
   assert.equal(groupMatches.items[0].groupName, "A招商服务群");
 });
 
+test("human handoff sessions stay globally pinned after clearing search", () => {
+  const botId = "pagination_handoff_pin_bot";
+  const agentId = ensureBot(botId);
+  const targetKey = createFlowSession({ botId, agentId, name: "较早客户" });
+  createFlowSession({ botId, agentId, name: "较新客户一" });
+  const newestKey = createFlowSession({ botId, agentId, name: "较新客户二" });
+
+  const before = db.getFlowSessionForBot({ botId, conversationKey: targetKey });
+  const unfilteredBefore = db.listFlowSessionsPage({ botId, page: 1, pageSize: 2 });
+  assert.equal(
+    unfilteredBefore.items.some((item) => item.conversationKey === targetKey),
+    false
+  );
+
+  const searchResult = db.listFlowSessionsPage({
+    botId,
+    query: "较早客户",
+    page: 1,
+    pageSize: 2
+  });
+  assert.equal(searchResult.items[0].conversationKey, targetKey);
+
+  db.updateFlowSessionHandoff({
+    botId,
+    conversationKey: targetKey,
+    handoffStatus: "human",
+    handoffBy: "console",
+    reason: "测试人工接手"
+  });
+
+  const afterClearingSearch = db.listFlowSessionsPage({ botId, page: 1, pageSize: 2 });
+  assert.equal(afterClearingSearch.items[0].conversationKey, targetKey);
+  assert.equal(afterClearingSearch.items[1].conversationKey, newestKey);
+  assert.equal(
+    db.getFlowSessionForBot({ botId, conversationKey: targetKey }).lastMessageAt,
+    before.lastMessageAt
+  );
+});
+
 test("listProactiveTasksPage returns total count and requested page only", () => {
   const botId = "pagination_proactive_bot";
   const agentId = ensureBot(botId);
