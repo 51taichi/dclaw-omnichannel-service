@@ -7485,7 +7485,7 @@ function fetchConversationMessagesAfter({
   );
 }
 
-const MANUAL_MESSAGE_DELIVERY_STATUSES = new Set([
+const OUTGOING_MESSAGE_DELIVERY_STATUSES = new Set([
   "pending",
   "sent",
   "delivered",
@@ -7494,26 +7494,72 @@ const MANUAL_MESSAGE_DELIVERY_STATUSES = new Set([
   "failed"
 ]);
 
-function attachManualMessageDeliveryStatuses(messages, { botId, conversationKey }) {
+function deliveryIdentityForConversationMessage(message, channelIdentity) {
+  if (message.direction !== "outbound") return null;
+  const provider = String(message.rawPayload?.provider || channelIdentity?.[1] || "").trim();
+  const channelAccountId = String(
+    message.rawPayload?.channelAccountId || channelIdentity?.[2] || ""
+  ).trim();
+  if (!provider || !channelAccountId) return null;
+  if (message.rawPayload?.source === "manual_reply") {
+    const messageId = String(message.rawPayload?.messageId || "").trim();
+    return messageId
+      ? { kind: "manual", messageIds: [messageId], provider, channelAccountId }
+      : null;
+  }
+  const declaredIds = Array.isArray(message.rawPayload?.channelMessageIds)
+    ? message.rawPayload.channelMessageIds
+    : [];
+  const messageIds = [...new Set(
+    declaredIds
+      .concat(message.rawPayload?.channelMessageId || [])
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  )];
+  return messageIds.length
+    ? { kind: "ai", messageIds, provider, channelAccountId }
+    : null;
+}
+
+function aggregateAiDeliveryStatus(identity, outgoingRows) {
+  const rows = identity.messageIds
+    .map((messageId) => outgoingRows.get(JSON.stringify([
+      identity.provider,
+      identity.channelAccountId,
+      messageId
+    ])))
+    .filter((row) => OUTGOING_MESSAGE_DELIVERY_STATUSES.has(row?.delivery_status));
+  if (!rows.length) return null;
+  let deliveryStatus = "";
+  if (rows.some((row) => row.delivery_status === "failed")) deliveryStatus = "failed";
+  else if (rows.length < identity.messageIds.length) deliveryStatus = "sent";
+  else if (rows.some((row) => ["pending", "sent"].includes(row.delivery_status))) deliveryStatus = "sent";
+  else if (rows.some((row) => row.delivery_status === "delivered")) deliveryStatus = "delivered";
+  else if (rows.every((row) => ["read", "played"].includes(row.delivery_status))) deliveryStatus = "read";
+  if (!deliveryStatus) return null;
+  const failedRow = rows.find(
+    (row) => row.delivery_status === "failed" && String(row.delivery_error || "").trim()
+  );
+  return {
+    deliveryStatus,
+    deliveryError: failedRow?.delivery_error || "",
+    deliveryUpdatedAt: rows
+      .map((row) => row.delivery_updated_at || "")
+      .sort()
+      .at(-1) || ""
+  };
+}
+
+function attachOutgoingMessageDeliveryStatuses(messages, { botId, conversationKey }) {
   if (!botId || !conversationKey || !messages.length) return messages;
   const channelIdentity = String(conversationKey).match(/^([^:]+):([^:]+):(private|group):/);
-  const identityFor = (message) => {
-    if (message.rawPayload?.source !== "manual_reply") return null;
-    const messageId = String(message.rawPayload?.messageId || "").trim();
-    const provider = String(message.rawPayload?.provider || channelIdentity?.[1] || "").trim();
-    const channelAccountId = String(
-      message.rawPayload?.channelAccountId || channelIdentity?.[2] || ""
-    ).trim();
-    return messageId && provider && channelAccountId
-      ? { messageId, provider, channelAccountId }
-      : null;
-  };
+  const identityFor = (message) => deliveryIdentityForConversationMessage(message, channelIdentity);
   const identities = messages.map(identityFor).filter(Boolean);
   if (!identities.length) return messages;
 
   const providers = [...new Set(identities.map((identity) => identity.provider))];
   const channelAccountIds = [...new Set(identities.map((identity) => identity.channelAccountId))];
-  const messageIds = [...new Set(identities.map((identity) => identity.messageId))];
+  const messageIds = [...new Set(identities.flatMap((identity) => identity.messageIds))];
   const placeholders = (values) => values.map(() => "?").join(", ");
   const rows = db.prepare(`
     SELECT provider, channel_account_id, message_id,
@@ -7544,11 +7590,16 @@ function attachManualMessageDeliveryStatuses(messages, { botId, conversationKey 
   for (const message of messages) {
     const identity = identityFor(message);
     if (!identity) continue;
-    const outgoing = latestByIdentity.get(identityKey(identity));
-    if (!outgoing || !MANUAL_MESSAGE_DELIVERY_STATUSES.has(outgoing.delivery_status)) continue;
-    message.deliveryStatus = outgoing.delivery_status;
-    message.deliveryError = outgoing.delivery_error || "";
-    message.deliveryUpdatedAt = outgoing.delivery_updated_at || "";
+    if (identity.kind === "manual") {
+      const outgoing = latestByIdentity.get(identityKey({ ...identity, messageId: identity.messageIds[0] }));
+      if (!outgoing || !OUTGOING_MESSAGE_DELIVERY_STATUSES.has(outgoing.delivery_status)) continue;
+      message.deliveryStatus = outgoing.delivery_status;
+      message.deliveryError = outgoing.delivery_error || "";
+      message.deliveryUpdatedAt = outgoing.delivery_updated_at || "";
+      continue;
+    }
+    const aggregate = aggregateAiDeliveryStatus(identity, latestByIdentity);
+    if (aggregate) Object.assign(message, aggregate);
   }
   return messages;
 }
@@ -7570,7 +7621,7 @@ export function listConversationMessages({ botId = "", conversationKey, limit = 
     const visible = dedupeConversationMessages(rawRows.map(rowToConversationMessage))
       .slice(-visibleLimit);
     if (noMoreRows) {
-      return attachManualMessageDeliveryStatuses(visible, { botId, conversationKey });
+      return attachOutgoingMessageDeliveryStatuses(visible, { botId, conversationKey });
     }
 
     cursor = batch.at(-1);
@@ -7584,7 +7635,7 @@ export function listConversationMessages({ botId = "", conversationKey, limit = 
         && oldestFetchedTime < oldestVisibleTime - 10_000
       )
     ) {
-      return attachManualMessageDeliveryStatuses(visible, { botId, conversationKey });
+      return attachOutgoingMessageDeliveryStatuses(visible, { botId, conversationKey });
     }
   }
 }
@@ -7657,7 +7708,7 @@ export function listConversationMessagesAround({
   const beforeLimit = Math.max(0, Math.min(200, Number.parseInt(before, 10) || 0));
   const afterLimit = Math.max(0, Math.min(200, Number.parseInt(after, 10) || 0));
   if (beforeLimit === 0 && afterLimit === 0) {
-    return attachManualMessageDeliveryStatuses(
+    return attachOutgoingMessageDeliveryStatuses(
       [rowToConversationMessage(anchor)],
       { botId, conversationKey }
     );
@@ -7714,7 +7765,7 @@ export function listConversationMessagesAround({
       )
     );
     if (!needsOlderRows && !needsNewerRows) {
-      return attachManualMessageDeliveryStatuses(selected, { botId, conversationKey });
+      return attachOutgoingMessageDeliveryStatuses(selected, { botId, conversationKey });
     }
 
     if (needsOlderRows) {
