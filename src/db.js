@@ -7684,6 +7684,17 @@ export function insertImportedConversationMessages({
       AND created_at BETWEEN ? AND ?
     ORDER BY created_at ASC, id ASC
   `);
+  const providerMessageAlreadyPersisted = db.prepare(`
+    SELECT 1
+    FROM conversation_messages
+    WHERE bot_id = ? AND conversation_key = ?
+      AND (
+        source_key = ?
+        OR json_extract(raw_payload_json, '$.messageId') = ?
+        OR json_extract(raw_payload_json, '$.channelEvent.message.externalId') = ?
+      )
+    LIMIT 1
+  `);
   let inserted = 0;
   db.exec("BEGIN IMMEDIATE");
   try {
@@ -7692,6 +7703,13 @@ export function insertImportedConversationMessages({
       const content = String(message?.content || "").trim();
       const createdAt = String(message?.createdAt || "").trim();
       if (!sourceKey || !content || !createdAt) continue;
+      if (providerMessageAlreadyPersisted.get(
+        botId,
+        conversationKey,
+        sourceKey,
+        sourceKey,
+        sourceKey
+      )) continue;
       const direction = message.direction === "outbound" ? "outbound" : "inbound";
       const importedCandidate = {
         botId,

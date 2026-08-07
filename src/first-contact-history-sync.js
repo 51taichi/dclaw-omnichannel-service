@@ -32,6 +32,7 @@ export async function syncFirstContactHistory({
   maxPages = DEFAULT_MAX_PAGES,
   maxMessages = DEFAULT_MAX_MESSAGES,
   leaseMs = 60_000,
+  prepareConversation = async () => {},
   dependencies = {}
 }) {
   const claimSync = dependencies.claimSync || claimFirstContactHistorySync;
@@ -46,6 +47,7 @@ export async function syncFirstContactHistory({
   const liveOccurredAt = validIso(currentMessage?.occurredAt) || new Date().toISOString();
   let pageCount = 0;
   try {
+    await prepareConversation();
     const normalized = [];
     for (let page = 0; page < maxPages && normalized.length < maxMessages; page += 1) {
       const response = await client.listMessagesByChat(chatId, {
@@ -61,6 +63,11 @@ export async function syncFirstContactHistory({
       pageCount += 1;
       for (const message of response.messages) {
         if (normalized.length >= maxMessages) break;
+        if (message?.chat_id !== chatId || String(message.chat_id).endsWith("@g.us")) {
+          const error = new Error("history chat mismatch");
+          error.code = "invalid_provider_response";
+          throw error;
+        }
         normalized.push(normalizeWhapiHistoryMessage({ channelAccountId, message }));
       }
       const total = Number(response.total);
@@ -71,7 +78,7 @@ export async function syncFirstContactHistory({
 
     const rows = normalized
       .filter((event) => event.message.externalId !== currentMessage?.messageId)
-      .map(toImportedMessage);
+      .map((event) => toImportedMessage(event, liveOccurredAt));
     const imported = importMessages({
       botId,
       conversationKey,
@@ -103,14 +110,14 @@ export async function syncFirstContactHistory({
   }
 }
 
-function toImportedMessage(event) {
+function toImportedMessage(event, fallbackOccurredAt) {
   const type = event.message.type;
   return {
     sourceKey: event.message.externalId,
     direction: event.message.fromMe ? "outbound" : "inbound",
     senderName: event.sender.displayName,
     content: event.message.text || ATTACHMENT_LABELS[type] || `[${type || "消息"}]`,
-    createdAt: event.occurredAt,
+    createdAt: validIso(event.occurredAt) || fallbackOccurredAt,
     rawPayload: {
       source: "whapi_chat_history",
       provider: "whapi",

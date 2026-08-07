@@ -1,11 +1,13 @@
 const importedSources = new Set([
   "legacy_customer_history",
-  "legacy_api_history"
+  "legacy_api_history",
+  "whapi_chat_history"
 ]);
 
 const sourceRank = new Map([
   ["local", 0],
   ["legacy_customer_history", 1],
+  ["whapi_chat_history", 1],
   ["legacy_api_history", 2]
 ]);
 

@@ -111,6 +111,7 @@ import {
   getChannelAccountByPublicId,
   getChannelAccountCredentials,
   getConversation,
+  getFirstContactHistorySync,
   getCockpitConfig,
   getCockpitDailyCounters,
   getCockpitBaselineCharts,
@@ -278,6 +279,7 @@ import { createWhapiAdapter } from "./channels/whapi/adapter.js";
 import { createWhapiClient } from "./channels/whapi/client.js";
 import { normalizeWhapiWebhook } from "./channels/whapi/mapper.js";
 import { syncFirstContactHistory } from "./first-contact-history-sync.js";
+import { shouldRunFirstContactHistorySync } from "./first-contact-history-trigger.js";
 import { buildWhapiWebhookSettings, buildWhapiWebhookUrl } from "./channels/whapi/webhook.js";
 import { mapWhapiHealth } from "./channels/whapi/health.js";
 import { CHANNEL_ERROR_CODES, ChannelError } from "./channels/errors.js";
@@ -1008,14 +1010,18 @@ async function persistInboundConversation({
   firstDiscovery = false,
   managedGroup = null
 }) {
-  const conversation = upsertConversation({
-    botId,
-    agentId: binding?.agentId || "",
-    conversationKey,
-    message,
-    resetPending,
-    skipFirstSeenDateTag: skipFirstSeenDateTag || firstDiscovery
-  });
+  let conversation = null;
+  const ensureConversationShell = () => {
+    conversation = upsertConversation({
+      botId,
+      agentId: binding?.agentId || "",
+      conversationKey,
+      message,
+      resetPending,
+      skipFirstSeenDateTag: skipFirstSeenDateTag || firstDiscovery
+    });
+    return conversation;
+  };
   if (firstDiscovery && binding?.agentId && message.metadata?.provider === "whapi") {
     const occurredAt = message.metadata?.occurredAt || new Date().toISOString();
     const historyStartedAt = Date.now();
@@ -1032,11 +1038,16 @@ async function persistInboundConversation({
         channelAccountId: message.metadata.channelAccountId,
         chatId: message.metadata.externalChatId,
         currentMessage: { messageId: message.messageId, occurredAt },
-        client: createWhapiClientForBot(botId),
+        client: {
+          async listMessagesByChat(chatId, options) {
+            return createWhapiClientForBot(botId).listMessagesByChat(chatId, options);
+          }
+        },
         owner: `incoming:${crypto.randomUUID()}`,
         maxPages: firstContactHistoryMaxPages,
         maxMessages: firstContactHistoryMaxMessages,
-        leaseMs: firstContactHistoryLeaseMs
+        leaseMs: firstContactHistoryLeaseMs,
+        prepareConversation: ensureConversationShell
       });
       const historyLog = {
         botId,
@@ -1070,6 +1081,7 @@ async function persistInboundConversation({
       });
     }
   }
+  if (!conversation) ensureConversationShell();
   if (managedGroup && binding?.agentId) {
     ensureManagedGroupConversationDateTag({
       botId,
@@ -4059,6 +4071,11 @@ async function processIncomingMessage({ botId, message, intake = null }) {
   const baseLog = messageLogFields({ botId, conversationKey, message });
   const logContext = { ...baseLog, messageKey };
   const hadConversation = Boolean(getConversation(conversationKey));
+  const historySyncRecord = isPrivateMessage(message)
+    ? getFirstContactHistorySync({ botId, conversationKey })
+    : null;
+  const shouldSyncFirstContactHistory = isPrivateMessage(message)
+    && shouldRunFirstContactHistorySync({ hadConversation, syncRecord: historySyncRecord });
   const flowMachine = getFlowMachineForBot(botId);
   logInfo("incoming.received", logContext);
 
@@ -4089,7 +4106,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         message,
         resetPending: resetState.resetPending,
         skipFirstSeenDateTag: false,
-        firstDiscovery: isPrivateMessage(message) && !hadConversation,
+        firstDiscovery: shouldSyncFirstContactHistory,
         managedGroup: group
       })
     : { conversation: null, messageRecord: null };

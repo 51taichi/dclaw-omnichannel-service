@@ -31,6 +31,30 @@ test("Whapi history imports are idempotent by provider message id", () => {
   }).length, 1);
 });
 
+test("Whapi history does not duplicate an already persisted realtime provider message", () => {
+  const botId = "realtime-history-bot";
+  const conversationKey = "whapi:chan:private:carol";
+  db.insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "inbound",
+    senderName: "Carol",
+    content: "already live",
+    rawPayload: { messageId: "provider-1" }
+  });
+  const inserted = db.insertImportedConversationMessages({
+    botId,
+    conversationKey,
+    source: "whapi_chat_history",
+    messages: [{
+      sourceKey: "provider-1", direction: "inbound", senderName: "Carol",
+      content: "already live", createdAt: new Date().toISOString(), rawPayload: {}
+    }]
+  });
+  assert.equal(inserted, 0);
+  assert.equal(db.listConversationMessages({ botId, conversationKey }).length, 1);
+});
+
 test("first-discovery tagging uses historical time and preserves an existing date tag", () => {
   const botId = "history-tag-bot";
   const agentId = "history-tag-agent";

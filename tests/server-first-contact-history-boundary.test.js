@@ -15,7 +15,9 @@ test("new private Whapi conversations synchronize history before persisting the 
   );
   assert.match(source, /skipFirstSeenDateTag:\s*skipFirstSeenDateTag \|\| firstDiscovery/);
   assert.match(source, /await persistInboundConversation\(\{/);
-  assert.match(source, /firstDiscovery:\s*isPrivateMessage\(message\) && !hadConversation/);
+  assert.match(source, /firstDiscovery:\s*shouldSyncFirstContactHistory/);
+  assert.match(source, /getFirstContactHistorySync\(\{ botId, conversationKey \}\)/);
+  assert.match(source, /prepareConversation:\s*ensureConversationShell/);
 });
 
 test("Whapi history lookup uses the configured account credentials and optional test base URL", () => {

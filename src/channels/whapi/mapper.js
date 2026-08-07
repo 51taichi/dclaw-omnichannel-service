@@ -63,7 +63,7 @@ export function normalizeWhapiWebhook({ channelAccountId, payload }) {
 }
 
 export function normalizeWhapiHistoryMessage({ channelAccountId, message }) {
-  return normalizeMessage(channelAccountId, "post", message);
+  return normalizeMessage(channelAccountId, "post", message, { allowInvalidTimestamp: true });
 }
 
 function normalizeGroupParticipants(channelAccountId, action, change) {
@@ -106,7 +106,7 @@ function normalizeGroup(channelAccountId, action, group) {
   };
 }
 
-function normalizeMessage(channelAccountId, action, message) {
+function normalizeMessage(channelAccountId, action, message, { allowInvalidTimestamp = false } = {}) {
   if (!isRecord(message)) invalidResponse();
   const externalId = requiredString(message.id);
   const chatId = requiredString(message.chat_id);
@@ -121,7 +121,7 @@ function normalizeMessage(channelAccountId, action, message) {
     channelAccountId,
     eventId: `messages.${action}:${externalId}`,
     eventType: action === "delete" ? "message.deleted" : action === "put" ? "message.updated" : fromMe ? "message.sent" : "message.received",
-    occurredAt: timestampToIso(message.timestamp),
+    occurredAt: allowInvalidTimestamp ? timestampToIsoOrEmpty(message.timestamp) : timestampToIso(message.timestamp),
     chat: {
       externalId: chatId,
       type: group ? "group" : "private",
@@ -232,6 +232,14 @@ function timestampToIso(value) {
   const date = new Date(milliseconds);
   if (!Number.isFinite(date.getTime())) invalidResponse();
   return date.toISOString();
+}
+
+function timestampToIsoOrEmpty(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "";
+  const milliseconds = numeric < 10_000_000_000 ? numeric * 1000 : numeric;
+  const date = new Date(milliseconds);
+  return Number.isFinite(date.getTime()) ? date.toISOString() : "";
 }
 
 function stringArray(value) {

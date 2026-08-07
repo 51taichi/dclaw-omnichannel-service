@@ -69,6 +69,23 @@ test("first-contact history sync paginates, deduplicates the live message, and t
   assert.equal(deps.state.tags[0].firstSeenAt, "2026-08-05T01:00:00.000Z");
 });
 
+test("first-contact history sync claims its durable lease before creating the conversation shell", async () => {
+  const order = [];
+  const deps = dependencies({
+    claimSync: () => { order.push("claim"); return { claimed: true, record: { status: "processing" } }; }
+  });
+  await syncFirstContactHistory({
+    botId: "bot-a", agentId: "agent-a", conversationKey: "key-order",
+    channelAccountId: "chan", chatId: "1555@s.whatsapp.net",
+    currentMessage: { messageId: "live", occurredAt: "2026-08-07T02:00:00.000Z" },
+    client: { listMessagesByChat: async () => ({ messages: [], count: 0, total: 0 }) },
+    owner: "worker-order",
+    prepareConversation: async () => { order.push("prepare"); },
+    dependencies: deps.value
+  });
+  assert.deepEqual(order, ["claim", "prepare"]);
+});
+
 test("first-contact history sync degrades safely when history is empty or fails", async () => {
   const emptyDeps = dependencies();
   const empty = await syncFirstContactHistory({
@@ -117,4 +134,38 @@ test("first-contact history sync honors page and message limits", async () => {
   });
   assert.equal(calls, 2);
   assert.equal(result.importedCount, 2);
+});
+
+test("first-contact history sync rejects messages belonging to another chat", async () => {
+  const deps = dependencies();
+  const result = await syncFirstContactHistory({
+    botId: "bot-a", agentId: "agent-a", conversationKey: "key-mixed",
+    channelAccountId: "chan", chatId: "1555@s.whatsapp.net",
+    currentMessage: { messageId: "live", occurredAt: "2026-08-07T03:00:00.000Z" },
+    client: { listMessagesByChat: async () => ({
+      messages: [{ ...historyMessage("foreign", 1785891600, "foreign"), chat_id: "1666@s.whatsapp.net" }],
+      count: 1, total: 1
+    }) },
+    owner: "worker-mixed", dependencies: deps.value
+  });
+  assert.equal(result.status, "failed");
+  assert.equal(deps.state.imported.length, 0);
+});
+
+test("history messages with invalid timestamps remain importable but cannot change the earliest date", async () => {
+  const deps = dependencies();
+  const result = await syncFirstContactHistory({
+    botId: "bot-a", agentId: "agent-a", conversationKey: "key-invalid-time",
+    channelAccountId: "chan", chatId: "1555@s.whatsapp.net",
+    currentMessage: { messageId: "live", occurredAt: "2026-08-07T03:00:00.000Z" },
+    client: { listMessagesByChat: async () => ({
+      messages: [{ ...historyMessage("unknown-time", 1785891600, "kept"), timestamp: "bad" }],
+      count: 1, total: 1
+    }) },
+    owner: "worker-invalid-time", dependencies: deps.value
+  });
+  assert.equal(result.status, "success");
+  assert.equal(result.earliestAt, "2026-08-07T03:00:00.000Z");
+  assert.equal(deps.state.imported[0].content, "kept");
+  assert.equal(deps.state.imported[0].createdAt, "2026-08-07T03:00:00.000Z");
 });
