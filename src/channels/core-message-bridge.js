@@ -6,6 +6,8 @@ const TEXT_TYPES = Object.freeze({
   audio: 3,
   voice: 3,
   video: 4,
+  gif: 4,
+  short: 4,
   document: 5,
   sticker: 5
 });
@@ -54,8 +56,8 @@ export function toCoreMessage(event) {
 
 function mediaCoreType(type) {
   if (type === "document" || type === "sticker") return "file";
-  return ["image", "audio", "voice", "video"].includes(type)
-    ? type === "voice" ? "audio" : type
+  return ["image", "audio", "voice", "video", "gif", "short"].includes(type)
+    ? type === "voice" ? "audio" : ["gif", "short"].includes(type) ? "video" : type
     : "";
 }
 

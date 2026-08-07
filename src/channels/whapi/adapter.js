@@ -28,12 +28,14 @@ export function createWhapiAdapter({ resolveAccountClient }) {
         throw new ChannelError(CHANNEL_ERROR_CODES.INVALID_CONTRACT);
       }
       const client = await clientFor(command);
+      const supportsCaption = ["image", "video", "document"].includes(command.messageType);
+      const supportsMentions = ["image", "video"].includes(command.messageType);
       return standardSendResult(await client.sendMedia(command.messageType, messageBase(command, {
         media,
-        ...(command.text ? { caption: command.text } : {}),
-        ...(attachment.fileName ? { filename: attachment.fileName } : {}),
+        ...(supportsCaption && command.text ? { caption: command.text } : {}),
+        ...(command.messageType === "document" && attachment.fileName ? { filename: attachment.fileName } : {}),
         ...(attachment.mimeType ? { mime_type: attachment.mimeType } : {})
-      })));
+      }, { mentions: supportsMentions })));
     },
     async getAccountHealth(account) {
       const client = await clientFor(account);
@@ -86,11 +88,11 @@ function accountId(value) {
   return id;
 }
 
-function messageBase(command, content) {
+function messageBase(command, content, { mentions = true } = {}) {
   return {
     to: command.externalChatId,
     ...content,
-    ...(command.mentions?.length ? { mentions: [...command.mentions] } : {}),
+    ...(mentions && command.mentions?.length ? { mentions: [...command.mentions] } : {}),
     ...(command.replyToExternalMessageId ? { quoted: command.replyToExternalMessageId } : {})
   };
 }

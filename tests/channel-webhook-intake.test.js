@@ -34,7 +34,8 @@ test("webhook intake authenticates, records once, and accepts duplicates", () =>
   assert.deepEqual(intake.handle(request), { accepted: true, duplicate: false });
   assert.deepEqual(intake.handle(request), { accepted: true, duplicate: true });
   assert.equal(recorded.length, 1);
-  assert.equal(recorded[0].idempotencyKey, "whapi:CHAN-A:messages.post:message-1");
+  assert.match(recorded[0].idempotencyKey, /^whapi:CHAN-A:messages\.post:[a-f0-9]{64}$/);
+  assert.equal(recorded[0].externalId, "message-1");
   assert.equal(JSON.stringify(recorded[0]).includes("valid-secret"), false);
   assert.equal(JSON.stringify(recorded[0]).includes("must-not-persist"), false);
 });
@@ -71,4 +72,30 @@ test("disabled accounts acknowledge without enqueueing and fallback identity is 
     deriveWebhookIdentity({ provider: "whapi", channelAccountId: "CHAN-A", method: "PATCH", body: { b: 2, a: 1 } }),
     deriveWebhookIdentity({ provider: "whapi", channelAccountId: "CHAN-A", method: "PATCH", body: { a: 1, b: 2 } })
   );
+});
+
+test("Whapi identities deduplicate exact retries without losing later entity transitions", () => {
+  const identity = (body) => deriveWebhookIdentity({
+    provider: "whapi", channelAccountId: "CHAN-A", method: "PUT", body
+  });
+  const delivered = {
+    event: { type: "statuses", method: "put" },
+    statuses: [{ id: "message-1", status: "delivered", timestamp: "1786000000" }]
+  };
+  const read = {
+    event: { type: "statuses", method: "put" },
+    statuses: [{ id: "message-1", status: "read", timestamp: "1786000001" }]
+  };
+  assert.equal(identity(delivered), identity({ statuses: delivered.statuses, event: delivered.event }));
+  assert.notEqual(identity(delivered), identity(read));
+});
+
+test("Whapi body mode uses the official event.method field in its identity", () => {
+  assert.match(deriveWebhookIdentity({
+    provider: "whapi", channelAccountId: "CHAN-A", method: "POST",
+    body: {
+      event: { type: "groups", method: "patch" },
+      groups_updates: [{ after_update: { id: "12001@g.us" } }]
+    }
+  }), /^whapi:CHAN-A:groups\.patch:[a-f0-9]{64}$/);
 });

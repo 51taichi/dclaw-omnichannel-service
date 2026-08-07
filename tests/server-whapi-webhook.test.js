@@ -76,10 +76,10 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
       from_name: "Ada", from_me: false, timestamp: 1786000000, text: { body: "hello" }
     }]
   };
-  const send = (secret, body = payload, eventType = "") => fetch(
+  const send = (secret, body = payload, eventType = "", method = "POST") => fetch(
     `http://127.0.0.1:${port}/webhooks/whapi/public-a${eventType ? `/${eventType}` : ""}`,
     {
-      method: "POST",
+      method,
       headers: { "content-type": "application/json", "x-dclaw-webhook-secret": secret },
       body: JSON.stringify(body)
     }
@@ -89,7 +89,7 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
   assert.deepEqual(await invalid.json(), { ok: false, message: "Webhook authentication failed" });
   const { event: _event, ...methodModePayload } = payload;
   const first = await send("valid-secret", methodModePayload, "messages");
-  const duplicate = await send("valid-secret");
+  const duplicate = await send("valid-secret", methodModePayload, "messages");
   assert.equal(first.status, 200, stderr);
   assert.deepEqual(await first.json(), { ok: true, duplicate: false });
   assert.deepEqual(await duplicate.json(), { ok: true, duplicate: true });
@@ -143,4 +143,28 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
   assert.equal(groupInspected.conversation.conversationKey, "whapi:CHAN-A:group:12001@g.us");
   assert.equal(groupInspected.group.currentName, "Support");
   assert.equal(groupInspected.group.externalGroupId, "12001@g.us");
+
+  const participantResponse = await send("valid-secret", {
+    channel_id: "CHAN-A",
+    groups_participants: [{
+      group_id: "12001@g.us",
+      participants: ["15550003@s.whatsapp.net"],
+      action: "add"
+    }]
+  }, "groups", "PUT");
+  assert.equal(participantResponse.status, 200, stderr);
+
+  let participantInspected;
+  for (let attempt = 0; attempt < 30; attempt += 1) {
+    const inspect = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+      import { getGroupByExternalId, listManagedGroupMembers } from "./src/db.js";
+      const group = getGroupByExternalId({ botId: "bot-a", provider: "whapi", channelAccountId: "CHAN-A", externalGroupId: "12001@g.us" });
+      console.log(JSON.stringify({ members: group ? listManagedGroupMembers({ botId: "bot-a", groupId: group.id }) : [] }));
+    `], { cwd: projectRoot, env: { ...process.env, DATABASE_PATH: databasePath }, encoding: "utf8" });
+    assert.equal(inspect.status, 0, inspect.stderr);
+    participantInspected = JSON.parse(inspect.stdout);
+    if (participantInspected.members.length === 1) break;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  assert.equal(participantInspected.members[0].externalId, "15550003@s.whatsapp.net");
 });

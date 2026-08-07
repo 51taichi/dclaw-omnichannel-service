@@ -1,7 +1,9 @@
 import { assertInboundEvents } from "../contract.js";
 import { CHANNEL_ERROR_CODES, ChannelError } from "../errors.js";
 
-const MEDIA_TYPES = new Set(["image", "video", "audio", "voice", "document", "sticker"]);
+const MEDIA_TYPES = new Set([
+  "image", "video", "gif", "short", "audio", "voice", "document", "documentWithCaption", "sticker"
+]);
 
 export function normalizeWhapiWebhook({ channelAccountId, payload }) {
   if (!isRecord(payload) || typeof channelAccountId !== "string" || channelAccountId.length === 0) {
@@ -11,11 +13,19 @@ export function normalizeWhapiWebhook({ channelAccountId, payload }) {
     invalidResponse();
   }
   const type = payload.event?.type;
-  const action = payload.event?.event;
+  const action = payload.event?.method || payload.event?.event;
   if (typeof type !== "string" || typeof action !== "string") invalidResponse();
 
   let events;
   if (type === "messages") {
+    if (action === "delete") {
+      const removedIdsValid = Array.isArray(payload.messages_removed)
+        && payload.messages_removed.every((id) => typeof id === "string" && id.length > 0);
+      const removedAllValid = typeof payload.messages_removed_all === "string"
+        && payload.messages_removed_all.length > 0;
+      if (!removedIdsValid && !removedAllValid) invalidResponse();
+      return Object.freeze([]);
+    }
     if (!Array.isArray(payload.messages)) invalidResponse();
     events = payload.messages.map((message) => normalizeMessage(channelAccountId, action, message));
   } else if (type === "statuses") {
@@ -23,13 +33,53 @@ export function normalizeWhapiWebhook({ channelAccountId, payload }) {
     events = payload.statuses.map((status) => normalizeStatus(channelAccountId, action, status));
   } else if (type === "channel" && isRecord(payload.health)) {
     events = [normalizeHealth(channelAccountId, action, payload.health)];
+  } else if (type === "channel" && action === "patch" && isRecord(payload.qr)) {
+    events = [normalizeQr(channelAccountId, action, payload.qr)];
   } else if (type === "groups") {
-    if (!Array.isArray(payload.groups)) invalidResponse();
-    events = payload.groups.map((group) => normalizeGroup(channelAccountId, action, group));
+    if (action === "post") {
+      if (!Array.isArray(payload.groups)) invalidResponse();
+      events = payload.groups.map((group) => normalizeGroup(channelAccountId, action, group));
+    } else if (action === "put") {
+      if (!Array.isArray(payload.groups_participants)) invalidResponse();
+      events = payload.groups_participants.map((change) => normalizeGroupParticipants(channelAccountId, action, change));
+    } else if (action === "patch") {
+      if (Array.isArray(payload.groups_updates)) {
+        events = payload.groups_updates.map((update) => {
+          if (!isRecord(update) || !isRecord(update.after_update)) invalidResponse();
+          return normalizeGroup(channelAccountId, action, update.after_update);
+        });
+      } else if (Array.isArray(payload.groups)) {
+        events = payload.groups.map((group) => normalizeGroup(channelAccountId, action, group));
+      } else invalidResponse();
+    } else {
+      return Object.freeze([]);
+    }
   } else {
     return Object.freeze([]);
   }
   return assertInboundEvents(events);
+}
+
+function normalizeGroupParticipants(channelAccountId, action, change) {
+  if (!isRecord(change)) invalidResponse();
+  const externalId = requiredString(change.group_id);
+  if (!Array.isArray(change.participants)
+    || change.participants.some((id) => typeof id !== "string" || id.length === 0)) invalidResponse();
+  const participantAction = requiredString(change.action);
+  return {
+    provider: "whapi",
+    channelAccountId,
+    eventId: `groups.${action}:${externalId}:${participantAction}:${change.participants.join(",")}`,
+    eventType: "group.updated",
+    occurredAt: new Date().toISOString(),
+    chat: { externalId, type: "group", displayName: "" },
+    sender: { externalId: "system", displayName: "" },
+    message: null,
+    rawPayload: {
+      ...change,
+      participant_delta: ["add", "remove", "promote", "demote"].includes(participantAction)
+    }
+  };
 }
 
 function normalizeGroup(channelAccountId, action, group) {
@@ -127,25 +177,45 @@ function normalizeHealth(channelAccountId, action, health) {
   };
 }
 
+function normalizeQr(channelAccountId, action, qr) {
+  const status = requiredString(qr.status);
+  const occurredAt = new Date().toISOString();
+  return {
+    provider: "whapi",
+    channelAccountId,
+    eventId: `channel.${action}:${channelAccountId}:qr:${status}:${qr.expire ?? ""}`,
+    eventType: "account.health",
+    occurredAt,
+    chat: { externalId: channelAccountId, type: "account", displayName: "" },
+    sender: { externalId: "system", displayName: "" },
+    message: null,
+    rawPayload: { status: { text: "QR" }, qr }
+  };
+}
+
 function messageText(message, type) {
   if (type === "text") return requiredString(message.text?.body, true);
-  if (MEDIA_TYPES.has(type)) return optionalString(message[type]?.caption);
+  if (MEDIA_TYPES.has(type)) return optionalString(message[mediaContentKey(type)]?.caption);
   return optionalString(message[type]?.body || message.text?.body);
 }
 
 function mediaAttachments(message, type) {
   if (!MEDIA_TYPES.has(type)) return [];
-  const media = message[type];
+  const media = message[mediaContentKey(type)];
   if (!isRecord(media)) invalidResponse();
   return [{
     externalId: requiredString(media.id),
-    type,
+    type: type === "documentWithCaption" ? "document" : type,
     mimeType: optionalString(media.mime_type),
     fileName: optionalString(media.file_name),
     size: finiteNumber(media.file_size),
     checksum: optionalString(media.sha256),
     temporaryUrl: optionalString(media.link)
   }];
+}
+
+function mediaContentKey(type) {
+  return type === "documentWithCaption" ? "document" : type;
 }
 
 function timestampToIso(value) {

@@ -35,6 +35,9 @@ export function buildWhapiWebhookSettings({ url, secret }) {
     callback_backoff_delay_ms: 3000,
     max_callback_backoff_delay_ms: 900000,
     callback_persist: true,
+    media: Object.freeze({
+      auto_download: Object.freeze(["image", "audio", "voice", "video", "document", "sticker"])
+    }),
     webhooks: Object.freeze([Object.freeze({
       url: parsed.toString(),
       mode: "method",

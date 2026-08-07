@@ -71,6 +71,25 @@ test("Whapi mapper preserves supported media metadata without credential URLs", 
   }]);
 });
 
+test("Whapi mapper accepts every documented inbound media variant used by the service", () => {
+  for (const [type, contentKey, normalizedType] of [
+    ["gif", "gif", "gif"],
+    ["short", "short", "short"],
+    ["documentWithCaption", "document", "document"]
+  ]) {
+    const [event] = normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
+      event: { type: "messages", event: "post" },
+      messages: [{
+        id: `message-${type}`, type, chat_id: "15551234567@s.whatsapp.net",
+        from: "15551234567", from_me: false, timestamp: 1786000000,
+        [contentKey]: { id: `media-${type}`, mime_type: "application/octet-stream", file_size: 12 }
+      }]
+    } });
+    assert.equal(event.message.attachments[0].type, normalizedType);
+    assert.equal(event.message.attachments[0].externalId, `media-${type}`);
+  }
+});
+
 test("Whapi mapper normalizes statuses and account health and ignores unknown events", () => {
   const statuses = normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
     event: { type: "statuses", event: "post" },
@@ -94,12 +113,16 @@ test("Whapi mapper normalizes statuses and account health and ignores unknown ev
 test("Whapi mapper normalizes group lifecycle snapshots", () => {
   const [event] = normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
     event: { type: "groups", event: "patch" },
-    groups: [{
-      id: "12001@g.us", name: "Renamed support", timestamp: 1786000000,
-      participants: [
-        { id: "15550001", name: "Ada", rank: "admin" },
-        { id: "15550002", name: "Grace", rank: "member" }
-      ]
+    groups_updates: [{
+      changes: ["name"],
+      before_update: { id: "12001@g.us", name: "Support", timestamp: 1785999999, participants: [] },
+      after_update: {
+        id: "12001@g.us", name: "Renamed support", timestamp: 1786000000,
+        participants: [
+          { id: "15550001", name: "Ada", rank: "admin" },
+          { id: "15550002", name: "Grace", rank: "member" }
+        ]
+      }
     }]
   } });
 
@@ -111,6 +134,53 @@ test("Whapi mapper normalizes group lifecycle snapshots", () => {
   assert.deepEqual(event.rawPayload.participants.map((item) => item.id), ["15550001", "15550002"]);
 });
 
+test("Whapi mapper retains legacy groups arrays as a patch fallback", () => {
+  const [event] = normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
+    event: { type: "groups", event: "patch" },
+    groups: [{ id: "12001@g.us", name: "Legacy support", timestamp: 1786000000, participants: [] }]
+  } });
+  assert.equal(event.eventType, "group.updated");
+  assert.equal(event.chat.displayName, "Legacy support");
+});
+
+test("Whapi mapper normalizes official group participant deltas", () => {
+  const [event] = normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
+    event: { type: "groups", event: "put" },
+    groups_participants: [{
+      group_id: "12001@g.us",
+      participants: ["15550003@s.whatsapp.net"],
+      action: "add"
+    }]
+  } });
+
+  assert.equal(event.eventType, "group.updated");
+  assert.equal(event.chat.externalId, "12001@g.us");
+  assert.deepEqual(event.rawPayload, {
+    group_id: "12001@g.us",
+    participants: ["15550003@s.whatsapp.net"],
+    action: "add",
+    participant_delta: true
+  });
+});
+
+test("Whapi mapper accepts official message removals and maps QR callbacks", () => {
+  assert.deepEqual(normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
+    event: { type: "messages", event: "delete" },
+    messages_removed: ["message-1"]
+  } }), []);
+  assert.deepEqual(normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
+    event: { type: "messages", method: "delete" },
+    messages_removed_all: "15551234567@s.whatsapp.net"
+  } }), []);
+
+  const [event] = normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
+    event: { type: "channel", event: "patch" },
+    qr: { status: "WAITING", type: "qr", expire: 60 }
+  } });
+  assert.equal(event.eventType, "account.health");
+  assert.equal(event.rawPayload.status.text, "QR");
+});
+
 test("Whapi mapper rejects a channel mismatch and malformed documented events", () => {
   assert.throws(() => normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
     channel_id: "CHAN-B", event: { type: "messages", event: "post" }, messages: []
@@ -118,4 +188,17 @@ test("Whapi mapper rejects a channel mismatch and malformed documented events", 
   assert.throws(() => normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
     event: { type: "messages", event: "post" }, messages: [{ id: "missing-fields" }]
   } }), { code: "invalid_provider_response" });
+});
+
+test("Whapi mapper accepts the official event.method field used by body mode", () => {
+  const [event] = normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
+    channel_id: "CHAN-A",
+    event: { type: "messages", method: "post" },
+    messages: [{
+      id: "official-method", type: "text", chat_id: "15551234567@s.whatsapp.net",
+      from: "15551234567", from_me: false, timestamp: 1786000000,
+      text: { body: "hello" }
+    }]
+  } });
+  assert.equal(event.eventId, "messages.post:official-method");
 });

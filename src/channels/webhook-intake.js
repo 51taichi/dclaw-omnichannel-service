@@ -47,10 +47,12 @@ export function deriveWebhookIdentity({ provider, channelAccountId, method, body
 
 function webhookIdentityParts({ provider, channelAccountId, method, body }) {
   const type = stringValue(body?.event?.type) || "unknown";
-  const action = stringValue(body?.event?.event) || String(method || "unknown").toLowerCase();
+  const action = stringValue(body?.event?.method)
+    || stringValue(body?.event?.event)
+    || String(method || "unknown").toLowerCase();
   const eventKind = `${type}.${action}`;
   const externalId = firstExternalId(body, type);
-  const stableId = externalId || crypto.createHash("sha256").update(stableJson(body)).digest("hex");
+  const stableId = crypto.createHash("sha256").update(stableJson(body)).digest("hex");
   return {
     eventKind,
     externalId,
@@ -59,13 +61,19 @@ function webhookIdentityParts({ provider, channelAccountId, method, body }) {
 }
 
 function firstExternalId(body, type) {
-  const candidates = [body?.[type], body?.messages, body?.statuses, body?.groups];
+  const candidates = [
+    body?.[type], body?.messages, body?.messages_updates, body?.messages_removed, body?.messages_removed_all,
+    body?.statuses, body?.groups, body?.groups_participants, body?.groups_updates
+  ];
   for (const candidate of candidates) {
     const value = Array.isArray(candidate) ? candidate[0] : candidate;
+    if (typeof value === "string" && value.length > 0) return value;
     for (const key of ["id", "message_id", "group_id"]) {
       const id = stringValue(value?.[key]);
       if (id) return id;
     }
+    const updatedId = stringValue(value?.after_update?.id);
+    if (updatedId) return updatedId;
   }
   return "";
 }

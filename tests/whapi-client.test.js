@@ -42,6 +42,39 @@ test("Whapi client sends authenticated JSON requests to exact endpoints", async 
   assert.equal(calls.every(({ options }) => options.signal instanceof AbortSignal), true);
 });
 
+test("Whapi client covers every HTTP operation used by the omnichannel service", async () => {
+  const calls = [];
+  const client = createWhapiClient({
+    token: "secret-token",
+    fetchImpl: async (url, options) => {
+      calls.push({ url, method: options.method, body: options.body ? JSON.parse(options.body) : undefined });
+      return response(200, {});
+    }
+  });
+
+  await client.getHealth();
+  await client.getSettings();
+  await client.updateSettings({ webhooks: [] });
+  await client.listGroups({ count: 100, offset: 0 });
+  await client.createGroup({ subject: "Support", participants: ["15550001"] });
+  await client.addGroupParticipants("12001@g.us", ["15550002"]);
+
+  assert.deepEqual(calls, [
+    { url: "https://gate.whapi.cloud/health", method: "GET", body: undefined },
+    { url: "https://gate.whapi.cloud/settings", method: "GET", body: undefined },
+    { url: "https://gate.whapi.cloud/settings", method: "PATCH", body: { webhooks: [] } },
+    { url: "https://gate.whapi.cloud/groups?count=100&offset=0", method: "GET", body: undefined },
+    {
+      url: "https://gate.whapi.cloud/groups", method: "POST",
+      body: { subject: "Support", participants: ["15550001"] }
+    },
+    {
+      url: "https://gate.whapi.cloud/groups/12001%40g.us/participants", method: "POST",
+      body: { participants: ["15550002"] }
+    }
+  ]);
+});
+
 test("Whapi client classifies failures without exposing provider bodies or token", async () => {
   const cases = [
     [401, "authentication_required", false],

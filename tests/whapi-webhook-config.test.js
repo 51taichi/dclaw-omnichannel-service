@@ -20,6 +20,7 @@ test("Whapi webhook settings enable durable required events and a custom secret 
     callback_backoff_delay_ms: 3000,
     max_callback_backoff_delay_ms: 900000,
     callback_persist: true,
+    media: { auto_download: ["image", "audio", "voice", "video", "document", "sticker"] },
     webhooks: [{
       url,
       mode: "method",

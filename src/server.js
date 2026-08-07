@@ -125,6 +125,7 @@ import {
   getFlowSession,
   getFlowSessionForBot,
   getGroupByConversationKey,
+  getGroupByExternalId,
   getGroupById,
   getGroupAutomationTask,
   getGroupAutomationOccurrence,
@@ -511,7 +512,7 @@ const receiveWhapiWebhook = (req, res) => {
   try {
     const eventType = String(res.locals.whapiEventType || "");
     const body = eventType
-      ? { ...req.body, event: { type: eventType, event: req.method.toLowerCase() } }
+      ? { ...req.body, event: { type: eventType, method: req.method.toLowerCase() } }
       : req.body;
     const result = whapiWebhookIntake.handle({
       publicId: req.params.publicId,
@@ -7167,16 +7168,41 @@ async function dispatchChannelWebhookEvent(event, envelope) {
     return;
   }
   if (event.eventType === "group.created" || event.eventType === "group.updated") {
+    const existingGroup = getGroupByExternalId({
+      botId: envelope.botId,
+      provider: event.provider,
+      channelAccountId: event.channelAccountId,
+      externalGroupId: event.chat.externalId
+    });
     const group = createOrGetGroup({
       botId: envelope.botId,
       provider: event.provider,
       channelAccountId: event.channelAccountId,
       externalGroupId: event.chat.externalId,
-      currentName: event.chat.displayName || event.chat.externalId,
+      currentName: event.chat.displayName || existingGroup?.currentName || event.chat.externalId,
       source: "whapi",
       discoveredAt: event.occurredAt
     });
-    if (Array.isArray(event.rawPayload?.participants)) {
+    if (event.rawPayload?.participant_delta === true) {
+      const members = new Map(listManagedGroupMembers({ botId: envelope.botId, groupId: group.id })
+        .map((member) => [member.externalId, member]));
+      const participantIds = event.rawPayload.participants;
+      if (event.rawPayload.action === "remove") {
+        for (const externalId of participantIds) members.delete(externalId);
+      } else if (["add", "promote", "demote"].includes(event.rawPayload.action)) {
+        for (const externalId of participantIds) {
+          const existing = members.get(externalId);
+          members.set(externalId, {
+            externalId,
+            displayName: existing?.displayName || "",
+            role: event.rawPayload.action === "promote"
+              ? "admin"
+              : event.rawPayload.action === "demote" ? "member" : existing?.role || "member"
+          });
+        }
+      }
+      replaceManagedGroupMembers({ botId: envelope.botId, groupId: group.id, members: [...members.values()] });
+    } else if (Array.isArray(event.rawPayload?.participants)) {
       replaceManagedGroupMembers({
         botId: envelope.botId,
         groupId: group.id,

@@ -63,6 +63,19 @@ test("media translation exposes the first durable-download candidate to existing
   assert.equal(message.atMe, "true");
 });
 
+test("gif and short video map to supported core media types", () => {
+  for (const [type, textType, fileType] of [["gif", 4, "video"], ["short", 4, "video"]]) {
+    const message = toCoreMessage(event({ message: {
+      externalId: `message-${type}`, type, text: "",
+      attachments: [{ type, temporaryUrl: `https://cdn.example/${type}.mp4`, fileName: "" }],
+      quotedMessageId: "", mentions: [], fromMe: false
+    } }));
+    assert.equal(message.textType, textType);
+    assert.equal(message.fileType, fileType);
+    assert.equal(message.fileUrl, `https://cdn.example/${type}.mp4`);
+  }
+});
+
 test("outbound and non-message events do not enter the core inbound message path", () => {
   assert.equal(toCoreMessage(event({ message: { ...event().message, fromMe: true } })), null);
   assert.equal(toCoreMessage(event({ eventType: "account.health", message: null })), null);

@@ -63,9 +63,19 @@ test("Whapi adapter selects media endpoints and exposes groups and participants"
     caption: "caption",
     filename: "a.pdf",
     mime_type: "application/pdf",
-    mentions: ["456@s.whatsapp.net"],
     quoted: "quoted-1"
   }]);
   assert.equal(result.externalMessageId, "media-1");
+  await adapter.sendMedia(command({
+    messageType: "voice",
+    text: "unsupported voice caption",
+    attachments: [{ url: "https://cdn.example/a.ogg", fileName: "a.ogg", mimeType: "audio/ogg" }]
+  }));
+  assert.deepEqual(calls[1], ["voice", {
+    to: "123@s.whatsapp.net",
+    media: "https://cdn.example/a.ogg",
+    mime_type: "audio/ogg",
+    quoted: "quoted-1"
+  }]);
   assert.deepEqual(await adapter.listGroupParticipants({ channelAccountId: "CHAN-A" }, "group-1"), [{ id: "p1" }]);
 });
