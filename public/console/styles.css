@@ -5104,6 +5104,38 @@ html.has-bot-context .action-toolbox-toggle:hover {
   text-overflow: ellipsis;
 }
 
+.manual-message-delivery-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  max-width: 100%;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.manual-message-delivery-status > span {
+  min-width: 1.1em;
+  text-align: right;
+}
+
+.manual-message-delivery-status.is-sent,
+.manual-message-delivery-status.is-delivered {
+  color: color-mix(in srgb, var(--ok) 78%, var(--muted));
+}
+
+.manual-message-delivery-status.is-read {
+  color: #2187d7;
+}
+
+.manual-message-delivery-status.is-failed {
+  color: color-mix(in srgb, var(--danger) 84%, var(--text));
+}
+
 .chat-text {
   white-space: pre-wrap;
 }

@@ -5045,6 +5045,22 @@ async function toggleSelectedConversationHandoff(conversationKey = state.selecte
   toast(nextStatus === "human" ? "已切换为人工接手" : "已恢复 AI 接手");
 }
 
+const manualMessageDeliveryStates = Object.freeze({
+  pending: { label: "发送中", mark: "", tone: "pending" },
+  sent: { label: "已发送", mark: "✓", tone: "sent" },
+  delivered: { label: "已送达", mark: "✓✓", tone: "delivered" },
+  read: { label: "已读", mark: "✓✓", tone: "read" },
+  played: { label: "已播放", mark: "", tone: "read" },
+  failed: { label: "发送失败", mark: "!", tone: "failed" }
+});
+
+function renderManualMessageDeliveryStatus(message) {
+  if (message?.direction !== "outbound" || message?.rawPayload?.source !== "manual_reply") return "";
+  const state = manualMessageDeliveryStates[String(message.deliveryStatus || "").toLowerCase()];
+  if (!state) return "";
+  return `<span class="manual-message-delivery-status is-${state.tone}"><span aria-hidden="true">${state.mark}</span>${state.label}</span>`;
+}
+
 function renderChatMessages(messages, {
   anchorMessageId = "",
   alertTagName = "",
@@ -5070,6 +5086,7 @@ function renderChatMessages(messages, {
                 <time>${escapeHtml(formatDisplayDateTime(message.createdAt))}</time>
               </div>
               ${renderChatMessageContent(message)}
+              ${renderManualMessageDeliveryStatus(message)}
               ${isEvidence && alertTagName
                 ? `<div class="tag-evidence-note">${icon("tag")}<span>此消息触发「${escapeHtml(alertTagName)}」标签</span></div>`
                 : ""}
