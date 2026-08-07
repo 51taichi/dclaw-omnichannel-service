@@ -5055,7 +5055,17 @@ const manualMessageDeliveryStates = Object.freeze({
 });
 
 function renderManualMessageDeliveryStatus(message) {
-  if (message?.direction !== "outbound" || message?.rawPayload?.source !== "manual_reply") return "";
+  if (message?.direction !== "outbound") return "";
+  const rawPayload = message?.rawPayload || {};
+  const isManualReply = rawPayload.source === "manual_reply";
+  const hasChannelMessageIdentity = Boolean(
+    String(rawPayload.messageId || rawPayload.channelMessageId || "").trim()
+    || (
+      Array.isArray(rawPayload.channelMessageIds)
+      && rawPayload.channelMessageIds.some((id) => String(id || "").trim())
+    )
+  );
+  if (!isManualReply && !hasChannelMessageIdentity) return "";
   const state = manualMessageDeliveryStates[String(message.deliveryStatus || "").toLowerCase()];
   if (!state) return "";
   return `<span class="manual-message-delivery-status is-${state.tone}"><span aria-hidden="true">${state.mark}</span>${state.label}</span>`;

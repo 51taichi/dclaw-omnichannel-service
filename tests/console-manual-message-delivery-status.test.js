@@ -69,12 +69,23 @@ test("manual WhatsApp replies render the fixed delivery-status whitelist", () =>
   }
 });
 
-test("delivery status is rendered only for outbound manual replies and ignores unknown values", () => {
+test("delivery status is rendered for outbound manual and identified AI replies", () => {
   const render = deliveryStatusRenderer();
 
   assert.equal(render({ direction: "inbound", rawPayload: { source: "manual_reply" }, deliveryStatus: "read" }), "");
-  assert.equal(render({ direction: "outbound", rawPayload: { source: "ai_reply" }, deliveryStatus: "read" }), "");
+  assert.equal(
+    render({
+      direction: "outbound",
+      rawPayload: { source: "agent_reply", channelMessageIds: ["ai-message-1"] },
+      deliveryStatus: "delivered"
+    }),
+    '<span class="manual-message-delivery-status is-delivered"><span aria-hidden="true">✓✓</span>已送达</span>'
+  );
+  assert.equal(render({ direction: "inbound", rawPayload: { channelMessageIds: ["incoming"] }, deliveryStatus: "read" }), "");
+  assert.equal(render({ direction: "outbound", rawPayload: { source: "agent_reply" }, deliveryStatus: "read" }), "");
+  assert.equal(render({ direction: "outbound", rawPayload: { channelMessageIds: [""] }, deliveryStatus: "read" }), "");
   assert.equal(render({ direction: "outbound", rawPayload: { source: "manual_reply" }, deliveryStatus: "unexpected" }), "");
+  assert.equal(render({ direction: "outbound", rawPayload: { channelMessageId: "legacy-ai" }, deliveryStatus: "unexpected" }), "");
   assert.equal(render({ direction: "outbound", rawPayload: { source: "manual_reply" } }), "");
 
   const chatRendererStart = app.indexOf("function renderChatMessages(");
