@@ -6740,12 +6740,25 @@ app.post(
       targets: [target],
       content
     });
+    const channelAccount = getChannelAccount(botId);
+    if (result.accepted !== true) {
+      const error = new ChannelError(CHANNEL_ERROR_CODES.PERMANENT_PROVIDER_REJECTION, undefined, {
+        provider: channelAccount?.provider,
+        channelAccountId: channelAccount?.channelId,
+        operation: "manual_reply",
+        retryable: false
+      });
+      error.status = 422;
+      throw error;
+    }
     const messageId = result.data || "";
     const senderName = binding.botName || binding.agentName || "人工客服";
     const createdAt = new Date().toISOString();
     const rawPayload = {
       source: "manual_reply",
       messageId,
+      provider: channelAccount?.provider || "",
+      channelAccountId: channelAccount?.channelId || "",
       channelResponse: result
     };
 
@@ -6764,7 +6777,9 @@ app.post(
       messageId,
       targetName: target,
       content,
-      channelResponse: rawPayload
+      provider: rawPayload.provider,
+      channelAccountId: rawPayload.channelAccountId,
+      channelResponse: result
     });
     logInfo("manual_reply.sent", {
       botId,
@@ -7176,6 +7191,7 @@ async function dispatchChannelWebhookEvent(event, envelope) {
   }
   if (event.eventType.startsWith("status.")) {
     updateOutgoingMessageChannelStatus({
+      botId: envelope.botId,
       provider: event.provider,
       channelAccountId: event.channelAccountId,
       messageId: event.message.externalId,

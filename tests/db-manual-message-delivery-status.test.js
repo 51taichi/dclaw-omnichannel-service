@@ -17,13 +17,14 @@ const {
 } = await import("../src/db.js");
 
 function insertManualReply({ botId, conversationKey, messageId, content = "人工回复" }) {
+  const [provider = "", channelAccountId = ""] = String(conversationKey).split(":");
   return insertConversationMessage({
     botId,
     conversationKey,
     direction: "outbound",
     senderName: "人工客服",
     content,
-    rawPayload: { source: "manual_reply", messageId }
+    rawPayload: { source: "manual_reply", messageId, provider, channelAccountId }
   });
 }
 
@@ -67,6 +68,7 @@ test("manual replies expose their delivery status while other messages do not", 
     channelResponse: {}
   });
   updateOutgoingMessageChannelStatus({
+    botId,
     provider: "whapi",
     channelAccountId: "channel-a",
     messageId: "message-1",
@@ -93,6 +95,8 @@ test("manual reply delivery lookup stays within its bot and conversation", () =>
     messageId: "shared-message-id",
     targetName: "customer-scope",
     content: "正确的发送记录",
+    provider: "whapi",
+    channelAccountId: "channel-a",
     deliveryStatus: "sent",
     channelResponse: {}
   });
@@ -102,6 +106,8 @@ test("manual reply delivery lookup stays within its bot and conversation", () =>
     messageId: "shared-message-id",
     targetName: "customer-scope",
     content: "不同 Bot 的发送记录",
+    provider: "whapi",
+    channelAccountId: "channel-a",
     deliveryStatus: "failed",
     channelResponse: {}
   });
@@ -111,6 +117,8 @@ test("manual reply delivery lookup stays within its bot and conversation", () =>
     messageId: "shared-message-id",
     targetName: "other-customer",
     content: "不同会话的发送记录",
+    provider: "whapi",
+    channelAccountId: "channel-a",
     deliveryStatus: "read",
     channelResponse: {}
   });
@@ -118,6 +126,62 @@ test("manual reply delivery lookup stays within its bot and conversation", () =>
   const [message] = listConversationMessages({ botId, conversationKey, limit: 10 });
   assert.equal(message.id, manualMessage.id);
   assert.equal(message.deliveryStatus, "sent");
+});
+
+test("manual reply delivery lookup uses its saved provider and channel account", () => {
+  const botId = "bot-provider-scope";
+  const conversationKey = "whapi:channel-authoritative:private:customer-provider-scope";
+  const manualMessage = insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "outbound",
+    senderName: "人工客服",
+    content: "人工回复",
+    rawPayload: {
+      source: "manual_reply",
+      messageId: "provider-shared-message-id",
+      provider: "whapi",
+      channelAccountId: "channel-authoritative"
+    }
+  });
+
+  insertOutgoingMessage({
+    botId,
+    conversationKey,
+    messageId: "provider-shared-message-id",
+    targetName: "customer-provider-scope",
+    content: "正确账号的发送记录",
+    provider: "whapi",
+    channelAccountId: "channel-authoritative",
+    deliveryStatus: "delivered",
+    channelResponse: {}
+  });
+  insertOutgoingMessage({
+    botId,
+    conversationKey,
+    messageId: "provider-shared-message-id",
+    targetName: "customer-provider-scope",
+    content: "错误 provider 的更新记录",
+    provider: "other-provider",
+    channelAccountId: "channel-authoritative",
+    deliveryStatus: "failed",
+    channelResponse: {}
+  });
+  insertOutgoingMessage({
+    botId,
+    conversationKey,
+    messageId: "provider-shared-message-id",
+    targetName: "customer-provider-scope",
+    content: "错误账号的更新记录",
+    provider: "whapi",
+    channelAccountId: "channel-other",
+    deliveryStatus: "read",
+    channelResponse: {}
+  });
+
+  const [message] = listConversationMessages({ botId, conversationKey, limit: 10 });
+  assert.equal(message.id, manualMessage.id);
+  assert.equal(message.deliveryStatus, "delivered");
 });
 
 test("manual reply delivery lookup selects the newest outgoing record", () => {
@@ -131,6 +195,8 @@ test("manual reply delivery lookup selects the newest outgoing record", () => {
     messageId: "replayed-message-id",
     targetName: "customer-latest",
     content: "旧记录",
+    provider: "whapi",
+    channelAccountId: "channel-a",
     deliveryStatus: "sent",
     channelResponse: {}
   });
@@ -140,6 +206,8 @@ test("manual reply delivery lookup selects the newest outgoing record", () => {
     messageId: "replayed-message-id",
     targetName: "customer-latest",
     content: "新记录",
+    provider: "whapi",
+    channelAccountId: "channel-a",
     deliveryStatus: "read",
     channelResponse: {}
   });
@@ -161,6 +229,8 @@ test("manual reply hides empty and unknown outgoing delivery statuses", () => {
     messageId: "empty-status",
     targetName: "customer-status-filter",
     content: "空状态",
+    provider: "whapi",
+    channelAccountId: "channel-a",
     channelResponse: {}
   });
   insertOutgoingMessage({
@@ -169,6 +239,8 @@ test("manual reply hides empty and unknown outgoing delivery statuses", () => {
     messageId: "unknown-status",
     targetName: "customer-status-filter",
     content: "未知状态",
+    provider: "whapi",
+    channelAccountId: "channel-a",
     deliveryStatus: "unexpected",
     channelResponse: {}
   });
@@ -192,6 +264,8 @@ test("manual reply delivery status is attached in anchored message windows", () 
     messageId: "around-message-id",
     targetName: "customer-around",
     content: "窗口状态",
+    provider: "whapi",
+    channelAccountId: "channel-a",
     deliveryStatus: "played",
     channelResponse: {}
   });
@@ -208,18 +282,30 @@ test("manual reply delivery status is attached in anchored message windows", () 
 
 test("manual reply delivery lookup has a matching scoped index", () => {
   const sqlite = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
-  const columns = sqlite.prepare("PRAGMA index_xinfo(idx_outgoing_messages_delivery_lookup)").all()
+  const columns = sqlite.prepare("PRAGMA index_xinfo(idx_outgoing_messages_manual_delivery_lookup)").all()
     .filter((column) => column.key === 1)
     .map((column) => ({ name: column.name, descending: column.desc }));
   const plan = sqlite.prepare(`
     EXPLAIN QUERY PLAN
-    SELECT message_id, delivery_status, delivery_error, delivery_updated_at
+    SELECT provider, channel_account_id, message_id,
+           delivery_status, delivery_error, delivery_updated_at
     FROM outgoing_messages
     WHERE bot_id = ?
       AND conversation_key = ?
+      AND provider IN (?, ?)
+      AND channel_account_id IN (?, ?)
       AND message_id IN (?, ?)
-    ORDER BY message_id ASC, id DESC
-  `).all("bot-index", "whapi:channel-a:private:customer-index", "first", "second")
+    ORDER BY provider ASC, channel_account_id ASC, message_id ASC, id DESC
+  `).all(
+    "bot-index",
+    "whapi:channel-a:private:customer-index",
+    "whapi",
+    "other-provider",
+    "channel-a",
+    "channel-b",
+    "first",
+    "second"
+  )
     .map((row) => row.detail)
     .join("\n");
   sqlite.close();
@@ -227,10 +313,12 @@ test("manual reply delivery lookup has a matching scoped index", () => {
   assert.deepEqual(columns, [
     { name: "bot_id", descending: 0 },
     { name: "conversation_key", descending: 0 },
+    { name: "provider", descending: 0 },
+    { name: "channel_account_id", descending: 0 },
     { name: "message_id", descending: 0 },
     { name: "id", descending: 1 }
   ]);
-  assert.match(plan, /USING INDEX idx_outgoing_messages_delivery_lookup/);
+  assert.match(plan, /USING INDEX idx_outgoing_messages_manual_delivery_lookup/);
 });
 
 test("anchored message windows expose failed manual delivery errors after collecting neighbors", () => {
@@ -269,6 +357,7 @@ test("anchored message windows expose failed manual delivery errors after collec
     channelResponse: {}
   });
   updateOutgoingMessageChannelStatus({
+    botId,
     provider: "whapi",
     channelAccountId: "channel-a",
     messageId: "failed-around-message",

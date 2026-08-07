@@ -939,8 +939,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_outgoing_messages_cockpit_backfill
   ON outgoing_messages (bot_id, created_at, id);
 
-  CREATE INDEX IF NOT EXISTS idx_outgoing_messages_delivery_lookup
-  ON outgoing_messages (bot_id, conversation_key, message_id, id DESC);
+  CREATE INDEX IF NOT EXISTS idx_outgoing_messages_manual_delivery_lookup
+  ON outgoing_messages (
+    bot_id, conversation_key, provider, channel_account_id, message_id, id DESC
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_outgoing_messages_callback_lookup
+  ON outgoing_messages (bot_id, provider, channel_account_id, message_id, id DESC);
 
   CREATE INDEX IF NOT EXISTS idx_flow_sessions_cockpit_backfill
   ON flow_sessions (bot_id, last_message_at, id);
@@ -4362,6 +4367,7 @@ const CHANNEL_DELIVERY_STATUS_RANK = Object.freeze({
 });
 
 export function updateOutgoingMessageChannelStatus({
+  botId,
   provider,
   channelAccountId,
   messageId,
@@ -4374,9 +4380,9 @@ export function updateOutgoingMessageChannelStatus({
   }
   const row = db.prepare(`
     SELECT * FROM outgoing_messages
-    WHERE provider = ? AND channel_account_id = ? AND message_id = ?
+    WHERE bot_id = ? AND provider = ? AND channel_account_id = ? AND message_id = ?
     ORDER BY id DESC LIMIT 1
-  `).get(provider, channelAccountId, messageId);
+  `).get(botId, provider, channelAccountId, messageId);
   if (!row) return null;
   const current = row.delivery_status || "";
   if (CHANNEL_DELIVERY_STATUS_RANK[normalizedStatus] > CHANNEL_DELIVERY_STATUS_RANK[current]) {
@@ -7489,32 +7495,55 @@ const MANUAL_MESSAGE_DELIVERY_STATUSES = new Set([
 
 function attachManualMessageDeliveryStatuses(messages, { botId, conversationKey }) {
   if (!botId || !conversationKey || !messages.length) return messages;
-  const messageIds = [...new Set(messages
-    .filter((message) => message.rawPayload?.source === "manual_reply")
-    .map((message) => String(message.rawPayload?.messageId || "").trim())
-    .filter(Boolean))];
-  if (!messageIds.length) return messages;
+  const channelIdentity = String(conversationKey).match(/^([^:]+):([^:]+):(private|group):/);
+  const identityFor = (message) => {
+    if (message.rawPayload?.source !== "manual_reply") return null;
+    const messageId = String(message.rawPayload?.messageId || "").trim();
+    const provider = String(message.rawPayload?.provider || channelIdentity?.[1] || "").trim();
+    const channelAccountId = String(
+      message.rawPayload?.channelAccountId || channelIdentity?.[2] || ""
+    ).trim();
+    return messageId && provider && channelAccountId
+      ? { messageId, provider, channelAccountId }
+      : null;
+  };
+  const identities = messages.map(identityFor).filter(Boolean);
+  if (!identities.length) return messages;
 
-  const placeholders = messageIds.map(() => "?").join(", ");
+  const providers = [...new Set(identities.map((identity) => identity.provider))];
+  const channelAccountIds = [...new Set(identities.map((identity) => identity.channelAccountId))];
+  const messageIds = [...new Set(identities.map((identity) => identity.messageId))];
+  const placeholders = (values) => values.map(() => "?").join(", ");
   const rows = db.prepare(`
-    SELECT message_id, delivery_status, delivery_error, delivery_updated_at
+    SELECT provider, channel_account_id, message_id,
+           delivery_status, delivery_error, delivery_updated_at
     FROM outgoing_messages
     WHERE bot_id = ?
       AND conversation_key = ?
-      AND message_id IN (${placeholders})
-    ORDER BY message_id ASC, id DESC
-  `).all(botId, conversationKey, ...messageIds);
-  const latestByMessageId = new Map();
+      AND provider IN (${placeholders(providers)})
+      AND channel_account_id IN (${placeholders(channelAccountIds)})
+      AND message_id IN (${placeholders(messageIds)})
+    ORDER BY provider ASC, channel_account_id ASC, message_id ASC, id DESC
+  `).all(botId, conversationKey, ...providers, ...channelAccountIds, ...messageIds);
+  const identityKey = ({ provider, channelAccountId, messageId }) => (
+    JSON.stringify([provider, channelAccountId, messageId])
+  );
+  const latestByIdentity = new Map();
   for (const row of rows) {
-    if (!latestByMessageId.has(row.message_id)) {
-      latestByMessageId.set(row.message_id, row);
+    const key = identityKey({
+      provider: row.provider,
+      channelAccountId: row.channel_account_id,
+      messageId: row.message_id
+    });
+    if (!latestByIdentity.has(key)) {
+      latestByIdentity.set(key, row);
     }
   }
 
   for (const message of messages) {
-    if (message.rawPayload?.source !== "manual_reply") continue;
-    const messageId = String(message.rawPayload?.messageId || "").trim();
-    const outgoing = latestByMessageId.get(messageId);
+    const identity = identityFor(message);
+    if (!identity) continue;
+    const outgoing = latestByIdentity.get(identityKey(identity));
     if (!outgoing || !MANUAL_MESSAGE_DELIVERY_STATUSES.has(outgoing.delivery_status)) continue;
     message.deliveryStatus = outgoing.delivery_status;
     message.deliveryError = outgoing.delivery_error || "";

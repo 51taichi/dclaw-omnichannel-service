@@ -30,7 +30,9 @@ export function normalizeWhapiWebhook({ channelAccountId, payload }) {
     events = payload.messages.map((message) => normalizeMessage(channelAccountId, action, message));
   } else if (type === "statuses") {
     if (!Array.isArray(payload.statuses)) invalidResponse();
-    events = payload.statuses.map((status) => normalizeStatus(channelAccountId, action, status));
+    events = payload.statuses
+      .map((status) => normalizeStatus(channelAccountId, action, status))
+      .filter(Boolean);
   } else if (type === "channel" && isRecord(payload.health)) {
     events = [normalizeHealth(channelAccountId, action, payload.health)];
   } else if (type === "channel" && action === "patch" && isRecord(payload.qr)) {
@@ -139,6 +141,7 @@ function normalizeStatus(channelAccountId, action, status) {
   if (!isRecord(status)) invalidResponse();
   const externalId = requiredString(status.id);
   const state = requiredString(status.status).toLowerCase();
+  if (state === "deleted") return null;
   const chatId = requiredString(status.recipient_id);
   return {
     provider: "whapi",

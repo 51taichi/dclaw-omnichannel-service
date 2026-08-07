@@ -110,6 +110,28 @@ test("Whapi mapper normalizes statuses and account health and ignores unknown ev
   } }), []);
 });
 
+test("Whapi mapper ignores deleted receipts and continues through mixed status arrays", () => {
+  const events = normalizeWhapiWebhook({
+    channelAccountId: "CHAN-A",
+    payload: {
+      event: { type: "statuses", event: "post" },
+      statuses: [
+        { id: "out-deleted", status: "deleted" },
+        {
+          id: "out-delivered",
+          status: "delivered",
+          recipient_id: "15551234567@s.whatsapp.net",
+          timestamp: "1786000001"
+        }
+      ]
+    }
+  });
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].eventType, "status.delivered");
+  assert.equal(events[0].message.externalId, "out-delivered");
+});
+
 test("Whapi mapper normalizes group lifecycle snapshots", () => {
   const [event] = normalizeWhapiWebhook({ channelAccountId: "CHAN-A", payload: {
     event: { type: "groups", event: "patch" },
