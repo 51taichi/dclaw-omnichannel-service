@@ -75,6 +75,30 @@ test("Whapi client covers every HTTP operation used by the omnichannel service",
   ]);
 });
 
+test("Whapi client lists one chat history with bounded query parameters", async () => {
+  let seen;
+  const client = createWhapiClient({
+    token: "history-token",
+    fetchImpl: async (url, options) => {
+      seen = { url, options };
+      return response(200, { messages: [], count: 0, total: 0 });
+    }
+  });
+
+  await client.listMessagesByChat("15551234567@s.whatsapp.net", {
+    count: 100,
+    offset: 200,
+    sort: "asc"
+  });
+
+  assert.equal(
+    seen.url,
+    "https://gate.whapi.cloud/messages/list/15551234567%40s.whatsapp.net?count=100&offset=200&sort=asc"
+  );
+  assert.equal(seen.options.headers.authorization, "Bearer history-token");
+  assert.throws(() => client.listMessagesByChat("", { count: 100 }), /chatId is required/);
+});
+
 test("Whapi client classifies failures without exposing provider bodies or token", async () => {
   const cases = [
     [401, "authentication_required", false],

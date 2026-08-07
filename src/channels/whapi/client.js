@@ -63,6 +63,11 @@ export function createWhapiClient({
       return request(`send_${type}`, `/messages/${type}`, { method: "POST", body: message });
     },
     listChats: (options = {}) => request("list_chats", "/chats", { query: pagination(options) }),
+    listMessagesByChat: (chatId, options = {}) => request(
+      "list_messages_by_chat",
+      `/messages/list/${encodeURIComponent(requiredId(chatId, "chatId"))}`,
+      { query: { ...pagination(options), sort: options.sort } }
+    ),
     listGroups: (options = {}) => request("list_groups", "/groups", { query: pagination(options) }),
     getGroup: (groupId) => request("get_group", `/groups/${encodeURIComponent(requiredId(groupId, "groupId"))}`),
     createGroup: (group) => request("create_group", "/groups", { method: "POST", body: group }),
