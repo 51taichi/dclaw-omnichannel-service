@@ -31,6 +31,23 @@ test("Whapi history imports are idempotent by provider message id", () => {
   }).length, 1);
 });
 
+test("distinct Whapi provider ids are not semantically collapsed", () => {
+  const inserted = db.insertImportedConversationMessages({
+    botId: "distinct-bot",
+    conversationKey: "whapi:chan:private:distinct",
+    source: "whapi_chat_history",
+    messages: ["id-1", "id-2"].map((sourceKey) => ({
+      sourceKey,
+      direction: "inbound",
+      senderName: "Customer",
+      content: "same content",
+      createdAt: "2026-08-01T01:00:00.000Z",
+      rawPayload: {}
+    }))
+  });
+  assert.equal(inserted, 2);
+});
+
 test("Whapi history does not duplicate an already persisted realtime provider message", () => {
   const botId = "realtime-history-bot";
   const conversationKey = "whapi:chan:private:carol";

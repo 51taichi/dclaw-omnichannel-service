@@ -83,6 +83,10 @@ test("clearConversationForReset deletes one flow conversation for a fresh agent 
     content: "我要资料",
     rawPayload: { spoken: "我要资料" }
   });
+  db.claimFirstContactHistorySync({ botId, conversationKey, owner: "reset-test" });
+  db.completeFirstContactHistorySync({
+    botId, conversationKey, owner: "reset-test", status: "success"
+  });
 
   const result = db.clearConversationForReset({
     botId,
@@ -100,6 +104,7 @@ test("clearConversationForReset deletes one flow conversation for a fresh agent 
   assert.equal(db.listConversationMessages({ conversationKey }).length, 0);
   assert.equal(db.listFlowStateEvents({ conversationKey }).length, 0);
   assert.equal(db.getConversation(conversationKey), null);
+  assert.equal(db.getFirstContactHistorySync({ botId, conversationKey }), null);
   assert.equal(db.getConversationResetPending(conversationKey), false);
 });
 

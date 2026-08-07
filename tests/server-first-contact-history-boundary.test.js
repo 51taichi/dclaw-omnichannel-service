@@ -17,6 +17,7 @@ test("new private Whapi conversations synchronize history before persisting the 
   assert.match(source, /await persistInboundConversation\(\{/);
   assert.match(source, /firstDiscovery:\s*shouldSyncFirstContactHistory/);
   assert.match(source, /getFirstContactHistorySync\(\{ botId, conversationKey \}\)/);
+  assert.match(source, /await waitForActiveFirstContactHistorySync\(\{/);
   assert.match(source, /prepareConversation:\s*ensureConversationShell/);
 });
 

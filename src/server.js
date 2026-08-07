@@ -279,7 +279,10 @@ import { createWhapiAdapter } from "./channels/whapi/adapter.js";
 import { createWhapiClient } from "./channels/whapi/client.js";
 import { normalizeWhapiWebhook } from "./channels/whapi/mapper.js";
 import { syncFirstContactHistory } from "./first-contact-history-sync.js";
-import { shouldRunFirstContactHistorySync } from "./first-contact-history-trigger.js";
+import {
+  shouldRunFirstContactHistorySync,
+  waitForActiveFirstContactHistorySync
+} from "./first-contact-history-trigger.js";
 import { buildWhapiWebhookSettings, buildWhapiWebhookUrl } from "./channels/whapi/webhook.js";
 import { mapWhapiHealth } from "./channels/whapi/health.js";
 import { CHANNEL_ERROR_CODES, ChannelError } from "./channels/errors.js";
@@ -4071,11 +4074,6 @@ async function processIncomingMessage({ botId, message, intake = null }) {
   const baseLog = messageLogFields({ botId, conversationKey, message });
   const logContext = { ...baseLog, messageKey };
   const hadConversation = Boolean(getConversation(conversationKey));
-  const historySyncRecord = isPrivateMessage(message)
-    ? getFirstContactHistorySync({ botId, conversationKey })
-    : null;
-  const shouldSyncFirstContactHistory = isPrivateMessage(message)
-    && shouldRunFirstContactHistorySync({ hadConversation, syncRecord: historySyncRecord });
   const flowMachine = getFlowMachineForBot(botId);
   logInfo("incoming.received", logContext);
 
@@ -4083,6 +4081,18 @@ async function processIncomingMessage({ botId, message, intake = null }) {
     logWarn("incoming.duplicate_skipped", logContext);
     return;
   }
+
+  let historySyncRecord = isPrivateMessage(message)
+    ? getFirstContactHistorySync({ botId, conversationKey })
+    : null;
+  if (historySyncRecord?.status === "processing") {
+    historySyncRecord = await waitForActiveFirstContactHistorySync({
+      syncRecord: historySyncRecord,
+      readSync: () => getFirstContactHistorySync({ botId, conversationKey })
+    });
+  }
+  const shouldSyncFirstContactHistory = isPrivateMessage(message)
+    && shouldRunFirstContactHistorySync({ hadConversation, syncRecord: historySyncRecord });
 
   let resetState = { resetPending: false };
   if (isPrivateMessage(message) && !hadConversation) {

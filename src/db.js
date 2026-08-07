@@ -8298,6 +8298,8 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
       .run(conversationKey, botId);
     db.prepare("DELETE FROM conversation_tags WHERE conversation_key = ? AND bot_id = ?")
       .run(conversationKey, botId);
+    db.prepare("DELETE FROM first_contact_history_syncs WHERE conversation_key = ? AND bot_id = ?")
+      .run(conversationKey, botId);
     db.prepare(`
       UPDATE flow_activation_tasks
       SET status = 'canceled',
