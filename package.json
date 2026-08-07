@@ -6,6 +6,7 @@
   "main": "src/server.js",
   "scripts": {
     "admin:reset-password": "node scripts/reset-admin-password.js",
+    "backfill:outbound-webhooks": "node scripts/backfill-outbound-webhooks.js",
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
     "test": "node --test"
