@@ -3470,9 +3470,14 @@ export function upsertAgent(agent) {
   const timestamp = now();
   const agentId = String(agent.agentId || "").trim();
   if (!agentId) throw new Error("agentId is required");
+  const existing = getAgent(agentId);
   const dclawBaseUrl = (agent.dclawBaseUrl || "").replace(/\/$/, "");
   const dclawPublicId = agent.dclawPublicId || agentId;
   const agentApiUrl = buildAgentApiUrl(dclawBaseUrl, dclawPublicId, agent.agentApiUrl);
+  const candidateApiKey = String(agent.agentApiKey ?? "").trim();
+  const agentApiKey = !candidateApiKey || /^\*+$/.test(candidateApiKey)
+    ? existing?.agentApiKey || ""
+    : candidateApiKey;
   if (!dclawBaseUrl) throw new Error("dclawBaseUrl is required");
   if (!dclawPublicId) throw new Error("dclawPublicId is required");
 
@@ -3496,7 +3501,7 @@ export function upsertAgent(agent) {
     dclawBaseUrl,
     dclawPublicId,
     agentApiUrl,
-    agent.agentApiKey || "",
+    agentApiKey,
     agent.enabled === false ? 0 : 1,
     timestamp,
     timestamp

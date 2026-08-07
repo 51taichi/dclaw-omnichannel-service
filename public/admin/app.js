@@ -1,5 +1,6 @@
 const ADMIN_SESSION_KEY = "dclaw_omnichannel_admin_session";
 const WORKSPACE_SESSION_KEY = "dclaw_omnichannel_workspace_sessions";
+const SECRET_MASK = "*****";
 
 const state = {
   session: readJson(ADMIN_SESSION_KEY),
@@ -79,6 +80,11 @@ function escapeHtml(value) {
 
 function adminIcon(name) {
   return `<svg aria-hidden="true"><use href="#admin-icon-${name}"></use></svg>`;
+}
+
+function changedSecret(value) {
+  const candidate = String(value || "").trim();
+  return candidate && !/^\*+$/.test(candidate) ? candidate : "";
 }
 
 function setFormBusy(form, busy) {
@@ -505,8 +511,8 @@ async function selectBotForEditing(botId) {
   els.botForm.botName.value = bot.botName || "";
   els.botForm.agentId.value = bot.agentId || "";
   els.botForm.channelId.value = bot.channelAccount?.channelId || "";
-  els.botForm.apiToken.value = "";
-  els.botForm.webhookSecret.value = "";
+  els.botForm.apiToken.value = bot.channelAccount?.tokenConfigured ? SECRET_MASK : "";
+  els.botForm.webhookSecret.value = bot.channelAccount ? SECRET_MASK : "";
   els.botForm.enabled.checked = bot.botEnabled !== false;
   els.checkChannelHealth.hidden = !bot.channelAccount;
   els.botMaintenanceName.textContent = bot.botName || bot.botId;
@@ -556,17 +562,20 @@ async function saveBot(event) {
   event.preventDefault();
   const form = new FormData(els.botForm);
   const botId = String(form.get("botId") || "").trim();
+  const apiToken = changedSecret(form.get("apiToken"));
+  const webhookSecret = changedSecret(form.get("webhookSecret"));
+  const body = {
+    botName: form.get("botName"),
+    agentId: form.get("agentId"),
+    channelId: form.get("channelId"),
+    configureWebhook: true,
+    enabled: form.get("enabled") === "on"
+  };
+  if (apiToken) body.apiToken = apiToken;
+  if (webhookSecret) body.webhookSecret = webhookSecret;
   const result = await adminRequest(`/api/bots/${encodeURIComponent(botId)}`, {
     method: "PUT",
-    body: JSON.stringify({
-      botName: form.get("botName"),
-      agentId: form.get("agentId"),
-      channelId: form.get("channelId"),
-      apiToken: form.get("apiToken"),
-      webhookSecret: form.get("webhookSecret"),
-      configureWebhook: true,
-      enabled: form.get("enabled") === "on"
-    })
+    body: JSON.stringify(body)
   });
   if (result.channelSetup?.ok === false) {
     throw new Error(`Bot 已保存，但 Whapi 配置失败：${result.channelSetup.error}`);
@@ -715,7 +724,7 @@ function renderAgentList() {
       for (const field of ["agentId", "agentName", "dclawBaseUrl", "dclawPublicId"]) {
         els.agentForm[field].value = agent[field] || "";
       }
-      els.agentForm.agentApiKey.value = "";
+      els.agentForm.agentApiKey.value = agent.agentApiKeyConfigured ? SECRET_MASK : "";
       els.agentForm.enabled.checked = agent.enabled;
       els.agentForm.scrollIntoView({ behavior: "smooth" });
     });
@@ -729,6 +738,9 @@ async function saveAgent(event) {
   event.preventDefault();
   const form = new FormData(els.agentForm);
   const body = Object.fromEntries(form.entries());
+  const agentApiKey = changedSecret(form.get("agentApiKey"));
+  delete body.agentApiKey;
+  if (agentApiKey) body.agentApiKey = agentApiKey;
   body.enabled = form.get("enabled") === "on";
   await adminRequest(`/api/agents/${encodeURIComponent(body.agentId)}`, {
     method: "PUT",

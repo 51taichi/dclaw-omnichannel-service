@@ -153,6 +153,20 @@ test("admin console owns Agent and Bot global maintenance", () => {
   assert.equal(html.includes("workspaceColumn"), true);
 });
 
+test("admin config edits preserve masked integration secrets", () => {
+  assert.match(app, /const SECRET_MASK = "\*\*\*\*\*"/);
+  assert.match(app, /function changedSecret\(value\)/);
+  assert.match(app, /bot\.channelAccount\?\.tokenConfigured \? SECRET_MASK : ""/);
+  assert.match(app, /bot\.channelAccount \? SECRET_MASK : ""/);
+  assert.match(app, /agent\.agentApiKeyConfigured \? SECRET_MASK : ""/);
+  assert.match(app, /const apiToken = changedSecret\(form\.get\("apiToken"\)\)/);
+  assert.match(app, /const webhookSecret = changedSecret\(form\.get\("webhookSecret"\)\)/);
+  assert.match(app, /if \(apiToken\) body\.apiToken = apiToken/);
+  assert.match(app, /if \(webhookSecret\) body\.webhookSecret = webhookSecret/);
+  assert.match(app, /const agentApiKey = changedSecret\(form\.get\("agentApiKey"\)\)/);
+  assert.match(app, /if \(agentApiKey\) body\.agentApiKey = agentApiKey/);
+});
+
 test("administrator Bots page owns Bot key and debug reply maintenance", () => {
   assert.match(html, /id="botMaintenancePanel"[^>]*hidden/);
   assert.match(html, /<h2><span id="botMaintenanceName"><\/span><\/h2>/);

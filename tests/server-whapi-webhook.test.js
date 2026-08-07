@@ -168,3 +168,91 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
   }
   assert.equal(participantInspected.members[0].externalId, "15550003@s.whatsapp.net");
 });
+
+test("masked Bot edits preserve encrypted Whapi credentials", async (t) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "dclaw-whapi-preserve-"));
+  const databasePath = path.join(directory, "service.sqlite");
+  const encryptionKey = Buffer.alloc(32, 7).toString("base64");
+  const seed = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+    import { createChannelAccount, upsertAgent, upsertBotBinding } from "./src/db.js";
+    import { encryptChannelToken, hashWebhookSecret, resolveTokenEncryptionKey } from "./src/channels/credentials.js";
+    upsertAgent({
+      agentId: "agent-a", agentName: "Agent A", dclawBaseUrl: "https://api.example.com",
+      dclawPublicId: "public-agent-a", agentApiKey: "agent-secret", enabled: true
+    });
+    upsertBotBinding({ botId: "bot-a", botName: "Bot A", agentId: "agent-a", enabled: true });
+    createChannelAccount({
+      botId: "bot-a", provider: "whapi", channelId: "CHAN-A", publicId: "public-a",
+      encryptedToken: encryptChannelToken({
+        token: "whapi-original-token", key: resolveTokenEncryptionKey(process.env.CHANNEL_TOKEN_ENCRYPTION_KEY),
+        provider: "whapi", channelAccountId: "CHAN-A"
+      }),
+      webhookSecretHash: hashWebhookSecret("webhook-original-secret")
+    });
+  `], {
+    cwd: projectRoot,
+    env: { ...process.env, DATABASE_PATH: databasePath, CHANNEL_TOKEN_ENCRYPTION_KEY: encryptionKey },
+    encoding: "utf8"
+  });
+  assert.equal(seed.status, 0, seed.stderr);
+
+  const port = await reservePort();
+  const child = spawn(process.execPath, ["src/server.js"], {
+    cwd: projectRoot,
+    env: {
+      ...process.env,
+      PORT: String(port), HOST: "127.0.0.1", DATABASE_PATH: databasePath,
+      CHANNEL_TOKEN_ENCRYPTION_KEY: encryptionKey, ADMIN_API_KEY: "admin-secret",
+      BOTS_CONFIG_JSON: '{"bots":[]}', PROACTIVE_WORKER_ENABLED: "false",
+      ACTIVATION_WORKER_ENABLED: "false", TAG_ACTIVATION_WORKER_ENABLED: "false",
+      GROUP_AUTOMATION_WORKER_ENABLED: "false", CONVERSATION_RESET_WORKER_ENABLED: "false",
+      COCKPIT_WORKER_ENABLED: "false"
+    },
+    stdio: ["ignore", "pipe", "pipe"]
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr += chunk; });
+  t.after(async () => {
+    if (child.exitCode === null) {
+      child.kill("SIGTERM");
+      await once(child, "exit");
+    }
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+  await waitForServer(port);
+
+  const response = await fetch(`http://127.0.0.1:${port}/api/bots/bot-a`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", "x-api-key": "admin-secret" },
+    body: JSON.stringify({
+      botName: "Bot A edited", agentId: "agent-a", channelId: "CHAN-A",
+      apiToken: "*****", webhookSecret: "*****", enabled: true
+    })
+  });
+  assert.equal(response.status, 200, stderr);
+  const responseBody = await response.json();
+  assert.equal(JSON.stringify(responseBody).includes("agent-secret"), false);
+
+  const inspect = spawnSync(process.execPath, ["--input-type=module", "--eval", `
+    import { getChannelAccountCredentials } from "./src/db.js";
+    import { decryptChannelToken, verifyWebhookSecret, resolveTokenEncryptionKey } from "./src/channels/credentials.js";
+    const credentials = getChannelAccountCredentials("bot-a");
+    console.log(JSON.stringify({
+      token: decryptChannelToken({
+        encrypted: credentials.encryptedToken,
+        key: resolveTokenEncryptionKey(process.env.CHANNEL_TOKEN_ENCRYPTION_KEY),
+        provider: "whapi", channelAccountId: "CHAN-A"
+      }),
+      originalWebhookSecretStillValid: verifyWebhookSecret("webhook-original-secret", credentials.webhookSecretHash)
+    }));
+  `], {
+    cwd: projectRoot,
+    env: { ...process.env, DATABASE_PATH: databasePath, CHANNEL_TOKEN_ENCRYPTION_KEY: encryptionKey },
+    encoding: "utf8"
+  });
+  assert.equal(inspect.status, 0, inspect.stderr);
+  assert.deepEqual(JSON.parse(inspect.stdout), {
+    token: "whapi-original-token",
+    originalWebhookSecretStillValid: true
+  });
+});

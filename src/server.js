@@ -7,6 +7,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mergeInlineActions } from "./action-chips.js";
 import { activationDelayMs } from "./activation-timing.js";
+import { normalizeSecretUpdate } from "./secret-update.js";
 import { loadBotBindingsFromConfig } from "./config.js";
 import { runConversationResetRequests } from "./conversation-reset.js";
 import { createConversationResetWorker } from "./conversation-reset-worker.js";
@@ -410,7 +411,7 @@ const channelSender = createChannelSender({
 async function saveWhapiAccount({ botId, body }) {
   const existing = getChannelAccount(botId);
   const channelId = String(body.channelId || existing?.channelId || "").trim();
-  const apiToken = String(body.apiToken || "").trim();
+  const apiToken = normalizeSecretUpdate(body.apiToken);
   if (!channelId) throw Object.assign(new Error("channelId is required"), { status: 400 });
   if (existing && existing.channelId !== channelId) {
     throw Object.assign(new Error("channelId cannot be changed; create a new Bot instead"), { status: 409 });
@@ -419,7 +420,7 @@ async function saveWhapiAccount({ botId, body }) {
     throw Object.assign(new Error("apiToken is required"), { status: 400 });
   }
   const encryptionKey = resolveTokenEncryptionKey(process.env.CHANNEL_TOKEN_ENCRYPTION_KEY);
-  const webhookSecret = String(body.webhookSecret || "").trim() || (!existing ? generateWebhookSecret() : "");
+  const webhookSecret = normalizeSecretUpdate(body.webhookSecret) || (!existing ? generateWebhookSecret() : "");
   let account;
   if (!existing) {
     account = createChannelAccount({
@@ -636,6 +637,23 @@ function getRequestAdminSession(req) {
 function getRequestBotSession(req) {
   const token = req.header("x-bot-session-token");
   return getBotSession(token);
+}
+
+function adminAgentView(agent) {
+  const { agentApiKey, ...view } = agent;
+  return {
+    ...view,
+    agentApiKeyConfigured: Boolean(agentApiKey)
+  };
+}
+
+function adminBotView(binding, channelAccount) {
+  const { agentApiKey, ...view } = binding;
+  return {
+    ...view,
+    agentApiKeyConfigured: Boolean(agentApiKey),
+    channelAccount: channelAccount || null
+  };
 }
 
 function assertAdminAccess(req) {
@@ -5933,10 +5951,10 @@ app.get(
     const accounts = new Map(listChannelAccounts().map((account) => [account.botId, account]));
     res.json({
       ok: true,
-      bots: listBotBindings().map((binding) => ({
-        ...binding,
-        channelAccount: accounts.get(binding.botId) || null
-      }))
+      bots: listBotBindings().map((binding) => adminBotView(
+        binding,
+        accounts.get(binding.botId)
+      ))
     });
   })
 );
@@ -5945,7 +5963,7 @@ app.get(
   "/api/agents",
   asyncHandler(async (req, res) => {
     assertAdminAccess(req);
-    res.json({ ok: true, agents: listAgents() });
+    res.json({ ok: true, agents: listAgents().map(adminAgentView) });
   })
 );
 
@@ -5962,7 +5980,7 @@ app.put(
       agentApiKey: body.agentApiKey || "",
       enabled: body.enabled !== false
     });
-    res.json({ ok: true, agent });
+    res.json({ ok: true, agent: adminAgentView(agent) });
   })
 );
 
@@ -5984,7 +6002,7 @@ app.delete(
       res.status(404).json({ ok: false, message: "agent not found" });
       return;
     }
-    res.json({ ok: true, agent });
+    res.json({ ok: true, agent: adminAgentView(agent) });
   })
 );
 
@@ -6048,7 +6066,12 @@ app.put(
         error: error.message
       });
     }
-    res.json({ ok: true, binding, channelSetup, rebindReset });
+    res.json({
+      ok: true,
+      binding: adminBotView(binding, getChannelAccount(binding.botId)),
+      channelSetup,
+      rebindReset
+    });
   })
 );
 

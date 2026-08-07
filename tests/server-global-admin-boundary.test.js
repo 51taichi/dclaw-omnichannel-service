@@ -24,3 +24,13 @@ test("existing administrator guards accept the global admin session", () => {
   assert.match(source, /function assertAdminAccess\(req\)[\s\S]*getRequestAdminSession\(req\)/);
   assert.match(source, /function assertAdminForBot\(req, botId\)[\s\S]*getRequestAdminSession\(req\)/);
 });
+
+test("administrator Agent listing exposes configured state without the API key", () => {
+  assert.match(source, /function adminAgentView\(agent\)/);
+  assert.match(source, /agentApiKeyConfigured:\s*Boolean\(agentApiKey\)/);
+  assert.match(source, /agents:\s*listAgents\(\)\.map\(adminAgentView\)/);
+  assert.match(source, /function adminBotView\(binding, channelAccount\)/);
+  assert.match(source, /bots:\s*listBotBindings\(\)\.map\(\(binding\) => adminBotView/);
+  assert.match(source, /agent:\s*adminAgentView\(agent\)/);
+  assert.match(source, /binding:\s*adminBotView\(binding, getChannelAccount\(binding\.botId\)\)/);
+});

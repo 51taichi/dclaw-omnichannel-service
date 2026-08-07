@@ -184,6 +184,39 @@ test("multiple bots can reuse an independently saved agent config", () => {
   assert.equal(botA.agentApiKey, "secret-v2");
 });
 
+test("agent edits preserve an existing API key unless a new key is supplied", () => {
+  db.upsertAgent({
+    agentId: "agent_preserve_key",
+    agentName: "Original",
+    dclawBaseUrl: "https://api.example.com",
+    dclawPublicId: "public_original",
+    agentApiKey: "secret-original",
+    enabled: true
+  });
+
+  for (const agentApiKey of [undefined, "", "*****"]) {
+    db.upsertAgent({
+      agentId: "agent_preserve_key",
+      agentName: "Edited",
+      dclawBaseUrl: "https://api-new.example.com",
+      dclawPublicId: "public_new",
+      agentApiKey,
+      enabled: true
+    });
+    assert.equal(db.getAgent("agent_preserve_key").agentApiKey, "secret-original");
+  }
+
+  db.upsertAgent({
+    agentId: "agent_preserve_key",
+    agentName: "Edited",
+    dclawBaseUrl: "https://api-new.example.com",
+    dclawPublicId: "public_new",
+    agentApiKey: "secret-replacement",
+    enabled: true
+  });
+  assert.equal(db.getAgent("agent_preserve_key").agentApiKey, "secret-replacement");
+});
+
 test("bots bound to one agent resolve the same agent-owned flow machine", () => {
   const agentId = "agent_shared_flow";
   db.upsertAgent({
