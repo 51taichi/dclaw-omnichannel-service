@@ -5046,7 +5046,7 @@ async function toggleSelectedConversationHandoff(conversationKey = state.selecte
 }
 
 const manualMessageDeliveryStates = Object.freeze({
-  pending: { label: "发送中", mark: "", tone: "pending" },
+  pending: { label: "已发送", mark: "✓", tone: "sent" },
   sent: { label: "已发送", mark: "✓", tone: "sent" },
   delivered: { label: "已送达", mark: "✓✓", tone: "delivered" },
   read: { label: "已读", mark: "✓✓", tone: "read" },

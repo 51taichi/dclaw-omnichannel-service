@@ -44,7 +44,7 @@ test("manual WhatsApp replies render the fixed delivery-status whitelist", () =>
     rawPayload: { source: "manual_reply" }
   };
   const expectedLabels = {
-    pending: "发送中",
+    pending: "已发送",
     sent: "已发送",
     delivered: "已送达",
     read: "已读",
@@ -52,7 +52,7 @@ test("manual WhatsApp replies render the fixed delivery-status whitelist", () =>
     failed: "发送失败"
   };
   const expectedStates = {
-    pending: { mark: "", tone: "pending" },
+    pending: { mark: "✓", tone: "sent" },
     sent: { mark: "✓", tone: "sent" },
     delivered: { mark: "✓✓", tone: "delivered" },
     read: { mark: "✓✓", tone: "read" },
