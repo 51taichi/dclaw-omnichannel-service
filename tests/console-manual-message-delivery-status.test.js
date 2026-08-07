@@ -96,4 +96,6 @@ test("delivery-status presentation is compact and does not add status polling", 
   assert.match(failedRule, /color:\s*color-mix\(in srgb, var\(--danger\)/);
   assert.equal((app.match(/\bsetInterval\(/g) || []).length, 2);
   assert.doesNotMatch(app, /delivery[-A-Za-z_]*status[^\n]*\brequest\(/i);
+  assert.doesNotMatch(app, /new\s+EventSource\s*\(/);
+  assert.doesNotMatch(app, /new\s+WebSocket\s*\(/);
 });
