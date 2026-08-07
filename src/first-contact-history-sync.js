@@ -2,7 +2,8 @@ import {
   claimFirstContactHistorySync,
   completeFirstContactHistorySync,
   ensureFirstDiscoveryDateTag,
-  insertImportedConversationMessages
+  insertImportedConversationMessages,
+  renewFirstContactHistorySyncLease
 } from "./db.js";
 import { normalizeWhapiHistoryMessage } from "./channels/whapi/mapper.js";
 
@@ -37,6 +38,7 @@ export async function syncFirstContactHistory({
 }) {
   const claimSync = dependencies.claimSync || claimFirstContactHistorySync;
   const completeSync = dependencies.completeSync || completeFirstContactHistorySync;
+  const heartbeatSync = dependencies.heartbeatSync || renewFirstContactHistorySyncLease;
   const importMessages = dependencies.importMessages || insertImportedConversationMessages;
   const ensureDateTag = dependencies.ensureDateTag || ensureFirstDiscoveryDateTag;
   const claimed = claimSync({ botId, conversationKey, owner, leaseMs });
@@ -50,6 +52,7 @@ export async function syncFirstContactHistory({
     await prepareConversation();
     const normalized = [];
     for (let page = 0; page < maxPages && normalized.length < maxMessages; page += 1) {
+      heartbeatSync({ botId, conversationKey, owner, leaseMs });
       const response = await client.listMessagesByChat(chatId, {
         count: pageSize,
         offset: page * pageSize,

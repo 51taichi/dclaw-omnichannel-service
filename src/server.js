@@ -362,7 +362,7 @@ const firstContactHistoryMaxMessages = Math.max(
   Number(process.env.WHAPI_FIRST_CONTACT_HISTORY_MAX_MESSAGES || 2000)
 );
 const firstContactHistoryLeaseMs = Math.max(
-  1_000,
+  30_000,
   Number(process.env.WHAPI_FIRST_CONTACT_HISTORY_LEASE_MS || 60_000)
 );
 fs.mkdirSync(uploadDir, { recursive: true });

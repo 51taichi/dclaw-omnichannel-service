@@ -3557,6 +3557,33 @@ export function claimFirstContactHistorySync({
   }
 }
 
+export function renewFirstContactHistorySyncLease({
+  botId,
+  conversationKey,
+  owner,
+  leaseMs = 60_000,
+  nowIso = now()
+}) {
+  const timestamp = new Date(nowIso).toISOString();
+  const leaseExpiresAt = new Date(
+    new Date(timestamp).getTime() + Math.max(1000, Number(leaseMs) || 60_000)
+  ).toISOString();
+  const result = db.prepare(`
+    UPDATE first_contact_history_syncs
+    SET lease_expires_at = ?, updated_at = ?
+    WHERE bot_id = ? AND conversation_key = ?
+      AND status = 'processing' AND lease_owner = ?
+  `).run(
+    leaseExpiresAt,
+    timestamp,
+    requiredString(botId, "botId"),
+    requiredString(conversationKey, "conversationKey"),
+    requiredString(owner, "owner")
+  );
+  if (result.changes !== 1) throw new Error("first-contact history sync lease is not owned");
+  return getFirstContactHistorySync({ botId, conversationKey });
+}
+
 export function completeFirstContactHistorySync({
   botId,
   conversationKey,

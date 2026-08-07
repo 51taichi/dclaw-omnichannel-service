@@ -20,6 +20,7 @@ function dependencies(overrides = {}) {
     state,
     value: {
       claimSync: () => ({ claimed: true, record: { status: "processing" } }),
+      heartbeatSync: () => {},
       completeSync: (value) => { state.completed.push(value); return value; },
       importMessages: ({ messages }) => { state.imported.push(...messages); return { inserted: messages.length }; },
       ensureDateTag: (value) => { state.tags.push(value); return []; },
@@ -114,7 +115,8 @@ test("first-contact history sync degrades safely when history is empty or fails"
 
 test("first-contact history sync honors page and message limits", async () => {
   let calls = 0;
-  const deps = dependencies();
+  let heartbeats = 0;
+  const deps = dependencies({ heartbeatSync: () => { heartbeats += 1; } });
   const result = await syncFirstContactHistory({
     botId: "bot-a", agentId: "agent-a", conversationKey: "key-limit",
     channelAccountId: "chan", chatId: "1555@s.whatsapp.net",
@@ -133,6 +135,7 @@ test("first-contact history sync honors page and message limits", async () => {
     dependencies: deps.value
   });
   assert.equal(calls, 2);
+  assert.equal(heartbeats, 2);
   assert.equal(result.importedCount, 2);
 });
 

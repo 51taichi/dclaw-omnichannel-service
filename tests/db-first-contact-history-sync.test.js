@@ -78,3 +78,25 @@ test("first-contact history completion enforces ownership and persists safe term
   assert.equal(result.completed.leaseOwner, "");
   assert.equal(result.otherBot, null);
 });
+
+test("first-contact history lease heartbeat extends only the current owner's lease", () => {
+  const result = runScenario(`
+    import { claimFirstContactHistorySync, renewFirstContactHistorySyncLease } from "./src/db.js";
+    const input = { botId: "bot-a", conversationKey: "whapi:chan:private:heartbeat" };
+    claimFirstContactHistorySync({
+      ...input, owner: "worker-a", leaseMs: 60000, nowIso: "2026-08-07T00:00:00.000Z"
+    });
+    const renewed = renewFirstContactHistorySyncLease({
+      ...input, owner: "worker-a", leaseMs: 60000, nowIso: "2026-08-07T00:00:30.000Z"
+    });
+    let wrongOwner = "";
+    try {
+      renewFirstContactHistorySyncLease({
+        ...input, owner: "worker-b", leaseMs: 60000, nowIso: "2026-08-07T00:00:31.000Z"
+      });
+    } catch (error) { wrongOwner = error.message; }
+    console.log(JSON.stringify({ renewed, wrongOwner }));
+  `);
+  assert.equal(result.renewed.leaseExpiresAt, "2026-08-07T00:01:30.000Z");
+  assert.match(result.wrongOwner, /lease is not owned/);
+});
