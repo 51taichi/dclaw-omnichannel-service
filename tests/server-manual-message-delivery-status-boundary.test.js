@@ -205,3 +205,86 @@ test("a rejected manual send returns an HTTP error without persisting an outboun
   assert.equal(detail.status, 200, stderr());
   assert.deepEqual((await detail.json()).messages, []);
 });
+
+test("a manual reply sends ordered attachments and tracks every provider message", async (t) => {
+  const { request, conversationKey, stderr } = await startManualReplyServer(t);
+  const sent = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/manual-reply`, {
+    method: "POST",
+    body: JSON.stringify({
+      botId: "bot-manual",
+      content: "",
+      attachments: [
+        { fileUrl: "https://files.example.test/photo.jpg", objectName: "photo.jpg", fileType: "image" },
+        { fileUrl: "https://files.example.test/price.pdf", objectName: "price.pdf", fileType: "file" }
+      ]
+    })
+  });
+  assert.equal(sent.status, 200, stderr());
+  const body = await sent.json();
+  assert.deepEqual(
+    body.message.rawPayload.attachments.map((attachment) => attachment.messageId),
+    ["manual-provider-media-1", "manual-provider-media-2"]
+  );
+  assert.deepEqual(
+    body.message.rawPayload.attachments.map(({ url, name, type }) => ({ url, name, type })),
+    [
+      { url: "https://files.example.test/photo.jpg", name: "photo.jpg", type: "image" },
+      { url: "https://files.example.test/price.pdf", name: "price.pdf", type: "file" }
+    ]
+  );
+  assert.equal(body.message.content, "[图片] photo.jpg\n[文件] price.pdf");
+
+  const logs = await request("/api/logs/outgoing-messages?botId=bot-manual&limit=10");
+  assert.equal(logs.status, 200, stderr());
+  assert.deepEqual(
+    (await logs.json()).logs.map((row) => row.message_id).sort(),
+    ["manual-provider-media-1", "manual-provider-media-2"]
+  );
+
+  const callback = await request("/webhooks/whapi/public-manual/statuses", {
+    method: "POST",
+    headers: { "x-dclaw-webhook-secret": "webhook-manual-secret" },
+    body: JSON.stringify({
+      channel_id: "CHAN-MANUAL",
+      statuses: [
+        { id: "manual-provider-media-1", status: "read", recipient_id: "15551234567@s.whatsapp.net", timestamp: "1786000001" },
+        { id: "manual-provider-media-2", status: "failed", recipient_id: "15551234567@s.whatsapp.net", timestamp: "1786000002", error: "media failed" }
+      ]
+    })
+  });
+  assert.equal(callback.status, 200, stderr());
+  const failed = await waitForDeliveryStatus(request, conversationKey, "failed");
+  assert.equal(failed.messages[0].deliveryStatus, "failed");
+});
+
+test("a later rejected attachment preserves earlier accepted provider messages", async (t) => {
+  const { request, conversationKey, stderr } = await startManualReplyServer(t);
+  const sent = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/manual-reply`, {
+    method: "POST",
+    body: JSON.stringify({
+      botId: "bot-manual",
+      content: "partial caption",
+      attachments: [
+        { fileUrl: "https://files.example.test/photo.jpg", objectName: "photo.jpg", fileType: "image" },
+        { fileUrl: "https://files.example.test/reject.pdf", objectName: "reject.pdf", fileType: "file" }
+      ]
+    })
+  });
+  assert.equal(sent.status, 422, stderr());
+  assert.deepEqual(await sent.json(), {
+    ok: false,
+    message: "已有 1 个附件发送成功，其余附件未发送",
+    partial: true,
+    sentCount: 1
+  });
+
+  const logs = await request("/api/logs/outgoing-messages?botId=bot-manual&limit=10");
+  const outgoing = (await logs.json()).logs;
+  assert.equal(outgoing.length, 1);
+  assert.equal(outgoing[0].message_id, "manual-provider-media-1");
+
+  const detail = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?botId=bot-manual`);
+  const [message] = (await detail.json()).messages;
+  assert.equal(message.rawPayload.partial, true);
+  assert.deepEqual(message.rawPayload.messageIds, ["manual-provider-media-1"]);
+});

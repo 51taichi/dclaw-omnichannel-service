@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { mergeInlineActions } from "./action-chips.js";
 import { activationDelayMs } from "./activation-timing.js";
 import { normalizeSecretUpdate } from "./secret-update.js";
+import { normalizeManualReply } from "./manual-reply.js";
 import { reconcileOutboundWebhookMessage } from "./outbound-webhook-reconciliation.js";
 import { loadBotBindingsFromConfig } from "./config.js";
 import { runConversationResetRequests } from "./conversation-reset.js";
@@ -6717,10 +6718,10 @@ app.post(
     const body = req.body || {};
     const conversationKey = decodeURIComponent(req.params.conversationKey);
     const botId = String(body.botId || "").trim();
-    const content = String(body.content || "").trim();
     assertBotAccess(req, botId);
     if (!botId) throw new Error("botId is required");
-    if (!content) throw new Error("content is required");
+    const manualReply = normalizeManualReply(body);
+    const { content, attachments, conversationContent } = manualReply;
     const session = getFlowSession(conversationKey);
     if (!session || session.botId !== botId) {
       throw new Error("flow session not found");
@@ -6737,13 +6738,14 @@ app.post(
       throw new Error("missing manual reply target");
     }
 
-    const result = await sendTextMessage({
-      robotId: botId,
-      targets: [target],
-      content
-    });
     const channelAccount = getChannelAccount(botId);
-    if (result.accepted !== true) {
+    const sentParts = [];
+    const senderName = binding.botName || binding.agentName || "人工客服";
+    const createdAt = new Date().toISOString();
+    const provider = channelAccount?.provider || "";
+    const channelAccountId = channelAccount?.channelId || "";
+    const assertAccepted = (result) => {
+      if (result.accepted === true) return;
       const error = new ChannelError(CHANNEL_ERROR_CODES.PERMANENT_PROVIDER_REJECTION, undefined, {
         provider: channelAccount?.provider,
         channelAccountId: channelAccount?.channelId,
@@ -6752,37 +6754,100 @@ app.post(
       });
       error.status = 422;
       throw error;
-    }
-    const messageId = result.data || "";
-    const senderName = binding.botName || binding.agentName || "人工客服";
-    const createdAt = new Date().toISOString();
-    const rawPayload = {
-      source: "manual_reply",
-      messageId,
-      provider: channelAccount?.provider || "",
-      channelAccountId: channelAccount?.channelId || "",
-      channelResponse: result
+    };
+    const persistOutgoingPart = (part, index) => {
+      insertOutgoingMessage({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        messageId: part.messageId,
+        targetName: target,
+        content: index === 0 ? conversationContent : "",
+        provider,
+        channelAccountId,
+        channelResponse: part.result
+      });
+    };
+    const persistConversation = (parts, partial = false) => {
+      const successfulAttachments = parts
+        .filter((part) => part.attachment)
+        .map((part) => ({
+          url: part.attachment.fileUrl,
+          name: part.attachment.objectName,
+          type: part.attachment.fileType,
+          messageId: part.messageId
+        }));
+      const messageIds = parts.map((part) => part.messageId).filter(Boolean);
+      const visibleContent = successfulAttachments.length
+        ? normalizeManualReply({ content, attachments: successfulAttachments }).conversationContent
+        : conversationContent;
+      const rawPayload = {
+        source: "manual_reply",
+        messageId: messageIds[0] || "",
+        messageIds,
+        provider,
+        channelAccountId,
+        channelResponse: parts[0]?.result,
+        channelResponses: parts.map((part) => part.result),
+        attachments: successfulAttachments,
+        ...(partial ? { partial: true } : {})
+      };
+      insertConversationMessage({
+        botId,
+        conversationKey,
+        direction: "outbound",
+        senderName,
+        content: visibleContent,
+        rawPayload
+      });
+      return { rawPayload, visibleContent, messageIds };
     };
 
-    insertConversationMessage({
-      botId,
-      conversationKey,
-      direction: "outbound",
-      senderName,
-      content,
-      rawPayload
-    });
-    insertOutgoingMessage({
-      botId,
-      agentId: binding.agentId,
-      conversationKey,
-      messageId,
-      targetName: target,
-      content,
-      provider: rawPayload.provider,
-      channelAccountId: rawPayload.channelAccountId,
-      channelResponse: result
-    });
+    try {
+      if (attachments.length) {
+        for (const [index, attachment] of attachments.entries()) {
+          const result = await sendMediaMessage({
+            robotId: botId,
+            targets: [target],
+            fileUrl: attachment.fileUrl,
+            objectName: attachment.objectName,
+            fileType: attachment.fileType,
+            extraText: index === 0 ? content : ""
+          });
+          assertAccepted(result);
+          const part = { attachment, result, messageId: result.data || "" };
+          sentParts.push(part);
+          persistOutgoingPart(part, index);
+        }
+      } else {
+        const result = await sendTextMessage({ robotId: botId, targets: [target], content });
+        assertAccepted(result);
+        const part = { result, messageId: result.data || "" };
+        sentParts.push(part);
+        persistOutgoingPart(part, 0);
+      }
+    } catch (error) {
+      if (sentParts.length) {
+        const partial = persistConversation(sentParts, true);
+        logWarn("manual_reply.partially_sent", {
+          botId,
+          conversationKey,
+          sentCount: sentParts.length,
+          messageIds: partial.messageIds
+        });
+        return res.status(422).json({
+          ok: false,
+          message: `已有 ${sentParts.length} 个附件发送成功，其余附件未发送`,
+          partial: true,
+          sentCount: sentParts.length
+        });
+      }
+      throw error;
+    }
+
+    const { rawPayload, visibleContent, messageIds } = persistConversation(sentParts);
+    const messageId = messageIds[0] || "";
+    const result = sentParts[0]?.result;
     logInfo("manual_reply.sent", {
       botId,
       conversationKey,
@@ -6795,7 +6860,7 @@ app.post(
       message: {
         direction: "outbound",
         senderName,
-        content,
+        content: visibleContent,
         rawPayload,
         createdAt
       },

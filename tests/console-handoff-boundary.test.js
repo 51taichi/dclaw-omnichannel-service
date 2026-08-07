@@ -75,6 +75,20 @@ test("console exposes a per-session handoff switch without redundant status labe
   assert.match(css, /\.handoff-switch\.is-human \.handoff-switch-thumb\s*\{[\s\S]*transform:\s*translateX\(32px\)/);
 });
 
+test("human handoff composer exposes compact multi-attachment controls", () => {
+  assert.match(html, /id="manualReplyUploadButton"/);
+  assert.match(html, /id="manualReplyUploadInput"[^>]*multiple/);
+  assert.match(html, /id="manualReplyAttachmentList"/);
+  assert.match(functionBody("sendManualReply"), /uploadLocalFile/);
+  assert.match(functionBody("sendManualReply"), /attachments/);
+  assert.match(functionBody("sendManualReply"), /error\?\.data\?\.partial/);
+  assert.match(functionBody("sendManualReply"), /slice\(sentCount\)/);
+  assert.match(app, /PROACTIVE_MAX_ATTACHMENTS - state\.manualReplyUploadFiles\.length/);
+  assert.match(css, /\.manual-reply-upload-button\s*\{[\s\S]*position:\s*absolute/);
+  assert.match(css, /\.manual-reply-attachment-list\s*\{[\s\S]*display:\s*flex/);
+  assert.match(css, /\.manual-reply-attachment-chip\s*\{[\s\S]*width:\s*32px/);
+});
+
 test("flow session cards show the current task inline without metadata icons", () => {
   assert.equal(app.includes("flow-session-current-task"), true);
   assert.equal(app.includes('class="flow-session-current-task" title="${escapeHtml(status)}">${escapeHtml(statusLabel)}'), true);

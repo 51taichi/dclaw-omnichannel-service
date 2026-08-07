@@ -4414,6 +4414,35 @@ html.has-bot-context .action-toolbox-toggle:hover {
   resize: vertical;
 }
 
+.manual-reply-input-wrap {
+  position: relative;
+}
+
+.manual-reply-input-wrap textarea {
+  padding-right: 48px;
+}
+
+.manual-reply-upload-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--accent);
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.manual-reply-upload-button:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, #ffffff);
+}
+
 .manual-reply-tools {
   display: flex;
   align-items: center;
@@ -4425,6 +4454,49 @@ html.has-bot-context .action-toolbox-toggle:hover {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+.manual-reply-attachment-list {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.manual-reply-attachment-chip {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--accent);
+  background: #ffffff;
+}
+
+.manual-reply-attachment-chip .icon {
+  width: 17px;
+  height: 17px;
+}
+
+.manual-reply-attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  color: #ffffff;
+  background: var(--danger);
+  font-size: 12px;
+  line-height: 16px;
+  cursor: pointer;
 }
 
 .manual-reply-emoji-bar button {

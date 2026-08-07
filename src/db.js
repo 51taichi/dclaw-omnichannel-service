@@ -7652,9 +7652,18 @@ function deliveryIdentityForConversationMessage(message, channelIdentity) {
     const channelAccountId = String(
       message.rawPayload?.channelAccountId || channelIdentity?.[2] || ""
     ).trim();
-    const messageId = String(message.rawPayload?.messageId || "").trim();
-    return messageId && provider && channelAccountId
-      ? { kind: "manual", messageIds: [messageId], provider, channelAccountId }
+    const declaredIds = Array.isArray(message.rawPayload?.messageIds)
+      ? message.rawPayload.messageIds
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+      : [];
+    const messageIds = [...new Set(
+      (declaredIds.length ? declaredIds : [message.rawPayload?.messageId])
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+    )];
+    return messageIds.length && provider && channelAccountId
+      ? { kind: "manual", messageIds, provider, channelAccountId }
       : null;
   }
   const provider = String(channelIdentity?.[1] || "").trim();
@@ -7744,7 +7753,7 @@ function attachOutgoingMessageDeliveryStatuses(messages, { botId, conversationKe
   for (const message of messages) {
     const identity = identityFor(message);
     if (!identity) continue;
-    if (identity.kind === "manual") {
+    if (identity.kind === "manual" && identity.messageIds.length === 1) {
       const outgoing = latestByIdentity.get(identityKey({ ...identity, messageId: identity.messageIds[0] }));
       if (!outgoing || !OUTGOING_MESSAGE_DELIVERY_STATUSES.has(outgoing.delivery_status)) continue;
       message.deliveryStatus = outgoing.delivery_status;

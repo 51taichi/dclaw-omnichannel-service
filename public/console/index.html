@@ -618,9 +618,16 @@
                 </div>
               </div>
               <div class="manual-reply-box" hidden>
-                <textarea id="manualReplyInput" rows="3" placeholder="输入人工回复，支持 emoji"></textarea>
+                <div class="manual-reply-input-wrap">
+                  <textarea id="manualReplyInput" rows="3" placeholder="输入人工回复，支持 emoji"></textarea>
+                  <button id="manualReplyUploadButton" class="manual-reply-upload-button" type="button" title="添加附件" aria-label="添加附件">
+                    <svg class="icon" aria-hidden="true"><use href="#icon-upload"></use></svg>
+                  </button>
+                  <input id="manualReplyUploadInput" type="file" multiple hidden />
+                </div>
                 <div class="manual-reply-tools">
                   <div id="manualReplyEmojiBar" class="manual-reply-emoji-bar"></div>
+                  <div id="manualReplyAttachmentList" class="manual-reply-attachment-list" aria-label="待发送附件"></div>
                   <button id="manualReplySendButton" class="primary" type="submit">
                     <svg class="icon" aria-hidden="true"><use href="#icon-send"></use></svg>
                     发送

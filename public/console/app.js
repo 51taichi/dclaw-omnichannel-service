@@ -28,6 +28,9 @@ const state = {
   proactiveSubmitting: false,
   proactiveFiltersLoading: false,
   proactiveUploadFiles: [],
+  manualReplyUploadFiles: [],
+  manualReplySubmitting: false,
+  manualReplyConversationKey: "",
   proactiveTargetTags: [],
   proactiveTagSelections: new Map(),
   proactiveManualTargetKeys: new Set(),
@@ -144,6 +147,9 @@ const els = {
   manualReplyComposer: document.querySelector("#manualReplyComposer"),
   manualReplyInput: document.querySelector("#manualReplyInput"),
   manualReplyEmojiBar: document.querySelector("#manualReplyEmojiBar"),
+  manualReplyUploadButton: document.querySelector("#manualReplyUploadButton"),
+  manualReplyUploadInput: document.querySelector("#manualReplyUploadInput"),
+  manualReplyAttachmentList: document.querySelector("#manualReplyAttachmentList"),
   manualReplySendButton: document.querySelector("#manualReplySendButton"),
   resetConversationButton: document.querySelector("#resetConversationButton"),
   confirmDialog: document.querySelector("#confirmDialog"),
@@ -426,7 +432,9 @@ async function request(path, options = {}) {
       expireBotSession(effectiveBotId);
       throw new Error("Bot 解锁已失效，请重新解锁");
     }
-    throw new Error(data.message || `HTTP ${response.status}`);
+    const error = new Error(data.message || `HTTP ${response.status}`);
+    error.data = data;
+    throw error;
   }
   return data;
 }
@@ -4638,6 +4646,41 @@ function insertManualReplyEmoji(emoji) {
   input.setSelectionRange(nextPosition, nextPosition);
 }
 
+function renderManualReplyAttachments() {
+  if (!els.manualReplyAttachmentList) return;
+  els.manualReplyAttachmentList.innerHTML = state.manualReplyUploadFiles
+    .map((file, index) => {
+      const type = detectFileTypeFromName(file.name);
+      return `<span class="manual-reply-attachment-chip" title="${escapeHtml(file.name)}" tabindex="0">
+        <svg class="icon" aria-hidden="true"><use href="#${proactiveAttachmentIcon(type)}"></use></svg>
+        <button class="manual-reply-attachment-remove" type="button" data-remove-manual-attachment="${index}" aria-label="删除 ${escapeHtml(file.name)}">×</button>
+      </span>`;
+    })
+    .join("");
+}
+
+function setManualReplyUploadFiles(files) {
+  const incoming = Array.from(files || []).filter(Boolean);
+  const availableSlots = PROACTIVE_MAX_ATTACHMENTS - state.manualReplyUploadFiles.length;
+  if (availableSlots <= 0) {
+    toast(`最多只能上传 ${PROACTIVE_MAX_ATTACHMENTS} 个附件`);
+    return;
+  }
+  state.manualReplyUploadFiles = [
+    ...state.manualReplyUploadFiles,
+    ...incoming.slice(0, availableSlots)
+  ];
+  if (incoming.length > availableSlots) toast(`最多只能上传 ${PROACTIVE_MAX_ATTACHMENTS} 个附件`);
+  if (els.manualReplyUploadInput) els.manualReplyUploadInput.value = "";
+  renderManualReplyAttachments();
+}
+
+function clearManualReplyAttachments() {
+  state.manualReplyUploadFiles = [];
+  if (els.manualReplyUploadInput) els.manualReplyUploadInput.value = "";
+  renderManualReplyAttachments();
+}
+
 function renderManualReplyComposer(session) {
   if (!els.manualReplyComposer) return;
   const hasSession = Boolean(
@@ -4645,6 +4688,13 @@ function renderManualReplyComposer(session) {
     && state.selectedFlowConversationKey
   );
   const isHuman = session?.handoffStatus === "human";
+  const conversationKey = String(state.selectedFlowConversationKey || "");
+  if (state.manualReplyConversationKey !== conversationKey) {
+    state.manualReplyConversationKey = conversationKey;
+    clearManualReplyAttachments();
+  } else if (hasSession && !isHuman && state.manualReplyUploadFiles.length) {
+    clearManualReplyAttachments();
+  }
   const aiCard = els.manualReplyComposer.querySelector(".ai-takeover-card");
   const replyBox = els.manualReplyComposer.querySelector(".manual-reply-box");
 
@@ -4659,7 +4709,9 @@ function renderManualReplyComposer(session) {
     els.manualReplyInput.placeholder = isHuman ? "输入人工回复，支持 emoji" : "AI 正在接管中";
   }
   if (els.manualReplySendButton) els.manualReplySendButton.disabled = !hasSession || !isHuman;
+  if (els.manualReplyUploadButton) els.manualReplyUploadButton.disabled = !hasSession || !isHuman;
   renderManualReplyEmojiBar();
+  renderManualReplyAttachments();
 }
 
 function syncHandoffButton(session = currentFlowSession) {
@@ -5175,28 +5227,58 @@ async function sendManualReply(event) {
     return;
   }
   const content = String(els.manualReplyInput?.value || "").trim();
-  if (!content) {
-    toast("请输入要发送的内容");
+  const localFiles = [...state.manualReplyUploadFiles];
+  if (!content && !localFiles.length) {
+    toast("请输入内容或添加附件");
     return;
   }
 
+  state.manualReplySubmitting = true;
   els.manualReplySendButton.disabled = true;
+  if (els.manualReplyUploadButton) els.manualReplyUploadButton.disabled = true;
   try {
+    const attachments = [];
+    for (const [index, localFile] of localFiles.entries()) {
+      toast(`正在上传附件 ${index + 1}/${localFiles.length}...`);
+      const uploaded = await uploadLocalFile(localFile, botId);
+      if (!isCurrentBotContext(botId, contextVersion)) return;
+      const objectName = uploaded.originalName || uploaded.filename || localFile.name;
+      attachments.push({
+        fileUrl: uploaded.url,
+        objectName,
+        fileType: detectFileTypeFromName(objectName || uploaded.url)
+      });
+    }
     await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}/manual-reply`, {
       method: "POST",
       botId,
       body: JSON.stringify({
         botId,
-        content
+        content,
+        attachments
       })
     });
     if (!isCurrentBotContext(botId, contextVersion)) return;
     els.manualReplyInput.value = "";
+    clearManualReplyAttachments();
     toast("已发送");
     await openFlowSession(conversationKey);
+  } catch (error) {
+    if (error?.data?.partial === true) {
+      const sentCount = Math.max(0, Number(error.data.sentCount) || 0);
+      state.manualReplyUploadFiles = state.manualReplyUploadFiles.slice(sentCount);
+      if (els.manualReplyInput) els.manualReplyInput.value = "";
+      renderManualReplyAttachments();
+      toast(error.message);
+      await openFlowSession(conversationKey);
+      return;
+    }
+    throw error;
   } finally {
+    state.manualReplySubmitting = false;
     if (isCurrentBotContext(botId, contextVersion) && currentFlowSession?.handoffStatus === "human") {
       els.manualReplySendButton.disabled = false;
+      if (els.manualReplyUploadButton) els.manualReplyUploadButton.disabled = false;
     }
   }
 }
@@ -6618,6 +6700,17 @@ els.groupTasksPanel.addEventListener("click", (event) => {
 els.manualReplyComposer.addEventListener("submit", (event) =>
   sendManualReply(event).catch(toastError)
 );
+els.manualReplyUploadButton?.addEventListener("click", () => els.manualReplyUploadInput?.click());
+els.manualReplyUploadInput?.addEventListener("change", () => {
+  setManualReplyUploadFiles(els.manualReplyUploadInput.files);
+});
+els.manualReplyAttachmentList?.addEventListener("click", (event) => {
+  const button = event.target.closest("[data-remove-manual-attachment]");
+  if (!button || state.manualReplySubmitting) return;
+  const index = Number(button.dataset.removeManualAttachment);
+  state.manualReplyUploadFiles = state.manualReplyUploadFiles.filter((_, itemIndex) => itemIndex !== index);
+  renderManualReplyAttachments();
+});
 els.proactiveForm.addEventListener("submit", (event) =>
   createProactiveTask(event).catch(toastError)
 );
