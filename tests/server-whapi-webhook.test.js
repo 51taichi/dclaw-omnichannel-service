@@ -76,15 +76,18 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
       from_name: "Ada", from_me: false, timestamp: 1786000000, text: { body: "hello" }
     }]
   };
-  const send = (secret, body = payload) => fetch(`http://127.0.0.1:${port}/webhooks/whapi/public-a`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-dclaw-webhook-secret": secret },
-    body: JSON.stringify(body)
-  });
+  const send = (secret, body = payload, eventType = "") => fetch(
+    `http://127.0.0.1:${port}/webhooks/whapi/public-a${eventType ? `/${eventType}` : ""}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-dclaw-webhook-secret": secret },
+      body: JSON.stringify(body)
+    }
+  );
   const invalid = await send("wrong-secret");
   assert.equal(invalid.status, 401);
   assert.deepEqual(await invalid.json(), { ok: false, message: "Webhook authentication failed" });
-  const first = await send("valid-secret");
+  const first = await send("valid-secret", payload, "messages");
   const duplicate = await send("valid-secret");
   assert.equal(first.status, 200, stderr);
   assert.deepEqual(await first.json(), { ok: true, duplicate: false });

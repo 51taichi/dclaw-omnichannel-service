@@ -528,8 +528,15 @@ const receiveWhapiWebhook = (req, res) => {
   }
 };
 
+const whapiWebhookPaths = [
+  "/webhooks/whapi/:publicId",
+  ...["messages", "statuses", "groups", "users", "channel"]
+    .map((eventType) => `/webhooks/whapi/:publicId/${eventType}`)
+];
 for (const method of ["post", "put", "patch", "delete"]) {
-  app[method]("/webhooks/whapi/:publicId", whapiWebhookJson, receiveWhapiWebhook);
+  for (const webhookPath of whapiWebhookPaths) {
+    app[method](webhookPath, whapiWebhookJson, receiveWhapiWebhook);
+  }
 }
 
 app.use(express.json({ limit: "2mb" }));
