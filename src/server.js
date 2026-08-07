@@ -509,11 +509,15 @@ async function sendMediaMessage({
 const whapiWebhookJson = express.json({ limit: "512kb", strict: true });
 const receiveWhapiWebhook = (req, res) => {
   try {
+    const eventType = String(res.locals.whapiEventType || "");
+    const body = eventType
+      ? { ...req.body, event: { type: eventType, event: req.method.toLowerCase() } }
+      : req.body;
     const result = whapiWebhookIntake.handle({
       publicId: req.params.publicId,
       method: req.method,
       headers: req.headers,
-      body: req.body
+      body
     });
     if (!result.disabled) {
       const account = getChannelAccountByPublicId(req.params.publicId);
@@ -528,14 +532,14 @@ const receiveWhapiWebhook = (req, res) => {
   }
 };
 
-const whapiWebhookPaths = [
-  "/webhooks/whapi/:publicId",
-  ...["messages", "statuses", "groups", "users", "channel"]
-    .map((eventType) => `/webhooks/whapi/:publicId/${eventType}`)
-];
+const whapiWebhookEventTypes = ["messages", "statuses", "groups", "users", "channel"];
 for (const method of ["post", "put", "patch", "delete"]) {
-  for (const webhookPath of whapiWebhookPaths) {
-    app[method](webhookPath, whapiWebhookJson, receiveWhapiWebhook);
+  app[method]("/webhooks/whapi/:publicId", whapiWebhookJson, receiveWhapiWebhook);
+  for (const eventType of whapiWebhookEventTypes) {
+    app[method](`/webhooks/whapi/:publicId/${eventType}`, whapiWebhookJson, (req, res) => {
+      res.locals.whapiEventType = eventType;
+      receiveWhapiWebhook(req, res);
+    });
   }
 }
 

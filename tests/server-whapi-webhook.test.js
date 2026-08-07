@@ -87,7 +87,8 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
   const invalid = await send("wrong-secret");
   assert.equal(invalid.status, 401);
   assert.deepEqual(await invalid.json(), { ok: false, message: "Webhook authentication failed" });
-  const first = await send("valid-secret", payload, "messages");
+  const { event: _event, ...methodModePayload } = payload;
+  const first = await send("valid-secret", methodModePayload, "messages");
   const duplicate = await send("valid-secret");
   assert.equal(first.status, 200, stderr);
   assert.deepEqual(await first.json(), { ok: true, duplicate: false });
@@ -108,6 +109,7 @@ test("Whapi webhook route authenticates and durably deduplicates before acknowle
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   assert.equal(inspected.events.length, 1);
+  assert.equal(inspected.events[0].eventKind, "messages.post");
   assert.equal(inspected.events[0].state, "completed");
   assert.equal(inspected.conversation.conversationKey, "whapi:CHAN-A:private:123@s.whatsapp.net");
 
