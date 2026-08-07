@@ -62,6 +62,10 @@ export function normalizeWhapiWebhook({ channelAccountId, payload }) {
   return assertInboundEvents(events);
 }
 
+export function normalizeWhapiHistoryMessage({ channelAccountId, message }) {
+  return normalizeMessage(channelAccountId, "post", message);
+}
+
 function normalizeGroupParticipants(channelAccountId, action, change) {
   if (!isRecord(change)) invalidResponse();
   const externalId = requiredString(change.group_id);

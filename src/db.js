@@ -7250,6 +7250,38 @@ export function ensureConversationDateTag({
   });
 }
 
+export function ensureFirstDiscoveryDateTag({
+  botId,
+  agentId,
+  conversationKey,
+  firstSeenAt
+}) {
+  const conversation = getConversation(conversationKey);
+  if (
+    !conversation
+    || conversation.botId !== botId
+    || conversation.agentId !== agentId
+    || ![2, 4].includes(Number(conversation.roomType))
+  ) {
+    return null;
+  }
+  const schema = normalizeTagSchema(getAgentTagSchema(agentId)?.config || {});
+  if (!schema.dateTag.enabled) return null;
+  const firstSeenDate = new Date(firstSeenAt);
+  if (Number.isNaN(firstSeenDate.getTime())) return null;
+  const existing = listConversationTags({ botId, agentId, conversationKey })
+    .find((tag) => tag.tagType === "date");
+  if (existing) return listConversationTags({ botId, agentId, conversationKey });
+  return upsertSystemDateTag({
+    botId,
+    agentId,
+    conversationKey,
+    dateTagId: dateTagIdFor(firstSeenDate, schema.dateTag.cutoffTime),
+    source: "whapi_first_discovery",
+    reason: "最早可追溯联系日期"
+  });
+}
+
 export function ensureManagedGroupConversationDateTag({
   botId,
   agentId,
@@ -7633,7 +7665,7 @@ export function insertImportedConversationMessages({
   source,
   messages = []
 }) {
-  if (!["legacy_customer_history", "legacy_api_history"].includes(source)) {
+  if (!["legacy_customer_history", "legacy_api_history", "whapi_chat_history"].includes(source)) {
     throw new Error("invalid imported conversation message source");
   }
   const insert = db.prepare(`
@@ -7723,7 +7755,7 @@ export function listImportedConversationMessages({ botId, conversationKey }) {
     FROM conversation_messages
     WHERE bot_id = ?
       AND conversation_key = ?
-      AND source IN ('legacy_customer_history', 'legacy_api_history')
+      AND source IN ('legacy_customer_history', 'legacy_api_history', 'whapi_chat_history')
     ORDER BY created_at ASC, id ASC
   `).all(botId, conversationKey).map(rowToConversationMessage);
 }

@@ -2,7 +2,21 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { assertInboundEvents } from "../src/channels/contract.js";
-import { normalizeWhapiWebhook } from "../src/channels/whapi/mapper.js";
+import { normalizeWhapiHistoryMessage, normalizeWhapiWebhook } from "../src/channels/whapi/mapper.js";
+
+test("Whapi mapper normalizes one history message without a webhook envelope", () => {
+  const event = normalizeWhapiHistoryMessage({
+    channelAccountId: "CHAN-A",
+    message: {
+      id: "history-1", type: "text", chat_id: "15551234567@s.whatsapp.net",
+      from: "15551234567", from_name: "Ada", from_me: false,
+      timestamp: 1786000000, text: { body: "older message" }
+    }
+  });
+  assert.equal(event.eventId, "messages.post:history-1");
+  assert.equal(event.message.externalId, "history-1");
+  assert.equal(event.message.text, "older message");
+});
 
 test("Whapi mapper normalizes private and group text with stable identities", () => {
   const payload = {
