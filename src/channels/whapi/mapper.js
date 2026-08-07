@@ -235,6 +235,7 @@ function timestampToIso(value) {
 }
 
 function timestampToIsoOrEmpty(value) {
+  if (value === null || value === undefined || value === "") return "";
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return "";
   const milliseconds = numeric < 10_000_000_000 ? numeric * 1000 : numeric;
