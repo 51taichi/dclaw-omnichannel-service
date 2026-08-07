@@ -4357,6 +4357,157 @@ export function insertOutgoingMessage({
   );
 }
 
+export function persistReconciledOutboundMessage({
+  botId,
+  provider,
+  channelAccountId,
+  conversationKey,
+  messageId,
+  content,
+  occurredAt,
+  deliveryStatus,
+  rawPayload,
+  senderName = "机器人"
+}) {
+  const normalizedBotId = requiredString(botId, "botId");
+  const normalizedProvider = requiredString(provider, "provider");
+  const normalizedChannelAccountId = requiredString(channelAccountId, "channelAccountId");
+  const normalizedConversationKey = requiredString(conversationKey, "conversationKey");
+  const normalizedMessageId = requiredString(messageId, "messageId");
+  const normalizedContent = requiredString(content, "content");
+  const normalizedStatus = String(deliveryStatus || "sent").trim().toLowerCase();
+  if (!Object.hasOwn(CHANNEL_DELIVERY_STATUS_RANK, normalizedStatus) || !normalizedStatus) {
+    throw new Error("channel delivery status is invalid");
+  }
+  const timestamp = new Date(occurredAt).toISOString();
+  const result = {
+    outcome: "",
+    conversationMessageId: null,
+    outgoingInserted: false
+  };
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const conversation = db.prepare(`
+      SELECT conversation_key
+      FROM conversations
+      WHERE conversation_key = ? AND bot_id = ?
+    `).get(normalizedConversationKey, normalizedBotId);
+    if (!conversation) {
+      db.exec("COMMIT");
+      return { ...result, outcome: "missing_conversation" };
+    }
+
+    const existingOutgoing = db.prepare(`
+      SELECT id
+      FROM outgoing_messages
+      WHERE bot_id = ? AND conversation_key = ?
+        AND provider = ? AND channel_account_id = ? AND message_id = ?
+      ORDER BY id DESC LIMIT 1
+    `).get(
+      normalizedBotId,
+      normalizedConversationKey,
+      normalizedProvider,
+      normalizedChannelAccountId,
+      normalizedMessageId
+    );
+    if (existingOutgoing) {
+      db.exec("COMMIT");
+      return { ...result, outcome: "existing_outgoing" };
+    }
+
+    const existingConversationMessage = db.prepare(`
+      SELECT id
+      FROM conversation_messages
+      WHERE bot_id = ? AND conversation_key = ?
+        AND (
+          json_extract(raw_payload_json, '$.messageId') = ?
+          OR json_extract(raw_payload_json, '$.channelMessageId') = ?
+          OR EXISTS (
+            SELECT 1
+            FROM json_each(json_extract(raw_payload_json, '$.channelMessageIds'))
+            WHERE value = ?
+          )
+          OR EXISTS (
+            SELECT 1
+            FROM json_each(json_extract(raw_payload_json, '$.messageIds'))
+            WHERE value = ?
+          )
+        )
+      ORDER BY id DESC LIMIT 1
+    `).get(
+      normalizedBotId,
+      normalizedConversationKey,
+      normalizedMessageId,
+      normalizedMessageId,
+      normalizedMessageId,
+      normalizedMessageId
+    );
+
+    let conversationMessageId = Number(existingConversationMessage?.id || 0) || null;
+    if (!conversationMessageId) {
+      const insertedConversation = db.prepare(`
+        INSERT INTO conversation_messages (
+          bot_id, conversation_key, direction, sender_name, content,
+          raw_payload_json, created_at
+        ) VALUES (?, ?, 'outbound', ?, ?, ?, ?)
+      `).run(
+        normalizedBotId,
+        normalizedConversationKey,
+        String(senderName || "机器人"),
+        normalizedContent,
+        json({
+          source: "channel_outbound_webhook",
+          messageId: normalizedMessageId,
+          channelMessageId: normalizedMessageId,
+          channelMessageIds: [normalizedMessageId],
+          provider: normalizedProvider,
+          channelAccountId: normalizedChannelAccountId,
+          channelPayload: rawPayload || {}
+        }),
+        timestamp
+      );
+      conversationMessageId = Number(insertedConversation.lastInsertRowid);
+    }
+
+    db.prepare(`
+      INSERT INTO outgoing_messages (
+        bot_id, agent_id, conversation_key, message_id, target_name, content,
+        provider, channel_account_id, delivery_status, delivery_updated_at,
+        channel_response_json, created_at
+      ) VALUES (?, '', ?, ?, '', ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      normalizedBotId,
+      normalizedConversationKey,
+      normalizedMessageId,
+      normalizedContent,
+      normalizedProvider,
+      normalizedChannelAccountId,
+      normalizedStatus,
+      timestamp,
+      json({
+        source: "channel_outbound_webhook",
+        channelResult: {
+          accepted: true,
+          data: normalizedMessageId,
+          status: normalizedStatus
+        },
+        channelPayload: rawPayload || {}
+      }),
+      timestamp
+    );
+    db.exec("COMMIT");
+    return {
+      outcome: existingConversationMessage ? "existing_conversation" : "inserted",
+      conversationMessageId,
+      outgoingInserted: true
+    };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 const CHANNEL_DELIVERY_STATUS_RANK = Object.freeze({
   "": 0,
   pending: 1,
