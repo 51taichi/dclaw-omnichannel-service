@@ -101,6 +101,15 @@ test("compose identifies the omnichannel deployment service and container", () =
   assert.equal(containerMatch?.[1], "dclaw-omnichannel-service");
 });
 
+test("production image includes the outbound webhook backfill command", () => {
+  const dockerfile = readArtifact("Dockerfile");
+
+  assert.match(
+    dockerfile,
+    /^COPY scripts\/backfill-outbound-webhooks\.js \.\/scripts\/backfill-outbound-webhooks\.js$/mu
+  );
+});
+
 test("example environment documents isolated data and encrypted channel credentials", () => {
   const source = readArtifact(".env.example");
   const environment = parseExampleEnvironment(source);
