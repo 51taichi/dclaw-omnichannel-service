@@ -89,6 +89,24 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_channel_webhook_events_pending
   ON channel_webhook_events (state, next_retry_at, id);
 
+  CREATE TABLE IF NOT EXISTS first_contact_history_syncs (
+    bot_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    attempts INTEGER NOT NULL DEFAULT 0,
+    lease_owner TEXT NOT NULL DEFAULT '',
+    lease_expires_at TEXT,
+    page_count INTEGER NOT NULL DEFAULT 0,
+    imported_count INTEGER NOT NULL DEFAULT 0,
+    earliest_at TEXT,
+    error_message TEXT NOT NULL DEFAULT '',
+    started_at TEXT,
+    finished_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (bot_id, conversation_key)
+  );
+
   CREATE TABLE IF NOT EXISTS agents (
     agent_id TEXT PRIMARY KEY,
     agent_name TEXT,
@@ -3457,6 +3475,123 @@ export function recoverExpiredChannelWebhookLeases({ nowIso = now() } = {}) {
         next_retry_at = ?, updated_at = ?
     WHERE state = 'processing' AND lease_expires_at <= ?
   `).run(nowIso, nowIso, nowIso).changes;
+}
+
+function rowToFirstContactHistorySync(row) {
+  if (!row) return null;
+  return {
+    botId: row.bot_id,
+    conversationKey: row.conversation_key,
+    status: row.status,
+    attempts: Number(row.attempts || 0),
+    leaseOwner: row.lease_owner || "",
+    leaseExpiresAt: row.lease_expires_at || "",
+    pageCount: Number(row.page_count || 0),
+    importedCount: Number(row.imported_count || 0),
+    earliestAt: row.earliest_at || "",
+    errorMessage: row.error_message || "",
+    startedAt: row.started_at || "",
+    finishedAt: row.finished_at || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+export function getFirstContactHistorySync({ botId, conversationKey }) {
+  return rowToFirstContactHistorySync(db.prepare(`
+    SELECT * FROM first_contact_history_syncs
+    WHERE bot_id = ? AND conversation_key = ?
+  `).get(requiredString(botId, "botId"), requiredString(conversationKey, "conversationKey")));
+}
+
+export function claimFirstContactHistorySync({
+  botId,
+  conversationKey,
+  owner,
+  leaseMs = 60_000,
+  nowIso = now()
+}) {
+  const normalizedBotId = requiredString(botId, "botId");
+  const normalizedConversationKey = requiredString(conversationKey, "conversationKey");
+  const normalizedOwner = requiredString(owner, "owner");
+  const timestamp = new Date(nowIso).toISOString();
+  const leaseExpiresAt = new Date(
+    new Date(timestamp).getTime() + Math.max(1000, Number(leaseMs) || 60_000)
+  ).toISOString();
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      INSERT INTO first_contact_history_syncs (
+        bot_id, conversation_key, status, created_at, updated_at
+      ) VALUES (?, ?, 'pending', ?, ?)
+      ON CONFLICT(bot_id, conversation_key) DO NOTHING
+    `).run(normalizedBotId, normalizedConversationKey, timestamp, timestamp);
+    const result = db.prepare(`
+      UPDATE first_contact_history_syncs
+      SET status = 'processing', attempts = attempts + 1,
+          lease_owner = ?, lease_expires_at = ?, started_at = ?, finished_at = NULL,
+          error_message = '', updated_at = ?
+      WHERE bot_id = ? AND conversation_key = ?
+        AND (
+          status IN ('pending', 'failed', 'unavailable')
+          OR (status = 'processing' AND lease_expires_at <= ?)
+        )
+    `).run(
+      normalizedOwner,
+      leaseExpiresAt,
+      timestamp,
+      timestamp,
+      normalizedBotId,
+      normalizedConversationKey,
+      timestamp
+    );
+    const record = getFirstContactHistorySync({
+      botId: normalizedBotId,
+      conversationKey: normalizedConversationKey
+    });
+    db.exec("COMMIT");
+    return { claimed: result.changes === 1, record };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function completeFirstContactHistorySync({
+  botId,
+  conversationKey,
+  owner,
+  status,
+  pageCount = 0,
+  importedCount = 0,
+  earliestAt = "",
+  errorMessage = "",
+  nowIso = now()
+}) {
+  if (!["success", "unavailable", "failed"].includes(status)) {
+    throw new Error("first-contact history sync status is invalid");
+  }
+  const result = db.prepare(`
+    UPDATE first_contact_history_syncs
+    SET status = ?, page_count = ?, imported_count = ?, earliest_at = ?,
+        error_message = ?, lease_owner = '', lease_expires_at = NULL,
+        finished_at = ?, updated_at = ?
+    WHERE bot_id = ? AND conversation_key = ?
+      AND status = 'processing' AND lease_owner = ?
+  `).run(
+    status,
+    Math.max(0, Number(pageCount) || 0),
+    Math.max(0, Number(importedCount) || 0),
+    String(earliestAt || "") || null,
+    String(errorMessage || "").slice(0, 160),
+    nowIso,
+    nowIso,
+    requiredString(botId, "botId"),
+    requiredString(conversationKey, "conversationKey"),
+    requiredString(owner, "owner")
+  );
+  if (result.changes !== 1) throw new Error("first-contact history sync lease is not owned");
+  return getFirstContactHistorySync({ botId, conversationKey });
 }
 
 function normalizeEncryptedToken(value) {
