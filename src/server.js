@@ -123,6 +123,7 @@ import {
   getConversationAssets,
   backfillManagedGroupConversationDateTags,
   ensureManagedGroupConversationDateTag,
+  ensureFirstDiscoveryDateTag,
   getFlowMachineForBot,
   getFlowActivationProgress,
   getFlowSession,
@@ -276,6 +277,7 @@ import { createChannelSender } from "./channels/sender.js";
 import { createWhapiAdapter } from "./channels/whapi/adapter.js";
 import { createWhapiClient } from "./channels/whapi/client.js";
 import { normalizeWhapiWebhook } from "./channels/whapi/mapper.js";
+import { syncFirstContactHistory } from "./first-contact-history-sync.js";
 import { buildWhapiWebhookSettings, buildWhapiWebhookUrl } from "./channels/whapi/webhook.js";
 import { mapWhapiHealth } from "./channels/whapi/health.js";
 import { CHANNEL_ERROR_CODES, ChannelError } from "./channels/errors.js";
@@ -346,6 +348,18 @@ const channelWebhookWorkerIntervalMs = Math.max(
   100,
   Number(process.env.CHANNEL_WEBHOOK_WORKER_INTERVAL_MS || 500)
 );
+const firstContactHistoryMaxPages = Math.max(
+  1,
+  Number(process.env.WHAPI_FIRST_CONTACT_HISTORY_MAX_PAGES || 20)
+);
+const firstContactHistoryMaxMessages = Math.max(
+  1,
+  Number(process.env.WHAPI_FIRST_CONTACT_HISTORY_MAX_MESSAGES || 2000)
+);
+const firstContactHistoryLeaseMs = Math.max(
+  1_000,
+  Number(process.env.WHAPI_FIRST_CONTACT_HISTORY_LEASE_MS || 60_000)
+);
 fs.mkdirSync(uploadDir, { recursive: true });
 
 function getUploadFolderName(botId) {
@@ -382,6 +396,24 @@ const whapiWebhookIntake = createWebhookIntake({
   verifySecret: verifyWebhookSecret,
   recordEvent: recordChannelWebhookEvent
 });
+
+function createWhapiClientForBot(botId) {
+  const account = getChannelAccount(botId);
+  if (!account || account.provider !== "whapi") throw new Error("Whapi channel account not found");
+  const credentials = getChannelAccountCredentials(botId);
+  const key = resolveTokenEncryptionKey(process.env.CHANNEL_TOKEN_ENCRYPTION_KEY);
+  const token = decryptChannelToken({
+    encrypted: credentials.encryptedToken,
+    key,
+    provider: account.provider,
+    channelAccountId: account.channelId
+  });
+  return createWhapiClient({
+    token,
+    channelAccountId: account.channelId,
+    ...(process.env.WHAPI_BASE_URL ? { baseUrl: process.env.WHAPI_BASE_URL } : {})
+  });
+}
 
 const channelRegistry = createChannelRegistry();
 channelRegistry.register(createWhapiAdapter({
@@ -966,13 +998,14 @@ function getFlowNode(machine, nodeId) {
   return nodes.find((node) => node.id === nodeId) || null;
 }
 
-function persistInboundConversation({
+async function persistInboundConversation({
   botId,
   binding,
   conversationKey,
   message,
   resetPending = false,
   skipFirstSeenDateTag = false,
+  firstDiscovery = false,
   managedGroup = null
 }) {
   const conversation = upsertConversation({
@@ -981,8 +1014,62 @@ function persistInboundConversation({
     conversationKey,
     message,
     resetPending,
-    skipFirstSeenDateTag
+    skipFirstSeenDateTag: skipFirstSeenDateTag || firstDiscovery
   });
+  if (firstDiscovery && binding?.agentId && message.metadata?.provider === "whapi") {
+    const occurredAt = message.metadata?.occurredAt || new Date().toISOString();
+    const historyStartedAt = Date.now();
+    logInfo("first_contact_history_sync.started", {
+      botId,
+      conversationKey,
+      channelAccountId: message.metadata.channelAccountId
+    });
+    try {
+      const historyResult = await syncFirstContactHistory({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        channelAccountId: message.metadata.channelAccountId,
+        chatId: message.metadata.externalChatId,
+        currentMessage: { messageId: message.messageId, occurredAt },
+        client: createWhapiClientForBot(botId),
+        owner: `incoming:${crypto.randomUUID()}`,
+        maxPages: firstContactHistoryMaxPages,
+        maxMessages: firstContactHistoryMaxMessages,
+        leaseMs: firstContactHistoryLeaseMs
+      });
+      const historyLog = {
+        botId,
+        conversationKey,
+        status: historyResult.status,
+        pageCount: historyResult.pageCount || 0,
+        importedCount: historyResult.importedCount || 0,
+        earliestAt: historyResult.earliestAt || "",
+        durationMs: Date.now() - historyStartedAt
+      };
+      if (historyResult.status === "failed") {
+        logWarn("first_contact_history_sync.failed", {
+          ...historyLog,
+          errorCode: historyResult.errorMessage || "history_sync_failed"
+        });
+      } else {
+        logInfo("first_contact_history_sync.completed", historyLog);
+      }
+    } catch (error) {
+      ensureFirstDiscoveryDateTag({
+        botId,
+        agentId: binding.agentId,
+        conversationKey,
+        firstSeenAt: occurredAt
+      });
+      logWarn("first_contact_history_sync.failed", {
+        botId,
+        conversationKey,
+        errorCode: String(error?.code || error?.name || "history_sync_failed"),
+        durationMs: Date.now() - historyStartedAt
+      });
+    }
+  }
   if (managedGroup && binding?.agentId) {
     ensureManagedGroupConversationDateTag({
       botId,
@@ -3995,13 +4082,14 @@ async function processIncomingMessage({ botId, message, intake = null }) {
   }
 
   const persisted = (isPrivateMessage(message) || isGroupMessage(message))
-    ? persistInboundConversation({
+    ? await persistInboundConversation({
         botId,
         binding,
         conversationKey,
         message,
         resetPending: resetState.resetPending,
         skipFirstSeenDateTag: false,
+        firstDiscovery: isPrivateMessage(message) && !hadConversation,
         managedGroup: group
       })
     : { conversation: null, messageRecord: null };

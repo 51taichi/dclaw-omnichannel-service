@@ -31,13 +31,14 @@ export async function syncFirstContactHistory({
   pageSize = DEFAULT_PAGE_SIZE,
   maxPages = DEFAULT_MAX_PAGES,
   maxMessages = DEFAULT_MAX_MESSAGES,
+  leaseMs = 60_000,
   dependencies = {}
 }) {
   const claimSync = dependencies.claimSync || claimFirstContactHistorySync;
   const completeSync = dependencies.completeSync || completeFirstContactHistorySync;
   const importMessages = dependencies.importMessages || insertImportedConversationMessages;
   const ensureDateTag = dependencies.ensureDateTag || ensureFirstDiscoveryDateTag;
-  const claimed = claimSync({ botId, conversationKey, owner });
+  const claimed = claimSync({ botId, conversationKey, owner, leaseMs });
   if (!claimed?.claimed) {
     return { claimed: false, status: claimed?.record?.status || "processing" };
   }
