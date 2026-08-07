@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { mergeInlineActions } from "./action-chips.js";
 import { activationDelayMs } from "./activation-timing.js";
 import { normalizeSecretUpdate } from "./secret-update.js";
+import { reconcileOutboundWebhookMessage } from "./outbound-webhook-reconciliation.js";
 import { loadBotBindingsFromConfig } from "./config.js";
 import { runConversationResetRequests } from "./conversation-reset.js";
 import { createConversationResetWorker } from "./conversation-reset-worker.js";
