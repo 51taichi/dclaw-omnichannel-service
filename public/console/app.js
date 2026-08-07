@@ -5059,7 +5059,7 @@ function renderManualMessageDeliveryStatus(message) {
   const rawPayload = message?.rawPayload || {};
   const isManualReply = rawPayload.source === "manual_reply";
   const hasChannelMessageIdentity = Boolean(
-    String(rawPayload.messageId || rawPayload.channelMessageId || "").trim()
+    String(rawPayload.channelMessageId || "").trim()
     || (
       Array.isArray(rawPayload.channelMessageIds)
       && rawPayload.channelMessageIds.some((id) => String(id || "").trim())

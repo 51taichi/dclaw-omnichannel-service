@@ -7496,17 +7496,19 @@ const OUTGOING_MESSAGE_DELIVERY_STATUSES = new Set([
 
 function deliveryIdentityForConversationMessage(message, channelIdentity) {
   if (message.direction !== "outbound") return null;
-  const provider = String(message.rawPayload?.provider || channelIdentity?.[1] || "").trim();
-  const channelAccountId = String(
-    message.rawPayload?.channelAccountId || channelIdentity?.[2] || ""
-  ).trim();
-  if (!provider || !channelAccountId) return null;
   if (message.rawPayload?.source === "manual_reply") {
+    const provider = String(message.rawPayload?.provider || channelIdentity?.[1] || "").trim();
+    const channelAccountId = String(
+      message.rawPayload?.channelAccountId || channelIdentity?.[2] || ""
+    ).trim();
     const messageId = String(message.rawPayload?.messageId || "").trim();
-    return messageId
+    return messageId && provider && channelAccountId
       ? { kind: "manual", messageIds: [messageId], provider, channelAccountId }
       : null;
   }
+  const provider = String(channelIdentity?.[1] || "").trim();
+  const channelAccountId = String(channelIdentity?.[2] || "").trim();
+  if (!provider || !channelAccountId) return null;
   const declaredIds = Array.isArray(message.rawPayload?.channelMessageIds)
     ? message.rawPayload.channelMessageIds
       .map((value) => String(value || "").trim())

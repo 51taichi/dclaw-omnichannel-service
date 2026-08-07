@@ -84,6 +84,7 @@ test("delivery status is rendered for outbound manual and identified AI replies"
   assert.equal(render({ direction: "inbound", rawPayload: { channelMessageIds: ["incoming"] }, deliveryStatus: "read" }), "");
   assert.equal(render({ direction: "outbound", rawPayload: { source: "agent_reply" }, deliveryStatus: "read" }), "");
   assert.equal(render({ direction: "outbound", rawPayload: { channelMessageIds: [""] }, deliveryStatus: "read" }), "");
+  assert.equal(render({ direction: "outbound", rawPayload: { messageId: "not-a-channel-id" }, deliveryStatus: "read" }), "");
   assert.equal(render({ direction: "outbound", rawPayload: { source: "manual_reply" }, deliveryStatus: "unexpected" }), "");
   assert.equal(render({ direction: "outbound", rawPayload: { channelMessageId: "legacy-ai" }, deliveryStatus: "unexpected" }), "");
   assert.equal(render({ direction: "outbound", rawPayload: { source: "manual_reply" } }), "");

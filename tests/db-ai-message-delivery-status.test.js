@@ -193,3 +193,32 @@ test("AI aggregation isolates provider/account and exposes failed error plus lat
   assert.equal(loaded.deliveryError, "provider rejected AI part");
   assert.ok(loaded.deliveryUpdatedAt);
 });
+
+test("AI aggregation derives provider and account strictly from the conversation key", () => {
+  const botId = "raw-identity-bot";
+  const conversationKey = "whapi:channel-a:private:raw-identity-customer";
+  const message = insertConversationMessage({
+    botId,
+    conversationKey,
+    direction: "outbound",
+    senderName: "AI",
+    content: "AI 自动回复",
+    rawPayload: {
+      source: "agent_reply",
+      provider: "other-provider",
+      channelAccountId: "other-account",
+      channelMessageIds: ["shared-ai-id"]
+    }
+  });
+  insertOutgoing({ botId, conversationKey, messageId: "shared-ai-id", status: "read" });
+  insertOutgoing({
+    botId,
+    conversationKey,
+    messageId: "shared-ai-id",
+    status: "failed",
+    provider: "other-provider",
+    channelAccountId: "other-account"
+  });
+
+  assert.equal(loadMessage(botId, conversationKey, message.id).deliveryStatus, "read");
+});
