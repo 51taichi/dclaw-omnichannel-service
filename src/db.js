@@ -7475,6 +7475,51 @@ function fetchConversationMessagesAfter({
   );
 }
 
+const MANUAL_MESSAGE_DELIVERY_STATUSES = new Set([
+  "pending",
+  "sent",
+  "delivered",
+  "read",
+  "played",
+  "failed"
+]);
+
+function attachManualMessageDeliveryStatuses(messages, { botId, conversationKey }) {
+  if (!botId || !conversationKey || !messages.length) return messages;
+  const messageIds = [...new Set(messages
+    .filter((message) => message.rawPayload?.source === "manual_reply")
+    .map((message) => String(message.rawPayload?.messageId || "").trim())
+    .filter(Boolean))];
+  if (!messageIds.length) return messages;
+
+  const placeholders = messageIds.map(() => "?").join(", ");
+  const rows = db.prepare(`
+    SELECT message_id, delivery_status, delivery_error, delivery_updated_at
+    FROM outgoing_messages
+    WHERE bot_id = ?
+      AND conversation_key = ?
+      AND message_id IN (${placeholders})
+    ORDER BY id DESC
+  `).all(botId, conversationKey, ...messageIds);
+  const latestByMessageId = new Map();
+  for (const row of rows) {
+    if (!latestByMessageId.has(row.message_id)) {
+      latestByMessageId.set(row.message_id, row);
+    }
+  }
+
+  for (const message of messages) {
+    if (message.rawPayload?.source !== "manual_reply") continue;
+    const messageId = String(message.rawPayload?.messageId || "").trim();
+    const outgoing = latestByMessageId.get(messageId);
+    if (!outgoing || !MANUAL_MESSAGE_DELIVERY_STATUSES.has(outgoing.delivery_status)) continue;
+    message.deliveryStatus = outgoing.delivery_status;
+    message.deliveryError = outgoing.delivery_error || "";
+    message.deliveryUpdatedAt = outgoing.delivery_updated_at || "";
+  }
+  return messages;
+}
+
 export function listConversationMessages({ botId = "", conversationKey, limit = 200 }) {
   const visibleLimit = Math.max(1, Number.parseInt(limit, 10) || 200);
   const batchSize = Math.min(1200, Math.max(4, visibleLimit * 4));
@@ -7491,7 +7536,9 @@ export function listConversationMessages({ botId = "", conversationKey, limit = 
     const noMoreRows = batch.length < batchSize;
     const visible = dedupeConversationMessages(rawRows.map(rowToConversationMessage))
       .slice(-visibleLimit);
-    if (noMoreRows) return visible;
+    if (noMoreRows) {
+      return attachManualMessageDeliveryStatuses(visible, { botId, conversationKey });
+    }
 
     cursor = batch.at(-1);
     if (visible.length < visibleLimit) continue;
@@ -7504,7 +7551,7 @@ export function listConversationMessages({ botId = "", conversationKey, limit = 
         && oldestFetchedTime < oldestVisibleTime - 10_000
       )
     ) {
-      return visible;
+      return attachManualMessageDeliveryStatuses(visible, { botId, conversationKey });
     }
   }
 }
@@ -7577,7 +7624,10 @@ export function listConversationMessagesAround({
   const beforeLimit = Math.max(0, Math.min(200, Number.parseInt(before, 10) || 0));
   const afterLimit = Math.max(0, Math.min(200, Number.parseInt(after, 10) || 0));
   if (beforeLimit === 0 && afterLimit === 0) {
-    return [rowToConversationMessage(anchor)];
+    return attachManualMessageDeliveryStatuses(
+      [rowToConversationMessage(anchor)],
+      { botId, conversationKey }
+    );
   }
 
   const beforeBatchSize = Math.min(800, Math.max(4, beforeLimit * 4));
@@ -7630,7 +7680,9 @@ export function listConversationMessagesAround({
         )
       )
     );
-    if (!needsOlderRows && !needsNewerRows) return selected;
+    if (!needsOlderRows && !needsNewerRows) {
+      return attachManualMessageDeliveryStatuses(selected, { botId, conversationKey });
+    }
 
     if (needsOlderRows) {
       const older = fetchConversationMessagesBefore({
