@@ -416,10 +416,19 @@ async function request(path, options = {}) {
   const session = effectiveBotId ? getBotSession(effectiveBotId) : null;
   const requestHeaders = headers(fetchOptions.headers || {}, effectiveBotId);
   const usedBotSession = requestHeaders["x-bot-session-token"] === session?.token;
-  const response = await fetch(path, {
-    ...fetchOptions,
-    headers: requestHeaders
-  });
+  let response;
+  try {
+    response = await fetch(path, {
+      ...fetchOptions,
+      headers: requestHeaders
+    });
+  } catch (error) {
+    const networkError = error instanceof Error
+      ? error
+      : new Error(String(error || "Failed to fetch"));
+    networkError.isNetworkError = true;
+    throw networkError;
+  }
   const text = await response.text();
   let data;
   try {
@@ -4981,7 +4990,10 @@ async function openFlowSession(conversationKey, {
   try {
     const params = new URLSearchParams({ limit: "300", botId });
     if (anchorMessageId) params.set("anchorMessageId", String(anchorMessageId));
-    const data = await request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`);
+    const data = await window.DClawNetworkRetry.run(
+      () => request(`/api/flow-sessions/${encodeURIComponent(conversationKey)}?${params.toString()}`),
+      { retries: 1 }
+    );
     if (!isCurrentBotContext(botId, contextVersion) || state.selectedFlowConversationKey !== conversationKey) {
       return false;
     }
