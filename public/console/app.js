@@ -134,6 +134,7 @@ const els = {
   tagAlertPanel: document.querySelector("#tagAlertPanel"),
   tagAlertList: document.querySelector("#tagAlertList"),
   tagAlertAudio: document.querySelector("#tagAlertAudio"),
+  attentionAlertAudio: document.querySelector("#attentionAlertAudio"),
   chatTitle: document.querySelector("#chatTitle"),
   chatTagList: document.querySelector("#chatTagList"),
   chatMessages: document.querySelector("#chatMessages"),
@@ -663,12 +664,17 @@ function isCurrentBotContext(botId, contextVersion) {
 
 function disconnectTagAlerts() {
   tagAlertClient.disconnect();
+  attentionAlertClient.disconnect();
 }
 
 function connectTagAlerts(botId) {
   const authHeaders = headers({}, botId);
   if (!authHeaders["x-api-key"] && !authHeaders["x-bot-session-token"]) return;
   tagAlertClient.connect({
+    botId,
+    headers: headers({}, botId)
+  });
+  attentionAlertClient.connect({
     botId,
     headers: headers({}, botId)
   });
@@ -1129,6 +1135,7 @@ let currentConversationGroupTasks = {
 };
 let currentFlowSession = null;
 let currentTagAlerts = [];
+let currentAttentionAlerts = [];
 const collapsedFlowNodes = new Set();
 const collapsedTagGroups = new Set();
 const selectedTargets = new Map();
@@ -1144,6 +1151,18 @@ const tagAlertClient = window.createTagAlertClient({
     if (state.apiKey) connectTagAlerts(botId);
   },
   onError: (error) => console.warn("Tag alert stream disconnected", error)
+});
+const attentionAlertClient = window.createAttentionAlertClient({
+  onChange: renderAttentionAlerts,
+  playSound: playAttentionAlertSound,
+  unlockSound: unlockAttentionAlertAudio,
+  onAuthExpired: () => {
+    const botId = state.selectedBotId;
+    if (!botId) return;
+    expireBotSession(botId);
+    if (state.apiKey) connectTagAlerts(botId);
+  },
+  onError: (error) => console.warn("Attention alert stream disconnected", error)
 });
 const groupAutomationClient = window.createGroupAutomationClient({
   onSnapshot: (tasks) => {
@@ -1210,7 +1229,7 @@ const conversationGroupAutomationClient = window.createGroupAutomationClient({
 
 function setTagAlertInteraction(active) {
   if (!els.tagAlertCenter || !els.tagAlertPanel || !els.tagAlertButton) return;
-  const shouldOpen = Boolean(active && currentTagAlerts.length);
+  const shouldOpen = Boolean(active && (currentTagAlerts.length || currentAttentionAlerts.length));
   els.tagAlertCenter.classList.toggle("is-paused", shouldOpen);
   els.tagAlertPanel.hidden = !shouldOpen;
   els.tagAlertButton.setAttribute("aria-expanded", String(shouldOpen));
@@ -1218,18 +1237,46 @@ function setTagAlertInteraction(active) {
 
 function renderTagAlerts(alerts) {
   currentTagAlerts = Array.isArray(alerts) ? alerts : [];
+  renderReminderCenter();
+}
+
+function renderAttentionAlerts(alerts) {
+  currentAttentionAlerts = Array.isArray(alerts) ? alerts : [];
+  renderReminderCenter();
+}
+
+function renderReminderCenter() {
   if (!els.tagAlertCenter || !els.tagAlertList) return;
-  const hasUnread = Boolean(state.selectedBotId && currentTagAlerts.length);
+  const reminders = [
+    ...currentTagAlerts.map((alert) => ({ ...alert, alertType: "tag" })),
+    ...currentAttentionAlerts.map((alert) => ({ ...alert, alertType: "attention" }))
+  ].sort((left, right) => String(right.lastTriggeredAt || right.createdAt || "")
+    .localeCompare(String(left.lastTriggeredAt || left.createdAt || "")));
+  const hasUnread = Boolean(state.selectedBotId && reminders.length);
   els.tagAlertCenter.hidden = !hasUnread;
   els.tagAlertCenter.classList.toggle("has-unread", hasUnread);
-  els.tagAlertCount.textContent = String(currentTagAlerts.length);
-  els.tagAlertList.innerHTML = currentTagAlerts
-    .map((alert) => `
+  els.tagAlertCount.textContent = String(reminders.length);
+  els.tagAlertList.innerHTML = reminders
+    .map((alert) => alert.alertType === "attention" ? `
+      <button
+        class="tag-alert-item attention-alert-item"
+        type="button"
+        role="listitem"
+        data-alert-type="attention"
+        data-alert-id="${escapeHtml(alert.id)}"
+      >
+        <strong>待处理 · ${escapeHtml(alert.customerName || "未命名客户")}</strong>
+        <span>${escapeHtml(alert.reason || "需要人工查看")}</span>
+        <span>${escapeHtml(alert.evidenceText || "")}</span>
+        ${Number(alert.occurrenceCount) > 1 ? `<small>已合并 ${escapeHtml(alert.occurrenceCount)} 次</small>` : ""}
+      </button>
+    ` : `
       <button
         class="tag-alert-item"
         type="button"
         role="listitem"
-        data-tag-alert-id="${escapeHtml(alert.id)}"
+        data-alert-type="tag"
+        data-alert-id="${escapeHtml(alert.id)}"
       >
         <strong>${escapeHtml(alert.customerName || "未命名客户")}</strong>
         <span>达成「${escapeHtml(alert.tagName || "未命名")}」标签</span>
@@ -1253,6 +1300,30 @@ async function unlockTagAlertAudio() {
   } finally {
     audio.muted = wasMuted;
   }
+}
+
+async function unlockAttentionAlertAudio() {
+  const attentionAlertAudio = els.attentionAlertAudio;
+  if (!attentionAlertAudio) return;
+  const wasMuted = attentionAlertAudio.muted;
+  attentionAlertAudio.muted = true;
+  try {
+    await attentionAlertAudio.play();
+    attentionAlertAudio.pause();
+    attentionAlertAudio.currentTime = 0;
+  } catch {
+    // Visual reminders remain available when autoplay is blocked.
+  } finally {
+    attentionAlertAudio.muted = wasMuted;
+  }
+}
+
+function playAttentionAlertSound() {
+  const attentionAlertAudio = els.attentionAlertAudio;
+  if (!attentionAlertAudio) return;
+  attentionAlertAudio.muted = false;
+  attentionAlertAudio.currentTime = 0;
+  attentionAlertAudio.play().catch(() => {});
 }
 
 function playTagAlertSound() {
@@ -1288,6 +1359,23 @@ async function openTagAlert(alert) {
   });
   if (opened === false || !isCurrentBotContext(botId, contextVersion)) return;
   await tagAlertClient.markRead(alert.id);
+}
+
+async function openAttentionAlert(alert) {
+  const botId = state.selectedBotId;
+  const contextVersion = state.botContextVersion;
+  if (!botId || !alert?.conversationKey || alert.alertType && alert.alertType !== "attention") return;
+  switchWorkspaceTab("sessions");
+  resetFlowSessionFiltersForTagAlert(alert.conversationKey);
+  await reloadFlowSessionsFromFirstPage();
+  if (!isCurrentBotContext(botId, contextVersion)) return;
+  const opened = await openFlowSession(alert.conversationKey, {
+    anchorMessageId: alert.evidenceMessageId,
+    alertType: "attention",
+    missingEvidence: !alert.evidenceMessageId
+  });
+  if (opened === false || !isCurrentBotContext(botId, contextVersion)) return;
+  await attentionAlertClient.markRead(alert.id);
 }
 
 function targetKey(target) {
@@ -4975,6 +5063,7 @@ function renderChatSources(value) {
 async function openFlowSession(conversationKey, {
   anchorMessageId = "",
   alertTagName = "",
+  alertType = "",
   missingEvidence = false
 } = {}) {
   const botId = state.selectedBotId;
@@ -5045,6 +5134,7 @@ async function openFlowSession(conversationKey, {
     renderChatMessages(data.messages || [], {
       anchorMessageId,
       alertTagName,
+      alertType,
       missingEvidence: Boolean(missingEvidence || (anchorMessageId && data.evidenceFound === false))
     });
     els.flowEventsOutput.textContent = JSON.stringify(data.events || [], null, 2);
@@ -5138,6 +5228,7 @@ function renderManualMessageDeliveryStatus(message) {
 function renderChatMessages(messages, {
   anchorMessageId = "",
   alertTagName = "",
+  alertType = "",
   missingEvidence = false
 } = {}) {
   const normalizedAnchorMessageId = String(anchorMessageId || "");
@@ -5163,7 +5254,9 @@ function renderChatMessages(messages, {
               ${renderManualMessageDeliveryStatus(message)}
               ${isEvidence && alertTagName
                 ? `<div class="tag-evidence-note">${icon("tag")}<span>此消息触发「${escapeHtml(alertTagName)}」标签</span></div>`
-                : ""}
+                : isEvidence && alertType === "attention"
+                  ? `<div class="tag-evidence-note attention-evidence-note">${icon("alert")}<span>此消息触发待处理提醒</span></div>`
+                  : ""}
             </div>
             ${outbound ? `<img class="chat-avatar" src="${avatar}" alt="" aria-hidden="true" />` : ""}
           </div>
@@ -6578,15 +6671,18 @@ els.tagAlertButton?.addEventListener("click", () => {
   setTagAlertInteraction(true);
 });
 els.tagAlertList?.addEventListener("click", (event) => {
-  const item = event.target.closest("[data-tag-alert-id]");
+  const item = event.target.closest("[data-alert-id]");
   if (!item) return;
-  const alert = currentTagAlerts.find(
-    (candidate) => String(candidate.id) === String(item.dataset.tagAlertId)
-  );
-  if (alert) openTagAlert(alert).catch(toastError);
+  const alertType = item.dataset.alertType;
+  const alerts = alertType === "attention" ? currentAttentionAlerts : currentTagAlerts;
+  const alert = alerts.find((candidate) => String(candidate.id) === String(item.dataset.alertId));
+  if (!alert) return;
+  if (alertType === "attention") openAttentionAlert({ ...alert, alertType: "attention" }).catch(toastError);
+  else openTagAlert(alert).catch(toastError);
 });
 document.addEventListener("pointerdown", () => {
   tagAlertClient.unlockAudio().catch(() => {});
+  attentionAlertClient.unlockAudio().catch(() => {});
 }, { once: true, capture: true });
 els.refreshFlowSessionsButton.addEventListener("click", () =>
   Promise.all([loadFlowMachine(), loadFlowSessions()]).catch(toastError)

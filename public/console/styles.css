@@ -5834,6 +5834,26 @@ td .muted {
   font-weight: 700;
 }
 
+.tag-alert-item small {
+  color: #b45309;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.attention-alert-item {
+  border-left: 4px solid #f59e0b;
+  background: color-mix(in srgb, #f59e0b 5%, #ffffff);
+}
+
+.attention-alert-item:hover,
+.attention-alert-item:focus-visible {
+  background: color-mix(in srgb, #f59e0b 11%, #ffffff);
+}
+
+.attention-evidence-note {
+  color: #b45309;
+}
+
 @keyframes tagAlertPulse {
   0%,
   100% {
