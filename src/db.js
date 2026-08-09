@@ -563,6 +563,44 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_tag_alert_events_unread
   ON tag_alert_events (bot_id, read_at, id);
 
+  CREATE TABLE IF NOT EXISTS attention_alert_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    agent_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    customer_name TEXT NOT NULL DEFAULT '',
+    reason TEXT NOT NULL,
+    evidence_message_id INTEGER NOT NULL,
+    evidence_text TEXT NOT NULL,
+    occurrence_count INTEGER NOT NULL DEFAULT 1,
+    first_triggered_at TEXT NOT NULL,
+    last_triggered_at TEXT NOT NULL,
+    read_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_attention_alert_events_one_unread
+  ON attention_alert_events (bot_id, conversation_key)
+  WHERE read_at IS NULL;
+
+  CREATE INDEX IF NOT EXISTS idx_attention_alert_events_unread
+  ON attention_alert_events (bot_id, read_at, last_triggered_at DESC);
+
+  CREATE TABLE IF NOT EXISTS attention_alert_occurrences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    bot_id TEXT NOT NULL,
+    conversation_key TEXT NOT NULL,
+    conversation_epoch TEXT NOT NULL,
+    evidence_message_id INTEGER NOT NULL,
+    alert_id INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (bot_id, conversation_key, conversation_epoch, evidence_message_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_attention_alert_occurrences_alert
+  ON attention_alert_occurrences (alert_id);
+
   CREATE TABLE IF NOT EXISTS tag_activation_tasks (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     bot_id TEXT NOT NULL,
@@ -1230,6 +1268,8 @@ function migrateLegacyGroupConversationKey({ botId, groupName, conversationKey }
     "conversation_tags",
     "conversation_tag_events",
     "tag_alert_events",
+    "attention_alert_events",
+    "attention_alert_occurrences",
     "tag_activation_tasks",
     "conversation_reset_tasks"
   ];
@@ -5284,6 +5324,27 @@ function rowToTagAlertEvent(row) {
   };
 }
 
+function rowToAttentionAlertEvent(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    alertType: "attention",
+    botId: row.bot_id,
+    agentId: row.agent_id,
+    conversationKey: row.conversation_key,
+    customerName: row.customer_name || "",
+    reason: row.reason || "",
+    evidenceMessageId: Number(row.evidence_message_id) || null,
+    evidenceText: row.evidence_text || "",
+    occurrenceCount: Number(row.occurrence_count) || 0,
+    firstTriggeredAt: row.first_triggered_at,
+    lastTriggeredAt: row.last_triggered_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    readAt: row.read_at || ""
+  };
+}
+
 function rowToTagActivationTask(row) {
   if (!row) return null;
   return {
@@ -7196,6 +7257,140 @@ export function markTagAlertRead({ botId, alertId }) {
   );
 }
 
+export function recordAttentionAlertOccurrence({
+  botId,
+  agentId,
+  conversationKey,
+  conversationEpoch,
+  customerName = "",
+  reason,
+  evidenceMessageId,
+  evidenceText,
+  nowIso = now()
+}) {
+  const epoch = String(conversationEpoch || "").trim();
+  const messageId = Number(evidenceMessageId);
+  if (!botId || !agentId || !conversationKey || !epoch || !Number.isInteger(messageId) || messageId <= 0) {
+    throw new Error("valid attention alert trigger is required");
+  }
+  const evidence = db.prepare(`
+    SELECT id, content
+    FROM conversation_messages
+    WHERE id = ? AND bot_id = ? AND conversation_key = ?
+  `).get(messageId, botId, conversationKey);
+  if (!evidence || String(evidence.content || "") !== String(evidenceText || "")) {
+    throw new Error("attention alert evidence is invalid");
+  }
+
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const prior = db.prepare(`
+      SELECT a.*
+      FROM attention_alert_occurrences o
+      JOIN attention_alert_events a ON a.id = o.alert_id
+      WHERE o.bot_id = ? AND o.conversation_key = ?
+        AND o.conversation_epoch = ? AND o.evidence_message_id = ?
+    `).get(botId, conversationKey, epoch, messageId);
+    if (prior) {
+      db.exec("COMMIT");
+      return { alert: rowToAttentionAlertEvent(prior), created: false, duplicate: true };
+    }
+
+    let alert = db.prepare(`
+      SELECT * FROM attention_alert_events
+      WHERE bot_id = ? AND conversation_key = ? AND read_at IS NULL
+    `).get(botId, conversationKey);
+    let created = false;
+    if (alert) {
+      db.prepare(`
+        UPDATE attention_alert_events
+        SET agent_id = ?, customer_name = ?, reason = ?, evidence_message_id = ?,
+            evidence_text = ?, occurrence_count = occurrence_count + 1,
+            last_triggered_at = ?, updated_at = ?
+        WHERE id = ?
+      `).run(
+        agentId, customerName, reason, messageId, evidence.content,
+        nowIso, nowIso, alert.id
+      );
+      alert = db.prepare("SELECT * FROM attention_alert_events WHERE id = ?").get(alert.id);
+    } else {
+      const inserted = db.prepare(`
+        INSERT INTO attention_alert_events (
+          bot_id, agent_id, conversation_key, customer_name, reason,
+          evidence_message_id, evidence_text, occurrence_count,
+          first_triggered_at, last_triggered_at, read_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, NULL, ?, ?)
+      `).run(
+        botId, agentId, conversationKey, customerName, reason,
+        messageId, evidence.content, nowIso, nowIso, nowIso, nowIso
+      );
+      alert = db.prepare("SELECT * FROM attention_alert_events WHERE id = ?")
+        .get(inserted.lastInsertRowid);
+      created = true;
+    }
+    db.prepare(`
+      INSERT INTO attention_alert_occurrences (
+        bot_id, conversation_key, conversation_epoch, evidence_message_id,
+        alert_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `).run(botId, conversationKey, epoch, messageId, alert.id, nowIso);
+    db.exec("COMMIT");
+    return { alert: rowToAttentionAlertEvent(alert), created, duplicate: false };
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
+export function listUnreadAttentionAlerts({ botId, limit = 200 }) {
+  if (!botId) return [];
+  return db.prepare(`
+    SELECT * FROM attention_alert_events
+    WHERE bot_id = ? AND read_at IS NULL
+    ORDER BY last_triggered_at DESC, id DESC
+    LIMIT ?
+  `).all(botId, Math.max(1, Math.min(500, Number(limit) || 200)))
+    .map(rowToAttentionAlertEvent);
+}
+
+export function markAttentionAlertRead({ botId, alertId, nowIso = now() }) {
+  const id = Number(alertId);
+  if (!botId || !Number.isInteger(id) || id <= 0) return null;
+  const result = db.prepare(`
+    UPDATE attention_alert_events
+    SET read_at = ?, updated_at = ?
+    WHERE id = ? AND bot_id = ? AND read_at IS NULL
+  `).run(nowIso, nowIso, id, botId);
+  if (!result.changes) return null;
+  return rowToAttentionAlertEvent(
+    db.prepare("SELECT * FROM attention_alert_events WHERE id = ? AND bot_id = ?").get(id, botId)
+  );
+}
+
+export function cleanupReadAttentionAlerts({ beforeIso }) {
+  const cutoff = String(beforeIso || "").trim();
+  if (!cutoff) return 0;
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    db.prepare(`
+      DELETE FROM attention_alert_occurrences
+      WHERE alert_id IN (
+        SELECT id FROM attention_alert_events
+        WHERE read_at IS NOT NULL AND read_at < ?
+      )
+    `).run(cutoff);
+    const result = db.prepare(`
+      DELETE FROM attention_alert_events
+      WHERE read_at IS NOT NULL AND read_at < ?
+    `).run(cutoff);
+    db.exec("COMMIT");
+    return Number(result.changes) || 0;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
+}
+
 export function upsertSystemDateTag({
   botId,
   agentId,
@@ -8334,6 +8529,10 @@ export function clearConversationForReset({ botId, conversationKey, reason = "æŽ
       timestamp
     );
     resetTaskId = resetTask.lastInsertRowid;
+    db.prepare("DELETE FROM attention_alert_occurrences WHERE conversation_key = ? AND bot_id = ?")
+      .run(conversationKey, botId);
+    db.prepare("DELETE FROM attention_alert_events WHERE conversation_key = ? AND bot_id = ?")
+      .run(conversationKey, botId);
     db.prepare("DELETE FROM conversation_messages WHERE conversation_key = ? AND bot_id = ?")
       .run(conversationKey, botId);
     db.prepare("DELETE FROM flow_state_events WHERE conversation_key = ? AND bot_id = ?")
@@ -9328,6 +9527,11 @@ export function listRecords(name, { limit = 50, botId = "" } = {}) {
       table: "tag_alert_events",
       mapper: rowToTagAlertEvent,
       orderBy: "created_at"
+    },
+    "attention-alert-events": {
+      table: "attention_alert_events",
+      mapper: rowToAttentionAlertEvent,
+      orderBy: "last_triggered_at"
     },
     "proactive-tasks": {
       table: "proactive_tasks",
