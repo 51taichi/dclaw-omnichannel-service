@@ -12,6 +12,7 @@
 
 - 待处理提醒只报警，不修改 `handoff_status`，不自动切换人工接手。
 - 不扫描 Agent 回复文案；只接受最终通过响应网关校验的结构化 `attentionAlert`。
+- Agent 回复只要承诺后续查询、确认、核实、询问他人或跟进后再答复，即使同时提供参考答案，也必须输出 `attentionAlert.required=true`；该判断覆盖所有语言，不在服务端维护关键词表。
 - 所有普通会话和 handoff audit 都提供独立于标签配置的 `customerEvidenceCandidates`；`required=true` 只能引用其中的客户证据。
 - `required` 类型、字段长度或证据格式错误必须触发响应修复重试，不能静默降级或截断。
 - 每次触发使用 `(bot_id, conversation_key, conversation_epoch, evidence_message_id)` 幂等；任务重试不增加次数。
@@ -641,3 +642,62 @@ git status --short
 ```
 
 Expected: clean working tree. Do not push until the user explicitly requests `push`.
+
+---
+
+### Task 7: 修复“参考答案 + 后续确认承诺”漏报
+
+**Files:**
+- Modify: `src/dclaw.js`
+- Test: `tests/dclaw-tags.test.js`
+- Test: `tests/dclaw-handoff.test.js`
+
+**Interfaces:**
+- Consumes: `buildDclawRequest(...)` 和 `buildDclawHandoffTranscriptRequest(...)` 生成的 Agent 请求消息。
+- Produces: 普通会话和 handoff audit 共用的明确判定规则；服务端仍只接受结构化 `attentionAlert`，不扫描最终回复文案。
+
+- [ ] **Step 1: 写入生产漏报场景的失败测试**
+
+在普通会话提示词测试中断言请求包含以下完整语义：如果准备发送的客户回复承诺稍后查询、确认、核实、询问他人或跟进后再答复，即使同时给出参考答案，也必须设置 `attentionAlert.required=true`。在 handoff audit 测试中断言同一规则存在，且 `reply` 仍被要求为空字符串。
+
+- [ ] **Step 2: 运行测试并确认因规则缺失而失败**
+
+Run:
+
+```bash
+node --test tests/dclaw-tags.test.js tests/dclaw-handoff.test.js
+```
+
+Expected: 新增断言失败，失败内容显示现有提示词没有覆盖“参考答案 + 后续确认承诺”。
+
+- [ ] **Step 3: 最小化修改普通和 handoff 提示词**
+
+修改 `src/dclaw.js` 中两条待处理提醒指令，加入同一条强制规则：
+
+```text
+如果你准备发送的客户回复承诺稍后查询、确认、核实、询问他人或跟进后再答复，即使回复中同时提供了参考答案，也必须设置 attentionAlert.required=true，并引用促成该后续事项的客户消息。不要因为已有部分答案而设置 required=false。
+```
+
+不得增加第二次 Agent 调用，不得新增服务端关键词匹配，不得改变提醒数据库、SSE、前端或人工接手状态。
+
+- [ ] **Step 4: 运行专项与全量测试**
+
+Run:
+
+```bash
+node --test tests/dclaw-tags.test.js tests/dclaw-handoff.test.js tests/agent-response-gateway.test.js
+npm test
+```
+
+Expected: zero failures; existing intentional skips may remain.
+
+- [ ] **Step 5: 提交并停止等待推送授权**
+
+```bash
+git add src/dclaw.js tests/dclaw-tags.test.js tests/dclaw-handoff.test.js \
+  docs/superpowers/specs/2026-08-09-agent-attention-alert-design.md \
+  docs/superpowers/plans/2026-08-09-agent-attention-alert.md
+git commit -m "fix: require alerts for promised follow-up"
+```
+
+Do not push until the user explicitly requests `push`.
