@@ -77,6 +77,12 @@ WhatsApp 没有新增好友事件。系统在账号第一次收到某位客户�
 
 同步边界可通过 `WHAPI_FIRST_CONTACT_HISTORY_MAX_PAGES`、`WHAPI_FIRST_CONTACT_HISTORY_MAX_MESSAGES` 和 `WHAPI_FIRST_CONTACT_HISTORY_LEASE_MS` 配置；默认分别为 `20`、`2000` 和 `60000` 毫秒。
 
+## Agent 待处理提醒
+
+当 Agent 判断当前问题需要人工确认时，会返回结构化的待处理决定。系统先以 Bot、会话周期和触发消息为幂等键持久化提醒，再继续发送客户可见回复；渠道重试不会重复计数或重复播报。提醒不会自动把会话切换为人工状态。
+
+工作区当前仅展示所选 Bot 的未读提醒。同一会话的多次有效触发合并显示；点击提醒会打开对应会话、定位并高亮客户原话，然后标记已读。标签提醒继续播放“您有新的标签提醒”，待处理提醒独立播放“您有新的待处理提醒”。已读待处理提醒默认保留 90 天，可用 `ATTENTION_ALERT_RETENTION_DAYS` 调整。
+
 ## 测试
 
 ```bash

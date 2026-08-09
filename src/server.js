@@ -90,6 +90,7 @@ import {
   claimNextProactiveTarget,
   cancelProactiveTask,
   clearConversationForReset,
+  cleanupReadAttentionAlerts,
   claimNextConversationResetTask,
   completeConversationResetTask,
   createOrGetGroup,
@@ -343,6 +344,17 @@ const consoleIndexPath = path.join(publicDir, "console", "index.html");
 const dataDir = path.resolve(process.cwd(), process.env.DATA_DIR || "data");
 const uploadDir = path.join(dataDir, "uploads");
 const uploadMaxMb = Number(process.env.UPLOAD_MAX_MB || 100);
+const attentionAlertRetentionDays = Math.max(1, Number(process.env.ATTENTION_ALERT_RETENTION_DAYS || 90));
+const attentionAlertCleanupIntervalMs = 24 * 60 * 60 * 1000;
+
+function cleanupExpiredAttentionAlerts() {
+  const beforeIso = new Date(Date.now() - attentionAlertRetentionDays * 24 * 60 * 60 * 1000).toISOString();
+  const deleted = cleanupReadAttentionAlerts({ beforeIso });
+  if (deleted) logInfo("attention_alert.cleanup", { deleted, retentionDays: attentionAlertRetentionDays });
+}
+
+setImmediate(cleanupExpiredAttentionAlerts);
+setInterval(cleanupExpiredAttentionAlerts, attentionAlertCleanupIntervalMs).unref();
 const uploadAllowedOrigins = String(process.env.UPLOAD_ALLOWED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())

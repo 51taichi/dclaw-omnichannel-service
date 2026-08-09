@@ -514,7 +514,7 @@ export function buildDclawHandoffTranscriptRequest({
         "标签审计是必做步骤。仍需先判断每个启用标签是否达标，但 reply 必须为空字符串。",
         "tagRules 中管理员配置的条件是强制标准，不得自行提高达标条件。",
         "tagEvaluation 必须恰好覆盖每个启用标签；tagEvidenceCandidates 是唯一可引用的证据消息，命中标签时必须返回其 id 和客户原话。",
-        "最终只输出 JSON：{\"reply\":\"\",\"attachments\":[],\"sources\":[],\"tagEvaluation\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"matched\":false,\"reason\":\"判断原因\",\"evidenceMessageId\":\"\",\"evidenceText\":\"\"}],\"tagDecision\":{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\",\"evidenceMessageId\":\"证据候选ID\",\"evidenceText\":\"客户原话\"}],\"remove\":[]}}。"
+        "tagDecision 必须包含完整的 add/remove 结论；不要在 reply 中解释标签规则。"
       ]
     : [];
   const tagSchema = agentTagRules

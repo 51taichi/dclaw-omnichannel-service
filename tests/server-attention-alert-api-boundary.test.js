@@ -32,3 +32,9 @@ test("duplicate occurrences never publish realtime attention events", () => {
   assert.match(body, /result\.duplicate/);
   assert.ok(body.indexOf("result.duplicate") < body.indexOf("publishCreated"));
 });
+
+test("server periodically cleans only expired read attention alerts", () => {
+  assert.match(source, /cleanupReadAttentionAlerts/);
+  assert.match(source, /ATTENTION_ALERT_RETENTION_DAYS/);
+  assert.match(source, /attention_alert\.cleanup/);
+});

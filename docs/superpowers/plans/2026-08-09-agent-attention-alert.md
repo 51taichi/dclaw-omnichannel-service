@@ -233,7 +233,7 @@ CREATE TABLE IF NOT EXISTS attention_alert_occurrences (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   bot_id TEXT NOT NULL,
   conversation_key TEXT NOT NULL,
-  conversation_epoch INTEGER NOT NULL,
+  conversation_epoch TEXT NOT NULL,
   evidence_message_id INTEGER NOT NULL,
   alert_id INTEGER NOT NULL,
   created_at TEXT NOT NULL,
