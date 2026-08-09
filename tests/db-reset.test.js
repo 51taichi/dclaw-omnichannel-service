@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import test from "node:test";
 
 const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "omnichannel-reset-test-"));
@@ -75,7 +76,7 @@ test("clearConversationForReset deletes one flow conversation for a fresh agent 
     nextNodeId: "node_2",
     reason: "测试推进"
   });
-  db.insertConversationMessage({
+  const evidenceMessage = db.insertConversationMessage({
     botId,
     conversationKey,
     direction: "inbound",
@@ -83,6 +84,17 @@ test("clearConversationForReset deletes one flow conversation for a fresh agent 
     content: "我要资料",
     rawPayload: { spoken: "我要资料" }
   });
+  db.recordAttentionAlertOccurrence({
+    botId,
+    agentId,
+    conversationKey,
+    conversationEpoch: deletedEpoch,
+    customerName: "张三",
+    reason: "需要人工确认资料",
+    evidenceMessageId: evidenceMessage.id,
+    evidenceText: evidenceMessage.content
+  });
+  assert.equal(db.listUnreadAttentionAlerts({ botId }).length, 1);
   db.claimFirstContactHistorySync({ botId, conversationKey, owner: "reset-test" });
   db.completeFirstContactHistorySync({
     botId, conversationKey, owner: "reset-test", status: "success"
@@ -102,6 +114,17 @@ test("clearConversationForReset deletes one flow conversation for a fresh agent 
   assert.equal(db.listConversationResetTasks({ botId, conversationKey }).length, 1);
   assert.equal(db.getFlowSessionForBot({ botId, conversationKey }), null);
   assert.equal(db.listConversationMessages({ conversationKey }).length, 0);
+  assert.equal(db.listUnreadAttentionAlerts({ botId }).length, 0);
+  const rawDb = new DatabaseSync(path.join(dataDir, "dclaw-omnichannel-service.sqlite"));
+  assert.equal(rawDb.prepare(`
+    SELECT COUNT(*) AS count FROM attention_alert_occurrences
+    WHERE bot_id = ? AND conversation_key = ?
+  `).get(botId, conversationKey).count, 0);
+  assert.equal(rawDb.prepare(`
+    SELECT COUNT(*) AS count FROM attention_alert_events
+    WHERE bot_id = ? AND conversation_key = ?
+  `).get(botId, conversationKey).count, 0);
+  rawDb.close();
   assert.equal(db.listFlowStateEvents({ conversationKey }).length, 0);
   assert.equal(db.getConversation(conversationKey), null);
   assert.equal(db.getFirstContactHistorySync({ botId, conversationKey }), null);
