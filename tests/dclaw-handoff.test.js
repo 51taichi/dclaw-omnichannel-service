@@ -42,7 +42,12 @@ test("buildDclawHandoffTranscriptRequest creates a sync-only handoff event", () 
         handoffStatus: "human"
       }
     },
-    conversationReset: false
+    conversationReset: false,
+    tagEvidenceCandidates: [{
+      id: "41",
+      conversationMessageId: 41,
+      text: "人工期间客户消息"
+    }]
   });
 
   assert.equal(request.metadata.eventType, "handoff_transcript_message");
@@ -55,7 +60,26 @@ test("buildDclawHandoffTranscriptRequest creates a sync-only handoff event", () 
   );
   assert.equal(request.metadata.localConversationId, "bot_1:private:张三");
   assert.match(request.message, /不要生成客户可见回复/);
-  assert.match(request.message, /最终请输出空字符串/);
+  assert.match(request.message, /"attentionAlert"/);
+  assert.match(request.message, /"reply":""/);
+  assert.equal(request.metadata.customerEvidenceCandidates[0].id, "41");
+});
+
+test("ordinary conversations expose customer evidence without tag rules", () => {
+  const request = buildDclawRequest({
+    binding: { botId: "bot_1", agentId: "agent_1" },
+    conversation: { conversationKey: "bot_1:private:张三", conversationEpoch: "epoch-1" },
+    message: {
+      messageId: "msg_3", spoken: "可以寄到德国吗？", rawSpoken: "可以寄到德国吗？",
+      roomType: 2, receivedName: "张三", textType: 1
+    },
+    tagEvidenceCandidates: [{ id: "43", conversationMessageId: 43, text: "可以寄到德国吗？" }]
+  });
+
+  assert.equal(request.metadata.tagRules, undefined);
+  assert.equal(request.metadata.customerEvidenceCandidates[0].id, "43");
+  assert.match(request.message, /customerEvidenceCandidates/);
+  assert.match(request.message, /attentionAlert/);
 });
 
 test("tag-enabled handoff transcripts request decisions with an empty customer reply", () => {

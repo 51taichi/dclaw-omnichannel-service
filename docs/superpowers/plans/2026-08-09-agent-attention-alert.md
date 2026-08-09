@@ -33,7 +33,8 @@
 - Modify: `src/agent-response-gateway.js`
 - Test: `tests/attention-alert.test.js`
 - Test: `tests/agent-response-gateway.test.js`
-- Test: `tests/dclaw-request.test.js`
+- Test: `tests/dclaw-tags.test.js`
+- Test: `tests/dclaw-handoff.test.js`
 
 **Interfaces:**
 - Consumes: new `customerEvidenceCandidates`; `tagEvidenceCandidates` temporarily remains compatible for tag audit.

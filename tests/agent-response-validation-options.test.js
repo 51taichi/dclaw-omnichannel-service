@@ -18,11 +18,15 @@ test("validation options enable group confidentiality only when group context ex
     }
   });
   const privateOptions = validationOptionsModule.buildAgentResponseValidationOptions({
-    metadata: { requireReplyContent: true }
+    metadata: {
+      requireReplyContent: true,
+      customerEvidenceCandidates: [{ id: "41", text: "需要确认吗？" }]
+    }
   });
 
   assert.equal(groupOptions.forbidGroupContextDisclosure, true);
   assert.equal(privateOptions.forbidGroupContextDisclosure, false);
   assert.equal(groupOptions.requireReplyContent, true);
   assert.equal(privateOptions.requireReplyContent, true);
+  assert.deepEqual(privateOptions.customerEvidenceCandidates, [{ id: "41", text: "需要确认吗？" }]);
 });

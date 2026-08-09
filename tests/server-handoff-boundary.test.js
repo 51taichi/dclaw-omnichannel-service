@@ -42,6 +42,7 @@ test("server branches human handoff before sending Channel replies", () => {
   assert.equal(serverSource.includes("if (isHumanHandoff)"), true);
   assert.match(handoffBlock, /buildTagContext\(\{ binding, conversationKey, group \}\)/);
   assert.match(handoffBlock, /invokeStrictAgentReply\(\{/);
+  assert.doesNotMatch(handoffBlock, /if \(tagContext\) \{\s*const strictInvocation/);
   assert.match(handoffBlock, /persistAgentTagAudit\(\{/);
   assert.match(handoffBlock, /applyAgentTagDecision\(\{/);
   assert.ok(

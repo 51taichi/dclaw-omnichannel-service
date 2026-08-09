@@ -274,6 +274,7 @@ export function buildDclawRequest({
   const agentTagEvidenceCandidates = agentTagRules
     ? compactTagEvidenceCandidates(tagEvidenceCandidates)
     : [];
+  const customerEvidenceCandidates = compactTagEvidenceCandidates(tagEvidenceCandidates);
   const agentGroupContext = isGroup ? compactGroupContext(groupContext) : null;
   const agentGroupTurns = isGroup ? compactGroupTurns(groupTurns) : [];
   const requireReplyContent = Boolean(
@@ -316,6 +317,7 @@ export function buildDclawRequest({
       "会话中 eventType=group_automation 且 internal=true 的内容属于内部任务事件，不是群成员发言，不得作为客户原话或已经发生的业务事实。"
     ] : []),
     ...tagAuditInstructions,
+    "如果当前客户问题无法依据现有规则或知识可靠回答、必须人工查询或确认，请设置 attentionAlert.required=true，并引用本次 customerEvidenceCandidates 中对应客户消息的 id 和原文；不要根据你自己准备发送的回复报警。",
     "企业智库负责业务事实和公开资源边界；状态机只负责推进当前节点目标，不能独占回答或替代事实检索。",
     "当前任务节点相关咨询不能只用状态机回答；客户询问资料、活动、直播、试听、邀约、服务内容、价值、流程、怎么领取或下一步动作时，先判断是否需要企业智库或公开资源。",
     "客户明确提到以前同事怎么答、历史沟通案例或优秀话术时，只能结合当前会话、状态机交流技巧和 human_reply_style 组织表达；不要声称查询内部目录。",
@@ -362,6 +364,7 @@ export function buildDclawRequest({
     ...(agentTagEvidenceCandidates.length
       ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
       : {}),
+    ...(customerEvidenceCandidates.length ? { customerEvidenceCandidates } : {}),
     generalRule: normalizedGeneralRule,
     conversationReset
   };
@@ -394,6 +397,7 @@ export function buildDclawRequest({
       ...(agentTagEvidenceCandidates.length
         ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
         : {}),
+      ...(customerEvidenceCandidates.length ? { customerEvidenceCandidates } : {}),
       generalRule: normalizedGeneralRule,
       conversationReset
     }
@@ -504,6 +508,7 @@ export function buildDclawHandoffTranscriptRequest({
   const agentTagEvidenceCandidates = agentTagRules
     ? compactTagEvidenceCandidates(tagEvidenceCandidates)
     : [];
+  const customerEvidenceCandidates = compactTagEvidenceCandidates(tagEvidenceCandidates);
   const tagInstructions = agentTagRules
     ? [
         "标签审计是必做步骤。仍需先判断每个启用标签是否达标，但 reply 必须为空字符串。",
@@ -511,7 +516,10 @@ export function buildDclawHandoffTranscriptRequest({
         "tagEvaluation 必须恰好覆盖每个启用标签；tagEvidenceCandidates 是唯一可引用的证据消息，命中标签时必须返回其 id 和客户原话。",
         "最终只输出 JSON：{\"reply\":\"\",\"attachments\":[],\"sources\":[],\"tagEvaluation\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"matched\":false,\"reason\":\"判断原因\",\"evidenceMessageId\":\"\",\"evidenceText\":\"\"}],\"tagDecision\":{\"add\":[{\"groupId\":\"标签组ID\",\"tagId\":\"标签ID\",\"reason\":\"命中原因\",\"evidenceMessageId\":\"证据候选ID\",\"evidenceText\":\"客户原话\"}],\"remove\":[]}}。"
       ]
-    : ["最终请输出空字符串。"];
+    : [];
+  const tagSchema = agentTagRules
+    ? `,"tagEvaluation":[{"groupId":"标签组ID","tagId":"标签ID","matched":false,"reason":"判断原因","evidenceMessageId":"","evidenceText":""}],"tagDecision":{"add":[],"remove":[]}`
+    : "";
 
   return {
     external_user_id: identity.externalUserId,
@@ -524,6 +532,8 @@ export function buildDclawHandoffTranscriptRequest({
       "不要推进状态机。",
       "不要输出话术。",
       ...tagInstructions,
+      "如果这条客户消息反映了必须人工查询或确认、Agent 无法可靠处理的问题，请设置 attentionAlert.required=true，并从 customerEvidenceCandidates 引用客户证据。",
+      `最终只输出 JSON：{"reply":"","attachments":[],"sources":[]${tagSchema},"attentionAlert":{"required":false,"reason":"","evidenceMessageId":"","evidenceText":""}}。reply 必须为空字符串。`,
       "",
       JSON.stringify({
         channelMessage,
@@ -532,6 +542,7 @@ export function buildDclawHandoffTranscriptRequest({
         ...(agentTagEvidenceCandidates.length
           ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
           : {}),
+        ...(customerEvidenceCandidates.length ? { customerEvidenceCandidates } : {}),
         generalRule: normalizedGeneralRule,
         conversationReset
       }, null, 2)
@@ -554,6 +565,7 @@ export function buildDclawHandoffTranscriptRequest({
       ...(agentTagEvidenceCandidates.length
         ? { tagEvidenceCandidates: agentTagEvidenceCandidates }
         : {}),
+      ...(customerEvidenceCandidates.length ? { customerEvidenceCandidates } : {}),
       generalRule: normalizedGeneralRule,
       conversationReset
     }
@@ -1098,9 +1110,10 @@ function responseSchemaForRequest({ hasFlow, hasTags = false }) {
   const tagPart = hasTags
     ? `,"tagEvaluation":[{"groupId":"标签组ID","tagId":"标签ID","matched":false,"reason":"判断原因","evidenceMessageId":"","evidenceText":""}],"tagDecision":{"add":[],"remove":[]}`
     : "";
+  const attentionPart = `,"attentionAlert":{"required":false,"reason":"","evidenceMessageId":"","evidenceText":""}`;
   return hasFlow
-    ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"未完成时填当前节点ID，完成时填 flow.currentNode.nextNodeId","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}${tagPart}}`
-    : `{"reply":"发给客户的文本","attachments":[],"sources":[]${tagPart}}`;
+    ? `{"reply":"发给客户的文本","attachments":[],"sources":[],"flowDecision":{"currentNodeId":"当前节点ID","nextNodeId":"未完成时填当前节点ID，完成时填 flow.currentNode.nextNodeId","nodeCompleted":false,"confidence":0.0,"reason":"判断原因","collectedDataPatch":{}}${tagPart}${attentionPart}}`
+    : `{"reply":"发给客户的文本","attachments":[],"sources":[]${tagPart}${attentionPart}}`;
 }
 
 const defaultDclawTimeoutMs = 120000;

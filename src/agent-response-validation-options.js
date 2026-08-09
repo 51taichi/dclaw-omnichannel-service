@@ -8,6 +8,8 @@ export function buildAgentResponseValidationOptions(request) {
     allowTagDecision: Boolean(tagContext),
     flow: request?.metadata?.flow || null,
     tagContext,
-    tagEvidenceCandidates: request?.metadata?.tagEvidenceCandidates || []
+    tagEvidenceCandidates: request?.metadata?.tagEvidenceCandidates || [],
+    customerEvidenceCandidates: request?.metadata?.customerEvidenceCandidates || [],
+    requireEmptyReply: request?.metadata?.eventType === "handoff_transcript_message"
   };
 }

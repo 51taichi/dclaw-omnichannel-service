@@ -1,4 +1,5 @@
 import { normalizeTagDecision } from "./tags.js";
+import { normalizeAttentionAlert } from "./attention-alert.js";
 import { isDeepStrictEqual } from "node:util";
 import {
   normalizeTagEvaluation,
@@ -18,11 +19,13 @@ const groupContextDisclosurePatterns = [
 export function validateAgentResponseText(rawText, {
   requireFlowDecision = false,
   requireReplyContent = false,
+  requireEmptyReply = false,
   forbidGroupContextDisclosure = false,
   allowTagDecision = false,
   flow = null,
   tagContext = null,
-  tagEvidenceCandidates = []
+  tagEvidenceCandidates = [],
+  customerEvidenceCandidates = []
 } = {}) {
   const raw = String(rawText || "");
   const { text, normalizations } = normalizeResponseText(raw);
@@ -38,11 +41,13 @@ export function validateAgentResponseText(rawText, {
   const validationOptions = {
     requireFlowDecision,
     requireReplyContent,
+    requireEmptyReply,
     forbidGroupContextDisclosure,
     allowTagDecision,
     flow,
     tagContext,
-    tagEvidenceCandidates
+    tagEvidenceCandidates,
+    customerEvidenceCandidates
   };
   let evaluation;
   let normalizedText = text;
@@ -91,6 +96,7 @@ export function validateAgentResponseText(rawText, {
       flowDecision: parsed.flowDecision || parsed.stateUpdate || null,
       tagEvaluation: normalizeTagEvaluation(parsed.tagEvaluation),
       tagDecision: normalizeTagDecision(parsed.tagDecision || parsed.tags || {}),
+      attentionAlert: normalizeAttentionAlert(parsed.attentionAlert),
       raw: parsed
     }
   };
@@ -640,11 +646,13 @@ function normalizeAgentReplyText(value) {
 function validateResponseObject(parsed, {
   requireFlowDecision,
   requireReplyContent,
+  requireEmptyReply,
   forbidGroupContextDisclosure,
   allowTagDecision,
   flow,
   tagContext,
-  tagEvidenceCandidates
+  tagEvidenceCandidates,
+  customerEvidenceCandidates
 }) {
   const errors = [];
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -687,6 +695,13 @@ function validateResponseObject(parsed, {
       message: "authorized request requires reply text or an attachment"
     });
   }
+  if (requireEmptyReply && typeof parsed.reply === "string" && parsed.reply !== "") {
+    errors.push({
+      type: "semantic",
+      path: "reply",
+      message: "handoff audit reply must be empty"
+    });
+  }
   if (
     forbidGroupContextDisclosure
     && typeof parsed.reply === "string"
@@ -706,6 +721,10 @@ function validateResponseObject(parsed, {
   validateTagDecision(parsed.tagDecision || parsed.tags, {
     allowTagDecision,
     tagContext,
+    errors
+  });
+  validateAttentionAlert(parsed.attentionAlert, {
+    evidenceCandidates: customerEvidenceCandidates,
     errors
   });
   const tagAuditEnabled = Boolean(
@@ -740,6 +759,67 @@ function validateResponseObject(parsed, {
     }
   }
   return errors;
+}
+
+function validateAttentionAlert(value, { evidenceCandidates, errors }) {
+  if (value === undefined) return;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    errors.push({ type: "schema", path: "attentionAlert", message: "attentionAlert must be an object" });
+    return;
+  }
+  if (typeof value.required !== "boolean") {
+    errors.push({
+      type: "schema",
+      path: "attentionAlert.required",
+      message: "attentionAlert.required must be a boolean"
+    });
+    return;
+  }
+  const alert = normalizeAttentionAlert(value);
+  if (!alert.required) return;
+  if (typeof value.reason !== "string" || !alert.reason || value.reason.trim().length > 240) {
+    errors.push({
+      type: "schema",
+      path: "attentionAlert.reason",
+      message: "required attention alerts need a reason of at most 240 characters"
+    });
+  }
+  if (typeof value.evidenceMessageId !== "string" || value.evidenceMessageId.trim().length > 240) {
+    errors.push({
+      type: "schema",
+      path: "attentionAlert.evidenceMessageId",
+      message: "attention alert evidenceMessageId must be a string of at most 240 characters"
+    });
+  }
+  if (typeof value.evidenceText !== "string" || value.evidenceText.trim().length > 1000) {
+    errors.push({
+      type: "schema",
+      path: "attentionAlert.evidenceText",
+      message: "attention alert evidenceText must be a string of at most 1000 characters"
+    });
+  }
+  if (errors.some((error) => error.path.startsWith("attentionAlert") && error.type === "schema")) {
+    return;
+  }
+  const evidence = (Array.isArray(evidenceCandidates) ? evidenceCandidates : [])
+    .map((candidate) => ({
+      id: String(candidate?.id || "").trim(),
+      text: String(candidate?.text || "").trim()
+    }))
+    .find((candidate) => candidate.id === alert.evidenceMessageId);
+  if (!evidence) {
+    errors.push({
+      type: "semantic",
+      path: "attentionAlert.evidenceMessageId",
+      message: "attention alert evidence must reference a customer message candidate"
+    });
+  } else if (evidence.text !== alert.evidenceText) {
+    errors.push({
+      type: "semantic",
+      path: "attentionAlert.evidenceText",
+      message: "attention alert evidence text must exactly match the customer message"
+    });
+  }
 }
 
 function disclosesPrivateGroupContext(value) {

@@ -7,6 +7,83 @@ import {
   validateAndRetryAgentResponse
 } from "../src/agent-response-gateway.js";
 
+test("accepts a required attention alert bound to exact customer evidence", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "我需要先确认一下。",
+    attentionAlert: {
+      required: true,
+      reason: "需要人工确认当地法规",
+      evidenceMessageId: "41",
+      evidenceText: "这个产品可以寄到德国吗？"
+    }
+  }), {
+    customerEvidenceCandidates: [{ id: "41", text: "这个产品可以寄到德国吗？" }]
+  });
+
+  assert.equal(result.valid, true);
+  assert.deepEqual(result.agentReply.attentionAlert, {
+    required: true,
+    reason: "需要人工确认当地法规",
+    evidenceMessageId: "41",
+    evidenceText: "这个产品可以寄到德国吗？"
+  });
+});
+
+test("rejects required attention alerts without a reason or exact customer evidence", () => {
+  const evidence = [{ id: "41", text: "这个产品可以寄到德国吗？" }];
+  for (const attentionAlert of [
+    { required: true, reason: "", evidenceMessageId: "41", evidenceText: evidence[0].text },
+    { required: true, reason: "需要确认", evidenceMessageId: "99", evidenceText: evidence[0].text },
+    { required: true, reason: "需要确认", evidenceMessageId: "41", evidenceText: "不同内容" }
+  ]) {
+    const result = validateAgentResponseText(JSON.stringify({ reply: "我需要确认。", attentionAlert }), {
+      customerEvidenceCandidates: evidence
+    });
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((error) => error.path.startsWith("attentionAlert")));
+  }
+});
+
+test("rejects malformed and overlong attention alert fields instead of silently disabling them", () => {
+  const evidence = [{ id: "41", text: "这个产品可以寄到德国吗？" }];
+  for (const attentionAlert of [
+    { required: "true", reason: "需要确认", evidenceMessageId: "41", evidenceText: evidence[0].text },
+    { required: true, reason: "x".repeat(241), evidenceMessageId: "41", evidenceText: evidence[0].text },
+    { required: true, reason: "需要确认", evidenceMessageId: "41", evidenceText: "x".repeat(1001) }
+  ]) {
+    const result = validateAgentResponseText(JSON.stringify({ reply: "我需要确认。", attentionAlert }), {
+      customerEvidenceCandidates: evidence
+    });
+    assert.equal(result.valid, false);
+    assert.ok(result.errors.some((error) => error.path.startsWith("attentionAlert")));
+  }
+});
+
+test("normalizes missing or disabled attention alerts without requiring evidence", () => {
+  for (const input of [
+    { reply: "可以。" },
+    { reply: "可以。", attentionAlert: { required: false, reason: "不应保留" } }
+  ]) {
+    const result = validateAgentResponseText(JSON.stringify(input));
+    assert.equal(result.valid, true);
+    assert.deepEqual(result.agentReply.attentionAlert, {
+      required: false,
+      reason: "",
+      evidenceMessageId: "",
+      evidenceText: ""
+    });
+  }
+});
+
+test("handoff validation requires an empty customer reply", () => {
+  const result = validateAgentResponseText(JSON.stringify({
+    reply: "这段内容不能发给客户",
+    attentionAlert: { required: false }
+  }), { requireEmptyReply: true });
+  assert.equal(result.valid, false);
+  assert.ok(result.errors.some((error) => error.path === "reply"));
+});
+
 const auditedTagContext = {
   groups: [{
     id: "intent",

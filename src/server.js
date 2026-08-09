@@ -4221,7 +4221,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
       };
       let invocation;
       let agentReply = null;
-      if (tagContext) {
+      {
         const strictInvocation = await invokeStrictAgentReply({
           binding,
           request,
@@ -4282,11 +4282,6 @@ async function processIncomingMessage({ botId, message, intake = null }) {
         }
         invocation = strictInvocation.invocation;
         agentReply = strictInvocation.agentReply;
-      } else {
-        invocation = await enqueueAgentInvocation(
-          () => invokeDclawAgentWithRetry({ binding, request, onRetry }),
-          { key: conversationKey }
-        );
       }
       finishAgentInvocation({
         id: invocationId,
