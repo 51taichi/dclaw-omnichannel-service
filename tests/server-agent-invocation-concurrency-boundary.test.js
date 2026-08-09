@@ -57,9 +57,6 @@ test("realtime and activation Agent paths pass their conversation key", () => {
   assert.match(activation, /queueKey:\s*task\.conversationKey/);
   assert.match(tagActivation, /queueKey:\s*task\.conversationKey/);
   assert.match(callback, /queueKey:\s*conversationKey/);
-  assert.match(
-    callback,
-    /enqueueAgentInvocation\([\s\S]*?\{\s*key:\s*conversationKey\s*\}/
-  );
+  assert.match(callback, /invokeStrictAgentReply\(\{[\s\S]*?queueKey:\s*conversationKey/);
   assert.match(coalesced, /queueKey:\s*conversationKey/);
 });
