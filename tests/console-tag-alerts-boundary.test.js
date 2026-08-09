@@ -90,6 +90,17 @@ test("alert UI pauses animation on hover or focus and opens evidence from a list
   assert.match(app, /await tagAlertClient\.markRead\(alert\.id\)/);
 });
 
+test("tag and attention reminders share one icon-and-content item layout", () => {
+  assert.match(app, /tag-alert-item tag-alert-item--tag/);
+  assert.match(app, /class="reminder-item-icon"[\s\S]*href="#icon-tag"/);
+  assert.match(app, /class="reminder-item-content"/);
+  assert.match(css, /\.tag-alert-item\s*\{[^}]*grid-template-columns:\s*32px minmax\(0, 1fr\)/);
+  assert.match(css, /\.reminder-item-icon\s*\{[^}]*width:\s*32px[^}]*height:\s*32px/);
+  assert.match(css, /\.tag-alert-item--tag\s+\.reminder-item-icon/);
+  assert.match(css, /\.tag-alert-item--attention\s+\.reminder-item-icon/);
+  assert.doesNotMatch(css, /\.attention-alert-item\s*\{[^}]*border-left/);
+});
+
 test("open alert panel keeps a continuous hover path from the button", () => {
   assert.match(
     css,

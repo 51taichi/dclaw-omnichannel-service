@@ -1259,27 +1259,33 @@ function renderReminderCenter() {
   els.tagAlertList.innerHTML = reminders
     .map((alert) => alert.alertType === "attention" ? `
       <button
-        class="tag-alert-item attention-alert-item"
+        class="tag-alert-item tag-alert-item--attention"
         type="button"
         role="listitem"
         data-alert-type="attention"
         data-alert-id="${escapeHtml(alert.id)}"
       >
-        <strong>待处理 · ${escapeHtml(alert.customerName || "未命名客户")}</strong>
-        <span>${escapeHtml(alert.reason || "需要人工查看")}</span>
-        <span>${escapeHtml(alert.evidenceText || "")}</span>
-        ${Number(alert.occurrenceCount) > 1 ? `<small>已合并 ${escapeHtml(alert.occurrenceCount)} 次</small>` : ""}
+        <span class="reminder-item-icon"><svg class="icon" aria-hidden="true"><use href="#icon-alert"></use></svg></span>
+        <span class="reminder-item-content">
+          <strong>${escapeHtml(alert.customerName || "未命名客户")}</strong>
+          <span>待处理：${escapeHtml(alert.reason || "需要人工查看")}</span>
+          <span>${escapeHtml(alert.evidenceText || "")}</span>
+          ${Number(alert.occurrenceCount) > 1 ? `<small class="reminder-item-count">已合并 ${escapeHtml(alert.occurrenceCount)} 次</small>` : ""}
+        </span>
       </button>
     ` : `
       <button
-        class="tag-alert-item"
+        class="tag-alert-item tag-alert-item--tag"
         type="button"
         role="listitem"
         data-alert-type="tag"
         data-alert-id="${escapeHtml(alert.id)}"
       >
-        <strong>${escapeHtml(alert.customerName || "未命名客户")}</strong>
-        <span>达成「${escapeHtml(alert.tagName || "未命名")}」标签</span>
+        <span class="reminder-item-icon"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg></span>
+        <span class="reminder-item-content">
+          <strong>${escapeHtml(alert.customerName || "未命名客户")}</strong>
+          <span>达成「${escapeHtml(alert.tagName || "未命名")}」标签</span>
+        </span>
       </button>
     `)
     .join("");
