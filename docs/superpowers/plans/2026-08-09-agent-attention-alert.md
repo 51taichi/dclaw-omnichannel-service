@@ -4,7 +4,7 @@
 
 **Goal:** 当 Agent 无法可靠回答客户问题时，创建可合并、可发声、可点击定位的待处理提醒，同时保持 AI 接管状态不变。
 
-**Architecture:** 扩展 Agent 最终结构化响应，增加经过客户消息证据校验的 `attentionAlert`。使用独立 SQLite 表保存每个 Bot 会话的一条未读聚合提醒，并通过独立 SSE Hub 推送创建、更新和已读事件；控制台把它与标签提醒合并展示，但选择独立音频和视觉语义。
+**Architecture:** 扩展 Agent 最终结构化响应，增加经过独立 `customerEvidenceCandidates` 校验的 `attentionAlert`。使用 occurrence 表提供稳定触发级幂等，再用聚合表保存每个 Bot 会话的一条未读提醒；通过先订阅后快照的独立 SSE Hub 推送事件。控制台只展示当前 Bot，并把两类提醒合并呈现但使用独立音频和视觉语义。
 
 **Tech Stack:** Node.js ESM、Express 5、Node 内置 SQLite `DatabaseSync`、原生 SSE、浏览器原生 JavaScript/CSS/Audio、Node test runner。
 
@@ -12,11 +12,15 @@
 
 - 待处理提醒只报警，不修改 `handoff_status`，不自动切换人工接手。
 - 不扫描 Agent 回复文案；只接受最终通过响应网关校验的结构化 `attentionAlert`。
-- `required=true` 必须引用本次请求提供的客户证据，不能引用 Agent 回复。
+- 所有普通会话和 handoff audit 都提供独立于标签配置的 `customerEvidenceCandidates`；`required=true` 只能引用其中的客户证据。
+- `required` 类型、字段长度或证据格式错误必须触发响应修复重试，不能静默降级或截断。
+- 每次触发使用 `(bot_id, conversation_key, conversation_epoch, evidence_message_id)` 幂等；任务重试不增加次数。
 - 同一 `bot_id + conversation_key` 最多一条未读提醒；合并更新次数、最近原因和最近证据。
 - 仅新建未读提醒播放“您有新的待处理提醒”；合并更新不重复播放。
 - 内部原因和客户原话不得写入普通运行日志，也不得发送给客户。
 - 标签提醒现有数据、语音、接口和行为保持不变。
+- 第一版只订阅并展示当前 Bot 的提醒，不实现工作区级跨 Bot 汇总。
+- 已读提醒默认保留 90 天；未读提醒不自动清理。
 - 不引入新的运行时第三方依赖。
 
 ---
@@ -32,7 +36,7 @@
 - Test: `tests/dclaw-request.test.js`
 
 **Interfaces:**
-- Consumes: existing `tagEvidenceCandidates` request field and gateway evidence normalization rules.
+- Consumes: new `customerEvidenceCandidates`; `tagEvidenceCandidates` temporarily remains compatible for tag audit.
 - Produces: `normalizeAttentionAlert(value): { required, reason, evidenceMessageId, evidenceText }` and final Agent replies containing normalized `attentionAlert`.
 
 - [ ] **Step 1: Write failing domain normalization tests**
@@ -58,11 +62,10 @@ test("attention alerts normalize one required internal escalation", () => {
   });
 });
 
-test("attention alerts default to disabled and bound internal text", () => {
+test("attention alerts default to disabled", () => {
   assert.deepEqual(normalizeAttentionAlert(undefined), {
     required: false, reason: "", evidenceMessageId: "", evidenceText: ""
   });
-  assert.equal(normalizeAttentionAlert({ required: true, reason: "x".repeat(1000) }).reason.length, 240);
 });
 ```
 
@@ -78,14 +81,14 @@ Create `src/attention-alert.js`:
 
 ```js
 export function normalizeAttentionAlert(value) {
-  if (!value || typeof value !== "object" || Array.isArray(value) || value.required !== true) {
+  if (!value || value.required !== true) {
     return Object.freeze({ required: false, reason: "", evidenceMessageId: "", evidenceText: "" });
   }
   return Object.freeze({
     required: true,
-    reason: String(value.reason || "").trim().slice(0, 240),
-    evidenceMessageId: String(value.evidenceMessageId || "").trim().slice(0, 240),
-    evidenceText: String(value.evidenceText || "").trim().slice(0, 1000)
+    reason: value.reason.trim(),
+    evidenceMessageId: value.evidenceMessageId.trim(),
+    evidenceText: value.evidenceText.trim()
   });
 }
 ```
@@ -107,11 +110,11 @@ assert.equal(validated.attentionAlert.evidenceMessageId, "41");
 // evidenceText differs from the canonical candidate text
 ```
 
-Also assert `required=false` does not require evidence and normalizes empty fields.
+Also assert `required=false` does not require evidence and normalizes empty fields. Assert `required: "true"`, missing required fields, and overlong reason/evidence are schema failures that request a retry rather than being truncated or disabled.
 
 - [ ] **Step 5: Run gateway tests and verify RED**
 
-Run: `node --test tests/agent-response-gateway.test.js tests/dclaw-request.test.js`
+Run: `node --test tests/agent-response-gateway.test.js tests/dclaw-tags.test.js tests/dclaw-handoff.test.js`
 
 Expected: FAIL because the response schema and validation do not recognize `attentionAlert`.
 
@@ -120,26 +123,26 @@ Expected: FAIL because the response schema and validation do not recognize `atte
 In `src/dclaw.js`, add the following instruction only to customer-conversation and handoff-audit requests:
 
 ```js
-"如果当前客户问题无法依据现有规则或知识可靠回答、必须人工查询或确认，请设置 attentionAlert.required=true，并引用本次 tagEvidenceCandidates 中对应客户消息的 id 和原文；不要根据你自己准备发送的回复报警。"
+"如果当前客户问题无法依据现有规则或知识可靠回答、必须人工查询或确认，请设置 attentionAlert.required=true，并引用本次 customerEvidenceCandidates 中对应客户消息的 id 和原文；不要根据你自己准备发送的回复报警。"
 ```
 
-Extend the final JSON schema example with:
+Build and include `customerEvidenceCandidates` for every ordinary conversation and handoff audit request, regardless of tag configuration. Extend both final JSON schema examples with:
 
 ```json
 "attentionAlert":{"required":false,"reason":"","evidenceMessageId":"","evidenceText":""}
 ```
 
-In `src/agent-response-gateway.js`:
+In `src/agent-response-gateway.js`, validate the raw field before normalization:
 
 ```js
 parsed.attentionAlert = normalizeAttentionAlert(parsed.attentionAlert);
 ```
 
-When `required=true`, append validation errors unless reason is nonempty and the evidence ID/text pair exactly matches `tagEvidenceCandidates`. Reuse the existing evidence maps and canonical-text repair only when the ID identifies exactly one candidate. Do not allow a response candidate to pass before this validation.
+Missing `attentionAlert` is valid. When present, `required` must be boolean. When true, reject blank/overlong fields unless the evidence ID/text pair exactly matches `customerEvidenceCandidates`. Do not silently truncate or convert invalid types. Handoff audit must always use this gateway while enforcing `reply=""`.
 
 - [ ] **Step 7: Run protocol tests and verify GREEN**
 
-Run: `node --test tests/attention-alert.test.js tests/agent-response-gateway.test.js tests/dclaw-request.test.js`
+Run: `node --test tests/attention-alert.test.js tests/agent-response-gateway.test.js tests/dclaw-tags.test.js tests/dclaw-handoff.test.js`
 
 Expected: all selected tests pass.
 
@@ -147,7 +150,7 @@ Expected: all selected tests pass.
 
 ```bash
 git add src/attention-alert.js src/dclaw.js src/agent-response-gateway.js \
-  tests/attention-alert.test.js tests/agent-response-gateway.test.js tests/dclaw-request.test.js
+  tests/attention-alert.test.js tests/agent-response-gateway.test.js tests/dclaw-tags.test.js tests/dclaw-handoff.test.js
 git commit -m "feat: add Agent attention alert protocol"
 ```
 
@@ -163,7 +166,7 @@ git commit -m "feat: add Agent attention alert protocol"
 **Interfaces:**
 - Consumes: existing conversations and conversation message IDs.
 - Produces:
-  - `upsertAttentionAlert({ botId, agentId, conversationKey, customerName, reason, evidenceMessageId, evidenceText, nowIso }): { alert, created }`
+  - `recordAttentionAlertOccurrence({ botId, agentId, conversationKey, conversationEpoch, evidenceMessageId, ... }): { alert, created, duplicate }`
   - `listUnreadAttentionAlerts({ botId, limit }): AttentionAlert[]`
   - `markAttentionAlertRead({ botId, alertId, nowIso }): AttentionAlert | null`
 
@@ -172,16 +175,16 @@ git commit -m "feat: add Agent attention alert protocol"
 Create `tests/db-attention-alerts.test.js` using a temporary `DATABASE_PATH`. Seed one Bot conversation and two customer messages, then assert:
 
 ```js
-const first = upsertAttentionAlert({
-  botId, agentId, conversationKey, customerName: "Ada",
+const first = recordAttentionAlertOccurrence({
+  botId, agentId, conversationKey, conversationEpoch: 1, customerName: "Ada",
   reason: "需要确认法规", evidenceMessageId: firstMessage.id,
   evidenceText: firstMessage.content, nowIso: "2026-08-09T01:00:00.000Z"
 });
 assert.equal(first.created, true);
 assert.equal(first.alert.occurrenceCount, 1);
 
-const merged = upsertAttentionAlert({
-  botId, agentId, conversationKey, customerName: "Ada",
+const merged = recordAttentionAlertOccurrence({
+  botId, agentId, conversationKey, conversationEpoch: 1, customerName: "Ada",
   reason: "客户再次追问", evidenceMessageId: secondMessage.id,
   evidenceText: secondMessage.content, nowIso: "2026-08-09T01:01:00.000Z"
 });
@@ -191,7 +194,7 @@ assert.equal(merged.alert.occurrenceCount, 2);
 assert.equal(merged.alert.evidenceMessageId, secondMessage.id);
 ```
 
-Also assert Bot isolation, invalid evidence rejection, mark-read behavior, a new row after read, and concurrent/sequential duplicate calls retaining one unread row.
+Also assert Bot isolation, invalid evidence rejection, mark-read behavior, a new row after read for a genuinely new trigger, and concurrent/sequential calls with the same stable trigger returning `duplicate=true` without changing count. Explicitly mark the alert read and replay the same trigger to prove it does not create another alert.
 
 - [ ] **Step 2: Run database tests and verify RED**
 
@@ -224,19 +227,30 @@ CREATE TABLE IF NOT EXISTS attention_alert_events (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_attention_alert_events_one_unread
 ON attention_alert_events (bot_id, conversation_key)
 WHERE read_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS attention_alert_occurrences (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  bot_id TEXT NOT NULL,
+  conversation_key TEXT NOT NULL,
+  conversation_epoch INTEGER NOT NULL,
+  evidence_message_id INTEGER NOT NULL,
+  alert_id INTEGER NOT NULL,
+  created_at TEXT NOT NULL,
+  UNIQUE (bot_id, conversation_key, conversation_epoch, evidence_message_id)
+);
 ```
 
 Add an unread lookup index on `(bot_id, read_at, last_triggered_at)`.
 
 - [ ] **Step 4: Implement row mapping and atomic merge**
 
-Use `BEGIN IMMEDIATE`. Resolve `evidence_message_id` against the same Bot and conversation before insert/update. Within the transaction, select the unread row; update it if present, otherwise insert. Catch no generic unique errors—the immediate transaction and partial unique index are the correctness boundary.
+Use `BEGIN IMMEDIATE`. Resolve `evidence_message_id` against the same Bot and conversation. Inside the transaction, check/insert the stable occurrence first; a duplicate returns the existing alert without any update. Only a new occurrence may select/update the unread aggregate or insert a new one, then bind the occurrence to that alert. The trigger unique index and unread partial index are separate correctness boundaries.
 
 Return public camelCase fields including `alertType: "attention"`, `occurrenceCount`, `firstTriggeredAt`, `lastTriggeredAt`, and `readAt`.
 
 - [ ] **Step 5: Clear attention alerts during destructive conversation reset**
 
-In `clearConversationForReset`, delete `attention_alert_events` for that exact Bot and conversation in the existing transaction. Extend `tests/db-reset.test.js` to seed an alert and verify it is removed.
+In `clearConversationForReset`, delete occurrences before alerts for that exact Bot and conversation in the existing transaction. Extend `tests/db-reset.test.js` to verify both are removed. Add a maintenance function that deletes read alerts and their occurrences after 90 days without touching unread rows.
 
 - [ ] **Step 6: Run database/reset tests and verify GREEN**
 
@@ -264,7 +278,7 @@ git commit -m "feat: persist merged attention alerts"
 
 **Interfaces:**
 - Consumes: normalized final `agentReply.attentionAlert`, current Bot/binding/conversation, and current evidence candidates.
-- Produces: `applyAgentAttentionAlert({ botId, binding, conversationKey, agentReply, evidenceCandidates }): { alert, created } | null`.
+- Produces: `applyAgentAttentionAlert({ botId, binding, conversationKey, conversationEpoch, agentReply, evidenceCandidates }): { alert, created, duplicate } | null`.
 
 - [ ] **Step 1: Write failing service tests**
 
@@ -301,7 +315,7 @@ Create `src/attention-alert-service.js`. It must:
 - Return null unless `required === true`.
 - Resolve the evidence ID only from `evidenceCandidates`.
 - Derive Bot, Agent, conversation and customer name from trusted server context.
-- Call `upsertAttentionAlert` with the canonical evidence text.
+- Call `recordAttentionAlertOccurrence` with the conversation epoch, local evidence message ID and canonical evidence text.
 - Never log or return the full Agent response.
 
 - [ ] **Step 4: Add server boundary tests before integration**
@@ -321,7 +335,7 @@ Assert both final response paths call the helper:
 
 - [ ] **Step 5: Integrate only after successful final response validation**
 
-In `src/server.js`, invoke `applyAgentAttentionAlert` beside the existing final tag-decision application. Persist it once per accepted invocation, before any external Channel send, so retries cannot produce duplicate unread rows. Do not add calls to `updateFlowSessionHandoff`.
+In `src/server.js`, invoke `applyAgentAttentionAlert` beside the existing final tag-decision application. Pass the stable conversation epoch and customer evidence; persist before any external Channel send. A repeated trigger must return `duplicate=true`, skip publishing and leave counts unchanged. Do not add calls to `updateFlowSessionHandoff`.
 
 Capture the returned `{ alert, created }` for realtime publication in Task 4. Log only `alertId`, `botId`, `conversationKey`, `created`, and `occurrenceCount`.
 
@@ -382,11 +396,11 @@ Expected: FAIL because the stream hub does not exist.
 
 - [ ] **Step 3: Implement the SSE hub**
 
-Create `src/attention-alert-stream.js` following `src/tag-alert-stream.js`, with `subscribe`, `publishCreated`, `publishUpdated`, `publishRead`, and `close`. Keep Bot-scoped subscriber maps and a bounded heartbeat timer.
+Create `src/attention-alert-stream.js` following the transport shape of `src/tag-alert-stream.js`, with `subscribe`, `publishCreated`, `publishUpdated`, `publishRead`, and `close`. `subscribe` must register the connection before awaiting/invoking its snapshot loader. Keep Bot-scoped subscriber maps and a bounded heartbeat timer.
 
 - [ ] **Step 4: Write failing API and browser-client boundary tests**
 
-Assert all three endpoints call `assertBotAccess`, list only unread rows for the selected Bot, commit mark-read before publishing, and return 404 for a missing/mismatched alert. Assert the browser client uses authenticated streaming, applies snapshot/create/update/read idempotently by alert ID, and stops reconnecting on 401.
+Assert all three endpoints call `assertBotAccess`, list only unread rows for the selected Bot, commit mark-read before publishing, and return 404 for a missing/mismatched alert. Add a race test that publishes after subscription registration but before snapshot delivery and proves the client retains the alert exactly once. Assert the browser client uses authenticated streaming, applies snapshot/create/update/read idempotently by alert ID, and stops reconnecting on 401.
 
 - [ ] **Step 5: Add routes and publish service results**
 
@@ -394,7 +408,7 @@ In `src/server.js`:
 
 - Create one attention-alert hub.
 - On Task 3 result, publish `created` only when `created=true`; otherwise publish `updated`.
-- Implement list, SSE, and read routes with the same session and Bot-access middleware as tag alerts.
+- Implement list, SSE, and read routes with the same session and Bot-access middleware as tag alerts. The SSE route subscribes first and loads/sends its database snapshot through the registered connection afterward.
 - Publish `read` only after `markAttentionAlertRead` commits.
 - Close the hub during server shutdown.
 
@@ -505,7 +519,7 @@ Do not label these cards as customer tags. Keep unread count as the combined num
 
 - [ ] **Step 6: Implement created/update sound behavior and click navigation**
 
-On an attention `created` event, call the dedicated audio playback once. On `updated`, refresh the card without sound. Clicking:
+On an attention `created` event, call the dedicated audio playback once. On `updated`, refresh the card without sound. Connect only for `state.selectedBotId`; switching Bot replaces the subscription and snapshot. Clicking:
 
 ```js
 await openAlertConversation({
@@ -536,7 +550,7 @@ git commit -m "feat: show and announce attention alerts"
 
 ---
 
-### Task 6: End-to-end verification, documentation, review, and push
+### Task 6: End-to-end verification, documentation, review, and handoff
 
 **Files:**
 - Modify: `README.md`
@@ -545,7 +559,7 @@ git commit -m "feat: show and announce attention alerts"
 
 **Interfaces:**
 - Consumes: Tasks 1–5 complete feature.
-- Produces: documented, reviewed, deployable feature on `origin/main`.
+- Produces: documented, reviewed, committed and deployable feature in the current `main` worktree.
 
 - [ ] **Step 1: Add one HTTP-level integration test**
 
@@ -556,6 +570,8 @@ Create or extend a server integration test that uses a fake Agent response conta
 - a second trigger for the same conversation updates the same ID and increments count;
 - the flow session remains `handoff_status != "human"`;
 - marking read permits a later trigger to create a new ID;
+- replaying the same stable trigger before or after read does not increment, recreate, publish or play again;
+- an alert committed before a simulated channel-send failure remains idempotent when the same inbound job is retried;
 - the evidence endpoint returns a window containing the latest anchored customer message.
 
 - [ ] **Step 2: Document exact operator behavior**
@@ -617,11 +633,10 @@ git commit -m "docs: describe Agent attention alerts"
 
 If there are no remaining changes, skip the empty commit.
 
-- [ ] **Step 8: Push the verified main branch**
+- [ ] **Step 8: Stop after verified commits and report deployment readiness**
 
 ```bash
 git status --short
-git push origin main
 ```
 
-Expected: clean working tree and the feature commits reach `origin/main`.
+Expected: clean working tree. Do not push until the user explicitly requests `push`.
