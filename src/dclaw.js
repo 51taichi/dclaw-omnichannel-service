@@ -318,6 +318,7 @@ export function buildDclawRequest({
     ] : []),
     ...tagAuditInstructions,
     "如果当前客户问题无法依据现有规则或知识可靠回答、必须人工查询或确认，请设置 attentionAlert.required=true，并引用本次 customerEvidenceCandidates 中对应客户消息的 id 和原文；不要根据你自己准备发送的回复报警。",
+    "如果你准备发送的客户回复承诺稍后查询、确认、核实、询问他人或跟进后再答复，即使回复中同时提供了参考答案，也必须设置 attentionAlert.required=true，并引用促成该后续事项的客户消息。不要因为已有部分答案而设置 required=false。",
     "企业智库负责业务事实和公开资源边界；状态机只负责推进当前节点目标，不能独占回答或替代事实检索。",
     "当前任务节点相关咨询不能只用状态机回答；客户询问资料、活动、直播、试听、邀约、服务内容、价值、流程、怎么领取或下一步动作时，先判断是否需要企业智库或公开资源。",
     "客户明确提到以前同事怎么答、历史沟通案例或优秀话术时，只能结合当前会话、状态机交流技巧和 human_reply_style 组织表达；不要声称查询内部目录。",
@@ -533,6 +534,7 @@ export function buildDclawHandoffTranscriptRequest({
       "不要输出话术。",
       ...tagInstructions,
       "如果这条客户消息反映了必须人工查询或确认、Agent 无法可靠处理的问题，请设置 attentionAlert.required=true，并从 customerEvidenceCandidates 引用客户证据。",
+      "如果正常回复这条消息时需要承诺稍后查询、确认、核实、询问他人或跟进后再答复，即使回复中同时提供了参考答案，也必须设置 attentionAlert.required=true，并引用促成该后续事项的客户消息。不要因为已有部分答案而设置 required=false。",
       `最终只输出 JSON：{"reply":"","attachments":[],"sources":[]${tagSchema},"attentionAlert":{"required":false,"reason":"","evidenceMessageId":"","evidenceText":""}}。reply 必须为空字符串。`,
       "",
       JSON.stringify({

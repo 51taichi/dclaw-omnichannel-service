@@ -82,6 +82,26 @@ test("ordinary conversations expose customer evidence without tag rules", () => 
   assert.match(request.message, /attentionAlert/);
 });
 
+test("handoff audits apply the promised follow-up alert rule without replying", () => {
+  const request = buildDclawHandoffTranscriptRequest({
+    binding: { botId: "bot_1", agentId: "agent_1" },
+    conversation: { conversationKey: "bot_1:private:张三", conversationEpoch: "epoch-1" },
+    message: {
+      messageId: "msg-shipping", spoken: "具体运费是多少？", rawSpoken: "具体运费是多少？",
+      roomType: 2, receivedName: "张三", textType: 1
+    },
+    tagEvidenceCandidates: [{
+      id: "shipping-2",
+      conversationMessageId: 457,
+      text: "具体运费是多少？"
+    }]
+  });
+
+  assert.match(request.message, /即使回复中同时提供了参考答案/);
+  assert.match(request.message, /必须设置 attentionAlert\.required=true/);
+  assert.match(request.message, /"reply":""/);
+});
+
 test("tag-enabled handoff transcripts request decisions with an empty customer reply", () => {
   const request = buildDclawHandoffTranscriptRequest({
     binding: {
