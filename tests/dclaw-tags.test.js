@@ -88,6 +88,7 @@ test("ordinary requests require an alert when a partial answer promises later co
   });
 
   assert.match(request.message, /即使回复中同时提供了参考答案/);
+  assert.equal(request.message.match(/即使回复中同时提供了参考答案/g)?.length, 1);
   assert.match(request.message, /稍后查询、确认、核实、询问他人或跟进后再答复/);
   assert.match(request.message, /必须设置 attentionAlert\.required=true/);
   assert.match(request.message, /不要因为已有部分答案而设置 required=false/);

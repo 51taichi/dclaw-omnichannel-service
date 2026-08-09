@@ -98,6 +98,7 @@ test("handoff audits apply the promised follow-up alert rule without replying", 
   });
 
   assert.match(request.message, /即使回复中同时提供了参考答案/);
+  assert.equal(request.message.match(/即使回复中同时提供了参考答案/g)?.length, 1);
   assert.match(request.message, /必须设置 attentionAlert\.required=true/);
   assert.match(request.message, /"reply":""/);
 });
