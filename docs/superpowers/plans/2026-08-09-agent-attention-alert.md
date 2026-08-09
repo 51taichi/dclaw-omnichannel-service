@@ -701,3 +701,74 @@ git commit -m "fix: require alerts for promised follow-up"
 ```
 
 Do not push until the user explicitly requests `push`.
+
+---
+
+### Task 8: 统一标签提醒与待处理提醒 Item 样式
+
+**Files:**
+- Modify: `public/console/app.js`
+- Modify: `public/console/styles.css`
+- Test: `tests/console-attention-alerts-boundary.test.js`
+- Test: `tests/console-tag-alerts-boundary.test.js`
+
+**Interfaces:**
+- Consumes: `renderReminderCenter()` 合并后的 `tag` 与 `attention` 视图模型，以及现有 SVG symbol `icon-tag`、`icon-alert`。
+- Produces: 两类提醒共用的 `.reminder-item-icon + .reminder-item-content` DOM 和统一视觉结构；点击定位、已读、语音与计数逻辑保持不变。
+
+- [ ] **Step 1: 写入统一结构的失败测试**
+
+扩展控制台边界测试，要求两类分支都包含 `.reminder-item-icon` 和 `.reminder-item-content`；标签分支使用 `icon-tag` 与 `.tag-alert-item--tag`，待处理分支使用 `icon-alert` 与 `.tag-alert-item--attention`。同时断言 CSS 使用两列 Grid、固定 `32px` 图标块、共享 Hover/Focus，以及类型修饰类仅负责颜色。
+
+- [ ] **Step 2: 运行测试并确认旧结构失败**
+
+Run:
+
+```bash
+node --test tests/console-attention-alerts-boundary.test.js tests/console-tag-alerts-boundary.test.js
+```
+
+Expected: 新增断言失败，因为现有 Item 没有统一图标列和内容容器。
+
+- [ ] **Step 3: 改造 `renderReminderCenter()` 的两类 Item**
+
+标签提醒结构：
+
+```html
+<button class="tag-alert-item tag-alert-item--tag" ...>
+  <span class="reminder-item-icon"><svg class="icon" aria-hidden="true"><use href="#icon-tag"></use></svg></span>
+  <span class="reminder-item-content">
+    <strong>客户名称</strong>
+    <span>达成「标签名」标签</span>
+  </span>
+</button>
+```
+
+待处理提醒使用相同结构，将修饰类改为 `.tag-alert-item--attention`、图标改为 `icon-alert`，第二行显示 `待处理：原因`，第三行显示客户原话；合并次数使用 `.reminder-item-count`。
+
+- [ ] **Step 4: 统一 CSS，只保留类型配色差异**
+
+`.tag-alert-item` 使用 `grid-template-columns: 32px minmax(0, 1fr)`，共享 padding、gap、边框、圆角和 Hover/Focus。`.reminder-item-icon` 固定 `32px` 方形并居中图标；`.reminder-item-content` 负责统一省略布局。`.tag-alert-item--tag` 使用蓝紫色图标和淡背景，`.tag-alert-item--attention` 使用橙色图标和淡背景；不得再使用待处理独有的左侧粗边框。
+
+- [ ] **Step 5: 运行 UI 与全量回归测试**
+
+Run:
+
+```bash
+node --test tests/console-attention-alerts-boundary.test.js tests/console-tag-alerts-boundary.test.js
+npm test
+```
+
+Expected: zero failures; existing intentional skips may remain。
+
+- [ ] **Step 6: 提交并停止等待推送授权**
+
+```bash
+git add public/console/app.js public/console/styles.css \
+  tests/console-attention-alerts-boundary.test.js tests/console-tag-alerts-boundary.test.js \
+  docs/superpowers/specs/2026-08-09-agent-attention-alert-design.md \
+  docs/superpowers/plans/2026-08-09-agent-attention-alert.md
+git commit -m "feat: unify reminder item styles"
+```
+
+Do not push until the user explicitly requests `push`.
