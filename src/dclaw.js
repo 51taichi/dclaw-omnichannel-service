@@ -317,6 +317,7 @@ export function buildDclawRequest({
       "会话中 eventType=group_automation 且 internal=true 的内容属于内部任务事件，不是群成员发言，不得作为客户原话或已经发生的业务事实。"
     ] : []),
     ...tagAuditInstructions,
+    "attentionAlert 是你综合客户消息、通用规则、任务流程、知识和其他推理依据后得出的统一业务结论，不是独立于 reply 的附加判断。无论是哪一条规则或哪一步推理得出“需要确认”，都必须同时设置 attentionAlert.required=true，并引用促成该结论的客户消息。reply 和 attentionAlert 必须表达同一个最终业务结论。",
     "如果当前客户问题无法依据现有规则或知识可靠回答、必须人工查询或确认，请设置 attentionAlert.required=true，并引用本次 customerEvidenceCandidates 中对应客户消息的 id 和原文；不要根据你自己准备发送的回复报警。",
     "如果你准备发送的客户回复承诺稍后查询、确认、核实、询问他人或跟进后再答复，即使回复中同时提供了参考答案，也必须设置 attentionAlert.required=true，并引用促成该后续事项的客户消息。不要因为已有部分答案而设置 required=false。",
     "企业智库负责业务事实和公开资源边界；状态机只负责推进当前节点目标，不能独占回答或替代事实检索。",
@@ -533,6 +534,7 @@ export function buildDclawHandoffTranscriptRequest({
       "不要推进状态机。",
       "不要输出话术。",
       ...tagInstructions,
+      "attentionAlert 是你综合客户消息、通用规则、任务流程、知识和其他推理依据后得出的统一业务结论。无论是哪一条规则或哪一步推理得出“需要确认”，都必须同时设置 attentionAlert.required=true，并引用促成该结论的客户消息。",
       "如果这条客户消息反映了必须人工查询或确认、Agent 无法可靠处理的问题，请设置 attentionAlert.required=true，并从 customerEvidenceCandidates 引用客户证据。",
       "如果正常回复这条消息时需要承诺稍后查询、确认、核实、询问他人或跟进后再答复，即使回复中同时提供了参考答案，也必须设置 attentionAlert.required=true，并引用促成该后续事项的客户消息。不要因为已有部分答案而设置 required=false。",
       `最终只输出 JSON：{"reply":"","attachments":[],"sources":[]${tagSchema},"attentionAlert":{"required":false,"reason":"","evidenceMessageId":"","evidenceText":""}}。reply 必须为空字符串。`,

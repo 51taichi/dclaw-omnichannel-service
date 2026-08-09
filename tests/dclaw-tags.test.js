@@ -94,6 +94,25 @@ test("ordinary requests require an alert when a partial answer promises later co
   assert.match(request.message, /不要因为已有部分答案而设置 required=false/);
 });
 
+test("ordinary requests derive attention alerts from the complete business reasoning result", () => {
+  const request = buildDclawRequest({
+    binding,
+    conversation,
+    message: { ...message, spoken: "明天下午2点我上门交流？" },
+    generalRule: "如果客户询问是否能预约线下，则询问期望时间，并让对方稍等，需要确认。",
+    tagEvidenceCandidates: [{
+      id: "visit-1",
+      conversationMessageId: 458,
+      text: "明天下午2点我上门交流？"
+    }]
+  });
+
+  assert.match(request.message, /综合客户消息、通用规则、任务流程、知识和其他推理依据/);
+  assert.match(request.message, /无论是哪一条规则或哪一步推理得出“需要确认”/);
+  assert.match(request.message, /必须同时设置 attentionAlert\.required=true/);
+  assert.match(request.message, /reply 和 attentionAlert 必须表达同一个最终业务结论/);
+});
+
 test("tag-enabled requests require a complete audit before the customer reply", () => {
   const request = buildDclawRequest({
     binding,

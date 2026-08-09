@@ -103,6 +103,28 @@ test("handoff audits apply the promised follow-up alert rule without replying", 
   assert.match(request.message, /"reply":""/);
 });
 
+test("handoff audits derive attention alerts from the complete business reasoning result", () => {
+  const request = buildDclawHandoffTranscriptRequest({
+    binding: { botId: "bot_1", agentId: "agent_1" },
+    conversation: { conversationKey: "bot_1:private:张三", conversationEpoch: "epoch-1" },
+    message: {
+      messageId: "msg-visit", spoken: "明天下午2点我上门交流？", rawSpoken: "明天下午2点我上门交流？",
+      roomType: 2, receivedName: "张三", textType: 1
+    },
+    generalRule: "如果客户询问是否能预约线下，则询问期望时间，并让对方稍等，需要确认。",
+    tagEvidenceCandidates: [{
+      id: "visit-2",
+      conversationMessageId: 459,
+      text: "明天下午2点我上门交流？"
+    }]
+  });
+
+  assert.match(request.message, /综合客户消息、通用规则、任务流程、知识和其他推理依据/);
+  assert.match(request.message, /无论是哪一条规则或哪一步推理得出“需要确认”/);
+  assert.match(request.message, /必须同时设置 attentionAlert\.required=true/);
+  assert.match(request.message, /"reply":""/);
+});
+
 test("tag-enabled handoff transcripts request decisions with an empty customer reply", () => {
   const request = buildDclawHandoffTranscriptRequest({
     binding: {
