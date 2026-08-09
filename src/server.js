@@ -176,6 +176,7 @@ import {
   listGroupAutomationOccurrences,
   listGroupsPage,
   listUnreadTagAlerts,
+  listUnreadAttentionAlerts,
   listFlowMachines,
   listFlowSessionsPage,
   listFlowStateEvents,
@@ -202,6 +203,7 @@ import {
   markChannelAccountWebhookSuccess,
   markConversationResetHandledForEpoch,
   markTagAlertRead,
+  markAttentionAlertRead,
   markProactiveTargetFailed,
   markProactiveTargetAgentSync,
   markProactiveTargetSent,
@@ -315,6 +317,7 @@ import { normalizeUploadedFilename } from "./filenames.js";
 import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
 import { createTagAlertStreamHub } from "./tag-alert-stream.js";
 import { applyAgentAttentionAlert } from "./attention-alert-service.js";
+import { createAttentionAlertStreamHub } from "./attention-alert-stream.js";
 import { filterConfiguredCollectedDataPatch } from "./flow-assets.js";
 import {
   adjudicateTagDecision,
@@ -330,6 +333,7 @@ const cockpitEventRecorder = createCockpitEventRecorder({
 
 const app = express();
 const tagAlertStreamHub = createTagAlertStreamHub();
+const attentionAlertStreamHub = createAttentionAlertStreamHub();
 const groupAutomationStreamHub = createGroupAutomationStreamHub();
 const port = Number(process.env.PORT || 8765);
 const host = process.env.HOST || "0.0.0.0";
@@ -1367,6 +1371,12 @@ function publishCommittedTagAlerts({ botId, invocationId, tagResult }) {
     batchId: `invocation:${invocationId}`,
     alerts
   });
+}
+
+function publishCommittedAttentionAlert({ botId, result }) {
+  if (!result?.alert || result.duplicate) return;
+  if (result.created) attentionAlertStreamHub.publishCreated({ botId, alert: result.alert });
+  else attentionAlertStreamHub.publishUpdated({ botId, alert: result.alert });
 }
 
 function scheduleNextTagActivationTask({ task, sentAt }) {
@@ -4325,6 +4335,7 @@ async function processIncomingMessage({ botId, message, intake = null }) {
           duplicate: attentionResult.duplicate,
           occurrenceCount: attentionResult.alert.occurrenceCount
         });
+        publishCommittedAttentionAlert({ botId, result: attentionResult });
       }
       if (conversationReset) {
         markConversationResetHandledForEpoch(
@@ -4701,6 +4712,7 @@ async function processCoalescedIncomingBatch(batch) {
         duplicate: attentionResult.duplicate,
         occurrenceCount: attentionResult.alert.occurrenceCount
       });
+      publishCommittedAttentionAlert({ botId, result: attentionResult });
     }
     const reply = String(agentReply.reply || "").trim();
     const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
@@ -6383,6 +6395,51 @@ app.post(
       alertId,
       readAt: alert.readAt
     });
+    res.json({ ok: true, alert });
+  })
+);
+
+app.get(
+  "/api/attention-alerts/stream",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
+    await attentionAlertStreamHub.subscribe({
+      botId,
+      req,
+      res,
+      loadSnapshot: () => listUnreadAttentionAlerts({ botId })
+    });
+  })
+);
+
+app.get(
+  "/api/attention-alerts",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.query.botId || "").trim();
+    assertBotAccess(req, botId);
+    res.json({ ok: true, botId, alerts: listUnreadAttentionAlerts({ botId }) });
+  })
+);
+
+app.post(
+  "/api/attention-alerts/:alertId/read",
+  asyncHandler(async (req, res) => {
+    const botId = String(req.body?.botId || "").trim();
+    const alertId = Number(req.params.alertId);
+    assertBotAccess(req, botId);
+    if (!Number.isInteger(alertId) || alertId <= 0) {
+      const error = new Error("valid alertId is required");
+      error.status = 400;
+      throw error;
+    }
+    const alert = markAttentionAlertRead({ botId, alertId });
+    if (!alert) {
+      const error = new Error("unread attention alert not found");
+      error.status = 404;
+      throw error;
+    }
+    attentionAlertStreamHub.publishRead({ botId, alert });
     res.json({ ok: true, alert });
   })
 );
