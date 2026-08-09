@@ -101,6 +101,10 @@ test("tag and attention reminders share one icon-and-content item layout", () =>
   assert.doesNotMatch(css, /\.attention-alert-item\s*\{[^}]*border-left/);
 });
 
+test("reminder items grow with multi-line attention content", () => {
+  assert.match(css, /\.tag-alert-item\s*\{[^}]*height:\s*auto/);
+});
+
 test("open alert panel keeps a continuous hover path from the button", () => {
   assert.match(
     css,

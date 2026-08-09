@@ -5798,6 +5798,7 @@ td .muted {
   align-items: start;
   gap: 10px;
   width: 100%;
+  height: auto;
   min-height: 64px;
   padding: 12px;
   border: 0;
