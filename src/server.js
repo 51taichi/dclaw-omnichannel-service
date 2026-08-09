@@ -314,6 +314,7 @@ import { inboundAttachmentPlaceholder } from "./inbound-attachments.js";
 import { normalizeUploadedFilename } from "./filenames.js";
 import { createInboundMessageCoalescer } from "./inbound-coalescer.js";
 import { createTagAlertStreamHub } from "./tag-alert-stream.js";
+import { applyAgentAttentionAlert } from "./attention-alert-service.js";
 import { filterConfiguredCollectedDataPatch } from "./flow-assets.js";
 import {
   adjudicateTagDecision,
@@ -4306,6 +4307,25 @@ async function processIncomingMessage({ botId, message, intake = null }) {
           })
         : null;
       publishCommittedTagAlerts({ botId, invocationId, tagResult });
+      const attentionResult = applyAgentAttentionAlert({
+        botId,
+        binding,
+        conversationKey,
+        conversationEpoch: conversation.conversationEpoch,
+        customerName: message.receivedName || message.groupName || "",
+        agentReply,
+        evidenceCandidates: tagEvidenceCandidates
+      });
+      if (attentionResult) {
+        logInfo("agent.attention_alert.persisted", {
+          alertId: attentionResult.alert.id,
+          botId,
+          conversationKey,
+          created: attentionResult.created,
+          duplicate: attentionResult.duplicate,
+          occurrenceCount: attentionResult.alert.occurrenceCount
+        });
+      }
       if (conversationReset) {
         markConversationResetHandledForEpoch(
           conversationKey,
@@ -4663,6 +4683,25 @@ async function processCoalescedIncomingBatch(batch) {
         })
       : null;
     publishCommittedTagAlerts({ botId, invocationId, tagResult });
+    const attentionResult = applyAgentAttentionAlert({
+      botId,
+      binding,
+      conversationKey,
+      conversationEpoch: conversation.conversationEpoch,
+      customerName: message.receivedName || message.groupName || "",
+      agentReply,
+      evidenceCandidates: tagEvidenceCandidates
+    });
+    if (attentionResult) {
+      logInfo("agent.attention_alert.persisted", {
+        alertId: attentionResult.alert.id,
+        botId,
+        conversationKey,
+        created: attentionResult.created,
+        duplicate: attentionResult.duplicate,
+        occurrenceCount: attentionResult.alert.occurrenceCount
+      });
+    }
     const reply = String(agentReply.reply || "").trim();
     const attachments = Array.isArray(agentReply.attachments) ? agentReply.attachments : [];
     const sources = Array.isArray(agentReply.sources) ? agentReply.sources : [];
