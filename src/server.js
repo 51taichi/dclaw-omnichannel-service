@@ -16,6 +16,10 @@ import {
   getConfigPatchBotSnapshot,
   listConfigPatchBots
 } from "./config-patch-participant.js";
+import {
+  ConfigPatchAdminClient,
+  ConfigPatchAdminError
+} from "./config-patch-admin-client.js";
 import { runConversationResetRequests } from "./conversation-reset.js";
 import { createConversationResetWorker } from "./conversation-reset-worker.js";
 import {
@@ -338,6 +342,7 @@ const cockpitEventRecorder = createCockpitEventRecorder({
 });
 
 const app = express();
+const configPatchAdminClient = ConfigPatchAdminClient.fromEnv();
 const tagAlertStreamHub = createTagAlertStreamHub();
 const attentionAlertStreamHub = createAttentionAlertStreamHub();
 const groupAutomationStreamHub = createGroupAutomationStreamHub();
@@ -5933,6 +5938,46 @@ app.put(
 );
 
 app.get(
+  "/api/admin/staff-tokens",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const result = await configPatchAdminClient.listTokens();
+    res.json({ ok: true, ...result });
+  })
+);
+
+app.post(
+  "/api/admin/staff-tokens",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const result = await configPatchAdminClient.createToken({
+      employeeName: req.body?.employeeName,
+      tokenName: req.body?.tokenName,
+      expiresAt: req.body?.expiresAt ?? null
+    });
+    res.status(201).json({ ok: true, ...result });
+  })
+);
+
+app.post(
+  "/api/admin/staff-tokens/:tokenId/revoke",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const result = await configPatchAdminClient.revokeToken(req.params.tokenId);
+    res.json({ ok: true, ...result });
+  })
+);
+
+app.post(
+  "/api/admin/staff-tokens/:tokenId/rotate",
+  asyncHandler(async (req, res) => {
+    assertAdminAccess(req);
+    const result = await configPatchAdminClient.rotateToken(req.params.tokenId);
+    res.json({ ok: true, ...result });
+  })
+);
+
+app.get(
   "/api/admin/workspaces",
   asyncHandler(async (req, res) => {
     assertAdminAccess(req);
@@ -7373,6 +7418,20 @@ app.get(
 app.use((error, req, res, next) => {
   if (error.code === "GROUP_VERSION_CONFLICT") error.status = 409;
   if (error.code === "GROUP_ADDRESS_AMBIGUOUS") error.status = 422;
+  if (error instanceof ConfigPatchAdminError) {
+    logWarn("config_patch_admin.request.failed", {
+      method: req.method,
+      path: req.path,
+      status: error.status,
+      code: error.code
+    });
+    res.status(error.status).json({
+      ok: false,
+      code: error.code,
+      message: error.message
+    });
+    return;
+  }
   logError("http.request.failed", {
     method: req.method,
     path: req.path,

@@ -435,6 +435,70 @@ body {
   margin-top: 20px;
 }
 
+.admin-panel-note {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+
+.staff-token-form {
+  max-width: 1040px;
+}
+
+.staff-token-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.9fr) minmax(120px, 1fr) minmax(140px, 1fr) minmax(72px, 0.6fr) minmax(150px, 1fr) minmax(150px, 1fr) minmax(180px, 1.2fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 52px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.staff-token-row:last-child {
+  border-bottom: 0;
+}
+
+.staff-token-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.staff-token-empty {
+  margin: 0;
+  padding: 18px 12px;
+}
+
+.staff-token-modal {
+  width: min(680px, 100%);
+}
+
+.staff-token-value-field {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  margin-bottom: 16px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.staff-token-value-field > span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  background: #eef3ff;
+  font-weight: 700;
+}
+
+.staff-token-value-field input {
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 0;
+  outline: 0;
+  font: 600 13px/1.4 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
 .admin-modal {
   position: fixed;
   inset: 0;
@@ -566,7 +630,8 @@ body {
   }
 
   .admin-form,
-  .admin-table-row {
+  .admin-table-row,
+  .staff-token-row {
     grid-template-columns: 1fr;
   }
 

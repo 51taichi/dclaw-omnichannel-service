@@ -14,12 +14,35 @@ test("admin console exposes global management tabs without user management", () 
   assert.equal(html.includes('class="platform-logo whatsapp"'), true);
   assert.match(html, /class="platform-logo whatsapp"[^>]*>[\s\S]*?<img src="\/console\/assets\/whatsapp-logo\.jpg" alt="" aria-hidden="true" \/>/);
   assert.doesNotMatch(html, />WhatsApp<\/span>/);
-  for (const label of ["工作区", "Bots", "Agents", "系统设置", "退出"]) {
+  for (const label of ["工作区", "Bots", "Agents", "Codex Token", "系统设置", "退出"]) {
     assert.equal(html.includes(label), true, `missing ${label}`);
   }
   assert.equal(html.includes("管理员账号管理"), false);
   assert.equal(html.includes("/shared/auth-shell.js"), true);
   assert.equal(html.includes("/shared/auth-shell.css"), true);
+});
+
+test("Codex Token tab is limited to employee token lifecycle management", () => {
+  assert.match(html, /data-admin-tab="staff-tokens"[^>]*>[\s\S]*Codex Token<\/button>/);
+  const panelStart = html.indexOf('data-admin-panel="staff-tokens"');
+  const panelEnd = html.indexOf('data-admin-panel="settings"', panelStart);
+  const panel = html.slice(panelStart, panelEnd);
+
+  for (const label of ["员工姓名", "设备备注", "有效期", "状态", "创建时间", "最后使用时间"]) {
+    assert.equal(panel.includes(label), true, `missing ${label}`);
+  }
+  for (const action of ["创建 Token", "撤销", "轮换"]) {
+    assert.equal(`${panel}${app}`.includes(action), true, `missing ${action}`);
+  }
+  for (const forbidden of ["Bot 选择", "工作包", "预检", "发布", "Release", "能力目录"]) {
+    assert.equal(panel.includes(forbidden), false, `Token panel must not expose ${forbidden}`);
+  }
+  assert.match(html, /id="staffTokenModal"[^>]*hidden[\s\S]*id="staffTokenValue"[^>]*readonly/);
+  assert.match(app, /async function showOneTimeStaffToken\(token\)/);
+  assert.match(app, /els\.staffTokenValue\.value = token/);
+  assert.match(app, /els\.staffTokenValue\.value = ""/);
+  assert.doesNotMatch(app, /localStorage\.setItem\([^\n]*staffToken/i);
+  assert.doesNotMatch(app, /state\.[A-Za-z]*token\s*=/i);
 });
 
 test("admin console uses singleton session authentication", () => {

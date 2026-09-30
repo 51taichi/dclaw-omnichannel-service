@@ -14,6 +14,7 @@ const state = {
   debugReplyLoadVersion: 0,
   bots: [],
   agents: [],
+  staffTokens: [],
   selectedBotIds: new Set(),
   assignmentBots: []
 };
@@ -43,6 +44,12 @@ const els = {
   botPasswordCancel: document.querySelector("#botPasswordCancelButton"),
   agentForm: document.querySelector("#agentForm"),
   agentList: document.querySelector("#agentList"),
+  staffTokenForm: document.querySelector("#staffTokenForm"),
+  staffTokenList: document.querySelector("#staffTokenList"),
+  staffTokenModal: document.querySelector("#staffTokenModal"),
+  staffTokenValue: document.querySelector("#staffTokenValue"),
+  copyStaffToken: document.querySelector("#copyStaffTokenButton"),
+  closeStaffToken: document.querySelector("#closeStaffTokenButton"),
   passwordForm: document.querySelector("#adminPasswordForm"),
   assignmentModal: document.querySelector("#assignmentModal"),
   assignmentSearch: document.querySelector("#assignmentSearch"),
@@ -179,6 +186,9 @@ async function showAdminConsole() {
 function selectTab(name) {
   els.tabs.forEach((button) => button.classList.toggle("active", button.dataset.adminTab === name));
   els.panels.forEach((panel) => panel.classList.toggle("active", panel.dataset.adminPanel === name));
+  if (name === "staff-tokens") {
+    loadStaffTokens().catch((error) => toast(error.message));
+  }
 }
 
 async function loadGlobalData() {
@@ -758,6 +768,100 @@ async function deleteAgent(agentId) {
   await loadGlobalData();
 }
 
+function formatStaffTokenTime(value) {
+  if (!value) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : date.toLocaleString("zh-CN");
+}
+
+function staffTokenStatus(token) {
+  if (token.revokedAt) return "已撤销";
+  if (token.expiresAt && new Date(token.expiresAt).getTime() <= Date.now()) return "已过期";
+  return "有效";
+}
+
+function renderStaffTokens() {
+  if (!state.staffTokens.length) {
+    els.staffTokenList.innerHTML = '<p class="muted staff-token-empty">暂无 Token</p>';
+    return;
+  }
+  els.staffTokenList.innerHTML = state.staffTokens.map((token) => `
+    <div class="staff-token-row">
+      <span>${escapeHtml(token.employeeName)}</span>
+      <span>${escapeHtml(token.tokenName)}</span>
+      <span>${escapeHtml(formatStaffTokenTime(token.expiresAt))}</span>
+      <span>${escapeHtml(staffTokenStatus(token))}</span>
+      <span>${escapeHtml(formatStaffTokenTime(token.createdAt))}</span>
+      <span>${escapeHtml(formatStaffTokenTime(token.lastUsedAt))}</span>
+      <span class="admin-actions staff-token-actions">
+        <button class="danger" type="button" data-revoke-staff-token="${escapeHtml(token.tokenId)}" ${token.revokedAt ? "disabled" : ""}>${adminIcon("trash")}撤销</button>
+        <button class="secondary" type="button" data-rotate-staff-token="${escapeHtml(token.tokenId)}">${adminIcon("transfer")}轮换</button>
+      </span>
+    </div>
+  `).join("");
+  els.staffTokenList.querySelectorAll("[data-revoke-staff-token]").forEach((button) => {
+    button.addEventListener("click", () => revokeStaffToken(button.dataset.revokeStaffToken).catch((error) => toast(error.message)));
+  });
+  els.staffTokenList.querySelectorAll("[data-rotate-staff-token]").forEach((button) => {
+    button.addEventListener("click", () => rotateStaffToken(button.dataset.rotateStaffToken).catch((error) => toast(error.message)));
+  });
+}
+
+async function loadStaffTokens() {
+  const data = await adminRequest("/api/admin/staff-tokens");
+  state.staffTokens.splice(0, state.staffTokens.length, ...(data.tokens || []));
+  renderStaffTokens();
+}
+
+async function showOneTimeStaffToken(token) {
+  els.staffTokenValue.value = token;
+  els.staffTokenModal.hidden = false;
+  els.staffTokenValue.focus();
+  els.staffTokenValue.select();
+}
+
+async function createStaffToken(event) {
+  event.preventDefault();
+  const form = new FormData(els.staffTokenForm);
+  const expiresAt = String(form.get("expiresAt") || "").trim();
+  const data = await adminRequest("/api/admin/staff-tokens", {
+    method: "POST",
+    body: JSON.stringify({
+      employeeName: String(form.get("employeeName") || "").trim(),
+      tokenName: String(form.get("tokenName") || "").trim(),
+      expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null
+    })
+  });
+  els.staffTokenForm.reset();
+  await showOneTimeStaffToken(data.token);
+}
+
+async function revokeStaffToken(tokenId) {
+  if (!confirm("撤销后这个 Token 将立即失效，确认撤销？")) return;
+  await adminRequest(`/api/admin/staff-tokens/${encodeURIComponent(tokenId)}/revoke`, { method: "POST" });
+  await loadStaffTokens();
+  toast("Token 已撤销");
+}
+
+async function rotateStaffToken(tokenId) {
+  if (!confirm("轮换后旧 Token 将立即失效，确认轮换？")) return;
+  const data = await adminRequest(`/api/admin/staff-tokens/${encodeURIComponent(tokenId)}/rotate`, { method: "POST" });
+  await showOneTimeStaffToken(data.token);
+}
+
+async function copyStaffToken() {
+  const value = els.staffTokenValue.value;
+  if (!value) return;
+  await navigator.clipboard.writeText(value);
+  toast("Token 已复制");
+}
+
+function closeStaffTokenModal() {
+  els.staffTokenValue.value = "";
+  els.staffTokenModal.hidden = true;
+  loadStaffTokens().catch((error) => toast(error.message));
+}
+
 async function changePassword(event) {
   event.preventDefault();
   const form = new FormData(els.passwordForm);
@@ -816,6 +920,12 @@ els.debugReplyForm.addEventListener("submit", (event) =>
   saveDebugReply(event).catch((error) => toast(error.message))
 );
 els.agentForm.addEventListener("submit", (event) => saveAgent(event).catch((error) => toast(error.message)));
+els.staffTokenForm.addEventListener("submit", (event) => createStaffToken(event).catch((error) => toast(error.message)));
+els.copyStaffToken.addEventListener("click", () => copyStaffToken().catch((error) => toast(error.message)));
+els.closeStaffToken.addEventListener("click", closeStaffTokenModal);
+els.staffTokenModal.addEventListener("click", (event) => {
+  if (event.target === els.staffTokenModal) closeStaffTokenModal();
+});
 els.passwordForm.addEventListener("submit", (event) => changePassword(event).catch((error) => toast(error.message)));
 
 async function start() {

@@ -57,6 +57,7 @@
           <button class="active" data-admin-tab="workspaces"><svg><use href="#admin-icon-grid"></use></svg>工作区</button>
           <button data-admin-tab="bots"><svg><use href="#admin-icon-bot"></use></svg>Bots</button>
           <button data-admin-tab="agents"><svg><use href="#admin-icon-user"></use></svg>Agents</button>
+          <button data-admin-tab="staff-tokens"><svg><use href="#admin-icon-key"></use></svg>Codex Token</button>
           <button data-admin-tab="settings"><svg><use href="#admin-icon-settings"></use></svg>系统设置</button>
           <button id="adminLogoutButton"><svg><use href="#admin-icon-logout"></use></svg>退出</button>
         </nav>
@@ -176,6 +177,25 @@
           <div id="agentList" class="agent-card-grid admin-agent-card-grid"></div>
         </section>
 
+        <section class="admin-panel" data-admin-panel="staff-tokens">
+          <div class="admin-panel-head"><h1>Codex Token</h1></div>
+          <p class="admin-panel-note">为公司员工创建用于 Codex 开发调试的访问凭证。完整凭证只显示一次，请立即复制并妥善保管。</p>
+          <form id="staffTokenForm" class="admin-form admin-inline-form staff-token-form">
+            <label><span><svg><use href="#admin-icon-user"></use></svg>员工姓名</span><input name="employeeName" required /></label>
+            <label><span><svg><use href="#admin-icon-name"></use></svg>设备备注</span><input name="tokenName" required placeholder="例如：家用电脑" /></label>
+            <label><span><svg><use href="#admin-icon-settings"></use></svg>有效期</span><input name="expiresAt" type="datetime-local" /></label>
+            <div class="admin-actions">
+              <button class="primary" type="submit"><svg><use href="#admin-icon-plus"></use></svg>创建 Token</button>
+            </div>
+          </form>
+          <div class="admin-table staff-token-table">
+            <div class="staff-token-row admin-table-head">
+              <span>员工姓名</span><span>设备备注</span><span>有效期</span><span>状态</span><span>创建时间</span><span>最后使用时间</span><span>操作</span>
+            </div>
+            <div id="staffTokenList"></div>
+          </div>
+        </section>
+
         <section class="admin-panel" data-admin-panel="settings">
           <div class="admin-panel-head"><h1>系统设置</h1></div>
           <form id="adminPasswordForm" class="admin-form settings-form">
@@ -219,6 +239,24 @@
             <button class="primary" type="submit"><svg><use href="#admin-icon-save"></use></svg>保存密码</button>
           </div>
         </form>
+      </section>
+    </div>
+    <div id="staffTokenModal" class="admin-modal" hidden>
+      <section class="admin-bot-password-modal staff-token-modal" role="dialog" aria-modal="true" aria-labelledby="staffTokenTitle">
+        <div class="admin-modal-head">
+          <div>
+            <h2 id="staffTokenTitle"><svg><use href="#admin-icon-key"></use></svg>复制 Codex Token</h2>
+            <p>完整 Token 只显示这一次，关闭后无法再次查看。</p>
+          </div>
+        </div>
+        <label class="staff-token-value-field">
+          <span><svg><use href="#admin-icon-key"></use></svg>Token</span>
+          <input id="staffTokenValue" readonly />
+        </label>
+        <div class="admin-actions">
+          <button id="copyStaffTokenButton" class="primary" type="button"><svg><use href="#admin-icon-open"></use></svg>复制</button>
+          <button id="closeStaffTokenButton" class="secondary" type="button"><svg><use href="#admin-icon-close"></use></svg>关闭</button>
+        </div>
       </section>
     </div>
     <div id="adminToast" class="admin-toast" hidden></div>
