@@ -11,6 +11,11 @@ import { normalizeSecretUpdate } from "./secret-update.js";
 import { normalizeManualReply } from "./manual-reply.js";
 import { reconcileOutboundWebhookMessage } from "./outbound-webhook-reconciliation.js";
 import { loadBotBindingsFromConfig } from "./config.js";
+import {
+  assertConfigPatchService,
+  getConfigPatchBotSnapshot,
+  listConfigPatchBots
+} from "./config-patch-participant.js";
 import { runConversationResetRequests } from "./conversation-reset.js";
 import { createConversationResetWorker } from "./conversation-reset-worker.js";
 import {
@@ -823,6 +828,19 @@ function asyncHandler(handler) {
       next(error);
     }
   };
+}
+
+function requireConfigPatchService(req, res, next) {
+  try {
+    assertConfigPatchService(req);
+    next();
+  } catch (error) {
+    res.status(error.status || 500).json({
+      ok: false,
+      code: error.code || "CONFIG_PATCH_INTERNAL_ERROR",
+      message: error.message || "config patch service request failed"
+    });
+  }
 }
 
 function getReplyTarget(message) {
@@ -5827,6 +5845,31 @@ app.post(
       targetGroupId: req.params.groupId
     });
     res.json({ ok: true, group });
+  })
+);
+
+app.get(
+  "/internal/config-patch/v1/bots",
+  requireConfigPatchService,
+  asyncHandler(async (req, res) => {
+    res.json({ ok: true, bots: listConfigPatchBots() });
+  })
+);
+
+app.get(
+  "/internal/config-patch/v1/bots/:botId/snapshot",
+  requireConfigPatchService,
+  asyncHandler(async (req, res) => {
+    const snapshot = getConfigPatchBotSnapshot(req.params.botId);
+    if (!snapshot) {
+      res.status(404).json({
+        ok: false,
+        code: "CONFIG_PATCH_BOT_NOT_FOUND",
+        message: "config patch Bot not found"
+      });
+      return;
+    }
+    res.json({ ok: true, snapshot });
   })
 );
 
