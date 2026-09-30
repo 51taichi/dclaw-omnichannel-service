@@ -35,6 +35,20 @@ npm start
 
 默认监听 `0.0.0.0:8765`。管理后台为 `/admin/`，员工工作区入口为 `/console/<workspace-slug>`。
 
+## 配置补丁服务（阶段一）
+
+AI 客服中台在配置补丁链路中只有两个独立职责：向补丁服务提供受专用服务密钥保护的只读 Bot 快照，以及让管理员在后台“Codex Token”页创建、查询、撤销和轮换员工 Token。后台不提供工作包上传、预检、发布、回退或其他补丁功能。
+
+服务端按需配置：
+
+```dotenv
+OMNICHANNEL_CONFIG_PATCH_INTERNAL_SECRET=与补丁服务一致的只读参与者密钥
+CONFIG_PATCH_ADMIN_BASE_URL=https://patch-internal.example.com
+CONFIG_PATCH_ADMIN_SECRET=与补丁服务一致的管理员代理密钥
+```
+
+未配置时原有客服、工作区、Bot、Agent、状态机和标签功能照常工作；仅 Codex Token 代理接口返回结构化 503。上述专用密钥只存在于服务端环境变量，不得发送到浏览器，也不能用管理员 Session 代替。
+
 ## 配置 Whapi Bot
 
 1. 登录 `/admin/`。
